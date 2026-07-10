@@ -17,6 +17,9 @@ export default function WaybillCard({ params }: { params: Promise<{ id: string }
   const [ok, setOk] = useState('');
   const [odometerEntry, setOdometerEntry] = useState('');
   const [fuelCalc, setFuelCalc] = useState<Record<string, unknown> | null>(null);
+  const [workDays, setWorkDays] = useState<Record<string, unknown>[]>([]);
+  const [dayForm, setDayForm] = useState({ workDate: '', exitTime: '06:00', entryTime: '', odometerExit: '', odometerEntry: '', laps: '', revenue: '' });
+  const [fuelForm, setFuelForm] = useState({ fuelType: '1', fuelGiven: '', remainBeforeExit: '' });
 
   const reload = useCallback(async () => {
     const data = await wb.get(id);
@@ -31,6 +34,10 @@ export default function WaybillCard({ params }: { params: Promise<{ id: string }
         setQrUrl(await QRCode.toDataURL(verifyUrl, { width: 240, margin: 1 }));
       } catch { /* QR доступен с READY */ }
     }
+    try {
+      const wd = await fetch(`/wb-api/api/v1/waybills/${id}/work-days`, { headers: (await import('@/lib/api')).authHeaders() });
+      if (wd.ok) setWorkDays(await wd.json());
+    } catch { /* work-days могут отсутствовать */ }
     const list = await md.employees(data.organizationRma);
     setEmp({
       doctors: list.filter(e => e.type === 1).map(e => ({ rma: String(e.rma), name: String(e.name) })),
@@ -174,6 +181,84 @@ export default function WaybillCard({ params }: { params: Promise<{ id: string }
           </button>
         )}
       </div>
+
+      {(w.status === 'ACTIVE' || workDays.length > 0) && (
+        <div className="card">
+          <h2>Рабочие дни (многодневный ПЛ)</h2>
+          {workDays.length > 0 && (
+            <table style={{ marginBottom: 12 }}>
+              <thead><tr><th>Дата</th><th>Выезд</th><th>Возврат</th><th>Одометр</th><th>Круги</th><th>Выручка</th></tr></thead>
+              <tbody>
+                {workDays.map((d, i) => (
+                  <tr key={String(d.id ?? i)}>
+                    <td>{String(d.workDate)}</td>
+                    <td>{String(d.exitTime ?? '—')}</td>
+                    <td>{String(d.entryTime ?? '—')}</td>
+                    <td>{String(d.odometerExit ?? '—')} → {String(d.odometerEntry ?? '—')}</td>
+                    <td>{String(d.laps ?? '—')}</td>
+                    <td>{String(d.revenue ?? '—')}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+          {w.status === 'ACTIVE' && (
+            <>
+              <form className="grid" onSubmit={async e => {
+                e.preventDefault();
+                await act('Рабочий день добавлен', () => wb.post(`/${id}/work-days`, {
+                  workDate: dayForm.workDate,
+                  exitTime: dayForm.exitTime || null,
+                  entryTime: dayForm.entryTime || null,
+                  odometerExit: dayForm.odometerExit ? Number(dayForm.odometerExit) : null,
+                  odometerEntry: dayForm.odometerEntry ? Number(dayForm.odometerEntry) : null,
+                  laps: dayForm.laps ? Number(dayForm.laps) : null,
+                  revenue: dayForm.revenue ? Number(dayForm.revenue) : null,
+                }));
+              }}>
+                <div><label>Дата</label><input type="date" required value={dayForm.workDate} onChange={e => setDayForm({ ...dayForm, workDate: e.target.value })} /></div>
+                <div><label>Выезд / возврат</label>
+                  <span style={{ display: 'flex', gap: 6 }}>
+                    <input type="time" value={dayForm.exitTime} onChange={e => setDayForm({ ...dayForm, exitTime: e.target.value })} />
+                    <input type="time" value={dayForm.entryTime} onChange={e => setDayForm({ ...dayForm, entryTime: e.target.value })} />
+                  </span>
+                </div>
+                <div><label>Одометр выезд / возврат</label>
+                  <span style={{ display: 'flex', gap: 6 }}>
+                    <input type="number" value={dayForm.odometerExit} onChange={e => setDayForm({ ...dayForm, odometerExit: e.target.value })} />
+                    <input type="number" value={dayForm.odometerEntry} onChange={e => setDayForm({ ...dayForm, odometerEntry: e.target.value })} />
+                  </span>
+                </div>
+                <div><label>Круги / выручка</label>
+                  <span style={{ display: 'flex', gap: 6 }}>
+                    <input type="number" value={dayForm.laps} onChange={e => setDayForm({ ...dayForm, laps: e.target.value })} />
+                    <input type="number" step="0.01" value={dayForm.revenue} onChange={e => setDayForm({ ...dayForm, revenue: e.target.value })} />
+                  </span>
+                </div>
+                <div className="full"><button className="btn secondary" type="submit">+ Добавить день</button></div>
+              </form>
+              <form className="grid" style={{ marginTop: 10 }} onSubmit={async e => {
+                e.preventDefault();
+                await act('Топливо записано', () => wb.post(`/${id}/fuel`, {
+                  fuelType: Number(fuelForm.fuelType),
+                  fuelGiven: fuelForm.fuelGiven ? Number(fuelForm.fuelGiven) : null,
+                  remainBeforeExit: fuelForm.remainBeforeExit ? Number(fuelForm.remainBeforeExit) : null,
+                }));
+              }}>
+                <div><label>Вид топлива</label>
+                  <select value={fuelForm.fuelType} onChange={e => setFuelForm({ ...fuelForm, fuelType: e.target.value })}>
+                    <option value="1">Бензин</option><option value="2">Дизель</option>
+                    <option value="3">Газ сжиженный</option><option value="4">Газ природный</option>
+                  </select>
+                </div>
+                <div><label>Выдано, л</label><input type="number" step="0.1" required value={fuelForm.fuelGiven} onChange={e => setFuelForm({ ...fuelForm, fuelGiven: e.target.value })} /></div>
+                <div><label>Остаток перед выездом, л</label><input type="number" step="0.1" value={fuelForm.remainBeforeExit} onChange={e => setFuelForm({ ...fuelForm, remainBeforeExit: e.target.value })} /></div>
+                <div className="full"><button className="btn secondary" type="submit">+ Записать топливо</button></div>
+              </form>
+            </>
+          )}
+        </div>
+      )}
 
       {(w.status === 'RETURNED' || w.status === 'COMPLETED') && (
         <div className="card">

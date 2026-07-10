@@ -1,0 +1,168 @@
+# Продакшн-подобный стек одного узла — прообраз ЦОД-развёртывания платформы ЭПД РТ.
+# Запуск: docker compose -f infra/docker-compose.prod.yml up -d --build
+#
+# ВНИМАНИЕ: значения секретов ниже — dev-дефолты для локальной проверки.
+#           В ПРОДЕ заменить (через .env / docker secrets / vault) все пароли,
+#           перевести Keycloak в режим `start` за HTTPS reverse-proxy и задать единый
+#           внешний issuer (см. комментарии у сервиса keycloak).
+name: epd-rt-prod
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: epd-prod-postgres
+    environment:
+      POSTGRES_USER: ${DB_USER:-epd}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-epd_dev_password}   # в проде заменить
+      POSTGRES_DB: epd
+    volumes:
+      - ./postgres-init:/docker-entrypoint-initdb.d:ro      # init: создаёт БД masterdata/waybill
+      - pgdata:/var/lib/postgresql/data
+    # host-порт НЕ публикуется — БД доступна только внутри сети compose.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-epd} -d epd"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: epd-prod-redis
+    restart: unless-stopped
+
+  kafka:
+    image: apache/kafka:3.8.0
+    container_name: epd-prod-kafka
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      # Только внутренний listener (без EXTERNAL/localhost — наружу Kafka не публикуется).
+      KAFKA_LISTENERS: PLAINTEXT://:29092,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    restart: unless-stopped
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.0
+    container_name: epd-prod-keycloak
+    # TODO(prod): заменить `start-dev` на `start` (продакшн-режим Keycloak):
+    #   - вынести хранилище в внешнюю БД (KC_DB=postgres, KC_DB_URL=...),
+    #   - терминировать HTTPS на reverse-proxy (KC_PROXY_HEADERS=xforwarded, KC_HTTP_ENABLED=true),
+    #   - убрать импорт realm из файла в пользу управляемой миграции.
+    command: start-dev --import-realm
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KC_ADMIN:-admin}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KC_ADMIN_PASSWORD:-admin_dev_password}   # в проде заменить
+      KC_HTTP_PORT: 8180
+      KC_HEALTH_ENABLED: "true"
+      # Токены Keycloak содержат issuer = адрес, с которого их запросили. Браузер ходит на
+      # http://localhost:8180 (внешний), а backend-сервисы обращаются на http://keycloak:8180
+      # (внутренний). KC_HOSTNAME_STRICT=false разрешает Keycloak отвечать по обоим хостам.
+      #
+      # ВАЖНО (prod): для сквозной валидации JWT нужен ЕДИНЫЙ внешний issuer, одинаково
+      #   резолвящийся и браузером, и сервисами (например, https://auth.epd.tj/realms/epd
+      #   через reverse-proxy + KC_HOSTNAME). Тогда KEYCLOAK_ISSUER_URI сервисов и адрес
+      #   Keycloak во фронте указывают на один и тот же URL, и issuer в токене совпадает
+      #   с ожидаемым сервисами. В этом же compose (localhost vs keycloak) issuer'ы различаются —
+      #   это осознанное упрощение dev-подобного стенда.
+      KC_HOSTNAME_STRICT: "false"
+    ports:
+      - "8180:8180"   # нужен браузеру (фронт редиректит на Keycloak); в проде — через reverse-proxy
+    volumes:
+      - ./keycloak:/opt/keycloak/data/import:ro
+    healthcheck:
+      # В образе Keycloak нет curl/wget; проверяем доступность realm через /dev/tcp (bash-фича,
+      # /bin/sh на ubi9 — это bash). Успех = realm epd импортирован и отдаёт OIDC-конфигурацию.
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/localhost/8180 && printf 'GET /realms/epd/.well-known/openid-configuration HTTP/1.0\\r\\nHost: localhost\\r\\n\\r\\n' >&3 && cat <&3 | grep -q epd"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 40s
+    restart: unless-stopped
+
+  minio:
+    image: minio/minio:latest
+    container_name: epd-prod-minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_USER:-epd}
+      MINIO_ROOT_PASSWORD: ${MINIO_PASSWORD:-epd_dev_password}   # в проде заменить
+    volumes:
+      - miniodata:/data
+    restart: unless-stopped
+
+  master-data:
+    build:
+      context: ../apps/backend
+      dockerfile: Dockerfile
+      args:
+        SERVICE: master-data-service
+    image: epd/master-data:0.1.0
+    container_name: epd-prod-master-data
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/masterdata
+      DB_USER: ${DB_USER:-epd}
+      DB_PASSWORD: ${DB_PASSWORD:-epd_dev_password}
+      KEYCLOAK_ISSUER_URI: http://keycloak:8180/realms/epd
+    depends_on:
+      postgres:
+        condition: service_healthy
+      keycloak:
+        condition: service_healthy
+    restart: unless-stopped
+
+  waybill:
+    build:
+      context: ../apps/backend
+      dockerfile: Dockerfile
+      args:
+        SERVICE: waybill-service
+    image: epd/waybill:0.1.0
+    container_name: epd-prod-waybill
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/waybill
+      DB_USER: ${DB_USER:-epd}
+      DB_PASSWORD: ${DB_PASSWORD:-epd_dev_password}
+      KEYCLOAK_ISSUER_URI: http://keycloak:8180/realms/epd
+      MASTER_DATA_URL: http://master-data:8081
+    depends_on:
+      postgres:
+        condition: service_healthy
+      keycloak:
+        condition: service_healthy
+      master-data:
+        condition: service_started
+    restart: unless-stopped
+
+  web:
+    build:
+      context: ../apps/web
+      dockerfile: Dockerfile
+      args:
+        # rewrites Next.js вычисляются на этапе сборки → адреса сервисов передаём как build-arg.
+        MD_API_URL: http://master-data:8081
+        WB_API_URL: http://waybill:8082
+        # Публичный адрес Keycloak для браузера (в проде — внешний https-домен).
+        NEXT_PUBLIC_KEYCLOAK_URL: ${NEXT_PUBLIC_KEYCLOAK_URL:-http://localhost:8180}
+    image: epd/web:0.1.0
+    container_name: epd-prod-web
+    environment:
+      # Дублируем как runtime-env (страховка на случай runtime-вычисления rewrites).
+      MD_API_URL: http://master-data:8081
+      WB_API_URL: http://waybill:8082
+    ports:
+      - "3000:3000"
+    depends_on:
+      - master-data
+      - waybill
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  miniodata:

@@ -24,7 +24,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (kcRef.current) return;
-    const kc = new Keycloak({ url: 'http://localhost:8180', realm: 'epd', clientId: 'epd-web' });
+    const kcUrl = process.env.NEXT_PUBLIC_KEYCLOAK_URL || 'http://localhost:8180';
+    const kc = new Keycloak({ url: kcUrl, realm: 'epd', clientId: 'epd-web' });
     kcRef.current = kc;
     kc.init({ onLoad: 'login-required', pkceMethod: 'S256', checkLoginIframe: false })
       .then(authenticated => {

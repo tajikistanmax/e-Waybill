@@ -85,8 +85,9 @@ public class VehicleController {
         return ResponseEntity.status(existing.isPresent() ? HttpStatus.OK : HttpStatus.CREATED).body(saved);
     }
 
+    // Межсервисный вызов waybill-service при закрытии ПЛ (permitAll в SecurityConfig).
+    // TODO(prod): закрыть client-credentials токеном сервисного аккаунта.
     @PatchMapping("/{id}/odometer")
-    @PreAuthorize("hasAnyRole('COMPANY_ADMIN','SYSTEM_ADMIN')")
     public Vehicle updateOdometer(@PathVariable UUID id, @Valid @RequestBody OdometerUpdate req) {
         var vehicle = vehicles.findById(id).orElseThrow(() -> new NotFoundException("Транспорт не найден"));
         vehicle.setOdometer(req.odometer());

@@ -1,0 +1,15 @@
+# Зависимости и результаты сборки — ставятся/собираются внутри образа.
+node_modules/
+**/node_modules/
+.next/
+**/.next/
+
+# Локальные env и логи
+.env*.local
+npm-debug.log*
+*.log
+
+# Docker / IDE
+Dockerfile
+.dockerignore
+.idea/

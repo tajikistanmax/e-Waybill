@@ -5,9 +5,9 @@ spring:
   application:
     name: master-data-service
   datasource:
-    url: jdbc:postgresql://localhost:5442/masterdata
-    username: epd
-    password: epd_dev_password
+    url: ${DB_URL:jdbc:postgresql://localhost:5442/masterdata}
+    username: ${DB_USER:epd}
+    password: ${DB_PASSWORD:epd_dev_password}
   jpa:
     hibernate:
       ddl-auto: validate
@@ -18,7 +18,7 @@ spring:
     oauth2:
       resourceserver:
         jwt:
-          issuer-uri: http://localhost:8180/realms/epd
+          issuer-uri: ${KEYCLOAK_ISSUER_URI:http://localhost:8180/realms/epd}
 
 springdoc:
   swagger-ui:

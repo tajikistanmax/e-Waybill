@@ -1,0 +1,10 @@
+# Сборочные артефакты и кэши Gradle — не нужны в build-контексте образа.
+**/build/
+**/.gradle/
+build/
+.gradle/
+
+# IDE / прочее
+.idea/
+*.iml
+*.log
