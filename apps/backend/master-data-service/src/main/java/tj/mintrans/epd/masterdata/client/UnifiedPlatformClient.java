@@ -27,6 +27,9 @@ public interface UnifiedPlatformClient {
     /** Водительское удостоверение физлица по ИНН (источник — ГАИ). */
     Optional<DriverLicense> findDriverLicense(String inn);
 
+    /** Дозвол на международную перевозку (источник — система E-PERMIT). */
+    Optional<PermitInfo> findPermit(String permitNumber);
+
     /** Субъект единой платформы: физлицо, ИП или юрлицо. */
     record Subject(
             String inn,
@@ -61,5 +64,12 @@ public interface UnifiedPlatformClient {
             LocalDate validTo,
             String medCertNumber,   // медсправка (реестр Минздрава через единую платформу)
             LocalDate medCertValidTo) {
+    }
+
+    record PermitInfo(
+            String permitNumber,
+            boolean valid,
+            LocalDate validTo,
+            String country) {       // страна, для которой выдан дозвол
     }
 }

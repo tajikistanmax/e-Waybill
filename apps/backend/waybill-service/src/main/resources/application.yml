@@ -4,6 +4,8 @@ server:
 spring:
   application:
     name: waybill-service
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
   datasource:
     url: ${DB_URL:jdbc:postgresql://localhost:5442/waybill}
     username: ${DB_USER:epd}
@@ -28,6 +30,11 @@ epd:
     # (source=AGGREGATOR) покрыты абонементом и не тарифицируются в любом случае.
     enabled: ${PAYMENT_ENABLED:false}
     fee-somoni: ${PAYMENT_FEE:10.00}
+    # Секрет webhook платёжного шлюза (X-Payment-Secret). В проде заменить!
+    webhook-secret: ${PAYMENT_WEBHOOK_SECRET:dev_webhook_secret}
+  events:
+    # Kafka-topic статусных событий ПЛ — читают единый кабинет, аналитика, антифрод
+    topic: ${EVENTS_TOPIC:epd.waybill.status}
   security:
     # Legacy-агрегаторы (ЧУРА/НЕРУ) в dev ходят без токена. В проде — false:
     # требуется client-credentials токен клиента epd-aggregator (роль API_INTEGRATOR).

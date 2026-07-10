@@ -36,6 +36,7 @@ public class WaybillService {
     private final tj.mintrans.epd.waybill.repository.WaybillPaymentRepository payments;
     private final MasterDataClient masterData;
     private final WaybillNumberGenerator numberGenerator;
+    private final org.springframework.context.ApplicationEventPublisher eventPublisher;
     /** Оплата выключена по умолчанию (dev/этап 1а); в проде — PAYMENT_ENABLED=true. */
     private final boolean paymentEnabled;
     private final java.math.BigDecimal paymentFee;
@@ -46,6 +47,7 @@ public class WaybillService {
                           tj.mintrans.epd.waybill.repository.WaybillPaymentRepository payments,
                           MasterDataClient masterData,
                           WaybillNumberGenerator numberGenerator,
+                          org.springframework.context.ApplicationEventPublisher eventPublisher,
                           @org.springframework.beans.factory.annotation.Value("${epd.payment.enabled:false}") boolean paymentEnabled,
                           @org.springframework.beans.factory.annotation.Value("${epd.payment.fee-somoni:10.00}") java.math.BigDecimal paymentFee) {
         this.waybills = waybills;
@@ -54,6 +56,7 @@ public class WaybillService {
         this.payments = payments;
         this.masterData = masterData;
         this.numberGenerator = numberGenerator;
+        this.eventPublisher = eventPublisher;
         this.paymentEnabled = paymentEnabled;
         this.paymentFee = paymentFee;
     }
@@ -89,7 +92,7 @@ public class WaybillService {
         wb.setVehicleSnapshot(vehicle);
         validateTypeData(wb, typeData, secondDriverRma, org);
         var saved = waybills.save(wb);
-        events.save(WaybillStatusEvent.of(saved.getId(), null, WaybillStatus.DRAFT, "system", "Создан черновик"));
+        recordEvent(saved, null, WaybillStatus.DRAFT, "system", "Создан черновик");
         return saved;
     }
 
@@ -116,8 +119,20 @@ public class WaybillService {
                 requireText(data, "visaCountry", "Укажите страну выдачи визы (visaCountry)");
                 requireText(data, "loadCountry", "Укажите страну погрузки (loadCountry)");
                 requireText(data, "unloadCountry", "Укажите страну разгрузки (unloadCountry)");
-                // TODO: онлайн-валидация номера дозвола через интеграцию E-PERMIT — на следующем этапе.
                 requireText(data, "permitNumber", "Укажите номер дозвола E-PERMIT (permitNumber)");
+                // Онлайн-валидация дозвола в системе E-PERMIT (через единую платформу)
+                var permit = masterData.findPermit(str(data.get("permitNumber")))
+                        .orElseThrow(() -> new UnprocessableException(
+                                "Дозвол %s не найден в системе E-PERMIT".formatted(str(data.get("permitNumber")))));
+                if (!Boolean.TRUE.equals(permit.get("valid"))) {
+                    throw new UnprocessableException("Дозвол %s недействителен или просрочен (E-PERMIT)"
+                            .formatted(str(data.get("permitNumber"))));
+                }
+                var permitValidTo = dateOrNull(permit.get("validTo"));
+                if (permitValidTo != null && permitValidTo.isBefore(LocalDate.now())) {
+                    throw new UnprocessableException("Срок действия дозвола %s истёк (E-PERMIT)"
+                            .formatted(str(data.get("permitNumber"))));
+                }
                 if (wb.getWaybillType() == WaybillType.WB_TRUCK_INTL) {
                     requireText(data, "cargoName", "Укажите наименование груза (cargoName)");
                 }
@@ -614,7 +629,21 @@ public class WaybillService {
     void transition(Waybill wb, WaybillStatus to, String actor, String reason) {
         var from = wb.getStatus();
         wb.setStatus(to);
+        recordEvent(wb, from, to, actor, reason);
+    }
+
+    /**
+     * Журнал статусов (append-only, БД) + доменное событие: после commit
+     * KafkaEventBridge публикует его в topic epd.waybill.status —
+     * для единого личного кабинета Минтранса, аналитики и антифрода.
+     */
+    private void recordEvent(Waybill wb, WaybillStatus from, WaybillStatus to, String actor, String reason) {
         events.save(WaybillStatusEvent.of(wb.getId(), from, to, actor, reason));
+        eventPublisher.publishEvent(new tj.mintrans.epd.waybill.event.WaybillStatusChanged(
+                wb.getId(), wb.getNumber(), wb.getWaybillType().name(),
+                wb.getOrganizationRma(), wb.getVehicleRegNumber(), wb.getDriverRma(),
+                from == null ? null : from.name(), to.name(),
+                actor, reason, wb.getSource(), OffsetDateTime.now()));
     }
 
     private static Map<String, Object> withVerdict(Map<String, Object> data, boolean passed, Map<String, Object> employee) {

@@ -30,15 +30,18 @@ public class LifecycleScheduler {
 
     private final WaybillRepository waybills;
     private final WaybillStatusEventRepository events;
+    private final org.springframework.context.ApplicationEventPublisher eventPublisher;
     private final int expiryGraceHours;
     private final int archiveAfterDays;
 
     public LifecycleScheduler(WaybillRepository waybills,
                               WaybillStatusEventRepository events,
+                              org.springframework.context.ApplicationEventPublisher eventPublisher,
                               @Value("${epd.lifecycle.expiry-grace-hours:24}") int expiryGraceHours,
                               @Value("${epd.lifecycle.archive-after-days:1825}") int archiveAfterDays) {
         this.waybills = waybills;
         this.events = events;
+        this.eventPublisher = eventPublisher;
         this.expiryGraceHours = expiryGraceHours;
         this.archiveAfterDays = archiveAfterDays;
     }
@@ -56,19 +59,14 @@ public class LifecycleScheduler {
         for (var wb : waybills.findByStatusInAndValidToBefore(
                 EnumSet.of(WaybillStatus.READY, WaybillStatus.ISSUED), now)) {
             var from = wb.getStatus();
-            wb.setStatus(WaybillStatus.EXPIRED);
-            events.save(WaybillStatusEvent.of(wb.getId(), from, WaybillStatus.EXPIRED, ACTOR,
-                    "Срок действия истёк: не активирован"));
-            waybills.save(wb);
+            applyTransition(wb, from, "Срок действия истёк: не активирован");
             log.info("ПЛ {} ({}) просрочен: не активирован до {}", wb.getId(), wb.getNumber(), wb.getValidTo());
         }
         // На линии, но не закрыт в срок + грейс-период — фиксируется как нарушение
         for (var wb : waybills.findByStatusInAndValidToBefore(
                 EnumSet.of(WaybillStatus.ACTIVE), now.minusHours(expiryGraceHours))) {
-            wb.setStatus(WaybillStatus.EXPIRED);
-            events.save(WaybillStatusEvent.of(wb.getId(), WaybillStatus.ACTIVE, WaybillStatus.EXPIRED, ACTOR,
-                    "Срок действия истёк: рейс не закрыт (грейс-период %d ч; нарушение)".formatted(expiryGraceHours)));
-            waybills.save(wb);
+            applyTransition(wb, WaybillStatus.ACTIVE,
+                    "Срок действия истёк: рейс не закрыт (грейс-период %d ч; нарушение)".formatted(expiryGraceHours));
             log.warn("ПЛ {} ({}) просрочен на линии — нарушение", wb.getId(), wb.getNumber());
         }
     }
@@ -80,6 +78,22 @@ public class LifecycleScheduler {
             events.save(WaybillStatusEvent.of(wb.getId(), WaybillStatus.COMPLETED, WaybillStatus.ARCHIVED, ACTOR,
                     "Архивирование по политике ретенции (%d дней)".formatted(archiveAfterDays)));
             waybills.save(wb);
+            publish(wb, WaybillStatus.COMPLETED, WaybillStatus.ARCHIVED, "Архивирование по политике ретенции");
         }
+    }
+
+    private void applyTransition(tj.mintrans.epd.waybill.domain.Waybill wb, WaybillStatus from, String reason) {
+        wb.setStatus(WaybillStatus.EXPIRED);
+        events.save(WaybillStatusEvent.of(wb.getId(), from, WaybillStatus.EXPIRED, ACTOR, reason));
+        waybills.save(wb);
+        publish(wb, from, WaybillStatus.EXPIRED, reason);
+    }
+
+    /** Доменное событие — после commit KafkaEventBridge отправит его в topic epd.waybill.status. */
+    private void publish(tj.mintrans.epd.waybill.domain.Waybill wb, WaybillStatus from, WaybillStatus to, String reason) {
+        eventPublisher.publishEvent(new tj.mintrans.epd.waybill.event.WaybillStatusChanged(
+                wb.getId(), wb.getNumber(), wb.getWaybillType().name(),
+                wb.getOrganizationRma(), wb.getVehicleRegNumber(), wb.getDriverRma(),
+                from.name(), to.name(), ACTOR, reason, wb.getSource(), OffsetDateTime.now()));
     }
 }

@@ -41,6 +41,11 @@ public class HttpUnifiedPlatformClient implements UnifiedPlatformClient {
         return get("/api/v1/driver-licenses/{inn}", DriverLicense.class, inn);
     }
 
+    @Override
+    public Optional<PermitInfo> findPermit(String permitNumber) {
+        return get("/api/v1/permits/{number}", PermitInfo.class, permitNumber);
+    }
+
     private <T> Optional<T> get(String uri, Class<T> type, Object... vars) {
         try {
             return Optional.ofNullable(client.get().uri(uri, vars).retrieve().body(type));

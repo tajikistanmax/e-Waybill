@@ -2,4 +2,5 @@ description = "Ядро платформы: путевые листы, титу�
 
 dependencies {
     implementation("com.nimbusds:nimbus-jose-jwt:9.40")
+    implementation("org.springframework.kafka:spring-kafka") // события жизненного цикла ПЛ
 }

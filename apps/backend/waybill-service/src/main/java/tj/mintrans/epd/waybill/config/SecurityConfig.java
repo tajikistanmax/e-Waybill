@@ -47,7 +47,10 @@ public class SecurityConfig {
                         .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
                         .requestMatchers("/.well-known/**").permitAll()
                         // Публичная проверка QR (инспектор без логина)
-                        .requestMatchers("/api/v1/verify/**").permitAll();
+                        .requestMatchers("/api/v1/verify/**").permitAll()
+                        // Webhook платёжного шлюза — аутентификация общим секретом
+                        // в заголовке X-Payment-Secret (см. PaymentWebhookController)
+                        .requestMatchers("/api/v1/payments/webhook").permitAll();
                     if (aggregatorOpen) {
                         auth.requestMatchers("/api/v1/aggregator/**").permitAll();
                     } else {

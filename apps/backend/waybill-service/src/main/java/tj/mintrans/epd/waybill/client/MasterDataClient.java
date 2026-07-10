@@ -64,6 +64,19 @@ public class MasterDataClient {
         return first("/api/v1/employees?rma={rma}", rma);
     }
 
+    /** Онлайн-проверка дозвола E-PERMIT через единую платформу (404 → empty). */
+    public Optional<Map<String, Object>> findPermit(String permitNumber) {
+        try {
+            Map<String, Object> permit = client.get()
+                    .uri("/api/v1/sync/permit/{number}", permitNumber)
+                    .retrieve()
+                    .body(new ParameterizedTypeReference<Map<String, Object>>() {});
+            return Optional.ofNullable(permit);
+        } catch (org.springframework.web.client.HttpClientErrorException.NotFound e) {
+            return Optional.empty();
+        }
+    }
+
     public void updateVehicleOdometer(String vehicleId, int odometer) {
         client.patch()
                 .uri("/api/v1/vehicles/{id}/odometer", vehicleId)

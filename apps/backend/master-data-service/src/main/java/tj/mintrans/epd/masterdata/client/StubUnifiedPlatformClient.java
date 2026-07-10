@@ -94,6 +94,26 @@ public class StubUnifiedPlatformClient implements UnifiedPlatformClient {
     }
 
     @Override
+    public Optional<PermitInfo> findPermit(String permitNumber) {
+        if (permitNumber == null || permitNumber.isBlank()) {
+            return Optional.empty();
+        }
+        String number = permitNumber.trim().toUpperCase();
+        // Имитация E-PERMIT: номера с "BAD" — недействительны, с "EXP" — просрочены
+        if (number.contains("BAD")) {
+            return Optional.empty();
+        }
+        var today = LocalDate.now();
+        boolean expired = number.contains("EXP");
+        int h = Math.abs(number.hashCode());
+        return Optional.of(new PermitInfo(
+                number,
+                !expired,
+                expired ? today.minusDays(10) : today.plusMonths(6),
+                List.of("Узбекистан", "Казахстан", "Кыргызстан", "Китай", "Иран").get(h % 5)));
+    }
+
+    @Override
     public Optional<DriverLicense> findDriverLicense(String inn) {
         if (inn == null || !inn.matches("\\d{9,10}")) {
             return Optional.empty();

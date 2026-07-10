@@ -138,8 +138,11 @@ services:
       # Оплата ПЛ включена (AWAITING_PAYMENT → PAID; агрегаторские ПЛ покрыты абонементом)
       PAYMENT_ENABLED: ${PAYMENT_ENABLED:-true}
       PAYMENT_FEE: ${PAYMENT_FEE:-10.00}
+      PAYMENT_WEBHOOK_SECRET: ${PAYMENT_WEBHOOK_SECRET:-epd_webhook_dev_secret}   # в проде заменить
       # API агрегаторов закрыт: нужен client-credentials токен epd-aggregator (роль API_INTEGRATOR)
       AGGREGATOR_OPEN: ${AGGREGATOR_OPEN:-false}
+      # Статусные события ПЛ → Kafka (внутренний listener) для единого кабинета/аналитики
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
     depends_on:
       postgres:
         condition: service_healthy

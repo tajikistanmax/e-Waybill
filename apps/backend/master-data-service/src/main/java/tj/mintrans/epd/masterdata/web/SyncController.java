@@ -194,6 +194,15 @@ public class SyncController {
         return saved(existing.isPresent(), vehicles.save(vehicle));
     }
 
+    // ------------------------------------------------------------ дозволы (E-PERMIT)
+
+    /** Онлайн-проверка дозвола на международную перевозку (система E-PERMIT). */
+    @org.springframework.web.bind.annotation.GetMapping("/permit/{number}")
+    public UnifiedPlatformClient.PermitInfo permit(@org.springframework.web.bind.annotation.PathVariable String number) {
+        return unifiedPlatform.findPermit(number)
+                .orElseThrow(() -> new NotFoundException("Дозвол %s не найден в системе E-PERMIT".formatted(number)));
+    }
+
     // ------------------------------------------------------------ вспомогательное
 
     /** Мультиарендность: администратор компании синхронизирует только свою организацию. */
