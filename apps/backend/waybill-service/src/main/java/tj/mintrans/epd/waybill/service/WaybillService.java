@@ -233,6 +233,16 @@ public class WaybillService {
         if (!waybills.findByDriverRmaAndStatusIn(str(driver.get("rma")), WaybillStatus.OPEN_STATUSES).isEmpty()) {
             throw new ConflictException("На этого водителя уже оформлен действующий путевой лист");
         }
+        // Заблокированный инспектором документ не даёт оформить новый: требуется решение
+        // администратора Минтранса (разблокировка или аннулирование). Нарочно НЕ в OPEN_STATUSES,
+        // чтобы агрегатор не мог автоматически «закрыть» заблокированный ПЛ.
+        var blocked = java.util.EnumSet.of(WaybillStatus.BLOCKED);
+        if (!waybills.findByVehicleRegNumberAndStatusIn(str(vehicle.get("registrationNumber")), blocked).isEmpty()) {
+            throw new ConflictException("На это ТС есть путевой лист, заблокированный инспектором, — требуется решение администратора Минтранса");
+        }
+        if (!waybills.findByDriverRmaAndStatusIn(str(driver.get("rma")), blocked).isEmpty()) {
+            throw new ConflictException("На этого водителя есть путевой лист, заблокированный инспектором, — требуется решение администратора Минтранса");
+        }
     }
 
     // ------------------------------------------------------------------ титулы
@@ -383,6 +393,116 @@ public class WaybillService {
         }
         wb.setCancelReason(reason);
         transition(wb, WaybillStatus.CANCELLED, actor, reason);
+        return waybills.save(wb);
+    }
+
+    // -------------------------------------------- корректирующие титулы (замена)
+
+    /**
+     * Замена водителя после недопуска: MED_REJECTED → CREATED (waybill-statuses.yaml).
+     * Подписанные титулы неизменяемы — замена оформляется титулом CORRECTION.
+     */
+    @Transactional
+    public Waybill replaceDriver(UUID id, String newDriverRma, String dispatcherRma) {
+        var wb = get(id);
+        requireStatus(wb, WaybillStatus.MED_REJECTED);
+        requireEmployee(dispatcherRma, 3, "Диспетчер");
+        var driver = masterData.findDriver(newDriverRma)
+                .orElseThrow(() -> new NotFoundException("Водитель не найден"));
+        if (!str(wb.getOrganizationSnapshot().get("id")).equals(str(driver.get("organizationId")))) {
+            throw new UnprocessableException("Новый водитель не принадлежит организации");
+        }
+        if (Boolean.TRUE.equals(driver.get("suspended"))) {
+            throw new UnprocessableException("Новый водитель отстранён");
+        }
+        var today = LocalDate.now();
+        var licenseValidTo = dateOrNull(driver.get("licenseValidTo"));
+        if (licenseValidTo != null && licenseValidTo.isBefore(today)) {
+            throw new UnprocessableException("Срок действия водительского удостоверения нового водителя истёк");
+        }
+        var medCert = dateOrNull(driver.get("medCertValidTo"));
+        if (medCert != null && medCert.isBefore(today)) {
+            throw new UnprocessableException("Срок действия медицинской справки нового водителя истёк");
+        }
+        if (!waybills.findByDriverRmaAndStatusIn(newDriverRma, WaybillStatus.OPEN_STATUSES).isEmpty()) {
+            throw new ConflictException("На нового водителя уже оформлен действующий путевой лист");
+        }
+        String oldDriverRma = wb.getDriverRma();
+        wb.setDriverRma(newDriverRma);
+        wb.setDriverSnapshot(driver);
+        wb.setMedPassed(false); // новый водитель проходит медосмотр заново
+        addTitle(wb, "CORRECTION", dispatcherRma, "DISPATCHER", Map.of(
+                "action", "REPLACE_DRIVER",
+                "oldDriverRma", oldDriverRma,
+                "newDriverRma", newDriverRma,
+                "newDriverName", str(driver.get("fullName"))));
+        transition(wb, WaybillStatus.CREATED, dispatcherRma,
+                "Замена водителя %s → %s (корректирующий титул)".formatted(oldDriverRma, newDriverRma));
+        return waybills.save(wb);
+    }
+
+    /**
+     * Замена ТС после отклонения техконтролем: TECH_REJECTED → CREATED
+     * (waybill-statuses.yaml). Оформляется титулом CORRECTION.
+     */
+    @Transactional
+    public Waybill replaceVehicle(UUID id, String newVehicleRegNumber, String dispatcherRma) {
+        var wb = get(id);
+        requireStatus(wb, WaybillStatus.TECH_REJECTED);
+        requireEmployee(dispatcherRma, 3, "Диспетчер");
+        var vehicle = masterData.findVehicle(newVehicleRegNumber)
+                .orElseThrow(() -> new NotFoundException("Транспорт не найден"));
+        if (!str(wb.getOrganizationSnapshot().get("id")).equals(str(vehicle.get("organizationId")))) {
+            throw new UnprocessableException("Новое ТС не принадлежит организации");
+        }
+        if (Boolean.TRUE.equals(vehicle.get("blocked"))) {
+            throw new UnprocessableException("Новое ТС заблокировано");
+        }
+        var today = LocalDate.now();
+        var techInspection = dateOrNull(vehicle.get("techInspectionValidTo"));
+        if (techInspection == null || techInspection.isBefore(today)) {
+            throw new UnprocessableException("Технический осмотр нового ТС отсутствует или истёк");
+        }
+        if (Integer.valueOf(1).equals(intOrNull(wb.getOrganizationSnapshot().get("typeCompany")))) {
+            var controlCard = dateOrNull(vehicle.get("controlCardValidTo"));
+            if (controlCard == null || controlCard.isBefore(today)) {
+                throw new UnprocessableException("Контрольная карточка нового ТС отсутствует или истекла");
+            }
+        }
+        if (!waybills.findByVehicleRegNumberAndStatusIn(newVehicleRegNumber, WaybillStatus.OPEN_STATUSES).isEmpty()) {
+            throw new ConflictException("На новое ТС уже оформлен действующий путевой лист");
+        }
+        String oldVehicle = wb.getVehicleRegNumber();
+        wb.setVehicleRegNumber(newVehicleRegNumber);
+        wb.setVehicleSnapshot(vehicle);
+        wb.setTechPassed(false); // новое ТС проходит техконтроль заново
+        addTitle(wb, "CORRECTION", dispatcherRma, "DISPATCHER", Map.of(
+                "action", "REPLACE_VEHICLE",
+                "oldVehicleRegNumber", oldVehicle,
+                "newVehicleRegNumber", newVehicleRegNumber,
+                "newVehicleBrand", str(vehicle.get("brand"))));
+        transition(wb, WaybillStatus.CREATED, dispatcherRma,
+                "Замена ТС %s → %s (корректирующий титул)".formatted(oldVehicle, newVehicleRegNumber));
+        return waybills.save(wb);
+    }
+
+    // -------------------------------------------- дорожный контроль (инспектор)
+
+    /** Блокировка при нарушении на дорожном контроле: ACTIVE → BLOCKED (роль INSPECTOR). */
+    @Transactional
+    public Waybill block(UUID id, String reason, String actor) {
+        var wb = get(id);
+        requireStatus(wb, WaybillStatus.ACTIVE);
+        transition(wb, WaybillStatus.BLOCKED, actor, reason);
+        return waybills.save(wb);
+    }
+
+    /** Разблокировка администратором Минтранса (с обоснованием, аудит): BLOCKED → ACTIVE. */
+    @Transactional
+    public Waybill unblock(UUID id, String reason, String actor) {
+        var wb = get(id);
+        requireStatus(wb, WaybillStatus.BLOCKED);
+        transition(wb, WaybillStatus.ACTIVE, actor, reason);
         return waybills.save(wb);
     }
 

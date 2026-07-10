@@ -20,6 +20,9 @@ export default function WaybillCard({ params }: { params: Promise<{ id: string }
   const [workDays, setWorkDays] = useState<Record<string, unknown>[]>([]);
   const [dayForm, setDayForm] = useState({ workDate: '', exitTime: '06:00', entryTime: '', odometerExit: '', odometerEntry: '', laps: '', revenue: '' });
   const [fuelForm, setFuelForm] = useState({ fuelType: '1', fuelGiven: '', remainBeforeExit: '' });
+  const [replacement, setReplacement] = useState(''); // РМА нового водителя или госномер нового ТС
+  const [candidates, setCandidates] = useState<{ value: string; label: string }[]>([]);
+  const [blockReason, setBlockReason] = useState('');
 
   const reload = useCallback(async () => {
     const data = await wb.get(id);
@@ -44,6 +47,21 @@ export default function WaybillCard({ params }: { params: Promise<{ id: string }
       mechanics: list.filter(e => e.type === 2).map(e => ({ rma: String(e.rma), name: String(e.name) })),
       dispatchers: list.filter(e => e.type === 3).map(e => ({ rma: String(e.rma), name: String(e.name) })),
     });
+    // Кандидаты для замены после недопуска/отклонения (корректирующий титул)
+    if (data.status === 'MED_REJECTED') {
+      const drivers = await md.drivers(data.organizationRma);
+      setCandidates(drivers
+        .filter(d => String(d.rma) !== data.driverRma)
+        .map(d => ({ value: String(d.rma), label: `${String(d.fullName)} (${String(d.rma)})` })));
+    } else if (data.status === 'TECH_REJECTED') {
+      const vehicles = await md.vehicles(data.organizationRma);
+      setCandidates(vehicles
+        .filter(v => String(v.registrationNumber) !== data.vehicleRegNumber)
+        .map(v => ({ value: String(v.registrationNumber), label: `${String(v.registrationNumber)} · ${String(v.brand ?? '')}` })));
+    } else {
+      setCandidates([]);
+    }
+    setReplacement('');
   }, [id]);
 
   useEffect(() => { reload().catch(e => setError(e.message)); }, [reload]);
@@ -173,6 +191,44 @@ export default function WaybillCard({ params }: { params: Promise<{ id: string }
               Закрыть путевой лист
             </button>
           </>
+        )}
+        {(w.status === 'MED_REJECTED' || w.status === 'TECH_REJECTED') && (
+          <span>
+            <select style={{ width: 300, marginRight: 8, display: 'inline-block' }}
+              value={replacement} onChange={e => setReplacement(e.target.value)}>
+              <option value="">{w.status === 'MED_REJECTED' ? '— новый водитель —' : '— новое ТС —'}</option>
+              {candidates.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+            </select>
+            <button className="btn" disabled={!dispatcher || !replacement}
+              onClick={() => act(
+                w.status === 'MED_REJECTED' ? 'Водитель заменён — на повторный осмотр' : 'ТС заменено — на повторный контроль',
+                () => wb.post(`/${id}/${w.status === 'MED_REJECTED' ? 'replace-driver' : 'replace-vehicle'}`,
+                  w.status === 'MED_REJECTED'
+                    ? { newDriverRma: replacement, dispatcherRma: dispatcher }
+                    : { newVehicleRegNumber: replacement, dispatcherRma: dispatcher }))}>
+              {w.status === 'MED_REJECTED' ? 'Заменить водителя (титул CORRECTION)' : 'Заменить ТС (титул CORRECTION)'}
+            </button>
+          </span>
+        )}
+        {w.status === 'ACTIVE' && (
+          <span>
+            <input style={{ width: 260, marginRight: 8, display: 'inline-block' }} placeholder="Причина блокировки (нарушение)"
+              value={blockReason} onChange={e => setBlockReason(e.target.value)} />
+            <button className="btn danger" disabled={!blockReason}
+              onClick={() => act('Заблокирован инспектором', () => wb.post(`/${id}/block`, { reason: blockReason }))}>
+              Блокировать (инспектор)
+            </button>
+          </span>
+        )}
+        {w.status === 'BLOCKED' && (
+          <span>
+            <input style={{ width: 260, marginRight: 8, display: 'inline-block' }} placeholder="Обоснование разблокировки"
+              value={blockReason} onChange={e => setBlockReason(e.target.value)} />
+            <button className="btn" disabled={!blockReason}
+              onClick={() => act('Разблокирован', () => wb.post(`/${id}/unblock`, { reason: blockReason }))}>
+              Разблокировать (админ Минтранса)
+            </button>
+          </span>
         )}
         {!['COMPLETED', 'CANCELLED', 'EXPIRED', 'ARCHIVED'].includes(w.status) && (
           <button className="btn danger"

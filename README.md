@@ -55,7 +55,10 @@ cd apps/backend
 - [x] Финальная сверка полноты (типы ПЛ, статусы, роли, интеграции, legacy-совместимость)
 - [x] **Этап 1а, итерация 1 (walking skeleton)**: инфраструктура (docker-compose), master-data-service (8081), waybill-service (8082) — полный жизненный цикл ПЛ с титулами Т1–Т6, национальным номером и QR проверен сквозным сценарием
 - [x] **Итерация 2**: legacy-API агрегаторов (`/api/v1/aggregator/waybills`, семантика ЧУРА/НЕРУ: закрытие предыдущего ПЛ, правило 7 дней, формат дат `yyyy-MM-dd HH:mm`), многодневные ПЛ (work_days + топливо), **веб-кабинет диспетчера** (apps/web, Next.js 15, http://localhost:3000: реестр, создание, карточка с действиями по титулам, QR)
-- [ ] Далее: Keycloak-авторизация с ролями, АРМ врача/механика в вебе, приложение инспектора (Flutter), нормирование топлива
+- [x] **Итерация 3**: Keycloak-авторизация с ролями (`@PreAuthorize`, мультиарендность по claim `organization_rma`), АРМ врача (`/med`) и механика (`/tech`) в вебе, нормирование топлива (`/fuel-calculation`, нормы + коэффициенты + нархнома), отчёты (`/reports`: сводка, журнал диспетчера, по водителям/ТС/топливу), справочники НСИ (`/dictionaries`), кабинет компании (`/company`), публичная страница проверки QR (`/verify/{jws}`)
+- [x] **Итерация 4 (полнота статусной машины)**: замена водителя/ТС после недопуска корректирующим титулом CORRECTION (`/replace-driver`, `/replace-vehicle`: MED_REJECTED/TECH_REJECTED → CREATED), блокировка инспектором и разблокировка админом Минтранса (`/block`, `/unblock`: ACTIVE ↔ BLOCKED), автопереходы по расписанию (LifecycleScheduler: READY/ISSUED/ACTIVE → EXPIRED по сроку + грейс-период, COMPLETED → ARCHIVED по ретенции)
+- [x] **Подготовка к продакшн-развёртыванию**: конфигурация через env (DB_URL, KEYCLOAK_ISSUER_URI, MASTER_DATA_URL, MD_API_URL/WB_API_URL, NEXT_PUBLIC_KEYCLOAK_URL), Dockerfile'ы (apps/backend — параметризованный ARG SERVICE; apps/web — standalone), infra/docker-compose.prod.yml (полный стек одного узла)
+- [ ] Далее: оплата (AWAITING_PAYMENT → PAID, платёжный шлюз — этап 1б), мобильные приложения (Flutter: водитель, инспектор), scoped-токены агрегаторов, квалифицированная ЭП (CAdES) титулов, Kubernetes в госЦОД
 
 ## Следующий шаг после ТЗ
 

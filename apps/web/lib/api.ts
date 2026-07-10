@@ -32,6 +32,7 @@ export type Waybill = {
   driverSnapshot?: Record<string, unknown>;
   secondDriverRma?: string | null;
   typeData?: Record<string, unknown> | null;
+  specialMark?: string | null;
   createdAt: string;
 };
 

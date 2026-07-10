@@ -17,15 +17,23 @@ COPY settings.gradle.kts build.gradle.kts ./
 COPY master-data-service/build.gradle.kts master-data-service/build.gradle.kts
 COPY waybill-service/build.gradle.kts waybill-service/build.gradle.kts
 
-# Прогрев кэша зависимостей и Spring Boot plugin (без src). Не критично, если часть недоступна.
-RUN gradle :${SERVICE}:dependencies --no-daemon --console=plain || true
+# Прогрев кэша зависимостей ОБОИХ сервисов (без src). Команда нарочно не зависит от
+# ARG SERVICE — слой один на все варианты сборки и переиспользуется из кэша.
+# Ретраи: сеть до Maven Central бывает нестабильной; успешно скачанное кэшируется,
+# повтор докачивает только недостающее.
+RUN for i in 1 2 3 4 5; do \
+      gradle :master-data-service:dependencies :waybill-service:dependencies \
+        --no-daemon --console=plain > /dev/null 2>&1 && break || sleep 5; \
+    done || true
 
 # 2) Теперь исходники (меняются чаще всего — попадают в отдельный слой).
 COPY . .
 
-# 3) Сборка исполняемого bootJar выбранного сервиса без тестов.
+# 3) Сборка исполняемого bootJar выбранного сервиса без тестов (с ретраями докачки).
 #    bootJar кладёт и *-plain.jar (не исполняемый) — выбираем именно исполняемый.
-RUN gradle :${SERVICE}:bootJar -x test --no-daemon --console=plain \
+RUN for i in 1 2 3 4 5; do \
+      gradle :${SERVICE}:bootJar -x test --no-daemon --console=plain && break || sleep 5; \
+    done \
  && cp "$(find ${SERVICE}/build/libs -name '*.jar' ! -name '*-plain.jar')" /workspace/app.jar
 
 # ---------- Stage 2: runtime ----------

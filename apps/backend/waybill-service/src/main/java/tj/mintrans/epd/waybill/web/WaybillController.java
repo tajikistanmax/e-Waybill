@@ -109,6 +109,22 @@ public class WaybillController {
     public record CancelRequest(@NotBlank String reason, String actor) {
     }
 
+    public record ReplaceDriverRequest(
+            @NotBlank @Pattern(regexp = "\\d{9,10}") String newDriverRma,
+            @NotBlank @Pattern(regexp = "\\d{9,10}") String dispatcherRma) {
+    }
+
+    public record ReplaceVehicleRequest(
+            @NotBlank String newVehicleRegNumber,
+            @NotBlank @Pattern(regexp = "\\d{9,10}") String dispatcherRma) {
+    }
+
+    public record BlockRequest(@NotBlank String reason, String actor) {
+    }
+
+    public record UnblockRequest(@NotBlank String reason, String actor) {
+    }
+
     // ------------------------------------------------------------- жизненный цикл
 
     @PostMapping
@@ -166,6 +182,34 @@ public class WaybillController {
     @PreAuthorize("hasAnyRole('DISPATCHER','SYSTEM_ADMIN')")
     public Waybill cancel(@PathVariable UUID id, @Valid @RequestBody CancelRequest req) {
         return service.cancel(id, req.reason(), req.actor());
+    }
+
+    /** Замена водителя после недопуска (MED_REJECTED → CREATED, титул CORRECTION). */
+    @PostMapping("/{id}/replace-driver")
+    @PreAuthorize("hasAnyRole('DISPATCHER','SYSTEM_ADMIN')")
+    public Waybill replaceDriver(@PathVariable UUID id, @Valid @RequestBody ReplaceDriverRequest req) {
+        return service.replaceDriver(id, req.newDriverRma(), req.dispatcherRma());
+    }
+
+    /** Замена ТС после отклонения техконтролем (TECH_REJECTED → CREATED, титул CORRECTION). */
+    @PostMapping("/{id}/replace-vehicle")
+    @PreAuthorize("hasAnyRole('DISPATCHER','SYSTEM_ADMIN')")
+    public Waybill replaceVehicle(@PathVariable UUID id, @Valid @RequestBody ReplaceVehicleRequest req) {
+        return service.replaceVehicle(id, req.newVehicleRegNumber(), req.dispatcherRma());
+    }
+
+    /** Блокировка инспектором при нарушении на дорожном контроле (ACTIVE → BLOCKED). */
+    @PostMapping("/{id}/block")
+    @PreAuthorize("hasAnyRole('INSPECTOR','SYSTEM_ADMIN')")
+    public Waybill block(@PathVariable UUID id, @Valid @RequestBody BlockRequest req) {
+        return service.block(id, req.reason(), req.actor() == null ? "inspector" : req.actor());
+    }
+
+    /** Разблокировка администратором Минтранса с обоснованием (BLOCKED → ACTIVE). */
+    @PostMapping("/{id}/unblock")
+    @PreAuthorize("hasRole('SYSTEM_ADMIN')")
+    public Waybill unblock(@PathVariable UUID id, @Valid @RequestBody UnblockRequest req) {
+        return service.unblock(id, req.reason(), req.actor() == null ? "mintrans-admin" : req.actor());
     }
 
     // ------------------------------------------------------------- чтение
