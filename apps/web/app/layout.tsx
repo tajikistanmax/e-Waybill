@@ -1,11 +1,11 @@
 import './globals.css';
 import type { Metadata } from 'next';
 import { AuthProvider } from '@/lib/auth';
-import { Sidebar } from './sidebar';
+import { Shell } from './shell';
 
 export const metadata: Metadata = {
-  title: 'Роҳхат — Единая система путевых листов Республики Таджикистан',
-  description: 'Государственная платформа электронных путевых листов · Министерство транспорта Республики Таджикистан',
+  title: 'DTS · Электронный путевой лист',
+  description: 'Единая цифровая транспортная система · Министерство транспорта Республики Таджикистан',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
@@ -13,13 +13,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="ru">
       <body>
         <AuthProvider>
-          <div className="app">
-            <Sidebar />
-            <div className="content">
-              <div className="topbar no-print" aria-hidden="true" />
-              <main className="page">{children}</main>
-            </div>
-          </div>
+          <Shell>{children}</Shell>
         </AuthProvider>
       </body>
     </html>

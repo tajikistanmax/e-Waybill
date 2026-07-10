@@ -1,55 +1,96 @@
 'use client';
 
-import Keycloak from 'keycloak-js';
-import { createContext, useContext, useEffect, useRef, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { setAuthToken } from '@/lib/api';
+
+const KC = process.env.NEXT_PUBLIC_KEYCLOAK_URL || 'http://localhost:8180';
+const TOKEN_URL = `${KC}/realms/epd/protocol/openid-connect/token`;
+const RT_KEY = 'dts_rt';
 
 type AuthState = {
   ready: boolean;
+  authenticated: boolean;
   username: string;
   roles: string[];
+  login: (username: string, password: string) => Promise<void>;
   logout: () => void;
 };
 
-const AuthContext = createContext<AuthState>({ ready: false, username: '', roles: [], logout: () => {} });
+const AuthContext = createContext<AuthState>({
+  ready: false, authenticated: false, username: '', roles: [],
+  login: async () => {}, logout: () => {},
+});
 
-export function useAuth() {
-  return useContext(AuthContext);
+export const useAuth = () => useContext(AuthContext);
+
+function decode(token: string): Record<string, unknown> {
+  try {
+    const p = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+    return JSON.parse(decodeURIComponent(Array.prototype.map.call(atob(p),
+      (c: string) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)).join('')));
+  } catch { return {}; }
 }
 
-/** Вход через Keycloak (realm epd, клиент epd-web); токен обновляется автоматически. */
+/**
+ * Прямая аутентификация в Keycloak (grant_type=password, клиент epd-web) —
+ * позволяет использовать собственную страницу входа /login вместо экрана Keycloak.
+ */
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const kcRef = useRef<Keycloak | null>(null);
-  const [state, setState] = useState<AuthState>({ ready: false, username: '', roles: [], logout: () => {} });
+  const [state, setState] = useState<Omit<AuthState, 'login' | 'logout'>>({
+    ready: false, authenticated: false, username: '', roles: [],
+  });
+  const timer = useRef<number | undefined>(undefined);
 
-  useEffect(() => {
-    if (kcRef.current) return;
-    const kcUrl = process.env.NEXT_PUBLIC_KEYCLOAK_URL || 'http://localhost:8180';
-    const kc = new Keycloak({ url: kcUrl, realm: 'epd', clientId: 'epd-web' });
-    kcRef.current = kc;
-    kc.init({ onLoad: 'login-required', pkceMethod: 'S256', checkLoginIframe: false })
-      .then(authenticated => {
-        if (!authenticated) { kc.login(); return; }
-        setAuthToken(kc.token ?? '');
-        setState({
-          ready: true,
-          username: (kc.tokenParsed?.preferred_username as string) ?? '',
-          roles: (kc.tokenParsed?.realm_access?.roles as string[]) ?? [],
-          logout: () => kc.logout({ redirectUri: window.location.origin }),
-        });
-        // авто-обновление токена
-        window.setInterval(() => {
-          kc.updateToken(60).then(refreshed => { if (refreshed) setAuthToken(kc.token ?? ''); }).catch(() => kc.login());
-        }, 30_000);
-      })
-      .catch(() => {
-        // Keycloak недоступен — работаем без авторизации (dev-режим)
-        setState({ ready: true, username: '(без входа)', roles: [], logout: () => {} });
-      });
+  const applyToken = useCallback((data: { access_token: string; refresh_token: string; expires_in: number }) => {
+    setAuthToken(data.access_token);
+    try { localStorage.setItem(RT_KEY, data.refresh_token); } catch { /* ignore */ }
+    const claims = decode(data.access_token);
+    setState({
+      ready: true, authenticated: true,
+      username: String(claims.preferred_username ?? claims.email ?? ''),
+      roles: ((claims.realm_access as { roles?: string[] })?.roles) ?? [],
+    });
+    window.clearTimeout(timer.current);
+    timer.current = window.setTimeout(() => { void refresh(); }, Math.max(30, data.expires_in - 45) * 1000);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  if (!state.ready) {
-    return <main><p>Вход в систему…</p></main>;
-  }
-  return <AuthContext.Provider value={state}>{children}</AuthContext.Provider>;
+  const refresh = useCallback(async () => {
+    let rt: string | null = null;
+    try { rt = localStorage.getItem(RT_KEY); } catch { /* ignore */ }
+    if (!rt) { setState(s => ({ ...s, ready: true, authenticated: false })); return; }
+    try {
+      const res = await fetch(TOKEN_URL, {
+        method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({ client_id: 'epd-web', grant_type: 'refresh_token', refresh_token: rt }),
+      });
+      if (!res.ok) throw new Error('expired');
+      applyToken(await res.json());
+    } catch {
+      try { localStorage.removeItem(RT_KEY); } catch { /* ignore */ }
+      setAuthToken('');
+      setState(s => ({ ...s, ready: true, authenticated: false }));
+    }
+  }, [applyToken]);
+
+  const login = useCallback(async (username: string, password: string) => {
+    const res = await fetch(TOKEN_URL, {
+      method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ client_id: 'epd-web', grant_type: 'password', scope: 'openid', username, password }),
+    });
+    if (!res.ok) throw new Error('Неверный логин или пароль');
+    applyToken(await res.json());
+  }, [applyToken]);
+
+  const logout = useCallback(() => {
+    window.clearTimeout(timer.current);
+    try { localStorage.removeItem(RT_KEY); } catch { /* ignore */ }
+    setAuthToken('');
+    setState({ ready: true, authenticated: false, username: '', roles: [] });
+    window.location.href = '/login';
+  }, []);
+
+  useEffect(() => { void refresh(); return () => window.clearTimeout(timer.current); }, [refresh]);
+
+  return <AuthContext.Provider value={{ ...state, login, logout }}>{children}</AuthContext.Provider>;
 }
