@@ -22,6 +22,8 @@ const DICT: Record<string, { ru: string; tj: string }> = {
   'nav.tech': { ru: 'АРМ механика', tj: 'Ҷои кории механик' },
   'nav.driver': { ru: 'Мои путевые листы', tj: 'Роҳхатҳои ман' },
   'nav.company': { ru: 'Компания', tj: 'Корхона' },
+  'nav.registry': { ru: 'Реестры', tj: 'Феҳристҳо' },
+  'nav.violations': { ru: 'Нарушения', tj: 'Вайронкуниҳо' },
   'nav.reports': { ru: 'Отчёты и аналитика', tj: 'Ҳисобот ва таҳлил' },
   'nav.dictionaries': { ru: 'Справочники', tj: 'Маълумотномаҳо' },
   'nav.logout': { ru: 'Выход из системы', tj: 'Баромадан аз система' },

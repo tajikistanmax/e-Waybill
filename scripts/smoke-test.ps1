@@ -16,7 +16,7 @@ function Check($name, $ok) {
 }
 
 function GetToken($user) {
-    $body = "client_id=epd-web&grant_type=password&username=$user&password=epd123"
+    $body = "client_id=epd-web&grant_type=password&username=$user&password=$user"
     (Invoke-RestMethod -Method Post -Uri "$kc/realms/epd/protocol/openid-connect/token" -Body $body -ContentType "application/x-www-form-urlencoded").access_token
 }
 
@@ -28,10 +28,10 @@ function PostJson($url, $obj, $headers) {
 Write-Output "=== SMOKE-ТЕСТ ПЛАТФОРМЫ ЭПД РТ ==="
 
 # --- 0. Токены и здоровье ---
-$hd = @{ Authorization = "Bearer $(GetToken 'dispatcher@epd.tj')" }  # диспетчер
-$hdoc = @{ Authorization = "Bearer $(GetToken 'doctor@epd.tj')" }     # врач
-$hm = @{ Authorization = "Bearer $(GetToken 'mechanic@epd.tj')" }    # механик
-$ha = @{ Authorization = "Bearer $(GetToken 'admin@epd.tj')" }       # админ компании
+$hd = @{ Authorization = "Bearer $(GetToken 'dispatcher')" }  # диспетчер
+$hdoc = @{ Authorization = "Bearer $(GetToken 'doctor')" }     # врач
+$hm = @{ Authorization = "Bearer $(GetToken 'mechanic')" }    # механик
+$ha = @{ Authorization = "Bearer $(GetToken 'admin')" }       # админ компании
 Check "Токены всех ролей получены" ($hd -and $hdoc -and $hm -and $ha)
 Check "master-data health UP" ((Invoke-RestMethod "$md/actuator/health").status -eq 'UP')
 Check "waybill health UP" ((Invoke-RestMethod "$wb/actuator/health").status -eq 'UP')

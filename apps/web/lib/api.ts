@@ -112,6 +112,11 @@ export const md = {
   drivers: (orgRma: string) => fetch(`/md-api/api/v1/drivers?organizationRma=${orgRma}`, { headers: authHeaders() }).then(r => handle<Record<string, unknown>[]>(r)),
   vehicles: (orgRma: string) => fetch(`/md-api/api/v1/vehicles?organizationRma=${orgRma}`, { headers: authHeaders() }).then(r => handle<Record<string, unknown>[]>(r)),
   employees: (orgRma: string) => fetch(`/md-api/api/v1/employees?organizationRma=${orgRma}`, { headers: authHeaders() }).then(r => handle<Record<string, unknown>[]>(r)),
+  // Глобальные реестры (все организации). Для платформенного админа возвращают всё,
+  // для арендо-ограниченного пользователя (COMPANY_ADMIN и т.п.) — только свою организацию.
+  allDrivers: () => fetch('/md-api/api/v1/drivers', { headers: authHeaders() }).then(r => handle<Record<string, unknown>[]>(r)),
+  allVehicles: () => fetch('/md-api/api/v1/vehicles', { headers: authHeaders() }).then(r => handle<Record<string, unknown>[]>(r)),
+  allEmployees: () => fetch('/md-api/api/v1/employees', { headers: authHeaders() }).then(r => handle<Record<string, unknown>[]>(r)),
   // Прямое создание/обновление (upsert) записей справочника — полный ручной ввод всех полей.
   // Соответствует POST /organizations|/drivers|/vehicles|/employees (роль SYSTEM_ADMIN / API_INTEGRATOR).
   createOrganization: (body: Record<string, unknown>) => mdPost('organizations', body),

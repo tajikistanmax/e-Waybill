@@ -44,6 +44,22 @@ function clean(obj: Record<string, string>, numeric: string[]): Record<string, u
   return out;
 }
 
+// Наборы полей ручных форм — для предзаполнения при редактировании существующей записи.
+const ORG_KEYS = ['rma', 'name', 'kpp', 'typeCompany', 'regionId', 'cityName', 'address', 'phone', 'email', 'nameHead', 'bank', 'licenseFrom', 'licenseTo'];
+const DRIVER_KEYS = ['rma', 'fullName', 'tabNumber', 'licenseNumber', 'licenseCategories', 'licenseValidTo', 'degree', 'medCertNumber', 'medCertValidTo', 'safetyCourseValidTo', 'phone'];
+const VEHICLE_KEYS = ['registrationNumber', 'transportType', 'brand', 'parkingNumber', 'capacity', 'carrying', 'odometer', 'vincode', 'yearManufacture', 'techInspectionValidTo', 'controlCardValidTo'];
+const EMPLOYEE_KEYS = ['rma', 'name', 'type', 'tabNumber', 'phone'];
+
+/** Строка справочника → значения ручной формы (для кнопки «Изменить»). */
+function rowToForm(row: Record<string, unknown>, keys: string[]): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const k of keys) {
+    const v = row[k];
+    out[k] = v == null ? '' : String(v);
+  }
+  return out;
+}
+
 /**
  * Кабинет компании-перевозчика. Субъекты (водители, сотрудники) и объекты (ТС)
  * НЕ регистрируются здесь вручную — они добавляются по ИНН/госномеру, а данные
@@ -206,6 +222,22 @@ export default function CompanyPage() {
   const vm = mkField(vehicleManual, setVehicleManual);
   const em = mkField(employeeManual, setEmployeeManual);
 
+  // Редактирование записи: предзаполняем ручную форму значениями строки и включаем режим «Ручной ввод».
+  // Сохранение — тот же upsert по РМА/госномеру (обновляет существующую запись).
+  function editOrg(row: Row) {
+    setError(''); setOk('');
+    setOrgMode('manual');
+    setOrgManual(rowToForm(row, ORG_KEYS));
+  }
+  function editEntity(row: Row) {
+    setError(''); setOk('');
+    setEntityMode('manual');
+    setShowForm(true);
+    if (tab === 'drivers') setDriverManual(rowToForm(row, DRIVER_KEYS));
+    else if (tab === 'vehicles') setVehicleManual(rowToForm(row, VEHICLE_KEYS));
+    else setEmployeeManual(rowToForm(row, EMPLOYEE_KEYS));
+  }
+
   const org = orgs.find(o => String(o.rma) === orgRma);
 
   const totals = useMemo(() => {
@@ -270,7 +302,7 @@ export default function CompanyPage() {
         </div>
         <table>
           <thead>
-            <tr><th>Название</th><th>ИНН / РМА</th><th>Тип</th><th>Транспорт</th><th>Водители</th><th>Статус</th></tr>
+            <tr><th>Название</th><th>ИНН / РМА</th><th>Тип</th><th>Транспорт</th><th>Водители</th><th>Статус</th><th>Действия</th></tr>
           </thead>
           <tbody>
             {filteredOrgs.map(o => {
@@ -291,11 +323,14 @@ export default function CompanyPage() {
                   <td>{c ? c.vehicles : '—'}</td>
                   <td>{c ? c.drivers : '—'}</td>
                   <td><span className={`badge ${active ? 'green' : 'red'}`}>{active ? 'Активна' : 'Лицензия истекла'}</span></td>
+                  <td onClick={e => e.stopPropagation()}>
+                    <button type="button" className="btn secondary" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => editOrg(o)}>Изменить</button>
+                  </td>
                 </tr>
               );
             })}
             {filteredOrgs.length === 0 && (
-              <tr><td colSpan={6} style={{ textAlign: 'center', color: 'var(--muted)', padding: 24 }}>
+              <tr><td colSpan={7} style={{ textAlign: 'center', color: 'var(--muted)', padding: 24 }}>
                 {orgs.length === 0 ? 'Организаций пока нет — добавьте по ИНН ниже' : 'Ничего не найдено'}
               </td></tr>
             )}
@@ -489,45 +524,48 @@ export default function CompanyPage() {
       <div className="card">
         {tab === 'drivers' && (
           <table>
-            <thead><tr><th>Ф.И.О.</th><th>ИНН/РМА</th><th>Табель</th><th>ВУ</th><th>Категории</th><th>ВУ до</th><th>Медсправка до</th></tr></thead>
+            <thead><tr><th>Ф.И.О.</th><th>ИНН/РМА</th><th>Табель</th><th>ВУ</th><th>Категории</th><th>ВУ до</th><th>Медсправка до</th><th>Действия</th></tr></thead>
             <tbody>
               {rows.map(r => (
                 <tr key={String(r.id)}>
                   <td style={{ fontWeight: 600, color: 'var(--ink)' }}>{String(r.fullName)}</td><td><span className="number">{String(r.rma)}</span></td><td>{String(r.tabNumber ?? '—')}</td>
                   <td>{String(r.licenseNumber ?? '—')}</td><td>{String(r.licenseCategories ?? '—')}</td>
                   <td>{String(r.licenseValidTo ?? '—')}</td><td>{String(r.medCertValidTo ?? '—')}</td>
+                  <td><button type="button" className="btn secondary" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => editEntity(r)}>Изменить</button></td>
                 </tr>
               ))}
-              {rows.length === 0 && <tr><td colSpan={7} style={{ textAlign: 'center', color: 'var(--muted)', padding: 20 }}>Пока пусто — добавьте водителя по ИНН</td></tr>}
+              {rows.length === 0 && <tr><td colSpan={8} style={{ textAlign: 'center', color: 'var(--muted)', padding: 20 }}>Пока пусто — добавьте водителя по ИНН</td></tr>}
             </tbody>
           </table>
         )}
         {tab === 'vehicles' && (
           <table>
-            <thead><tr><th>Госномер</th><th>Тип</th><th>Марка</th><th>Стоянка</th><th>Одометр</th><th>Техосмотр до</th><th>Карточка до</th></tr></thead>
+            <thead><tr><th>Госномер</th><th>Тип</th><th>Марка</th><th>Стоянка</th><th>Одометр</th><th>Техосмотр до</th><th>Карточка до</th><th>Действия</th></tr></thead>
             <tbody>
               {rows.map(r => (
                 <tr key={String(r.id)}>
                   <td><span className="number">{String(r.registrationNumber)}</span></td><td>{TRANSPORT_TYPES[Number(r.transportType)] ?? String(r.transportType)}</td>
                   <td>{String(r.brand ?? '—')}</td><td>{String(r.parkingNumber ?? '—')}</td><td>{String(r.odometer)}</td>
                   <td>{String(r.techInspectionValidTo ?? '—')}</td><td>{String(r.controlCardValidTo ?? '—')}</td>
+                  <td><button type="button" className="btn secondary" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => editEntity(r)}>Изменить</button></td>
                 </tr>
               ))}
-              {rows.length === 0 && <tr><td colSpan={7} style={{ textAlign: 'center', color: 'var(--muted)', padding: 20 }}>Пока пусто — добавьте ТС по госномеру</td></tr>}
+              {rows.length === 0 && <tr><td colSpan={8} style={{ textAlign: 'center', color: 'var(--muted)', padding: 20 }}>Пока пусто — добавьте ТС по госномеру</td></tr>}
             </tbody>
           </table>
         )}
         {tab === 'employees' && (
           <table>
-            <thead><tr><th>Ф.И.О.</th><th>ИНН/РМА</th><th>Должность</th><th>Табель</th><th>Телефон</th></tr></thead>
+            <thead><tr><th>Ф.И.О.</th><th>ИНН/РМА</th><th>Должность</th><th>Табель</th><th>Телефон</th><th>Действия</th></tr></thead>
             <tbody>
               {rows.map(r => (
                 <tr key={String(r.id)}>
                   <td style={{ fontWeight: 600, color: 'var(--ink)' }}>{String(r.name)}</td><td><span className="number">{String(r.rma)}</span></td><td>{EMPLOYEE_TYPES[Number(r.type)] ?? String(r.type)}</td>
                   <td>{String(r.tabNumber ?? '—')}</td><td>{String(r.phone ?? '—')}</td>
+                  <td><button type="button" className="btn secondary" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => editEntity(r)}>Изменить</button></td>
                 </tr>
               ))}
-              {rows.length === 0 && <tr><td colSpan={5} style={{ textAlign: 'center', color: 'var(--muted)', padding: 20 }}>Пока пусто — добавьте сотрудника по ИНН</td></tr>}
+              {rows.length === 0 && <tr><td colSpan={6} style={{ textAlign: 'center', color: 'var(--muted)', padding: 20 }}>Пока пусто — добавьте сотрудника по ИНН</td></tr>}
             </tbody>
           </table>
         )}
