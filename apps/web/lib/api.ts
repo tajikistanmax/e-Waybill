@@ -59,6 +59,7 @@ export const STATUS_LABELS: Record<string, { label: string; color: string }> = {
   MED_REJECTED: { label: 'Медосмотр отклонён', color: 'red' },
   TECH_REJECTED: { label: 'Техосмотр отклонён', color: 'red' },
   AWAITING_PAYMENT: { label: 'Ожидает оплаты', color: 'amber' },
+  PAID: { label: 'Оплачен', color: 'blue' },
   READY: { label: 'Готов к выдаче', color: 'blue' },
   ISSUED: { label: 'Выдан', color: 'blue' },
   ACTIVE: { label: 'Активен', color: 'green' },
@@ -105,8 +106,22 @@ export const md = {
   employees: (orgRma: string) => fetch(`/md-api/api/v1/employees?organizationRma=${orgRma}`, { headers: authHeaders() }).then(r => handle<Record<string, unknown>[]>(r)),
 };
 
+export type Payment = {
+  id: string;
+  waybillId: string;
+  amount: number;
+  currency: string;
+  status: 'PENDING' | 'CONFIRMED';
+  method: string | null;
+  externalRef: string | null;
+  createdAt: string;
+  confirmedAt: string | null;
+  confirmedBy: string | null;
+};
+
 export const wb = {
   list: () => fetch('/wb-api/api/v1/waybills', { headers: authHeaders() }).then(r => handle<Waybill[]>(r)),
+  payment: (id: string) => fetch(`/wb-api/api/v1/waybills/${id}/payment`, { headers: authHeaders() }).then(r => handle<Payment>(r)),
   get: (id: string) => fetch(`/wb-api/api/v1/waybills/${id}`, { headers: authHeaders() }).then(r => handle<Waybill>(r)),
   titles: (id: string) => fetch(`/wb-api/api/v1/waybills/${id}/titles`, { headers: authHeaders() }).then(r => handle<Title[]>(r)),
   history: (id: string) => fetch(`/wb-api/api/v1/waybills/${id}/status-history`, { headers: authHeaders() }).then(r => handle<StatusEvent[]>(r)),

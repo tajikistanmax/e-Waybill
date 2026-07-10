@@ -33,19 +33,29 @@ public class WaybillService {
     private final WaybillRepository waybills;
     private final WaybillTitleRepository titles;
     private final WaybillStatusEventRepository events;
+    private final tj.mintrans.epd.waybill.repository.WaybillPaymentRepository payments;
     private final MasterDataClient masterData;
     private final WaybillNumberGenerator numberGenerator;
+    /** Оплата выключена по умолчанию (dev/этап 1а); в проде — PAYMENT_ENABLED=true. */
+    private final boolean paymentEnabled;
+    private final java.math.BigDecimal paymentFee;
 
     public WaybillService(WaybillRepository waybills,
                           WaybillTitleRepository titles,
                           WaybillStatusEventRepository events,
+                          tj.mintrans.epd.waybill.repository.WaybillPaymentRepository payments,
                           MasterDataClient masterData,
-                          WaybillNumberGenerator numberGenerator) {
+                          WaybillNumberGenerator numberGenerator,
+                          @org.springframework.beans.factory.annotation.Value("${epd.payment.enabled:false}") boolean paymentEnabled,
+                          @org.springframework.beans.factory.annotation.Value("${epd.payment.fee-somoni:10.00}") java.math.BigDecimal paymentFee) {
         this.waybills = waybills;
         this.titles = titles;
         this.events = events;
+        this.payments = payments;
         this.masterData = masterData;
         this.numberGenerator = numberGenerator;
+        this.paymentEnabled = paymentEnabled;
+        this.paymentFee = paymentFee;
     }
 
     // ------------------------------------------------------------------ создание
@@ -317,14 +327,74 @@ public class WaybillService {
         return waybills.save(wb);
     }
 
-    /** Т2+Т3 выполнены → номер, READY (оплата — этап 1б, пропускается). */
+    /**
+     * Т2+Т3 выполнены → оплата (если включена и не покрыта) или сразу номер + READY.
+     * Агрегаторские ПЛ (source=AGGREGATOR) считаются покрытыми абонементом агрегатора —
+     * legacy-семантика ЧУРА/НЕРУ, оплата с них не требуется.
+     */
     private void maybeReady(Waybill wb, String actor) {
-        if (wb.isMedPassed() && wb.isTechPassed()) {
-            Short regionId = wb.getOrganizationSnapshot() != null
-                    ? shortOrNull(wb.getOrganizationSnapshot().get("regionId")) : null;
-            wb.setNumber(numberGenerator.next(regionId, wb.getWaybillType()));
-            transition(wb, WaybillStatus.READY, actor, "Медосмотр и техконтроль пройдены; номер присвоен");
+        if (!wb.isMedPassed() || !wb.isTechPassed()) {
+            return;
         }
+        boolean paymentRequired = paymentEnabled
+                && "PORTAL".equals(wb.getSource())
+                && payments.findByWaybillId(wb.getId())
+                        .map(p -> !tj.mintrans.epd.waybill.domain.WaybillPayment.STATUS_CONFIRMED.equals(p.getStatus()))
+                        .orElse(true);
+        if (paymentRequired) {
+            if (payments.findByWaybillId(wb.getId()).isEmpty()) {
+                var payment = new tj.mintrans.epd.waybill.domain.WaybillPayment();
+                payment.setWaybillId(wb.getId());
+                payment.setAmount(paymentFee);
+                payments.save(payment);
+            }
+            transition(wb, WaybillStatus.AWAITING_PAYMENT, actor,
+                    "Медосмотр и техконтроль пройдены; ожидается оплата %s TJS".formatted(paymentFee));
+            return;
+        }
+        assignNumberAndReady(wb, actor);
+    }
+
+    /** Присвоение национального номера и переход в READY (номер → доступен QR). */
+    private void assignNumberAndReady(Waybill wb, String actor) {
+        Short regionId = wb.getOrganizationSnapshot() != null
+                ? shortOrNull(wb.getOrganizationSnapshot().get("regionId")) : null;
+        wb.setNumber(numberGenerator.next(regionId, wb.getWaybillType()));
+        transition(wb, WaybillStatus.READY, actor, "Медосмотр и техконтроль пройдены; номер присвоен");
+    }
+
+    // ------------------------------------------------------------------ оплата
+
+    /** Карточка оплаты документа (для кабинета компании/бухгалтера). */
+    public tj.mintrans.epd.waybill.domain.WaybillPayment getPayment(UUID waybillId) {
+        get(waybillId); // 404, если ПЛ не существует
+        return payments.findByWaybillId(waybillId)
+                .orElseThrow(() -> new NotFoundException("Оплата по этому путевому листу не требуется"));
+    }
+
+    /**
+     * Подтверждение оплаты (бухгалтер или платёжный шлюз):
+     * AWAITING_PAYMENT → PAID → номер + READY (waybill-statuses.yaml).
+     */
+    @Transactional
+    public Waybill confirmPayment(UUID id, String method, String externalRef, String actor) {
+        var wb = get(id);
+        requireStatus(wb, WaybillStatus.AWAITING_PAYMENT);
+        var payment = payments.findByWaybillId(id)
+                .orElseThrow(() -> new NotFoundException("Запись об оплате не найдена"));
+        if (tj.mintrans.epd.waybill.domain.WaybillPayment.STATUS_CONFIRMED.equals(payment.getStatus())) {
+            throw new ConflictException("Оплата уже подтверждена");
+        }
+        payment.setStatus(tj.mintrans.epd.waybill.domain.WaybillPayment.STATUS_CONFIRMED);
+        payment.setMethod(method == null || method.isBlank() ? "BANK" : method);
+        payment.setExternalRef(externalRef);
+        payment.setConfirmedAt(OffsetDateTime.now());
+        payment.setConfirmedBy(actor);
+        payments.save(payment);
+        transition(wb, WaybillStatus.PAID, actor,
+                "Оплата %s %s подтверждена (%s)".formatted(payment.getAmount(), payment.getCurrency(), payment.getMethod()));
+        assignNumberAndReady(wb, actor);
+        return waybills.save(wb);
     }
 
     /** Выдача: водитель подтверждает получение (Face ID/PIN в мобильном кабинете). */

@@ -25,23 +25,38 @@ import java.util.Map;
 @EnableMethodSecurity
 public class SecurityConfig {
 
+    /**
+     * Legacy-агрегаторы (ЧУРА/НЕРУ) исторически ходят без токена — в dev оставлено
+     * открытым (true). В проде AGGREGATOR_OPEN=false: требуется client-credentials
+     * токен клиента epd-aggregator с ролью API_INTEGRATOR (см. infra/keycloak/epd-realm.json).
+     */
+    private final boolean aggregatorOpen;
+
+    public SecurityConfig(@org.springframework.beans.factory.annotation.Value("${epd.security.aggregator-open:true}") boolean aggregatorOpen) {
+        this.aggregatorOpen = aggregatorOpen;
+    }
+
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
                 .csrf(csrf -> csrf.disable()) // stateless API — CSRF не нужен
                 .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-                .authorizeHttpRequests(auth -> auth
+                .authorizeHttpRequests(auth -> {
+                    auth
                         .requestMatchers("/actuator/health", "/actuator/info").permitAll()
                         .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
                         .requestMatchers("/.well-known/**").permitAll()
                         // Публичная проверка QR (инспектор без логина)
-                        .requestMatchers("/api/v1/verify/**").permitAll()
-                        // TODO: ВРЕМЕННО открыто. Следующий этап — scoped-токены
-                        // агрегаторов (API_INTEGRATOR): убрать permitAll и требовать
-                        // client-credentials токен с ограничением по клиенту.
-                        .requestMatchers("/api/v1/aggregator/**").permitAll()
+                        .requestMatchers("/api/v1/verify/**").permitAll();
+                    if (aggregatorOpen) {
+                        auth.requestMatchers("/api/v1/aggregator/**").permitAll();
+                    } else {
+                        auth.requestMatchers("/api/v1/aggregator/**").hasRole("API_INTEGRATOR");
+                    }
+                    auth
                         .requestMatchers("/error").permitAll()
-                        .anyRequest().authenticated())
+                        .anyRequest().authenticated();
+                })
                 .oauth2ResourceServer(oauth2 -> oauth2
                         .jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter())));
         return http.build();

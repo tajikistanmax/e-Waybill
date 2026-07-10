@@ -10,7 +10,9 @@
       { "name": "MECHANIC", "description": "Механик — контролёр техсостояния" },
       { "name": "COMPANY_ADMIN", "description": "Администратор перевозчика" },
       { "name": "SYSTEM_ADMIN", "description": "Администратор системы (ГУП ЦЦТО)" },
-      { "name": "INSPECTOR", "description": "Инспектор дорожного контроля" }
+      { "name": "INSPECTOR", "description": "Инспектор дорожного контроля" },
+      { "name": "ACCOUNTANT", "description": "Бухгалтер (Муҳосиб) — подтверждение оплаты" },
+      { "name": "API_INTEGRATOR", "description": "Агрегатор/интегратор (ЧУРА, НЕРУ) — scoped API-доступ" }
     ]
   },
   "clients": [
@@ -56,6 +58,28 @@
             "access.token.claim": "true",
             "id.token.claim": "true",
             "userinfo.token.claim": "true"
+          }
+        }
+      ]
+    },
+    {
+      "clientId": "epd-aggregator",
+      "name": "ЭПД РТ — API агрегаторов (ЧУРА/НЕРУ)",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "secret": "epd_aggregator_dev_secret",
+      "protocolMappers": [
+        {
+          "name": "api-integrator-role",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-hardcoded-role-mapper",
+          "consentRequired": false,
+          "config": {
+            "role": "API_INTEGRATOR"
           }
         }
       ]
@@ -107,6 +131,22 @@
       "realmRoles": ["MECHANIC"],
       "attributes": {
         "rma": ["222222222"],
+        "organizationRma": ["025680800"]
+      }
+    },
+    {
+      "username": "accountant@epd.tj",
+      "email": "accountant@epd.tj",
+      "firstName": "Бухгалтер",
+      "lastName": "Тестовый",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        { "type": "password", "value": "epd123", "temporary": false }
+      ],
+      "realmRoles": ["ACCOUNTANT"],
+      "attributes": {
+        "rma": ["444444444"],
         "organizationRma": ["025680800"]
       }
     },

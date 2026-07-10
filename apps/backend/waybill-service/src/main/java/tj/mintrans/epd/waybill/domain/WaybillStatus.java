@@ -13,7 +13,8 @@ public enum WaybillStatus {
     CREATED,          // Т1 подписан; ожидает медосмотра и техконтроля
     MED_REJECTED,
     TECH_REJECTED,
-    AWAITING_PAYMENT,
+    AWAITING_PAYMENT, // услуга платная и не покрыта абонементом
+    PAID,             // оплата подтверждена (шлюз/бухгалтер); транзитный к READY
     READY,            // Т2+Т3 (+оплата); присвоен номер и QR
     ISSUED,           // водитель подтвердил получение
     ACTIVE,           // Т4: на линии
@@ -26,7 +27,7 @@ public enum WaybillStatus {
 
     /** Статусы, при которых ПЛ считается «действующим» — блокирует новый ПЛ на то же ТС/водителя. */
     public static final Set<WaybillStatus> OPEN_STATUSES =
-            EnumSet.of(CREATED, AWAITING_PAYMENT, READY, ISSUED, ACTIVE);
+            EnumSet.of(CREATED, AWAITING_PAYMENT, PAID, READY, ISSUED, ACTIVE);
 
     public boolean isTerminal() {
         return this == COMPLETED || this == CANCELLED || this == EXPIRED || this == ARCHIVED;

@@ -23,6 +23,15 @@ spring:
 epd:
   master-data:
     base-url: ${MASTER_DATA_URL:http://localhost:8081}
+  payment:
+    # Оплата ПЛ (AWAITING_PAYMENT → PAID). Выключена в dev; агрегаторские ПЛ
+    # (source=AGGREGATOR) покрыты абонементом и не тарифицируются в любом случае.
+    enabled: ${PAYMENT_ENABLED:false}
+    fee-somoni: ${PAYMENT_FEE:10.00}
+  security:
+    # Legacy-агрегаторы (ЧУРА/НЕРУ) в dev ходят без токена. В проде — false:
+    # требуется client-credentials токен клиента epd-aggregator (роль API_INTEGRATOR).
+    aggregator-open: ${AGGREGATOR_OPEN:true}
 
 springdoc:
   swagger-ui:

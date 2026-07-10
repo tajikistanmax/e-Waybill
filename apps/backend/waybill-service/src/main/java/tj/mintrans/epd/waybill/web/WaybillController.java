@@ -125,6 +125,9 @@ public class WaybillController {
     public record UnblockRequest(@NotBlank String reason, String actor) {
     }
 
+    public record ConfirmPaymentRequest(String method, String externalRef, String actor) {
+    }
+
     // ------------------------------------------------------------- жизненный цикл
 
     @PostMapping
@@ -210,6 +213,27 @@ public class WaybillController {
     @PreAuthorize("hasRole('SYSTEM_ADMIN')")
     public Waybill unblock(@PathVariable UUID id, @Valid @RequestBody UnblockRequest req) {
         return service.unblock(id, req.reason(), req.actor() == null ? "mintrans-admin" : req.actor());
+    }
+
+    // ------------------------------------------------------------- оплата
+
+    /** Карточка оплаты (сумма, статус, реквизиты подтверждения). */
+    @GetMapping("/{id}/payment")
+    public tj.mintrans.epd.waybill.domain.WaybillPayment payment(@PathVariable UUID id) {
+        return service.getPayment(id);
+    }
+
+    /**
+     * Подтверждение оплаты бухгалтером/админом: AWAITING_PAYMENT → PAID → READY (номер + QR).
+     * Платёжный шлюз (webhook) — этап 1б, будет вызывать этот же сервисный метод.
+     */
+    @PostMapping("/{id}/confirm-payment")
+    @PreAuthorize("hasAnyRole('ACCOUNTANT','COMPANY_ADMIN','SYSTEM_ADMIN')")
+    public Waybill confirmPayment(@PathVariable UUID id, @RequestBody(required = false) ConfirmPaymentRequest req) {
+        return service.confirmPayment(id,
+                req == null ? null : req.method(),
+                req == null ? null : req.externalRef(),
+                req == null || req.actor() == null ? "accountant" : req.actor());
     }
 
     // ------------------------------------------------------------- чтение

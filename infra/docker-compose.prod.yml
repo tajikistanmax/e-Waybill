@@ -131,6 +131,11 @@ services:
       DB_PASSWORD: ${DB_PASSWORD:-epd_dev_password}
       KEYCLOAK_ISSUER_URI: http://keycloak:8180/realms/epd
       MASTER_DATA_URL: http://master-data:8081
+      # Оплата ПЛ включена (AWAITING_PAYMENT → PAID; агрегаторские ПЛ покрыты абонементом)
+      PAYMENT_ENABLED: ${PAYMENT_ENABLED:-true}
+      PAYMENT_FEE: ${PAYMENT_FEE:-10.00}
+      # API агрегаторов закрыт: нужен client-credentials токен epd-aggregator (роль API_INTEGRATOR)
+      AGGREGATOR_OPEN: ${AGGREGATOR_OPEN:-false}
     depends_on:
       postgres:
         condition: service_healthy

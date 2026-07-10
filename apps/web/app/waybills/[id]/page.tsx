@@ -1,7 +1,7 @@
 'use client';
 
 import { use, useCallback, useEffect, useState } from 'react';
-import { md, wb, Waybill, Title, StatusEvent, STATUS_LABELS, TYPE_LABELS } from '@/lib/api';
+import { md, wb, Waybill, Title, StatusEvent, Payment, STATUS_LABELS, TYPE_LABELS } from '@/lib/api';
 import QRCode from 'qrcode';
 
 type Employees = { doctors: { rma: string; name: string }[]; mechanics: { rma: string; name: string }[]; dispatchers: { rma: string; name: string }[] };
@@ -23,6 +23,7 @@ export default function WaybillCard({ params }: { params: Promise<{ id: string }
   const [replacement, setReplacement] = useState(''); // РМА нового водителя или госномер нового ТС
   const [candidates, setCandidates] = useState<{ value: string; label: string }[]>([]);
   const [blockReason, setBlockReason] = useState('');
+  const [payment, setPayment] = useState<Payment | null>(null);
 
   const reload = useCallback(async () => {
     const data = await wb.get(id);
@@ -62,6 +63,12 @@ export default function WaybillCard({ params }: { params: Promise<{ id: string }
       setCandidates([]);
     }
     setReplacement('');
+    // Оплата (если статус её требует или она уже была)
+    if (data.status === 'AWAITING_PAYMENT' || data.status === 'PAID') {
+      try { setPayment(await wb.payment(id)); } catch { setPayment(null); }
+    } else {
+      setPayment(null);
+    }
   }, [id]);
 
   useEffect(() => { reload().catch(e => setError(e.message)); }, [reload]);
@@ -157,6 +164,19 @@ export default function WaybillCard({ params }: { params: Promise<{ id: string }
             }))}>
             Т3 — техконтроль (механик {emp.mechanics[0]?.name ?? '—'})
           </button>
+        )}
+        {w.status === 'AWAITING_PAYMENT' && (
+          <span>
+            {payment && (
+              <span className="badge amber" style={{ marginRight: 8 }}>
+                К оплате: {payment.amount} {payment.currency}
+              </span>
+            )}
+            <button className="btn"
+              onClick={() => act('Оплата подтверждена', () => wb.post(`/${id}/confirm-payment`, { method: 'BANK' }))}>
+              Подтвердить оплату (бухгалтер)
+            </button>
+          </span>
         )}
         {w.status === 'READY' && (
           <button className="btn" onClick={() => act('Выдан водителю', () => wb.post(`/${id}/issue`, { driverConfirmation: 'PIN' }))}>
