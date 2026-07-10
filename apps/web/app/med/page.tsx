@@ -40,6 +40,36 @@ function isToday(iso: string) {
 function hhmm(iso: string) {
   return new Date(iso).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
 }
+function dt(iso: string) {
+  return new Date(iso).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+}
+
+/** Запись медосмотра — извлекается из титулов Т2/Т6 путевого листа. */
+type MedRecord = {
+  id: string; number: string | null; driver: string; org: string; date: string;
+  pressure: string; pulse: string; temperature: string; alcotest: string;
+  verdict: string; medic: string; passed: boolean;
+};
+
+async function medRecordsOf(w: Waybill): Promise<MedRecord[]> {
+  try {
+    const titles = await wb.titles(w.id);
+    return titles.filter(t => t.titleType === 'T2' || t.titleType === 'T6').map(t => {
+      const d = (t.data ?? {}) as Record<string, unknown>;
+      const verdict = String(d.verdict ?? (w.medPassed ? 'ДОПУЩЕН' : '—'));
+      return {
+        id: w.id, number: w.number,
+        driver: String(w.driverSnapshot?.fullName ?? w.driverRma),
+        org: String(w.organizationSnapshot?.name ?? w.organizationRma),
+        date: t.signedAt,
+        pressure: String(d.pressure ?? '—'), pulse: String(d.pulse ?? '—'),
+        temperature: String(d.temperature ?? '—'), alcotest: String(d.alcotest ?? '—'),
+        verdict, medic: String(d.employeeName ?? '—'),
+        passed: !verdict.toUpperCase().includes('НЕ'),
+      };
+    });
+  } catch { return []; }
+}
 
 /**
  * Кабинет медика — панель управления предрейсовыми медосмотрами водителей.
@@ -52,6 +82,10 @@ export default function MedWorkstation() {
   const [error, setError] = useState('');
   const [ok, setOk] = useState('');
   const [now, setNow] = useState<Date | null>(null);
+  const [view, setView] = useState<'queue' | 'history'>('queue');
+  const [driverHist, setDriverHist] = useState<MedRecord[] | null>(null);
+  const [allExams, setAllExams] = useState<MedRecord[] | null>(null);
+  const [examSearch, setExamSearch] = useState('');
 
   const reload = useCallback(async () => {
     setItems(await wb.list());
@@ -78,6 +112,12 @@ export default function MedWorkstation() {
     setError('');
     setOk('');
     setForm({ pressure: '120/80', pulse: '72', temperature: '36.6', alcotest: '0.00' });
+    // Медицинская история этого водителя — из прошлых осмотров
+    setDriverHist(null);
+    const past = items.filter(x => x.driverRma === w.driverRma && x.id !== w.id && (x.medPassed || x.status === 'MED_REJECTED')).slice(0, 10);
+    Promise.all(past.map(medRecordsOf)).then(rs =>
+      setDriverHist(rs.flat().sort((a, b) => b.date.localeCompare(a.date)).slice(0, 5)),
+    );
     if (!doctors[w.organizationRma]) {
       try {
         const list = await md.employees(w.organizationRma);
@@ -89,7 +129,17 @@ export default function MedWorkstation() {
         setError((e as Error).message);
       }
     }
-  }, [doctors]);
+  }, [doctors, items]);
+
+  // История осмотров — собираем показатели из титулов Т2/Т6 завершённых ПЛ
+  useEffect(() => {
+    if (view === 'history' && allExams === null) {
+      const completed = items.filter(x => x.medPassed || x.status === 'MED_REJECTED').slice(0, 40);
+      Promise.all(completed.map(medRecordsOf)).then(rs =>
+        setAllExams(rs.flat().sort((a, b) => b.date.localeCompare(a.date))),
+      );
+    }
+  }, [view, items, allExams]);
 
   async function decide(passed: boolean) {
     if (!selected) return;
@@ -191,6 +241,59 @@ export default function MedWorkstation() {
         ))}
       </div>
 
+      {/* Переключатель вида */}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 18 }}>
+        <button className={`btn ${view === 'queue' ? '' : 'secondary'}`} onClick={() => setView('queue')}>Очередь на осмотр</button>
+        <button className={`btn ${view === 'history' ? '' : 'secondary'}`} onClick={() => setView('history')}>История осмотров</button>
+      </div>
+
+      {view === 'history' ? (
+        <div className="card">
+          <div className="card-h">
+            <h2>История осмотров</h2>
+            <input
+              value={examSearch}
+              onChange={e => setExamSearch(e.target.value)}
+              placeholder="Поиск по водителю или № ПЛ"
+              style={{ marginLeft: 'auto', width: 320 }}
+            />
+          </div>
+          {allExams === null ? (
+            <p style={{ color: 'var(--muted)', fontSize: 13, padding: 12 }}>Загрузка истории осмотров…</p>
+          ) : (
+            <>
+              <table>
+                <thead>
+                  <tr><th>Дата и время</th><th>№ ПЛ</th><th>Водитель</th><th>Компания</th><th>АД</th><th>Пульс</th><th>Темп.</th><th>Алкотест</th><th>Медработник</th><th>Результат</th></tr>
+                </thead>
+                <tbody>
+                  {allExams
+                    .filter(r => { const s = examSearch.toLowerCase(); return !s || r.driver.toLowerCase().includes(s) || (r.number ?? '').toLowerCase().includes(s); })
+                    .map((r, i) => (
+                      <tr key={r.id + i}>
+                        <td>{dt(r.date)}</td>
+                        <td><span className="number">{r.number ?? '—'}</span></td>
+                        <td>{r.driver}</td>
+                        <td>{r.org}</td>
+                        <td style={{ fontWeight: 600 }}>{r.pressure}</td>
+                        <td>{r.pulse}</td>
+                        <td>{r.temperature}</td>
+                        <td>{r.alcotest}</td>
+                        <td>{r.medic}</td>
+                        <td><span className={`badge ${r.passed ? 'green' : 'red'}`}>{r.passed ? 'Допущен' : 'Не допущен'}</span></td>
+                      </tr>
+                    ))}
+                  {allExams.length === 0 && (
+                    <tr><td colSpan={10} style={{ textAlign: 'center', color: 'var(--muted)', padding: 28 }}>Завершённых осмотров пока нет</td></tr>
+                  )}
+                </tbody>
+              </table>
+              <div style={{ marginTop: 12, fontSize: 12.5, color: 'var(--muted)' }}>Показаны последние {allExams.length} записей</div>
+            </>
+          )}
+        </div>
+      ) : (
+      <>
       {/* Очередь + правая колонка */}
       <div className="grid-2" style={{ gridTemplateColumns: '1.6fr 1fr', alignItems: 'start' }}>
         {/* Очередь на медосмотр */}
@@ -337,8 +440,10 @@ export default function MedWorkstation() {
             )}
           </tbody>
         </table>
-        <Link className="link" href="/waybills" style={{ display: 'inline-block', marginTop: 12 }}>Перейти в историю осмотров →</Link>
+        <button className="link" onClick={() => setView('history')} style={{ display: 'inline-block', marginTop: 12, background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit', padding: 0 }}>Перейти в историю осмотров →</button>
       </div>
+      </>
+      )}
 
       {/* Модалка проведения осмотра */}
       {selected && (
@@ -361,6 +466,26 @@ export default function MedWorkstation() {
               <span className="number">{selected.number ?? '— черновик —'}</span>
               <b style={{ color: 'var(--ink)' }}>{String(selected.driverSnapshot?.fullName ?? selected.driverRma)}</b>
               <span>{String(selected.organizationSnapshot?.name ?? selected.organizationRma)}</span>
+            </div>
+
+            {/* Медицинская история водителя */}
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink-soft)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '.04em' }}>Предыдущие осмотры водителя</div>
+              {driverHist === null && <div style={{ fontSize: 12.5, color: 'var(--muted)' }}>Загрузка истории…</div>}
+              {driverHist && driverHist.length === 0 && <div style={{ fontSize: 12.5, color: 'var(--muted)' }}>Осмотров ранее не было</div>}
+              {driverHist && driverHist.length > 0 && (
+                <table style={{ fontSize: 12.5 }}>
+                  <thead><tr><th>Дата</th><th>АД</th><th>Пульс</th><th>Темп.</th><th>Алког.</th><th>Итог</th></tr></thead>
+                  <tbody>
+                    {driverHist.map((r, i) => (
+                      <tr key={i}>
+                        <td>{dt(r.date)}</td><td style={{ fontWeight: 600 }}>{r.pressure}</td><td>{r.pulse}</td><td>{r.temperature}</td><td>{r.alcotest}</td>
+                        <td><span className={`badge ${r.passed ? 'green' : 'red'}`}>{r.passed ? 'Допущен' : 'Не допущен'}</span></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
             </div>
 
             {error && <div className="error">{error}</div>}
