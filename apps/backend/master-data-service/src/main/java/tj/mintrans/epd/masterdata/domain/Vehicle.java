@@ -54,6 +54,13 @@ public class Vehicle {
     @Column(nullable = false)
     private boolean blocked;
 
+    /** MANUAL | UNIFIED (данные объекта — из базы ГАИ через единую платформу). */
+    @Column(nullable = false)
+    private String source = "MANUAL";
+
+    @Column(name = "synced_at")
+    private OffsetDateTime syncedAt;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private OffsetDateTime createdAt;
 
@@ -99,6 +106,10 @@ public class Vehicle {
     public void setControlCardValidTo(LocalDate controlCardValidTo) { this.controlCardValidTo = controlCardValidTo; }
     public boolean isBlocked() { return blocked; }
     public void setBlocked(boolean blocked) { this.blocked = blocked; }
+    public String getSource() { return source; }
+    public void setSource(String source) { this.source = source; }
+    public OffsetDateTime getSyncedAt() { return syncedAt; }
+    public void setSyncedAt(OffsetDateTime syncedAt) { this.syncedAt = syncedAt; }
     public OffsetDateTime getCreatedAt() { return createdAt; }
     public OffsetDateTime getUpdatedAt() { return updatedAt; }
 }

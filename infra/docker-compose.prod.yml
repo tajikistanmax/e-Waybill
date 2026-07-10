@@ -110,6 +110,10 @@ services:
       DB_USER: ${DB_USER:-epd}
       DB_PASSWORD: ${DB_PASSWORD:-epd_dev_password}
       KEYCLOAK_ISSUER_URI: http://keycloak:8180/realms/epd
+      # Единая платформа Минтранса (субъекты из налоговой, ТС из ГАИ).
+      # stub — имитация; при подключении реальной платформы: http + UNIFIED_PLATFORM_URL
+      UNIFIED_PLATFORM_MODE: ${UNIFIED_PLATFORM_MODE:-stub}
+      UNIFIED_PLATFORM_URL: ${UNIFIED_PLATFORM_URL:-http://unified-platform:8090}
     depends_on:
       postgres:
         condition: service_healthy

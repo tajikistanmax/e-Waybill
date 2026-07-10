@@ -62,8 +62,13 @@ public class VehicleController {
     public record OdometerUpdate(@NotNull Integer odometer) {
     }
 
+    /**
+     * Прямой upsert — только push-канал единой платформы (API_INTEGRATOR) и сисадмин.
+     * Перевозчики добавляют ТС по госномеру через POST /api/v1/sync/vehicle
+     * (марка, VIN, техосмотр — из базы ГАИ).
+     */
     @PostMapping
-    @PreAuthorize("hasAnyRole('COMPANY_ADMIN','SYSTEM_ADMIN')")
+    @PreAuthorize("hasAnyRole('API_INTEGRATOR','SYSTEM_ADMIN')")
     public ResponseEntity<Vehicle> upsert(@Valid @RequestBody VehicleRequest req) {
         var org = organizations.findByRma(req.organizationRma())
                 .orElseThrow(() -> new NotFoundException("Организация не найдена"));

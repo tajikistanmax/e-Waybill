@@ -37,6 +37,13 @@ public class Employee {
 
     private String phone;
 
+    /** MANUAL | UNIFIED (ФИО субъекта — из единой платформы; роль в организации — локальная). */
+    @Column(nullable = false)
+    private String source = "MANUAL";
+
+    @Column(name = "synced_at")
+    private OffsetDateTime syncedAt;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private OffsetDateTime createdAt;
 
@@ -68,6 +75,10 @@ public class Employee {
     public void setType(short type) { this.type = type; }
     public String getPhone() { return phone; }
     public void setPhone(String phone) { this.phone = phone; }
+    public String getSource() { return source; }
+    public void setSource(String source) { this.source = source; }
+    public OffsetDateTime getSyncedAt() { return syncedAt; }
+    public void setSyncedAt(OffsetDateTime syncedAt) { this.syncedAt = syncedAt; }
     public OffsetDateTime getCreatedAt() { return createdAt; }
     public OffsetDateTime getUpdatedAt() { return updatedAt; }
 }

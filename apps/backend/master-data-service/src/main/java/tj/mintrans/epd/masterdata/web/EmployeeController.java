@@ -52,8 +52,12 @@ public class EmployeeController {
             String phone) {
     }
 
+    /**
+     * Прямой upsert — только push-канал единой платформы (API_INTEGRATOR) и сисадмин.
+     * Перевозчики добавляют сотрудников по ИНН через POST /api/v1/sync/employee.
+     */
     @PostMapping
-    @PreAuthorize("hasAnyRole('COMPANY_ADMIN','SYSTEM_ADMIN')")
+    @PreAuthorize("hasAnyRole('API_INTEGRATOR','SYSTEM_ADMIN')")
     public ResponseEntity<Employee> upsert(@Valid @RequestBody EmployeeRequest req) {
         var org = organizations.findByRma(req.organizationRma())
                 .orElseThrow(() -> new NotFoundException("Организация не найдена"));

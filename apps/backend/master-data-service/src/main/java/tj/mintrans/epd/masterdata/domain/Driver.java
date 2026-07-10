@@ -55,6 +55,13 @@ public class Driver {
     @Column(nullable = false)
     private boolean suspended;
 
+    /** MANUAL | UNIFIED (данные субъекта — из единой платформы: налоговая + ВУ из ГАИ). */
+    @Column(nullable = false)
+    private String source = "MANUAL";
+
+    @Column(name = "synced_at")
+    private OffsetDateTime syncedAt;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private OffsetDateTime createdAt;
 
@@ -100,6 +107,10 @@ public class Driver {
     public void setPhone(String phone) { this.phone = phone; }
     public boolean isSuspended() { return suspended; }
     public void setSuspended(boolean suspended) { this.suspended = suspended; }
+    public String getSource() { return source; }
+    public void setSource(String source) { this.source = source; }
+    public OffsetDateTime getSyncedAt() { return syncedAt; }
+    public void setSyncedAt(OffsetDateTime syncedAt) { this.syncedAt = syncedAt; }
     public OffsetDateTime getCreatedAt() { return createdAt; }
     public OffsetDateTime getUpdatedAt() { return updatedAt; }
 }

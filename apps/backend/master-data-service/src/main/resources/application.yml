@@ -20,6 +20,12 @@ spring:
         jwt:
           issuer-uri: ${KEYCLOAK_ISSUER_URI:http://localhost:8180/realms/epd}
 
+epd:
+  unified-platform:
+    # stub — dev-имитация налоговой/ГАИ; http — реальная единая платформа Минтранса
+    mode: ${UNIFIED_PLATFORM_MODE:stub}
+    base-url: ${UNIFIED_PLATFORM_URL:http://localhost:8090}
+
 springdoc:
   swagger-ui:
     path: /swagger-ui.html

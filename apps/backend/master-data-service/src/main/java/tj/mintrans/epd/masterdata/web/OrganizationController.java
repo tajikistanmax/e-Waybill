@@ -53,8 +53,13 @@ public class OrganizationController {
             LocalDate licenseTo) {
     }
 
+    /**
+     * Прямой upsert — ТОЛЬКО push-канал единой платформы Минтранса (API_INTEGRATOR)
+     * и системный администратор. Перевозчики субъектов не регистрируют:
+     * данные подтягиваются по ИНН через POST /api/v1/sync/organization.
+     */
     @PostMapping
-    @PreAuthorize("hasAnyRole('COMPANY_ADMIN','SYSTEM_ADMIN')")
+    @PreAuthorize("hasAnyRole('API_INTEGRATOR','SYSTEM_ADMIN')")
     public ResponseEntity<Organization> upsert(@Valid @RequestBody OrganizationRequest req) {
         var existing = repository.findByRma(req.rma());
         var org = existing.orElseGet(Organization::new);

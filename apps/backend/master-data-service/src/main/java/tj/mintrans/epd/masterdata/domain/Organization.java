@@ -53,6 +53,17 @@ public class Organization {
     @Column(nullable = false)
     private boolean blocked;
 
+    /** PHYSICAL (физлицо) | IP (индивидуальный предприниматель) | LEGAL (юрлицо). */
+    @Column(name = "subject_type", nullable = false)
+    private String subjectType = "LEGAL";
+
+    /** MANUAL (внесено вручную, dev) | UNIFIED (из единой платформы Минтранса). */
+    @Column(nullable = false)
+    private String source = "MANUAL";
+
+    @Column(name = "synced_at")
+    private OffsetDateTime syncedAt;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private OffsetDateTime createdAt;
 
@@ -100,6 +111,12 @@ public class Organization {
     public void setLicenseTo(LocalDate licenseTo) { this.licenseTo = licenseTo; }
     public boolean isBlocked() { return blocked; }
     public void setBlocked(boolean blocked) { this.blocked = blocked; }
+    public String getSubjectType() { return subjectType; }
+    public void setSubjectType(String subjectType) { this.subjectType = subjectType; }
+    public String getSource() { return source; }
+    public void setSource(String source) { this.source = source; }
+    public OffsetDateTime getSyncedAt() { return syncedAt; }
+    public void setSyncedAt(OffsetDateTime syncedAt) { this.syncedAt = syncedAt; }
     public OffsetDateTime getCreatedAt() { return createdAt; }
     public OffsetDateTime getUpdatedAt() { return updatedAt; }
 }

@@ -1,12 +1,12 @@
 import './globals.css';
-import Link from 'next/link';
 import type { Metadata } from 'next';
 import { AuthProvider } from '@/lib/auth';
 import { HeaderUser } from './header-user';
+import { NavLinks } from './nav-links';
 
 export const metadata: Metadata = {
-  title: 'ЭПД РТ — Кабинет диспетчера',
-  description: 'Электронные перевозочные документы Республики Таджикистан',
+  title: 'ЭПД РТ — Электронные перевозочные документы',
+  description: 'Электронные перевозочные документы Республики Таджикистан — Министерство транспорта',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
@@ -14,20 +14,16 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="ru">
       <body>
         <AuthProvider>
+          {/* Лента государственного флага РТ */}
+          <div className="flag-ribbon no-print" aria-hidden="true" />
           <header className="top">
-            <span className="logo">🚌</span>
+            <span className="logo" aria-hidden="true">ЭПД</span>
             <div>
-              <div className="title">ЭПД РТ — Электронные перевозочные документы</div>
-              <div className="subtitle">Вазорати нақлиёти Ҷумҳурии Тоҷикистон</div>
+              <div className="title">Электронные перевозочные документы</div>
+              <div className="subtitle">Вазорати нақлиёти Ҷумҳурии Тоҷикистон · Министерство транспорта РТ</div>
             </div>
             <nav>
-              <Link href="/waybills">Путевые листы</Link>
-              <Link href="/med">АРМ врача</Link>
-              <Link href="/tech">АРМ механика</Link>
-              <Link href="/company">Компания</Link>
-              <Link href="/reports">Отчёты</Link>
-              <Link href="/dictionaries">Справочники</Link>
-              <Link href="/waybills/new">+ Новый</Link>
+              <NavLinks />
               <HeaderUser />
             </nav>
           </header>

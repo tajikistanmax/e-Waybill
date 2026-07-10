@@ -56,8 +56,13 @@ public class DriverController {
             String phone) {
     }
 
+    /**
+     * Прямой upsert — только push-канал единой платформы (API_INTEGRATOR) и сисадмин.
+     * Перевозчики добавляют водителей по ИНН через POST /api/v1/sync/driver
+     * (ФИО — из налоговой, ВУ и медсправка — из ГАИ/Минздрава).
+     */
     @PostMapping
-    @PreAuthorize("hasAnyRole('COMPANY_ADMIN','SYSTEM_ADMIN')")
+    @PreAuthorize("hasAnyRole('API_INTEGRATOR','SYSTEM_ADMIN')")
     public ResponseEntity<Driver> upsert(@Valid @RequestBody DriverRequest req) {
         var org = organizations.findByRma(req.organizationRma())
                 .orElseThrow(() -> new NotFoundException("Организация не найдена"));
