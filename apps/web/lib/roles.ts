@@ -1,6 +1,6 @@
 // Персональные кабинеты по ролям: стартовая страница и доступные пункты меню.
 
-export type NavKey = 'dashboard' | 'waybills' | 'med' | 'tech' | 'driver' | 'company' | 'registry' | 'violations' | 'reports' | 'dictionaries';
+export type NavKey = 'dashboard' | 'waybills' | 'dispatcher' | 'med' | 'tech' | 'driver' | 'company' | 'registry' | 'violations' | 'reports' | 'dictionaries';
 
 /** Куда попадает пользователь после входа — в свой кабинет. */
 export function roleHome(roles: string[]): string {
@@ -8,7 +8,7 @@ export function roleHome(roles: string[]): string {
   if (roles.includes('DOCTOR')) return '/med';
   if (roles.includes('MECHANIC')) return '/tech';
   if (roles.includes('DRIVER')) return '/driver';
-  if (roles.includes('DISPATCHER')) return '/waybills';
+  if (roles.includes('DISPATCHER')) return '/dispatcher';
   if (roles.includes('ACCOUNTANT')) return '/reports';
   return '/dashboard';
 }
@@ -20,7 +20,7 @@ export function visibleNav(roles: string[]): Set<NavKey> {
 
   if (roles.includes('SYSTEM_ADMIN')) add('dashboard', 'waybills', 'med', 'tech', 'company', 'registry', 'violations', 'reports', 'dictionaries');
   if (roles.includes('COMPANY_ADMIN')) add('dashboard', 'waybills', 'med', 'tech', 'company', 'registry', 'violations', 'reports', 'dictionaries');
-  if (roles.includes('DISPATCHER')) add('dashboard', 'waybills');
+  if (roles.includes('DISPATCHER')) add('dispatcher', 'dashboard', 'waybills');
   if (roles.includes('DOCTOR')) add('med');
   if (roles.includes('MECHANIC')) add('tech');
   if (roles.includes('DRIVER')) add('driver');

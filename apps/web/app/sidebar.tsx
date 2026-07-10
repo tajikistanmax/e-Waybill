@@ -31,6 +31,12 @@ export function Sidebar() {
       </div>
 
       <nav className="side-nav">
+        {nav.has('dispatcher') && (
+          <Link href="/dispatcher" className={`snav ${active('/dispatcher') ? 'active' : ''}`}>
+            <Icon d={P.route} /> {t('nav.dispatcher')}
+          </Link>
+        )}
+
         {nav.has('dashboard') && (
           <Link href="/dashboard" className={`snav ${active('/dashboard') ? 'active' : ''}`}>
             <Icon d={P.home} /> {t('nav.dashboard')}
