@@ -6,15 +6,19 @@ import { useState } from 'react';
 import { Icon, P } from './icons';
 import { useAuth } from '@/lib/auth';
 import { useT } from '@/lib/i18n';
+import { visibleNav } from '@/lib/roles';
 
 export function Sidebar() {
   const pathname = usePathname();
-  const { logout } = useAuth();
+  const { logout, roles } = useAuth();
   const { t } = useT();
   const [open, setOpen] = useState(pathname.startsWith('/waybills'));
+  const nav = visibleNav(roles);
 
   const active = (h: string) => pathname === h || pathname.startsWith(h + '/');
   const wbActive = pathname === '/waybills' || (pathname.startsWith('/waybills/') && pathname !== '/waybills/new');
+  const showWorkplaces = nav.has('med') || nav.has('tech');
+  const showManagement = nav.has('company') || nav.has('reports') || nav.has('dictionaries');
 
   return (
     <aside className="sidebar no-print">
@@ -27,29 +31,35 @@ export function Sidebar() {
       </div>
 
       <nav className="side-nav">
-        <Link href="/dashboard" className={`snav ${active('/dashboard') ? 'active' : ''}`}>
-          <Icon d={P.home} /> {t('nav.dashboard')}
-        </Link>
-
-        <button className={`snav ${open ? 'open' : ''}`} onClick={() => setOpen(o => !o)}>
-          <Icon d={P.doc} /> {t('nav.waybills')}
-          <Icon d={P.chevron} cls="chev" />
-        </button>
-        {open && (
-          <div className="subnav">
-            <Link href="/waybills/new" className={pathname === '/waybills/new' ? 'active' : ''}>{t('nav.waybill.new')}</Link>
-            <Link href="/waybills" className={wbActive ? 'active' : ''}>{t('nav.waybill.registry')}</Link>
-          </div>
+        {nav.has('dashboard') && (
+          <Link href="/dashboard" className={`snav ${active('/dashboard') ? 'active' : ''}`}>
+            <Icon d={P.home} /> {t('nav.dashboard')}
+          </Link>
         )}
 
-        <div className="group-label">{t('nav.group.workplaces')}</div>
-        <Link href="/med" className={`snav ${active('/med') ? 'active' : ''}`}><Icon d={P.med} /> {t('nav.med')}</Link>
-        <Link href="/tech" className={`snav ${active('/tech') ? 'active' : ''}`}><Icon d={P.wrench} /> {t('nav.tech')}</Link>
+        {nav.has('waybills') && (
+          <>
+            <button className={`snav ${open ? 'open' : ''}`} onClick={() => setOpen(o => !o)}>
+              <Icon d={P.doc} /> {t('nav.waybills')}
+              <Icon d={P.chevron} cls="chev" />
+            </button>
+            {open && (
+              <div className="subnav">
+                <Link href="/waybills/new" className={pathname === '/waybills/new' ? 'active' : ''}>{t('nav.waybill.new')}</Link>
+                <Link href="/waybills" className={wbActive ? 'active' : ''}>{t('nav.waybill.registry')}</Link>
+              </div>
+            )}
+          </>
+        )}
 
-        <div className="group-label">{t('nav.group.management')}</div>
-        <Link href="/company" className={`snav ${active('/company') ? 'active' : ''}`}><Icon d={P.building} /> {t('nav.company')}</Link>
-        <Link href="/reports" className={`snav ${active('/reports') ? 'active' : ''}`}><Icon d={P.chart} /> {t('nav.reports')}</Link>
-        <Link href="/dictionaries" className={`snav ${active('/dictionaries') ? 'active' : ''}`}><Icon d={P.book} /> {t('nav.dictionaries')}</Link>
+        {showWorkplaces && <div className="group-label">{t('nav.group.workplaces')}</div>}
+        {nav.has('med') && <Link href="/med" className={`snav ${active('/med') ? 'active' : ''}`}><Icon d={P.med} /> {t('nav.med')}</Link>}
+        {nav.has('tech') && <Link href="/tech" className={`snav ${active('/tech') ? 'active' : ''}`}><Icon d={P.wrench} /> {t('nav.tech')}</Link>}
+
+        {showManagement && <div className="group-label">{t('nav.group.management')}</div>}
+        {nav.has('company') && <Link href="/company" className={`snav ${active('/company') ? 'active' : ''}`}><Icon d={P.building} /> {t('nav.company')}</Link>}
+        {nav.has('reports') && <Link href="/reports" className={`snav ${active('/reports') ? 'active' : ''}`}><Icon d={P.chart} /> {t('nav.reports')}</Link>}
+        {nav.has('dictionaries') && <Link href="/dictionaries" className={`snav ${active('/dictionaries') ? 'active' : ''}`}><Icon d={P.book} /> {t('nav.dictionaries')}</Link>}
       </nav>
 
       <div className="side-foot">

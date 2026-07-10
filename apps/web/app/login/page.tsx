@@ -5,9 +5,10 @@ import { useRouter } from 'next/navigation';
 import { Icon, P } from '../icons';
 import { useAuth } from '@/lib/auth';
 import { useT } from '@/lib/i18n';
+import { roleHome } from '@/lib/roles';
 
 export default function LoginPage() {
-  const { login, authenticated, ready } = useAuth();
+  const { login, authenticated, ready, roles } = useAuth();
   const { t, lang, setLang } = useT();
   const router = useRouter();
   const [username, setUsername] = useState('');
@@ -16,14 +17,13 @@ export default function LoginPage() {
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
-  useEffect(() => { if (ready && authenticated) router.replace('/dashboard'); }, [ready, authenticated, router]);
+  useEffect(() => { if (ready && authenticated) router.replace(roleHome(roles)); }, [ready, authenticated, roles, router]);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setError(''); setBusy(true);
     try {
       await login(username.trim(), password);
-      router.replace('/dashboard');
     } catch {
       setError(t('login.err'));
       setBusy(false);
