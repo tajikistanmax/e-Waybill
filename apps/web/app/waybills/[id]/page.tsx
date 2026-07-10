@@ -25,7 +25,9 @@ export default function WaybillCard({ params }: { params: Promise<{ id: string }
     if (data.number) {
       try {
         const { jws } = await wb.qr(id);
-        setQrUrl(await QRCode.toDataURL(jws, { width: 220, margin: 1 }));
+        // QR кодирует URL страницы проверки — камера телефона инспектора открывает её напрямую
+        const verifyUrl = `${window.location.origin}/verify/${jws}`;
+        setQrUrl(await QRCode.toDataURL(verifyUrl, { width: 240, margin: 1 }));
       } catch { /* QR доступен с READY */ }
     }
     const list = await md.employees(data.organizationRma);

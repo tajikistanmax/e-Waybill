@@ -19,7 +19,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           </div>
           <nav>
             <Link href="/waybills">Путевые листы</Link>
-            <Link href="/waybills/new">+ Новый путевой лист</Link>
+            <Link href="/med">АРМ врача</Link>
+            <Link href="/tech">АРМ механика</Link>
+            <Link href="/waybills/new">+ Новый</Link>
           </nav>
         </header>
         <main>{children}</main>
