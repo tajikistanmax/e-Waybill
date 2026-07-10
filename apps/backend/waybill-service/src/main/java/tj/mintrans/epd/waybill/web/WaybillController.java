@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import tj.mintrans.epd.waybill.config.CurrentUser;
 import tj.mintrans.epd.waybill.domain.Waybill;
 import tj.mintrans.epd.waybill.domain.WaybillStatus;
 import tj.mintrans.epd.waybill.domain.WaybillStatusEvent;
@@ -39,15 +40,17 @@ public class WaybillController {
     private final WaybillTitleRepository titles;
     private final WaybillStatusEventRepository events;
     private final QrTokenService qr;
+    private final CurrentUser currentUser;
 
     public WaybillController(WaybillService service, WaybillRepository waybills,
                              WaybillTitleRepository titles, WaybillStatusEventRepository events,
-                             QrTokenService qr) {
+                             QrTokenService qr, CurrentUser currentUser) {
         this.service = service;
         this.waybills = waybills;
         this.titles = titles;
         this.events = events;
         this.qr = qr;
+        this.currentUser = currentUser;
     }
 
     // ------------------------------------------------------------- запросы
@@ -169,6 +172,27 @@ public class WaybillController {
     public List<Waybill> list(@RequestParam(required = false) String organizationRma,
                               @RequestParam(required = false) WaybillStatus status,
                               @RequestParam(required = false) String number) {
+        // Мультиарендность: не-админ видит только свою организацию —
+        // пришедший organizationRma игнорируется, берётся claim из токена.
+        if (currentUser.isTenantScoped()) {
+            var own = currentUser.organizationRma();
+            if (own.isEmpty()) {
+                return List.of();
+            }
+            organizationRma = own.get();
+            if (number != null) {
+                final String orgRma = organizationRma;
+                return waybills.findByNumber(number)
+                        .filter(wb -> orgRma.equals(wb.getOrganizationRma()))
+                        .map(List::of).orElseGet(List::of);
+            }
+            var result = waybills.findByOrganizationRmaOrderByCreatedAtDesc(organizationRma);
+            if (status != null) {
+                final WaybillStatus st = status;
+                result = result.stream().filter(wb -> wb.getStatus() == st).toList();
+            }
+            return result;
+        }
         if (number != null) {
             return waybills.findByNumber(number).map(List::of).orElseGet(List::of);
         }

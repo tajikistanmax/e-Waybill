@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import tj.mintrans.epd.masterdata.config.CurrentUser;
 import tj.mintrans.epd.masterdata.domain.Driver;
 import tj.mintrans.epd.masterdata.repository.DriverRepository;
 import tj.mintrans.epd.masterdata.repository.OrganizationRepository;
@@ -31,10 +32,13 @@ public class DriverController {
 
     private final DriverRepository drivers;
     private final OrganizationRepository organizations;
+    private final CurrentUser currentUser;
 
-    public DriverController(DriverRepository drivers, OrganizationRepository organizations) {
+    public DriverController(DriverRepository drivers, OrganizationRepository organizations,
+                            CurrentUser currentUser) {
         this.drivers = drivers;
         this.organizations = organizations;
+        this.currentUser = currentUser;
     }
 
     public record DriverRequest(
@@ -78,6 +82,20 @@ public class DriverController {
     @GetMapping
     public List<Driver> list(@RequestParam(required = false) String rma,
                              @RequestParam(required = false) String organizationRma) {
+        // Мультиарендность: не-админ видит только водителей своей организации.
+        // Анонимные (внутренние) вызовы не фильтруются.
+        if (currentUser.isTenantScoped()) {
+            var org = currentUser.organizationRma().flatMap(organizations::findByRma).orElse(null);
+            if (org == null) {
+                return List.of();
+            }
+            if (rma != null) {
+                return drivers.findByRma(rma)
+                        .filter(d -> org.getId().equals(d.getOrganizationId()))
+                        .map(List::of).orElseGet(List::of);
+            }
+            return drivers.findByOrganizationId(org.getId());
+        }
         if (rma != null) {
             return drivers.findByRma(rma).map(List::of).orElseGet(List::of);
         }

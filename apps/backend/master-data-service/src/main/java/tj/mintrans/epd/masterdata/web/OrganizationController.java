@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import tj.mintrans.epd.masterdata.config.CurrentUser;
 import tj.mintrans.epd.masterdata.domain.Organization;
 import tj.mintrans.epd.masterdata.repository.OrganizationRepository;
 import tj.mintrans.epd.masterdata.web.error.NotFoundException;
@@ -29,9 +30,11 @@ import java.util.UUID;
 public class OrganizationController {
 
     private final OrganizationRepository repository;
+    private final CurrentUser currentUser;
 
-    public OrganizationController(OrganizationRepository repository) {
+    public OrganizationController(OrganizationRepository repository, CurrentUser currentUser) {
         this.repository = repository;
+        this.currentUser = currentUser;
     }
 
     public record OrganizationRequest(
@@ -74,6 +77,13 @@ public class OrganizationController {
 
     @GetMapping
     public List<Organization> list(@RequestParam(required = false) String rma) {
+        // Мультиарендность: не-админ видит только свою организацию (claim organization_rma).
+        // Анонимные (внутренние) вызовы не фильтруются.
+        if (currentUser.isTenantScoped()) {
+            return currentUser.organizationRma()
+                    .flatMap(repository::findByRma)
+                    .map(List::of).orElseGet(List::of);
+        }
         if (rma != null) {
             return repository.findByRma(rma).map(List::of).orElseGet(List::of);
         }

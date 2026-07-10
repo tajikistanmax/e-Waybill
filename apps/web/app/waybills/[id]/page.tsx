@@ -63,6 +63,7 @@ export default function WaybillCard({ params }: { params: Promise<{ id: string }
       <div className="toolbar">
         <h1>Путевой лист {w.number ? <span className="number">{w.number}</span> : '(без номера)'}</h1>
         <span className="spacer" />
+        {w.number && <a className="btn secondary" href={`/waybills/${id}/print`}>🖨 Печатная форма</a>}
         <span className={`badge ${s.color}`}>{s.label}</span>
       </div>
       {error && <div className="error">{error}</div>}

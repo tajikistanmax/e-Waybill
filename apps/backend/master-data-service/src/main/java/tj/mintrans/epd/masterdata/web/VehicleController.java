@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import tj.mintrans.epd.masterdata.config.CurrentUser;
 import tj.mintrans.epd.masterdata.domain.Vehicle;
 import tj.mintrans.epd.masterdata.repository.OrganizationRepository;
 import tj.mintrans.epd.masterdata.repository.VehicleRepository;
@@ -34,10 +35,13 @@ public class VehicleController {
 
     private final VehicleRepository vehicles;
     private final OrganizationRepository organizations;
+    private final CurrentUser currentUser;
 
-    public VehicleController(VehicleRepository vehicles, OrganizationRepository organizations) {
+    public VehicleController(VehicleRepository vehicles, OrganizationRepository organizations,
+                             CurrentUser currentUser) {
         this.vehicles = vehicles;
         this.organizations = organizations;
+        this.currentUser = currentUser;
     }
 
     public record VehicleRequest(
@@ -92,6 +96,20 @@ public class VehicleController {
     @GetMapping
     public List<Vehicle> list(@RequestParam(required = false) String registrationNumber,
                               @RequestParam(required = false) String organizationRma) {
+        // Мультиарендность: не-админ видит только транспорт своей организации.
+        // Анонимные (внутренние) вызовы не фильтруются.
+        if (currentUser.isTenantScoped()) {
+            var org = currentUser.organizationRma().flatMap(organizations::findByRma).orElse(null);
+            if (org == null) {
+                return List.of();
+            }
+            if (registrationNumber != null) {
+                return vehicles.findByRegistrationNumber(registrationNumber)
+                        .filter(v -> org.getId().equals(v.getOrganizationId()))
+                        .map(List::of).orElseGet(List::of);
+            }
+            return vehicles.findByOrganizationId(org.getId());
+        }
         if (registrationNumber != null) {
             return vehicles.findByRegistrationNumber(registrationNumber).map(List::of).orElseGet(List::of);
         }
