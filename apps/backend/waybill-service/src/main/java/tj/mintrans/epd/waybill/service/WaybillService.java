@@ -52,8 +52,9 @@ public class WaybillService {
 
     @Transactional
     public Waybill create(WaybillType type, String organizationRma, String vehicleRegNumber,
-                          String driverRma, String communicationType, String route,
-                          String schedule, String specialMark) {
+                          String driverRma, String secondDriverRma, String communicationType,
+                          String route, String schedule, String specialMark,
+                          Map<String, Object> typeData) {
         var org = masterData.findOrganization(organizationRma)
                 .orElseThrow(() -> new NotFoundException("Организация не найдена"));
         var driver = masterData.findDriver(driverRma)
@@ -76,9 +77,111 @@ public class WaybillService {
         wb.setOrganizationSnapshot(org);
         wb.setDriverSnapshot(driver);
         wb.setVehicleSnapshot(vehicle);
+        validateTypeData(wb, typeData, secondDriverRma, org);
         var saved = waybills.save(wb);
         events.save(WaybillStatusEvent.of(saved.getId(), null, WaybillStatus.DRAFT, "system", "Создан черновик"));
         return saved;
+    }
+
+    /**
+     * Валидация вариативных полей type_data по типу ПЛ (формы 2-Б, 5Б-БМ, 4М-БМ, 3-С;
+     * spec/notes/01-legacy-api-и-формы.md, разделы 5.4–5.6). Записывает результат в wb.typeData.
+     */
+    private void validateTypeData(Waybill wb, Map<String, Object> typeData,
+                                  String secondDriverRma, Map<String, Object> org) {
+        var data = new java.util.LinkedHashMap<String, Object>();
+        if (typeData != null) data.putAll(typeData);
+        switch (wb.getWaybillType()) {
+            case WB_TRUCK -> { // 2-Б грузовой
+                String shipmentKind = str(data.get("shipmentKind"));
+                if (shipmentKind.isBlank()) {
+                    throw new UnprocessableException("Укажите вид перевозки (shipmentKind): PIECEWORK (корбайъ) или HOURLY (соатбайъ)");
+                }
+                if (!"PIECEWORK".equals(shipmentKind) && !"HOURLY".equals(shipmentKind)) {
+                    throw new UnprocessableException("Недопустимый вид перевозки «%s»: ожидается PIECEWORK (корбайъ) или HOURLY (соатбайъ)".formatted(shipmentKind));
+                }
+                validateTrailers(data.get("trailers"));
+            }
+            case WB_TRUCK_INTL, WB_PAX_INTL -> { // 5Б-БМ / 4М-БМ международные
+                requireText(data, "visaCountry", "Укажите страну выдачи визы (visaCountry)");
+                requireText(data, "loadCountry", "Укажите страну погрузки (loadCountry)");
+                requireText(data, "unloadCountry", "Укажите страну разгрузки (unloadCountry)");
+                // TODO: онлайн-валидация номера дозвола через интеграцию E-PERMIT — на следующем этапе.
+                requireText(data, "permitNumber", "Укажите номер дозвола E-PERMIT (permitNumber)");
+                if (wb.getWaybillType() == WaybillType.WB_TRUCK_INTL) {
+                    requireText(data, "cargoName", "Укажите наименование груза (cargoName)");
+                }
+                String visaValidTo = str(data.get("visaValidTo"));
+                if (visaValidTo.isBlank()) {
+                    throw new UnprocessableException("Укажите срок действия визы (visaValidTo, ISO-дата)");
+                }
+                LocalDate visaDate;
+                try {
+                    visaDate = LocalDate.parse(visaValidTo);
+                } catch (java.time.format.DateTimeParseException e) {
+                    throw new UnprocessableException("Неверный формат срока действия визы (visaValidTo): ожидается ISO-дата, например 2026-12-31");
+                }
+                if (visaDate.isBefore(LocalDate.now())) {
+                    throw new UnprocessableException("Срок визы истёк");
+                }
+                Object transit = data.get("transitCountries");
+                if (transit != null) {
+                    if (!(transit instanceof java.util.List<?> list) || list.stream().anyMatch(e -> !(e instanceof String))) {
+                        throw new UnprocessableException("Транзитные страны (transitCountries): ожидается массив строк");
+                    }
+                }
+                if (secondDriverRma != null && !secondDriverRma.isBlank()) {
+                    var second = masterData.findDriver(secondDriverRma)
+                            .orElseThrow(() -> new NotFoundException("Второй водитель не найден"));
+                    if (!str(org.get("id")).equals(str(second.get("organizationId")))) {
+                        throw new UnprocessableException("Второй водитель не принадлежит организации");
+                    }
+                    if (!waybills.findByDriverRmaAndStatusIn(str(second.get("rma")), WaybillStatus.OPEN_STATUSES).isEmpty()) {
+                        throw new ConflictException("На второго водителя уже оформлен действующий путевой лист");
+                    }
+                    wb.setSecondDriverRma(secondDriverRma);
+                    data.put("secondDriverSnapshot", second);
+                }
+            }
+            case WB_CAR, WB_TAXI -> { // 3-С легковой/такси
+                String serviceKind = str(data.get("serviceKind"));
+                if (serviceKind.isBlank()) {
+                    throw new UnprocessableException("Укажите вид услуги (serviceKind): TAXI (такси), ROUTE (хатсайр) или HOURLY (соатбай)");
+                }
+                if (!"TAXI".equals(serviceKind) && !"ROUTE".equals(serviceKind) && !"HOURLY".equals(serviceKind)) {
+                    throw new UnprocessableException("Недопустимый вид услуги «%s»: ожидается TAXI, ROUTE или HOURLY".formatted(serviceKind));
+                }
+                if ("ROUTE".equals(serviceKind) && (wb.getRoute() == null || wb.getRoute().isBlank())) {
+                    throw new UnprocessableException("Для маршрутной услуги укажите маршрут");
+                }
+            }
+            default -> { /* прочие типы — свободная схема type_data */ }
+        }
+        wb.setTypeData(data.isEmpty() ? null : data);
+    }
+
+    /** trailers формы 2-Б: не более 2 прицепов, у каждого обязательны госномер и марка. */
+    private static void validateTrailers(Object trailers) {
+        if (trailers == null) return;
+        if (!(trailers instanceof java.util.List<?> list)) {
+            throw new UnprocessableException("Прицепы (trailers): ожидается массив объектов");
+        }
+        if (list.size() > 2) {
+            throw new UnprocessableException("Не более 2 прицепов");
+        }
+        for (Object item : list) {
+            if (!(item instanceof Map<?, ?> trailer)
+                    || str(trailer.get("registrationNumber")).isBlank()
+                    || str(trailer.get("brand")).isBlank()) {
+                throw new UnprocessableException("Прицеп: госномер и марка обязательны");
+            }
+        }
+    }
+
+    private static void requireText(Map<String, Object> data, String field, String message) {
+        if (str(data.get(field)).isBlank()) {
+            throw new UnprocessableException(message);
+        }
     }
 
     /** Блокирующие проверки перед выдачей (checks.yaml, подмножество этапа 1а). Package-private: переиспользуется AggregatorService. */

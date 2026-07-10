@@ -75,6 +75,11 @@ public class Waybill {
     @Column(name = "driver_snapshot")
     private Map<String, Object> driverSnapshot;
 
+    /** Вариативные поля конкретного типа ПЛ (shipmentKind, trailers, виза и т.п.). */
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "type_data")
+    private Map<String, Object> typeData;
+
     private String route;
     private String schedule;
 
@@ -150,6 +155,8 @@ public class Waybill {
     public void setVehicleSnapshot(Map<String, Object> vehicleSnapshot) { this.vehicleSnapshot = vehicleSnapshot; }
     public Map<String, Object> getDriverSnapshot() { return driverSnapshot; }
     public void setDriverSnapshot(Map<String, Object> driverSnapshot) { this.driverSnapshot = driverSnapshot; }
+    public Map<String, Object> getTypeData() { return typeData; }
+    public void setTypeData(Map<String, Object> typeData) { this.typeData = typeData; }
     public String getRoute() { return route; }
     public void setRoute(String route) { this.route = route; }
     public String getSchedule() { return schedule; }

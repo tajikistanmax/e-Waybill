@@ -30,6 +30,8 @@ export type Waybill = {
   organizationSnapshot?: Record<string, unknown>;
   vehicleSnapshot?: Record<string, unknown>;
   driverSnapshot?: Record<string, unknown>;
+  secondDriverRma?: string | null;
+  typeData?: Record<string, unknown> | null;
   createdAt: string;
 };
 

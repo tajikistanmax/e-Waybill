@@ -60,10 +60,12 @@ public class WaybillController {
             @NotBlank @Pattern(regexp = "\\d{9,10}") String organizationRma,
             @NotBlank String vehicleRegNumber,
             @NotBlank @Pattern(regexp = "\\d{9,10}") String driverRma,
+            @Pattern(regexp = "\\d{9,10}") String secondDriverRma,
             String communicationType,
             String route,
             String schedule,
-            String specialMark) {
+            String specialMark,
+            Map<String, Object> typeData) {
     }
 
     public record SignT1Request(
@@ -109,7 +111,8 @@ public class WaybillController {
     @PreAuthorize("hasAnyRole('DISPATCHER','SYSTEM_ADMIN')")
     public ResponseEntity<Waybill> create(@Valid @RequestBody CreateRequest req) {
         var wb = service.create(req.waybillType(), req.organizationRma(), req.vehicleRegNumber(),
-                req.driverRma(), req.communicationType(), req.route(), req.schedule(), req.specialMark());
+                req.driverRma(), req.secondDriverRma(), req.communicationType(), req.route(),
+                req.schedule(), req.specialMark(), req.typeData());
         return ResponseEntity.status(HttpStatus.CREATED).body(wb);
     }
 

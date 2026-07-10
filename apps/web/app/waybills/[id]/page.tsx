@@ -87,6 +87,25 @@ export default function WaybillCard({ params }: { params: Promise<{ id: string }
         </dl>
       </div>
 
+      {w.typeData && Object.keys(w.typeData).length > 0 && (
+        <div className="card">
+          <h2>Особенности типа</h2>
+          <dl className="kv">
+            {'serviceKind' in w.typeData && <><dt>Вид услуги</dt><dd>{{ TAXI: 'Такси (фармоишӣ)', ROUTE: 'Маршрут (хатсайр)', HOURLY: 'Почасовой (соатбайъ)' }[String(w.typeData.serviceKind)] ?? String(w.typeData.serviceKind)}</dd></>}
+            {'shipmentKind' in w.typeData && <><dt>Вид перевозки</dt><dd>{String(w.typeData.shipmentKind) === 'PIECEWORK' ? 'Сдельная (корбайъ)' : 'Почасовая (соатбайъ)'}</dd></>}
+            {Array.isArray(w.typeData.trailers) && (w.typeData.trailers as { registrationNumber: string; brand: string }[]).map((tr, i) => (
+              <span key={i} style={{ display: 'contents' }}><dt>Прицеп {i + 1} (ядак)</dt><dd>{tr.registrationNumber} · {tr.brand}</dd></span>
+            ))}
+            {'permitNumber' in w.typeData && <><dt>Дозвол (E-PERMIT)</dt><dd>{String(w.typeData.permitNumber)}</dd></>}
+            {'visaValidTo' in w.typeData && <><dt>Виза</dt><dd>до {String(w.typeData.visaValidTo)} · {String(w.typeData.visaCountry ?? '')}</dd></>}
+            {'loadCountry' in w.typeData && <><dt>Маршрут рейса</dt><dd>{String(w.typeData.loadCountry)} → {Array.isArray(w.typeData.transitCountries) && w.typeData.transitCountries.length ? `${(w.typeData.transitCountries as string[]).join(', ')} → ` : ''}{String(w.typeData.unloadCountry)}</dd></>}
+            {'cargoName' in w.typeData && <><dt>Груз (номгӯи бор)</dt><dd>{String(w.typeData.cargoName)}</dd></>}
+            {'bbaNumber' in w.typeData && <><dt>Книжка ББА/TIR</dt><dd>{String(w.typeData.bbaNumber)}</dd></>}
+            {w.secondDriverRma && <><dt>Второй водитель</dt><dd>{String((w.typeData.secondDriverSnapshot as Record<string, unknown>)?.fullName ?? w.secondDriverRma)}</dd></>}
+          </dl>
+        </div>
+      )}
+
       <div className="card">
         <h2>Действия</h2>
         {w.status === 'DRAFT' && (
