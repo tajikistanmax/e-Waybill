@@ -9,6 +9,7 @@ import {
 } from 'recharts';
 import { wb, Waybill, STATUS_LABELS, TYPE_LABELS } from '@/lib/api';
 import { Icon, P } from '../icons';
+import { useT } from '@/lib/i18n';
 
 const TYPE_COLORS = ['#2563eb', '#16a34a', '#ea9615', '#f97316', '#ef4444', '#7c5cdb', '#0ea5c4', '#64748b', '#db2777', '#0891b2'];
 
@@ -22,6 +23,7 @@ export default function DashboardPage() {
   const [items, setItems] = useState<Waybill[]>([]);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
+  const { t } = useT();
 
   useEffect(() => { wb.list().then(setItems).catch(() => {}).finally(() => setLoading(false)); }, []);
 
@@ -63,11 +65,11 @@ export default function DashboardPage() {
   const recent = useMemo(() => [...items].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 6), [items]);
 
   const KPIS = [
-    { label: 'Путевых листов', value: stats.total, icon: P.doc, cls: 'ic-blue', trend: '+8.5%', up: true, spark: stats.sparkTotal, color: '#2563eb' },
-    { label: 'Оформлено сегодня', value: stats.today, icon: P.check, cls: 'ic-green', trend: '+12.3%', up: true, spark: stats.sparkTotal, color: '#16a34a' },
-    { label: 'На линии', value: stats.onLine, icon: P.car, cls: 'ic-cyan', trend: 'сейчас', up: true, spark: stats.sparkActive, color: '#0ea5c4' },
-    { label: 'Завершено', value: stats.completed, icon: P.route, cls: 'ic-purple', trend: 'всего', up: true, spark: stats.sparkDone, color: '#7c5cdb' },
-    { label: 'Аннулировано', value: stats.cancelled, icon: P.alert, cls: 'ic-red', trend: '−5.2%', up: false, spark: stats.sparkCancel, color: '#dc2626' },
+    { label: t('kpi.total'), value: stats.total, icon: P.doc, cls: 'ic-blue', trend: '+8.5%', up: true, spark: stats.sparkTotal, color: '#2563eb' },
+    { label: t('kpi.today'), value: stats.today, icon: P.check, cls: 'ic-green', trend: '+12.3%', up: true, spark: stats.sparkTotal, color: '#16a34a' },
+    { label: t('kpi.online'), value: stats.onLine, icon: P.car, cls: 'ic-cyan', trend: '•', up: true, spark: stats.sparkActive, color: '#0ea5c4' },
+    { label: t('kpi.done'), value: stats.completed, icon: P.route, cls: 'ic-purple', trend: '', up: true, spark: stats.sparkDone, color: '#7c5cdb' },
+    { label: t('kpi.cancel'), value: stats.cancelled, icon: P.alert, cls: 'ic-red', trend: '−5.2%', up: false, spark: stats.sparkCancel, color: '#dc2626' },
   ];
 
   const SYS = ['Сервер приложений', 'База данных', 'Служба авторизации', 'Сервис QR-подписи', 'Шина событий', 'Хранилище файлов'];
@@ -75,9 +77,9 @@ export default function DashboardPage() {
   return (
     <>
       <div className="toolbar">
-        <div><h1>Главная панель</h1><div className="page-lead" style={{ margin: 0 }}>Обзор состояния системы и ключевых показателей</div></div>
+        <div><h1>{t('dash.h')}</h1><div className="page-lead" style={{ margin: 0 }}>{t('dash.lead')}</div></div>
         <span className="spacer" />
-        <Link className="btn" href="/waybills/new"><Icon d={P.doc} cls="" style={{ width: 17, height: 17 }} /> Новый путевой лист</Link>
+        <Link className="btn" href="/waybills/new"><Icon d={P.doc} cls="" style={{ width: 17, height: 17 }} /> {t('dash.new')}</Link>
       </div>
 
       {/* KPI */}
@@ -107,7 +109,7 @@ export default function DashboardPage() {
       {/* Динамика · Типы · Состояние */}
       <div className="grid-3">
         <div className="card">
-          <div className="card-h"><h2>Динамика путевых листов</h2><span className="badge blue" style={{ marginLeft: 'auto' }}>7 дней</span></div>
+          <div className="card-h"><h2>{t('dash.dynamics')}</h2><span className="badge blue" style={{ marginLeft: 'auto' }}>7</span></div>
           <div style={{ height: 240 }}>
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={stats.days} margin={{ top: 8, right: 8, left: -18, bottom: 0 }}>
@@ -123,8 +125,8 @@ export default function DashboardPage() {
         </div>
 
         <div className="card">
-          <h2>Путевые листы по типам</h2>
-          {stats.byType.length === 0 ? <p style={{ color: 'var(--muted)', fontSize: 13 }}>Нет данных</p> : (
+          <h2>{t('dash.bytype')}</h2>
+          {stats.byType.length === 0 ? <p style={{ color: 'var(--muted)', fontSize: 13 }}>—</p> : (
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               <div style={{ width: 150, height: 150, position: 'relative' }}>
                 <ResponsiveContainer width="100%" height="100%">
@@ -136,7 +138,7 @@ export default function DashboardPage() {
                 </ResponsiveContainer>
                 <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', pointerEvents: 'none' }}>
                   <div style={{ textAlign: 'center' }}>
-                    <div style={{ fontSize: 10, color: 'var(--muted)' }}>Всего</div>
+                    <div style={{ fontSize: 10, color: 'var(--muted)' }}>{t('dash.total')}</div>
                     <div style={{ fontSize: 20, fontWeight: 800 }}>{stats.total}</div>
                   </div>
                 </div>
@@ -155,20 +157,20 @@ export default function DashboardPage() {
         </div>
 
         <div className="card">
-          <h2>Состояние системы</h2>
+          <h2>{t('dash.sysstate')}</h2>
           <div className="sys-list">
-            {SYS.map(s => <div className="row" key={s}>{s}<span className="st">Онлайн</span></div>)}
+            {SYS.map(s => <div className="row" key={s}>{s}<span className="st">{t('sys.online')}</span></div>)}
           </div>
-          <div className="sys-ok"><Icon d={P.check} cls="" style={{ width: 16, height: 16 }} /> Все системы работают стабильно</div>
+          <div className="sys-ok"><Icon d={P.check} cls="" style={{ width: 16, height: 16 }} /> {t('dash.sysok')}</div>
         </div>
       </div>
 
       {/* Последние ПЛ · Быстрая статистика */}
       <div className="grid-2" style={{ gridTemplateColumns: '1.6fr 1fr' }}>
         <div className="card">
-          <div className="card-h"><h2>Последние путевые листы</h2><Link className="link" href="/waybills">Все документы →</Link></div>
+          <div className="card-h"><h2>{t('dash.recent')}</h2><Link className="link" href="/waybills">{t('dash.all')} →</Link></div>
           <table>
-            <thead><tr><th>Номер</th><th>Тип</th><th>ТС</th><th>Водитель</th><th>Статус</th></tr></thead>
+            <thead><tr><th>{t('col.number')}</th><th>{t('col.type')}</th><th>{t('col.vehicle')}</th><th>{t('col.driver')}</th><th>{t('col.status')}</th></tr></thead>
             <tbody>
               {recent.map(w => {
                 const s = STATUS_LABELS[w.status] ?? { label: w.status, color: 'gray' };
@@ -192,7 +194,7 @@ export default function DashboardPage() {
         </div>
 
         <div className="card">
-          <h2>Быстрая статистика</h2>
+          <h2>{t('dash.quick')}</h2>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
             <div className="q" style={{ background: 'var(--blue-050)', borderRadius: 11, padding: 14 }}>
               <div className="ql" style={{ fontSize: 11, color: 'var(--muted)' }}>Всего документов</div>

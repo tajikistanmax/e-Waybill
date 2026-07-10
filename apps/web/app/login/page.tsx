@@ -4,9 +4,11 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Icon, P } from '../icons';
 import { useAuth } from '@/lib/auth';
+import { useT } from '@/lib/i18n';
 
 export default function LoginPage() {
   const { login, authenticated, ready } = useAuth();
+  const { t, lang, setLang } = useT();
   const router = useRouter();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -22,8 +24,8 @@ export default function LoginPage() {
     try {
       await login(username.trim(), password);
       router.replace('/dashboard');
-    } catch (err) {
-      setError((err as Error).message);
+    } catch {
+      setError(t('login.err'));
       setBusy(false);
     }
   }
@@ -37,47 +39,47 @@ export default function LoginPage() {
           <span className="lt">DTS</span>
         </div>
 
-        <h1>Электронный<br />путевой лист</h1>
-        <div className="sub">Цифровое управление транспортом и путевыми листами</div>
+        <h1>{t('login.h')}</h1>
+        <div className="sub">{t('app.subtitle')}</div>
         <div className="rule" />
 
         <form className="login-form" onSubmit={submit}>
           {error && <div className="error">{error}</div>}
-          <label>Телефон или ИНН</label>
+          <label>{t('login.user')}</label>
           <div className="field">
             <Icon d={P.user} cls="fic" />
-            <input value={username} onChange={e => setUsername(e.target.value)} placeholder="Введите телефон или ИНН" required autoFocus />
+            <input value={username} onChange={e => setUsername(e.target.value)} placeholder={t('login.user.ph')} required autoFocus />
           </div>
 
-          <label>Пароль</label>
+          <label>{t('login.pass')}</label>
           <div className="field">
             <Icon d={P.shield} cls="fic" />
-            <input type={show ? 'text' : 'password'} value={password} onChange={e => setPassword(e.target.value)} placeholder="Введите пароль" required />
-            <button type="button" className="eye" onClick={() => setShow(s => !s)} aria-label="Показать пароль">
+            <input type={show ? 'text' : 'password'} value={password} onChange={e => setPassword(e.target.value)} placeholder={t('login.pass.ph')} required />
+            <button type="button" className="eye" onClick={() => setShow(s => !s)} aria-label={t('login.pass')}>
               <Icon d={show ? P.eyeOff : P.eye} cls="" />
             </button>
           </div>
 
           <div className="login-row">
-            <label><input type="checkbox" defaultChecked /> Запомнить меня</label>
-            <a href="#">Забыли пароль?</a>
+            <label><input type="checkbox" defaultChecked /> {t('login.remember')}</label>
+            <a href="#">{t('login.forgot')}</a>
           </div>
 
           <button className="btn btn-login" type="submit" disabled={busy}>
-            <Icon d={P.login} cls="" /> {busy ? 'Вход…' : 'Войти'}
+            <Icon d={P.login} cls="" /> {busy ? t('login.busy') : t('login.submit')}
           </button>
 
-          <div className="login-or">или</div>
-          <button type="button" className="btn-sso" onClick={submit as unknown as () => void} disabled>
+          <div className="login-or">{t('login.or')}</div>
+          <button type="button" className="btn-sso" disabled>
             <span className="mark" style={{ width: 22, height: 22, borderRadius: 6, background: 'linear-gradient(135deg,var(--blue-500),var(--blue-700))', display: 'grid', placeItems: 'center', color: '#fff' }}>
               <Icon d={P.shield} cls="" />
             </span>
-            Войти через DTS SSO
+            {t('login.sso')}
           </button>
 
           <div className="login-secure">
             <Icon d={P.shield} cls="" />
-            Ваши данные защищены в соответствии с требованиями безопасности Республики Таджикистан
+            {t('login.secure')}
           </div>
         </form>
 
@@ -89,9 +91,12 @@ export default function LoginPage() {
         <div className="map-dots" />
         <div className="glow" />
         <div className="lang">
-          <span><Icon d={P.globe} cls="" style={{ width: 16, height: 16, verticalAlign: -3 }} /></span>
-          <span><b>RU</b></span><span>TJ</span><span>EN</span>
-          <span>· Поддержка</span>
+          <Icon d={P.globe} cls="" style={{ width: 16, height: 16 }} />
+          <span className="lang-switch on-blue">
+            <button className={lang === 'ru' ? 'on' : ''} onClick={() => setLang('ru')}>RU</button>
+            <button className={lang === 'tj' ? 'on' : ''} onClick={() => setLang('tj')}>TJ</button>
+          </span>
+          <span>· {t('login.support')}</span>
         </div>
 
         <div className="float-card float-panel">
@@ -131,7 +136,7 @@ export default function LoginPage() {
 
         <div className="login-caption">
           <Icon d={P.shield} cls="" />
-          Цифровая платформа для эффективного и безопасного управления транспортом
+          {t('login.caption')}
         </div>
       </div>
     </div>
