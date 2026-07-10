@@ -17,7 +17,7 @@ export function Sidebar() {
 
   const active = (h: string) => pathname === h || pathname.startsWith(h + '/');
   const wbActive = pathname === '/waybills' || (pathname.startsWith('/waybills/') && pathname !== '/waybills/new');
-  const showWorkplaces = nav.has('med') || nav.has('tech') || nav.has('driver');
+  const showWorkplaces = nav.has('med') || nav.has('tech') || nav.has('driver') || nav.has('inspector');
   const showManagement = nav.has('company') || nav.has('registry') || nav.has('violations') || nav.has('reports') || nav.has('dictionaries');
 
   return (
@@ -62,6 +62,7 @@ export function Sidebar() {
         {nav.has('med') && <Link href="/med" className={`snav ${active('/med') ? 'active' : ''}`}><Icon d={P.med} /> {t('nav.med')}</Link>}
         {nav.has('tech') && <Link href="/tech" className={`snav ${active('/tech') ? 'active' : ''}`}><Icon d={P.wrench} /> {t('nav.tech')}</Link>}
         {nav.has('driver') && <Link href="/driver" className={`snav ${active('/driver') ? 'active' : ''}`}><Icon d={P.car} /> {t('nav.driver')}</Link>}
+        {nav.has('inspector') && <Link href="/inspector" className={`snav ${active('/inspector') ? 'active' : ''}`}><Icon d={P.shield} /> {t('nav.inspector')}</Link>}
 
         {showManagement && <div className="group-label">{t('nav.group.management')}</div>}
         {nav.has('company') && <Link href="/company" className={`snav ${active('/company') ? 'active' : ''}`}><Icon d={P.building} /> {t('nav.company')}</Link>}

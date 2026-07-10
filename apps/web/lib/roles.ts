@@ -1,6 +1,6 @@
 // Персональные кабинеты по ролям: стартовая страница и доступные пункты меню.
 
-export type NavKey = 'dashboard' | 'waybills' | 'dispatcher' | 'med' | 'tech' | 'driver' | 'company' | 'registry' | 'violations' | 'reports' | 'dictionaries';
+export type NavKey = 'dashboard' | 'waybills' | 'dispatcher' | 'med' | 'tech' | 'driver' | 'inspector' | 'company' | 'registry' | 'violations' | 'reports' | 'dictionaries';
 
 /** Куда попадает пользователь после входа — в свой кабинет. */
 export function roleHome(roles: string[]): string {
@@ -9,6 +9,7 @@ export function roleHome(roles: string[]): string {
   if (roles.includes('MECHANIC')) return '/tech';
   if (roles.includes('DRIVER')) return '/driver';
   if (roles.includes('DISPATCHER')) return '/dispatcher';
+  if (roles.includes('INSPECTOR')) return '/inspector';
   if (roles.includes('ACCOUNTANT')) return '/reports';
   return '/dashboard';
 }
@@ -25,7 +26,7 @@ export function visibleNav(roles: string[]): Set<NavKey> {
   if (roles.includes('MECHANIC')) add('tech');
   if (roles.includes('DRIVER')) add('driver');
   if (roles.includes('ACCOUNTANT')) add('dashboard', 'reports', 'waybills');
-  if (roles.includes('INSPECTOR')) add('dashboard', 'violations');
+  if (roles.includes('INSPECTOR')) add('inspector', 'dashboard', 'violations');
 
   if (s.size === 0) s.add('dashboard');
   return s;

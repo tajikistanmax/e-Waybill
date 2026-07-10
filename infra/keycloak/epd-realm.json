@@ -182,6 +182,22 @@
         "rma": ["555555555"],
         "organizationRma": ["025680800"]
       }
+    },
+    {
+      "username": "inspector",
+      "email": "inspector@epd.tj",
+      "firstName": "Нозир",
+      "lastName": "Тестовый",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        { "type": "password", "value": "inspector", "temporary": false }
+      ],
+      "realmRoles": ["INSPECTOR"],
+      "attributes": {
+        "rma": ["666666666"],
+        "organizationRma": ["025680800"]
+      }
     }
   ]
 }
