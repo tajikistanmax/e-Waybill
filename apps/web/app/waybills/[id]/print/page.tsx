@@ -72,7 +72,7 @@ export default function PrintWaybill({ params }: { params: Promise<{ id: string 
           <div className="stat">
             <b>ВАЗОРАТИ НАҚЛИЁТИ ҶУМҲУРИИ ТОҶИКИСТОН</b><br />
             Министерство транспорта Республики Таджикистан<br />
-            Платформа «Ҳуҷҷатҳои электронии ҳамлу нақл» (ЭПД РТ)<br />
+            Единая система путевых листов «Роҳхат»<br />
             <br />
             Ташкилот (КУҶТ): {String(org.name ?? '')}<br />
             РМА: {String(org.rma ?? '')} · Минтақа: {String(org.regionId ?? '—')}
@@ -134,7 +134,7 @@ export default function PrintWaybill({ params }: { params: Promise<{ id: string 
 
         <p style={{ marginTop: 12, fontSize: 10, color: '#475569' }}>
           Барои тафтиши роҳхат аз QR-код истифода баред · Для проверки подлинности отсканируйте QR-код
-          · Документ сформирован платформой ЭПД РТ {new Date().toLocaleString('ru-RU')}
+          · Документ сформирован системой «Роҳхат» {new Date().toLocaleString('ru-RU')}
         </p>
       </div>
     </>

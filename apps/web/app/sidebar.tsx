@@ -54,10 +54,10 @@ export function Sidebar() {
   return (
     <aside className="sidebar no-print">
       <div className="side-brand">
-        <span className="emblem">ЭПД</span>
+        <span className="emblem">Р</span>
         <div>
-          <div className="brand-name">ЭПД РТ</div>
-          <div className="brand-sub">Вазорати нақлиёт</div>
+          <div className="brand-name">Роҳхат</div>
+          <div className="brand-sub">Путевые листы · Минтранс РТ</div>
         </div>
       </div>
 

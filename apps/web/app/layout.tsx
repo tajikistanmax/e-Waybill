@@ -4,7 +4,7 @@ import { AuthProvider } from '@/lib/auth';
 import { Sidebar } from './sidebar';
 
 export const metadata: Metadata = {
-  title: 'ЭПД РТ — Электронные перевозочные документы',
+  title: 'Роҳхат — Единая система путевых листов Республики Таджикистан',
   description: 'Государственная платформа электронных путевых листов · Министерство транспорта Республики Таджикистан',
 };
 

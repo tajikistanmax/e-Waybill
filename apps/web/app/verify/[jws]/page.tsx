@@ -79,7 +79,7 @@ export default function VerifyPage({ params }: { params: Promise<{ jws: string }
         <dd>{result.validTo ? new Date(result.validTo).toLocaleString('ru-RU') : '—'}</dd>
       </dl>
       <p style={{ color: 'var(--muted)', fontSize: 12 }}>
-        Криптографическая подпись проверена · Платформа ЭПД РТ · Минтранс Республики Таджикистан
+        Криптографическая подпись проверена · Роҳхат · Минтранс Республики Таджикистан
       </p>
     </div>
   );
