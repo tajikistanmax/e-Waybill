@@ -72,6 +72,25 @@ public class MasterDataClient {
                 .toBodilessEntity();
     }
 
+    // ------------------------------------------------------- справочники нормирования
+
+    public List<Map<String, Object>> listFuelNorms() {
+        return list("/api/v1/dictionaries/fuel-norms");
+    }
+
+    public List<Map<String, Object>> listCoefficients() {
+        return list("/api/v1/dictionaries/coefficients");
+    }
+
+    public List<Map<String, Object>> listTariffs() {
+        return list("/api/v1/dictionaries/tariffs");
+    }
+
+    private List<Map<String, Object>> list(String uri, Object... vars) {
+        List<Map<String, Object>> list = client.get().uri(uri, vars).retrieve().body(LIST_OF_MAPS);
+        return list == null ? List.of() : list;
+    }
+
     private Optional<Map<String, Object>> first(String uri, Object... vars) {
         List<Map<String, Object>> list = client.get().uri(uri, vars).retrieve().body(LIST_OF_MAPS);
         return list == null || list.isEmpty() ? Optional.empty() : Optional.of(list.get(0));

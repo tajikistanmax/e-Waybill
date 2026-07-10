@@ -16,6 +16,7 @@ export default function WaybillCard({ params }: { params: Promise<{ id: string }
   const [error, setError] = useState('');
   const [ok, setOk] = useState('');
   const [odometerEntry, setOdometerEntry] = useState('');
+  const [fuelCalc, setFuelCalc] = useState<Record<string, unknown> | null>(null);
 
   const reload = useCallback(async () => {
     const data = await wb.get(id);
@@ -173,6 +174,45 @@ export default function WaybillCard({ params }: { params: Promise<{ id: string }
           </button>
         )}
       </div>
+
+      {(w.status === 'RETURNED' || w.status === 'COMPLETED') && (
+        <div className="card">
+          <h2>Нормирование топлива</h2>
+          {!fuelCalc ? (
+            <button className="btn secondary" onClick={async () => {
+              try {
+                const { authHeaders } = await import('@/lib/api');
+                const r = await fetch(`/wb-api/api/v1/waybills/${id}/fuel-calculation`, { headers: authHeaders() });
+                if (!r.ok) {
+                  const p = await r.json().catch(() => null);
+                  throw new Error(p?.detail ?? `Ошибка ${r.status}`);
+                }
+                setFuelCalc(await r.json());
+              } catch (e) {
+                setError((e as Error).message);
+              }
+            }}>
+              Рассчитать норму расхода
+            </button>
+          ) : (
+            <dl className="kv">
+              <dt>Пробег</dt><dd>{String(fuelCalc.km)} км</dd>
+              <dt>Базовая норма</dt><dd>{String(fuelCalc.baseNormPer100km)} л/100км</dd>
+              <dt>Коэффициенты</dt>
+              <dd>{Array.isArray(fuelCalc.coefficientsApplied) && fuelCalc.coefficientsApplied.length
+                ? (fuelCalc.coefficientsApplied as Record<string, unknown>[]).map(c => `${c.name} ×${c.value}`).join(', ')
+                : 'не применялись'}</dd>
+              <dt>Норма</dt><dd><b>{String(fuelCalc.normLiters)} л</b></dd>
+              <dt>Факт (выдано)</dt><dd>{String(fuelCalc.factLiters)} л</dd>
+              <dt>Отклонение</dt>
+              <dd style={{ color: Number(fuelCalc.deviationLiters) > 0 ? 'var(--accent)' : 'var(--brand)' }}>
+                {Number(fuelCalc.deviationLiters) > 0 ? '+' : ''}{String(fuelCalc.deviationLiters)} л
+              </dd>
+              {fuelCalc.tripCost != null && <><dt>Стоимость рейса (нархнома)</dt><dd>{String(fuelCalc.tripCost)} сомони ({String(fuelCalc.tariffPerKm)} сомони/км)</dd></>}
+            </dl>
+          )}
+        </div>
+      )}
 
       {qrUrl && (
         <div className="card" style={{ textAlign: 'center' }}>

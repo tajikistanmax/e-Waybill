@@ -23,6 +23,7 @@ import tj.mintrans.epd.waybill.domain.WaybillType;
 import tj.mintrans.epd.waybill.repository.WaybillRepository;
 import tj.mintrans.epd.waybill.repository.WaybillStatusEventRepository;
 import tj.mintrans.epd.waybill.repository.WaybillTitleRepository;
+import tj.mintrans.epd.waybill.service.FuelCalculationService;
 import tj.mintrans.epd.waybill.service.QrTokenService;
 import tj.mintrans.epd.waybill.service.WaybillService;
 
@@ -40,16 +41,19 @@ public class WaybillController {
     private final WaybillTitleRepository titles;
     private final WaybillStatusEventRepository events;
     private final QrTokenService qr;
+    private final FuelCalculationService fuelCalculation;
     private final CurrentUser currentUser;
 
     public WaybillController(WaybillService service, WaybillRepository waybills,
                              WaybillTitleRepository titles, WaybillStatusEventRepository events,
-                             QrTokenService qr, CurrentUser currentUser) {
+                             QrTokenService qr, FuelCalculationService fuelCalculation,
+                             CurrentUser currentUser) {
         this.service = service;
         this.waybills = waybills;
         this.titles = titles;
         this.events = events;
         this.qr = qr;
+        this.fuelCalculation = fuelCalculation;
         this.currentUser = currentUser;
     }
 
@@ -218,6 +222,12 @@ public class WaybillController {
     public List<WaybillStatusEvent> statusHistory(@PathVariable UUID id) {
         service.get(id);
         return events.findByWaybillIdOrderByCreatedAt(id);
+    }
+
+    /** Нормативный расход топлива и стоимость рейса (доступно после возврата, Т5). */
+    @GetMapping("/{id}/fuel-calculation")
+    public FuelCalculationService.FuelCalculation fuelCalculation(@PathVariable UUID id) {
+        return fuelCalculation.calculate(service.get(id));
     }
 
     /** Подписанная QR-нагрузка (JWS) — её кодирует в QR мобильное приложение водителя. */
