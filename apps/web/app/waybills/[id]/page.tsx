@@ -1,0 +1,194 @@
+'use client';
+
+import { use, useCallback, useEffect, useState } from 'react';
+import { md, wb, Waybill, Title, StatusEvent, STATUS_LABELS, TYPE_LABELS } from '@/lib/api';
+import QRCode from 'qrcode';
+
+type Employees = { doctors: { rma: string; name: string }[]; mechanics: { rma: string; name: string }[]; dispatchers: { rma: string; name: string }[] };
+
+export default function WaybillCard({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = use(params);
+  const [w, setW] = useState<Waybill | null>(null);
+  const [titles, setTitles] = useState<Title[]>([]);
+  const [history, setHistory] = useState<StatusEvent[]>([]);
+  const [emp, setEmp] = useState<Employees>({ doctors: [], mechanics: [], dispatchers: [] });
+  const [qrUrl, setQrUrl] = useState('');
+  const [error, setError] = useState('');
+  const [ok, setOk] = useState('');
+  const [odometerEntry, setOdometerEntry] = useState('');
+
+  const reload = useCallback(async () => {
+    const data = await wb.get(id);
+    setW(data);
+    setTitles(await wb.titles(id));
+    setHistory(await wb.history(id));
+    if (data.number) {
+      try {
+        const { jws } = await wb.qr(id);
+        setQrUrl(await QRCode.toDataURL(jws, { width: 220, margin: 1 }));
+      } catch { /* QR доступен с READY */ }
+    }
+    const list = await md.employees(data.organizationRma);
+    setEmp({
+      doctors: list.filter(e => e.type === 1).map(e => ({ rma: String(e.rma), name: String(e.name) })),
+      mechanics: list.filter(e => e.type === 2).map(e => ({ rma: String(e.rma), name: String(e.name) })),
+      dispatchers: list.filter(e => e.type === 3).map(e => ({ rma: String(e.rma), name: String(e.name) })),
+    });
+  }, [id]);
+
+  useEffect(() => { reload().catch(e => setError(e.message)); }, [reload]);
+
+  async function act(label: string, fn: () => Promise<unknown>) {
+    setError(''); setOk('');
+    try {
+      await fn();
+      setOk(label + ' — выполнено');
+      await reload();
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  }
+
+  if (!w) return error ? <div className="error">{error}</div> : <p>Загрузка…</p>;
+
+  const s = STATUS_LABELS[w.status] ?? { label: w.status, color: 'gray' };
+  const dispatcher = emp.dispatchers[0]?.rma;
+  const doctor = emp.doctors[0]?.rma;
+  const mechanic = emp.mechanics[0]?.rma;
+
+  return (
+    <>
+      <div className="toolbar">
+        <h1>Путевой лист {w.number ? <span className="number">{w.number}</span> : '(без номера)'}</h1>
+        <span className="spacer" />
+        <span className={`badge ${s.color}`}>{s.label}</span>
+      </div>
+      {error && <div className="error">{error}</div>}
+      {ok && <div className="success">{ok}</div>}
+
+      <div className="card">
+        <h2>Сведения</h2>
+        <dl className="kv">
+          <dt>Тип</dt><dd>{TYPE_LABELS[w.waybillType] ?? w.waybillType}</dd>
+          <dt>Организация</dt><dd>{String(w.organizationSnapshot?.name ?? w.organizationRma)}</dd>
+          <dt>Транспортное средство</dt><dd>{String(w.vehicleSnapshot?.brand ?? '')} {w.vehicleRegNumber}</dd>
+          <dt>Водитель</dt><dd>{String(w.driverSnapshot?.fullName ?? w.driverRma)}</dd>
+          <dt>Маршрут / график</dt><dd>{w.route ?? '—'} / {w.schedule ?? '—'}</dd>
+          <dt>Срок действия</dt><dd>{w.validFrom ? new Date(w.validFrom).toLocaleString('ru-RU') : '—'} → {w.validTo ? new Date(w.validTo).toLocaleString('ru-RU') : '—'}</dd>
+          <dt>Медосмотр / техконтроль</dt>
+          <dd>
+            <span className={`badge ${w.medPassed ? 'green' : 'gray'}`}>Т2 {w.medPassed ? '✓' : '…'}</span>{' '}
+            <span className={`badge ${w.techPassed ? 'green' : 'gray'}`}>Т3 {w.techPassed ? '✓' : '…'}</span>
+          </dd>
+          <dt>Одометр (выезд → возврат)</dt><dd>{w.odometerExit ?? '—'} → {w.odometerEntry ?? '—'}</dd>
+        </dl>
+      </div>
+
+      <div className="card">
+        <h2>Действия</h2>
+        {w.status === 'DRAFT' && (
+          <button className="btn" disabled={!dispatcher}
+            onClick={() => act('Т1 подписан', () => wb.post(`/${id}/titles/t1`, { dispatcherRma: dispatcher }))}>
+            Подписать Т1 (диспетчер {emp.dispatchers[0]?.name ?? '—'})
+          </button>
+        )}
+        {w.status === 'CREATED' && !w.medPassed && (
+          <button className="btn" disabled={!doctor}
+            onClick={() => act('Медосмотр пройден', () => wb.post(`/${id}/confirm-med`, {
+              employeeRma: doctor, passed: true,
+              indicators: { pressure: '120/80', pulse: 72, temperature: 36.6, alcotest: 0 },
+            }))}>
+            Т2 — медосмотр (врач {emp.doctors[0]?.name ?? '—'})
+          </button>
+        )}
+        {w.status === 'CREATED' && !w.techPassed && (
+          <button className="btn" disabled={!mechanic}
+            onClick={() => act('Техконтроль пройден', () => wb.post(`/${id}/confirm-tech`, {
+              employeeRma: mechanic, passed: true,
+              checklist: { brakes: 'OK', steering: 'OK', lights: 'OK' },
+            }))}>
+            Т3 — техконтроль (механик {emp.mechanics[0]?.name ?? '—'})
+          </button>
+        )}
+        {w.status === 'READY' && (
+          <button className="btn" onClick={() => act('Выдан водителю', () => wb.post(`/${id}/issue`, { driverConfirmation: 'PIN' }))}>
+            Выдать водителю
+          </button>
+        )}
+        {w.status === 'ISSUED' && (
+          <button className="btn" disabled={!dispatcher}
+            onClick={() => act('Выезд на линию', () => wb.post(`/${id}/activate`, { dispatcherRma: dispatcher }))}>
+            Т4 — выезд на линию
+          </button>
+        )}
+        {w.status === 'ACTIVE' && (
+          <span>
+            <input style={{ width: 180, marginRight: 8, display: 'inline-block' }} placeholder="Одометр возврата"
+              value={odometerEntry} onChange={e => setOdometerEntry(e.target.value)} />
+            <button className="btn" disabled={!dispatcher || !odometerEntry}
+              onClick={() => act('Возвращение', () => wb.post(`/${id}/return`, { dispatcherRma: dispatcher, odometerEntry: Number(odometerEntry) }))}>
+              Т5 — возвращение
+            </button>
+          </span>
+        )}
+        {w.status === 'RETURNED' && (
+          <>
+            <button className="btn secondary" disabled={!doctor}
+              onClick={() => act('Т6 подписан', () => wb.post(`/${id}/confirm-med`, {
+                employeeRma: doctor, passed: true, indicators: { pressure: '125/82', pulse: 74, alcotest: 0 },
+              }))}>
+              Т6 — послерейсовый медосмотр
+            </button>
+            <button className="btn" onClick={() => act('Закрыт', () => wb.post(`/${id}/close`, { actor: dispatcher }))}>
+              Закрыть путевой лист
+            </button>
+          </>
+        )}
+        {!['COMPLETED', 'CANCELLED', 'EXPIRED', 'ARCHIVED'].includes(w.status) && (
+          <button className="btn danger"
+            onClick={() => act('Аннулирован', () => wb.post(`/${id}/cancel`, { reason: 'Отмена диспетчером', actor: dispatcher ?? 'dispatcher' }))}>
+            Аннулировать
+          </button>
+        )}
+      </div>
+
+      {qrUrl && (
+        <div className="card" style={{ textAlign: 'center' }}>
+          <h2>QR-код для дорожного контроля</h2>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={qrUrl} alt="QR путевого листа" />
+          <p style={{ color: 'var(--muted)', fontSize: 13 }}>
+            Инспектор проверяет подпись офлайн — без доступа к сети
+          </p>
+        </div>
+      )}
+
+      <div className="card">
+        <h2>Титулы</h2>
+        <ul className="timeline">
+          {titles.map(t => (
+            <li key={t.id}>
+              <b>{t.titleType}</b> — {t.signerRole} ({t.signerRma})
+              <div className="when">{new Date(t.signedAt).toLocaleString('ru-RU')}</div>
+            </li>
+          ))}
+          {titles.length === 0 && <li>Титулы ещё не подписаны</li>}
+        </ul>
+      </div>
+
+      <div className="card">
+        <h2>История статусов</h2>
+        <ul className="timeline">
+          {history.map((h, i) => (
+            <li key={i}>
+              {h.fromStatus ? `${STATUS_LABELS[h.fromStatus]?.label ?? h.fromStatus} → ` : ''}
+              <b>{STATUS_LABELS[h.toStatus]?.label ?? h.toStatus}</b>
+              {h.reason ? ` — ${h.reason}` : ''}
+              <div className="when">{new Date(h.createdAt).toLocaleString('ru-RU')} · {h.actor}</div>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </>
+  );
+}

@@ -81,8 +81,8 @@ public class WaybillService {
         return saved;
     }
 
-    /** Блокирующие проверки перед выдачей (checks.yaml, подмножество этапа 1а). */
-    private void runBlockingChecks(Map<String, Object> org, Map<String, Object> driver, Map<String, Object> vehicle) {
+    /** Блокирующие проверки перед выдачей (checks.yaml, подмножество этапа 1а). Package-private: переиспользуется AggregatorService. */
+    void runBlockingChecks(Map<String, Object> org, Map<String, Object> driver, Map<String, Object> vehicle) {
         String orgId = str(org.get("id"));
         if (!orgId.equals(str(driver.get("organizationId")))) {
             throw new UnprocessableException("Водитель не принадлежит организации");
@@ -304,7 +304,8 @@ public class WaybillService {
         return employee;
     }
 
-    private void addTitle(Waybill wb, String titleType, String signerRma, String signerRole, Map<String, Object> data) {
+    /** Package-private: переиспользуется AggregatorService. */
+    void addTitle(Waybill wb, String titleType, String signerRma, String signerRole, Map<String, Object> data) {
         var title = new WaybillTitle();
         title.setWaybillId(wb.getId());
         title.setTitleType(titleType);
@@ -316,7 +317,8 @@ public class WaybillService {
         titles.save(title);
     }
 
-    private void transition(Waybill wb, WaybillStatus to, String actor, String reason) {
+    /** Package-private: переиспользуется AggregatorService. */
+    void transition(Waybill wb, WaybillStatus to, String actor, String reason) {
         var from = wb.getStatus();
         wb.setStatus(to);
         events.save(WaybillStatusEvent.of(wb.getId(), from, to, actor, reason));
