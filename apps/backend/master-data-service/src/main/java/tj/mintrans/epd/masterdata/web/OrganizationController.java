@@ -1,0 +1,85 @@
+package tj.mintrans.epd.masterdata.web;
+
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Pattern;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+import tj.mintrans.epd.masterdata.domain.Organization;
+import tj.mintrans.epd.masterdata.repository.OrganizationRepository;
+import tj.mintrans.epd.masterdata.web.error.NotFoundException;
+
+import java.time.LocalDate;
+import java.util.List;
+import java.util.UUID;
+
+/**
+ * Организации-перевозчики. Upsert по РМА (legacy-семантика rohkhat.tj).
+ */
+@RestController
+@RequestMapping("/api/v1/organizations")
+public class OrganizationController {
+
+    private final OrganizationRepository repository;
+
+    public OrganizationController(OrganizationRepository repository) {
+        this.repository = repository;
+    }
+
+    public record OrganizationRequest(
+            @NotBlank @Pattern(regexp = "\\d{9,10}", message = "РМА должен содержать 9–10 цифр") String rma,
+            String kpp,
+            @NotBlank String name,
+            Short typeCompany,
+            Short regionId,
+            String cityName,
+            String address,
+            String phone,
+            String email,
+            String nameHead,
+            String bank,
+            LocalDate licenseFrom,
+            LocalDate licenseTo) {
+    }
+
+    @PostMapping
+    public ResponseEntity<Organization> upsert(@Valid @RequestBody OrganizationRequest req) {
+        var existing = repository.findByRma(req.rma());
+        var org = existing.orElseGet(Organization::new);
+        org.setRma(req.rma());
+        org.setKpp(req.kpp());
+        org.setName(req.name());
+        if (req.typeCompany() != null) org.setTypeCompany(req.typeCompany());
+        org.setRegionId(req.regionId());
+        org.setCityName(req.cityName());
+        org.setAddress(req.address());
+        org.setPhone(req.phone());
+        org.setEmail(req.email());
+        org.setNameHead(req.nameHead());
+        org.setBank(req.bank());
+        org.setLicenseFrom(req.licenseFrom());
+        org.setLicenseTo(req.licenseTo());
+        var saved = repository.save(org);
+        return ResponseEntity.status(existing.isPresent() ? HttpStatus.OK : HttpStatus.CREATED).body(saved);
+    }
+
+    @GetMapping
+    public List<Organization> list(@RequestParam(required = false) String rma) {
+        if (rma != null) {
+            return repository.findByRma(rma).map(List::of).orElseGet(List::of);
+        }
+        return repository.findAll();
+    }
+
+    @GetMapping("/{id}")
+    public Organization get(@PathVariable UUID id) {
+        return repository.findById(id).orElseThrow(() -> new NotFoundException("Организация не найдена"));
+    }
+}

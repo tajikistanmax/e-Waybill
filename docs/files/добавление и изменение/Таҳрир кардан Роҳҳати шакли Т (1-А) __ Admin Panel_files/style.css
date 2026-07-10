@@ -1,0 +1,99 @@
+body {
+  font-size: .9rem;
+}
+
+.main .container-fluid {
+  padding: 0 30px;
+}
+
+.app-header.bg-light .navbar-brand {
+  width: 210px;
+}
+
+.h2,
+h2 {
+  font-size: 1.3rem;
+}
+
+h1 small,
+h2 small,
+h3 small,
+h4 small,
+h5 small {
+  font-size: .9rem;
+}
+
+.table td {
+  padding: .1rem 1rem;
+}
+
+.btn-group-sm>.btn,
+.btn-sm {
+  padding: .20rem .35rem;
+}
+
+.dataTables_wrapper .dataTables_filter input,
+.dataTables_wrapper .dataTables_length select,
+.form-control {
+  border: 1px solid #161c2d;
+}
+
+.select2-container--bootstrap .select2-selection {
+  border: 1px solid rgba(23, 29, 46, 1) !important;
+}
+
+.dt-buttons {
+  float: left;
+}
+
+#reports {
+  padding: 0 .4rem;
+}
+
+#reports {
+  overflow-x: scroll;
+  /* max-width: 40%; */
+  display: block;
+  /*white-space: nowrap;*/
+}
+
+#reports thead th {
+  vertical-align: middle;
+  font-size: inherit;
+  text-align: center;
+  border-top: 1px solid #dce1e9;
+}
+
+#reports td {
+  text-align: center;
+}
+
+@media print {
+  .header-print {
+    display: table-header-group;
+  }
+}
+
+
+.total-row-1 td {
+  /* text-align: center; */
+  background-color: #c5f5f5;
+  font-weight: bold;
+}
+
+.total-row-2 td {
+  /* text-align: center; */
+  background-color: #bce6b3;
+  font-weight: bold;
+}
+
+.total-row-3 td {
+  /* text-align: center; */
+  background-color: #e2f7f7;
+  font-weight: bold;
+}
+
+.th-center-table th {
+  border: 1px solid rgba(0, 40, 100, .12) !important;
+  text-align: center;
+}

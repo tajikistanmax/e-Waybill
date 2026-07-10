@@ -1,0 +1,30 @@
+# Java / Gradle
+apps/backend/**/build/
+apps/backend/.gradle/
+*.class
+
+# Node / Next.js
+node_modules/
+.next/
+out/
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Env / secrets
+.env
+.env.*
+*.local
+
+# Docker volumes
+infra/.data/
+
+# Временные
+*.log
+*.tmp

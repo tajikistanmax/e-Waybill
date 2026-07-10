@@ -1,0 +1,36 @@
+stateDiagram-v2
+    direction TB
+    [*] --> DRAFT : Диспетчер создаёт
+    DRAFT --> CREATED : Подписание Т1
+    DRAFT --> CANCELLED : Отмена черновика
+    CREATED --> AWAITING_MED : заявка врачу
+    CREATED --> AWAITING_TECH : заявка механику
+    AWAITING_MED --> MED_PASSED : Т2 — допущен
+    AWAITING_MED --> MED_REJECTED : не допущен
+    MED_REJECTED --> CREATED : замена водителя
+    MED_REJECTED --> CANCELLED : аннулирование
+    AWAITING_TECH --> TECH_PASSED : Т3 — исправно
+    AWAITING_TECH --> TECH_REJECTED : неисправно
+    TECH_REJECTED --> CREATED : замена ТС
+    TECH_REJECTED --> CANCELLED : аннулирование
+    state ready_gate <<join>>
+    MED_PASSED --> ready_gate
+    TECH_PASSED --> ready_gate
+    ready_gate --> AWAITING_PAYMENT : требуется оплата
+    ready_gate --> READY : оплата не требуется
+    AWAITING_PAYMENT --> PAID : оплата подтверждена
+    PAID --> READY : номер + QR
+    READY --> ISSUED : водитель подтвердил (Face ID/PIN)
+    READY --> EXPIRED : не выдан в срок
+    ISSUED --> ACTIVE : Т4 — одометр/топливо, выезд
+    ACTIVE --> ACTIVE : work_day (многодневный)
+    ACTIVE --> RETURNED : Т5 — возврат
+    ACTIVE --> BLOCKED : нарушение (инспектор)
+    ACTIVE --> EXPIRED : срок истёк
+    BLOCKED --> ACTIVE : разблокировка (Минтранс)
+    BLOCKED --> CANCELLED : аннулирование
+    RETURNED --> COMPLETED : Т6 (если требуется) / закрытие
+    COMPLETED --> ARCHIVED : ретенция
+    CANCELLED --> [*]
+    EXPIRED --> [*]
+    ARCHIVED --> [*]

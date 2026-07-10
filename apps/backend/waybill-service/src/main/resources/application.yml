@@ -1,0 +1,30 @@
+server:
+  port: 8082
+
+spring:
+  application:
+    name: waybill-service
+  datasource:
+    url: jdbc:postgresql://localhost:5442/waybill
+    username: epd
+    password: epd_dev_password
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+  flyway:
+    enabled: true
+
+epd:
+  master-data:
+    base-url: http://localhost:8081
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics

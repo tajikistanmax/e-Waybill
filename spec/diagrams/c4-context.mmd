@@ -1,0 +1,61 @@
+flowchart TB
+    subgraph Пользователи
+        K[Кабинеты: компания,
+диспетчер, врач, механик,
+бухгалтер — Web/Next.js]
+        MOB[Мобильные: водитель,
+медик/механик, инспектор — Flutter]
+        AGG[Агрегаторы
+ЧУРА, НЕРУ — API]
+    end
+
+    subgraph ЭПД["Платформа ЭПД РТ (госЦОД, Kubernetes)"]
+        GW[API Gateway]
+        WB[Waybill Service]
+        MED[Medical Check]
+        TECH[Technical Check]
+        PAY[Billing/Payment]
+        QR[QR Verification
+публичный, stateless]
+        CRYPTO[Crypto/Signature]
+        INT[Integration Gateway]
+        AUD[Audit]
+        REP[Reports/Analytics]
+        NOTIF[Notifications]
+        KAFKA[(Kafka)]
+        PG[(PostgreSQL)]
+        S3[(MinIO)]
+    end
+
+    subgraph Внешние
+        UP[Единая платформа Минтранса
+реестры: ЮЛ, водители, ТС,
+лицензии, карточки]
+        EP[E-PERMIT
+дозволы + биллинг]
+        UC[Национальный УЦ
+ЭЦП, Закон №1965]
+        GAI[МВД/ГАИ]
+        TAX[Налоговый комитет]
+        PAYG[Корти милли,
+банки, кошельки]
+        CAM[Камеры NERU]
+        ETIR[eTIR / eCMR]
+        SMS[SMS-шлюзы]
+        STAT[Агентство статистики]
+    end
+
+    K --> GW
+    MOB --> GW
+    AGG --> GW
+    MOB -. офлайн-проверка QR
+(JWKS, без сети) .-> QR
+    GW --> WB & MED & TECH & PAY & QR & REP
+    WB --> KAFKA --> AUD & NOTIF & REP
+    WB --> PG
+    WB --> CRYPTO --> UC
+    WB --> S3
+    INT --> UP & EP & GAI & TAX & ETIR & CAM & STAT
+    WB --> INT
+    PAY --> EP & PAYG
+    NOTIF --> SMS
