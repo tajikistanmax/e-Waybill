@@ -12,6 +12,7 @@
       { "name": "SYSTEM_ADMIN", "description": "Администратор системы (ГУП ЦЦТО)" },
       { "name": "INSPECTOR", "description": "Инспектор дорожного контроля" },
       { "name": "ACCOUNTANT", "description": "Бухгалтер (Муҳосиб) — подтверждение оплаты" },
+      { "name": "DRIVER", "description": "Водитель (Ронанда) — просмотр своих ПЛ и предъявление QR" },
       { "name": "API_INTEGRATOR", "description": "Агрегатор/интегратор (ЧУРА, НЕРУ) — scoped API-доступ" }
     ]
   },
@@ -87,14 +88,14 @@
   ],
   "users": [
     {
-      "username": "dispatcher@epd.tj",
+      "username": "dispatcher",
       "email": "dispatcher@epd.tj",
       "firstName": "Диспетчер",
       "lastName": "Тестовый",
       "enabled": true,
       "emailVerified": true,
       "credentials": [
-        { "type": "password", "value": "epd123", "temporary": false }
+        { "type": "password", "value": "dispatcher", "temporary": false }
       ],
       "realmRoles": ["DISPATCHER"],
       "attributes": {
@@ -103,14 +104,14 @@
       }
     },
     {
-      "username": "doctor@epd.tj",
+      "username": "doctor",
       "email": "doctor@epd.tj",
       "firstName": "Духтур",
       "lastName": "Тестовый",
       "enabled": true,
       "emailVerified": true,
       "credentials": [
-        { "type": "password", "value": "epd123", "temporary": false }
+        { "type": "password", "value": "doctor", "temporary": false }
       ],
       "realmRoles": ["DOCTOR"],
       "attributes": {
@@ -119,14 +120,14 @@
       }
     },
     {
-      "username": "mechanic@epd.tj",
+      "username": "mechanic",
       "email": "mechanic@epd.tj",
       "firstName": "Механик",
       "lastName": "Тестовый",
       "enabled": true,
       "emailVerified": true,
       "credentials": [
-        { "type": "password", "value": "epd123", "temporary": false }
+        { "type": "password", "value": "mechanic", "temporary": false }
       ],
       "realmRoles": ["MECHANIC"],
       "attributes": {
@@ -135,14 +136,14 @@
       }
     },
     {
-      "username": "accountant@epd.tj",
+      "username": "accountant",
       "email": "accountant@epd.tj",
       "firstName": "Бухгалтер",
       "lastName": "Тестовый",
       "enabled": true,
       "emailVerified": true,
       "credentials": [
-        { "type": "password", "value": "epd123", "temporary": false }
+        { "type": "password", "value": "accountant", "temporary": false }
       ],
       "realmRoles": ["ACCOUNTANT"],
       "attributes": {
@@ -151,18 +152,34 @@
       }
     },
     {
-      "username": "admin@epd.tj",
+      "username": "admin",
       "email": "admin@epd.tj",
       "firstName": "Администратор",
       "lastName": "Тестовый",
       "enabled": true,
       "emailVerified": true,
       "credentials": [
-        { "type": "password", "value": "epd123", "temporary": false }
+        { "type": "password", "value": "admin", "temporary": false }
       ],
       "realmRoles": ["COMPANY_ADMIN", "SYSTEM_ADMIN"],
       "attributes": {
         "rma": ["025680800"],
+        "organizationRma": ["025680800"]
+      }
+    },
+    {
+      "username": "driver",
+      "email": "driver@epd.tj",
+      "firstName": "Ронанда",
+      "lastName": "Тестовый",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        { "type": "password", "value": "driver", "temporary": false }
+      ],
+      "realmRoles": ["DRIVER"],
+      "attributes": {
+        "rma": ["555555555"],
         "organizationRma": ["025680800"]
       }
     }

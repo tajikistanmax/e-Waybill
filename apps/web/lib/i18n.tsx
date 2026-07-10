@@ -20,6 +20,7 @@ const DICT: Record<string, { ru: string; tj: string }> = {
   'nav.group.management': { ru: 'Управление', tj: 'Идоракунӣ' },
   'nav.med': { ru: 'АРМ врача', tj: 'Ҷои кории духтур' },
   'nav.tech': { ru: 'АРМ механика', tj: 'Ҷои кории механик' },
+  'nav.driver': { ru: 'Мои путевые листы', tj: 'Роҳхатҳои ман' },
   'nav.company': { ru: 'Компания', tj: 'Корхона' },
   'nav.reports': { ru: 'Отчёты и аналитика', tj: 'Ҳисобот ва таҳлил' },
   'nav.dictionaries': { ru: 'Справочники', tj: 'Маълумотномаҳо' },
@@ -33,6 +34,7 @@ const DICT: Record<string, { ru: string; tj: string }> = {
   'role.ACCOUNTANT': { ru: 'Бухгалтер', tj: 'Муҳосиб' },
   'role.COMPANY_ADMIN': { ru: 'Администратор', tj: 'Маъмур' },
   'role.INSPECTOR': { ru: 'Инспектор', tj: 'Нозир' },
+  'role.DRIVER': { ru: 'Водитель', tj: 'Ронанда' },
 
   // Вход
   'login.h': { ru: 'Электронный путевой лист', tj: 'Роҳхати электронӣ' },

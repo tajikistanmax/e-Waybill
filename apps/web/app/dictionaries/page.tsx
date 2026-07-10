@@ -2,16 +2,17 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { authHeaders } from '@/lib/api';
+import { Icon, P } from '../icons';
 
 type Row = Record<string, unknown>;
 type Tab = 'routes' | 'clients' | 'fuel-norms' | 'coefficients' | 'tariffs';
 
-const TABS: { key: Tab; label: string }[] = [
-  { key: 'routes', label: 'Маршруты (хатсайрҳо)' },
-  { key: 'clients', label: 'Клиенты (мизоҷҳо)' },
-  { key: 'fuel-norms', label: 'Нормы расхода' },
-  { key: 'coefficients', label: 'Коэффициенты' },
-  { key: 'tariffs', label: 'Нархнома' },
+const SECTIONS: { key: Tab; label: string; desc: string; icon: string; cls: string }[] = [
+  { key: 'routes', label: 'Маршруты', desc: 'Хатсайрҳо', icon: P.route, cls: 'ic-blue' },
+  { key: 'clients', label: 'Клиенты', desc: 'Мизоҷҳо', icon: P.building, cls: 'ic-cyan' },
+  { key: 'fuel-norms', label: 'Нормы расхода', desc: 'л/100 км', icon: P.car, cls: 'ic-purple' },
+  { key: 'coefficients', label: 'Коэффициенты', desc: 'Множители расхода', icon: P.chart, cls: 'ic-amber' },
+  { key: 'tariffs', label: 'Нархнома', desc: 'Тарифы, сомони/км', icon: P.doc, cls: 'ic-green' },
 ];
 
 const TT: Record<number, string> = { 1: 'Автобус', 2: 'Троллейбус', 3: 'Микроавтобус', 4: 'Легковой', 5: 'Грузовой', 6: 'Грузовой межд.' };
@@ -73,19 +74,48 @@ export default function DictionariesPage() {
     </select>
   );
 
+  const active = SECTIONS.find(s => s.key === tab);
+
   return (
     <>
-      <h1>Справочники (НСИ)</h1>
-      <div className="toolbar" style={{ flexWrap: 'wrap' }}>
-        {TABS.map(x => (
-          <button key={x.key} className={`btn ${tab === x.key ? '' : 'secondary'}`} onClick={() => setTab(x.key)}>{x.label}</button>
-        ))}
+      <div className="toolbar">
+        <div>
+          <h1>Справочники</h1>
+          <div className="page-lead" style={{ margin: 0 }}>Нормативно-справочная информация платформы (НСИ, маълумотномаҳо)</div>
+        </div>
       </div>
       {error && <div className="error">{error}</div>}
       {ok && <div className="success">{ok}</div>}
 
-      <div className="card" style={{ borderColor: 'var(--brand)' }}>
-        <h2>Добавить / обновить</h2>
+      {/* Разделы справочников — карточки-переключатели */}
+      <div className="kpi-row" style={{ gridTemplateColumns: 'repeat(5, 1fr)' }}>
+        {SECTIONS.map(s => {
+          const sel = s.key === tab;
+          return (
+            <button
+              key={s.key}
+              onClick={() => setTab(s.key)}
+              className="kpi"
+              style={{
+                cursor: 'pointer', textAlign: 'left', gap: 12, fontFamily: 'inherit',
+                border: sel ? '1.5px solid var(--blue-500)' : '1px solid var(--line)',
+                boxShadow: sel ? '0 6px 16px -6px rgba(37,99,235,.4)' : 'var(--shadow-sm)',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <span className={`k-ic ${s.cls}`}><Icon d={s.icon} cls="" /></span>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontWeight: 700, fontSize: 13.5, color: sel ? 'var(--blue-700)' : 'var(--ink)' }}>{s.label}</div>
+                  <div style={{ fontSize: 11.5, color: 'var(--muted)' }}>{s.desc}</div>
+                </div>
+              </div>
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="card" style={{ borderColor: 'var(--blue-500)' }}>
+        <h2>{active ? `${active.label}: добавить / обновить` : 'Добавить / обновить'}</h2>
         <form className="grid" onSubmit={submit}>
           {tab === 'routes' && <>
             <div><label>Номер</label><input required {...f('number')} placeholder="3" /></div>
@@ -127,6 +157,10 @@ export default function DictionariesPage() {
       </div>
 
       <div className="card">
+        <div className="card-h">
+          <h2>{active ? active.label : 'Записи'}</h2>
+          <span style={{ marginLeft: 'auto', color: 'var(--muted)', fontSize: 12.5 }}>Всего записей: {rows.length}</span>
+        </div>
         <table>
           <thead>
             {tab === 'routes' && <tr><th>Номер</th><th>Название</th><th>Тип ТС</th><th>Регион</th></tr>}
@@ -138,11 +172,11 @@ export default function DictionariesPage() {
           <tbody>
             {rows.map((r, i) => (
               <tr key={String(r.id ?? i)}>
-                {tab === 'routes' && <><td>{String(r.number)}</td><td>{String(r.name)}</td><td>{TT[Number(r.transportType)] ?? '—'}</td><td>{String(r.regionId ?? '—')}</td></>}
-                {tab === 'clients' && <><td>{String(r.number ?? '—')}</td><td>{String(r.name)}</td><td>{String(r.address ?? '—')}</td><td>{String(r.phone ?? '—')}</td></>}
-                {tab === 'fuel-norms' && <><td>{TT[Number(r.transportType)] ?? r.transportType}</td><td>{String(r.brand ?? 'все')}</td><td>{String(r.baseNorm)}</td></>}
-                {tab === 'coefficients' && <><td>{KIND[String(r.kind)] ?? String(r.kind)}</td><td>{String(r.name)}</td><td>{String(r.value)}</td><td>{String(r.regionId ?? '—')}</td><td>{r.monthFrom ? `${r.monthFrom}–${r.monthTo}` : '—'}</td></>}
-                {tab === 'tariffs' && <><td>{TT[Number(r.transportType)] ?? r.transportType}</td><td>{String(r.fuelType ?? 'любой')}</td><td>{String(r.pricePerKm)}</td></>}
+                {tab === 'routes' && <><td><span className="number">{String(r.number)}</span></td><td style={{ fontWeight: 600, color: 'var(--ink)' }}>{String(r.name)}</td><td>{TT[Number(r.transportType)] ?? '—'}</td><td>{String(r.regionId ?? '—')}</td></>}
+                {tab === 'clients' && <><td><span className="number">{String(r.number ?? '—')}</span></td><td style={{ fontWeight: 600, color: 'var(--ink)' }}>{String(r.name)}</td><td>{String(r.address ?? '—')}</td><td>{String(r.phone ?? '—')}</td></>}
+                {tab === 'fuel-norms' && <><td>{TT[Number(r.transportType)] ?? r.transportType}</td><td>{String(r.brand ?? 'все')}</td><td><b>{String(r.baseNorm)}</b></td></>}
+                {tab === 'coefficients' && <><td>{KIND[String(r.kind)] ?? String(r.kind)}</td><td style={{ fontWeight: 600, color: 'var(--ink)' }}>{String(r.name)}</td><td><b>{String(r.value)}</b></td><td>{String(r.regionId ?? '—')}</td><td>{r.monthFrom ? `${r.monthFrom}–${r.monthTo}` : '—'}</td></>}
+                {tab === 'tariffs' && <><td>{TT[Number(r.transportType)] ?? r.transportType}</td><td>{String(r.fuelType ?? 'любой')}</td><td><b>{String(r.pricePerKm)}</b></td></>}
               </tr>
             ))}
             {rows.length === 0 && <tr><td colSpan={5} style={{ textAlign: 'center', color: 'var(--muted)', padding: 20 }}>Записей нет</td></tr>}

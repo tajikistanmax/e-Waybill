@@ -99,11 +99,25 @@ async function handle<T>(res: Response): Promise<T> {
   return res.json();
 }
 
+function mdPost(path: string, body: unknown) {
+  return fetch(`/md-api/api/v1/${path}`, {
+    method: 'POST',
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(body),
+  }).then(r => handle<Record<string, unknown>>(r));
+}
+
 export const md = {
   organizations: () => fetch('/md-api/api/v1/organizations', { headers: authHeaders() }).then(r => handle<Record<string, unknown>[]>(r)),
   drivers: (orgRma: string) => fetch(`/md-api/api/v1/drivers?organizationRma=${orgRma}`, { headers: authHeaders() }).then(r => handle<Record<string, unknown>[]>(r)),
   vehicles: (orgRma: string) => fetch(`/md-api/api/v1/vehicles?organizationRma=${orgRma}`, { headers: authHeaders() }).then(r => handle<Record<string, unknown>[]>(r)),
   employees: (orgRma: string) => fetch(`/md-api/api/v1/employees?organizationRma=${orgRma}`, { headers: authHeaders() }).then(r => handle<Record<string, unknown>[]>(r)),
+  // Прямое создание/обновление (upsert) записей справочника — полный ручной ввод всех полей.
+  // Соответствует POST /organizations|/drivers|/vehicles|/employees (роль SYSTEM_ADMIN / API_INTEGRATOR).
+  createOrganization: (body: Record<string, unknown>) => mdPost('organizations', body),
+  createDriver: (body: Record<string, unknown>) => mdPost('drivers', body),
+  createVehicle: (body: Record<string, unknown>) => mdPost('vehicles', body),
+  createEmployee: (body: Record<string, unknown>) => mdPost('employees', body),
 };
 
 export type Payment = {
