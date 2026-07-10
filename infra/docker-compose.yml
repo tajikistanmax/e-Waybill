@@ -47,13 +47,15 @@ services:
   keycloak:
     image: quay.io/keycloak/keycloak:26.0
     container_name: epd-keycloak
-    command: start-dev
+    command: start-dev --import-realm
     environment:
       KC_BOOTSTRAP_ADMIN_USERNAME: admin
       KC_BOOTSTRAP_ADMIN_PASSWORD: admin_dev_password
       KC_HTTP_PORT: 8180
     ports:
       - "8180:8180"
+    volumes:
+      - ./keycloak:/opt/keycloak/data/import:ro
 
   minio:
     image: minio/minio:latest

@@ -6,6 +6,7 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -102,6 +103,7 @@ public class WaybillController {
     // ------------------------------------------------------------- жизненный цикл
 
     @PostMapping
+    @PreAuthorize("hasAnyRole('DISPATCHER','SYSTEM_ADMIN')")
     public ResponseEntity<Waybill> create(@Valid @RequestBody CreateRequest req) {
         var wb = service.create(req.waybillType(), req.organizationRma(), req.vehicleRegNumber(),
                 req.driverRma(), req.communicationType(), req.route(), req.schedule(), req.specialMark());
@@ -109,41 +111,49 @@ public class WaybillController {
     }
 
     @PostMapping("/{id}/titles/t1")
+    @PreAuthorize("hasAnyRole('DISPATCHER','SYSTEM_ADMIN')")
     public Waybill signT1(@PathVariable UUID id, @Valid @RequestBody SignT1Request req) {
         return service.signT1(id, req.dispatcherRma(), req.validFrom(), req.validityDays());
     }
 
     @PostMapping("/{id}/confirm-med")
+    @PreAuthorize("hasAnyRole('DOCTOR','SYSTEM_ADMIN')")
     public Waybill confirmMed(@PathVariable UUID id, @Valid @RequestBody MedRequest req) {
         return service.confirmMed(id, req.employeeRma(), req.passed(), req.indicators());
     }
 
     @PostMapping("/{id}/confirm-tech")
+    @PreAuthorize("hasAnyRole('MECHANIC','SYSTEM_ADMIN')")
     public Waybill confirmTech(@PathVariable UUID id, @Valid @RequestBody TechRequest req) {
         return service.confirmTech(id, req.employeeRma(), req.passed(), req.checklist());
     }
 
     @PostMapping("/{id}/issue")
+    @PreAuthorize("hasAnyRole('DISPATCHER','SYSTEM_ADMIN')")
     public Waybill issue(@PathVariable UUID id, @RequestBody(required = false) IssueRequest req) {
         return service.issue(id, req == null ? null : req.driverConfirmation());
     }
 
     @PostMapping("/{id}/activate")
+    @PreAuthorize("hasAnyRole('DISPATCHER','SYSTEM_ADMIN')")
     public Waybill activate(@PathVariable UUID id, @Valid @RequestBody ActivateRequest req) {
         return service.activate(id, req.dispatcherRma(), req.odometerExit());
     }
 
     @PostMapping("/{id}/return")
+    @PreAuthorize("hasAnyRole('DISPATCHER','SYSTEM_ADMIN')")
     public Waybill returnTrip(@PathVariable UUID id, @Valid @RequestBody ReturnRequest req) {
         return service.returnTrip(id, req.dispatcherRma(), req.odometerEntry());
     }
 
     @PostMapping("/{id}/close")
+    @PreAuthorize("hasAnyRole('DISPATCHER','SYSTEM_ADMIN')")
     public Waybill close(@PathVariable UUID id, @RequestBody(required = false) CloseRequest req) {
         return service.close(id, req == null ? "system" : req.actor());
     }
 
     @PostMapping("/{id}/cancel")
+    @PreAuthorize("hasAnyRole('DISPATCHER','SYSTEM_ADMIN')")
     public Waybill cancel(@PathVariable UUID id, @Valid @RequestBody CancelRequest req) {
         return service.cancel(id, req.reason(), req.actor());
     }

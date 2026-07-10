@@ -2,9 +2,16 @@ package tj.mintrans.epd.waybill.client;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.ParameterizedTypeReference;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpRequest;
+import org.springframework.http.client.ClientHttpRequestExecution;
+import org.springframework.http.client.ClientHttpResponse;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
 
+import java.io.IOException;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -12,6 +19,7 @@ import java.util.Optional;
 /**
  * Клиент мастер-данных (единая платформа Минтранса; на этапе 1а — master-data-service).
  * Возвращает «сырые» Map — они же становятся снимками (snapshot) в документе.
+ * Bearer-токен текущего запроса пробрасывается дальше (master-data требует JWT).
  */
 @Component
 public class MasterDataClient {
@@ -19,7 +27,22 @@ public class MasterDataClient {
     private final RestClient client;
 
     public MasterDataClient(@Value("${epd.master-data.base-url}") String baseUrl) {
-        this.client = RestClient.builder().baseUrl(baseUrl).build();
+        this.client = RestClient.builder()
+                .baseUrl(baseUrl)
+                .requestInterceptor(MasterDataClient::forwardBearerToken)
+                .build();
+    }
+
+    /** Проброс Authorization входящего HTTP-запроса в вызов master-data (token relay). */
+    private static ClientHttpResponse forwardBearerToken(HttpRequest request, byte[] body,
+                                                         ClientHttpRequestExecution execution) throws IOException {
+        if (RequestContextHolder.getRequestAttributes() instanceof ServletRequestAttributes attrs) {
+            String authorization = attrs.getRequest().getHeader(HttpHeaders.AUTHORIZATION);
+            if (authorization != null && !request.getHeaders().containsKey(HttpHeaders.AUTHORIZATION)) {
+                request.getHeaders().set(HttpHeaders.AUTHORIZATION, authorization);
+            }
+        }
+        return execution.execute(request, body);
     }
 
     private static final ParameterizedTypeReference<List<Map<String, Object>>> LIST_OF_MAPS =

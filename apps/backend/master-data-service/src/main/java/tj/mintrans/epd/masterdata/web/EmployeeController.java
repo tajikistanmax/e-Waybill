@@ -8,6 +8,7 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -48,6 +49,7 @@ public class EmployeeController {
     }
 
     @PostMapping
+    @PreAuthorize("hasAnyRole('COMPANY_ADMIN','SYSTEM_ADMIN')")
     public ResponseEntity<Employee> upsert(@Valid @RequestBody EmployeeRequest req) {
         var org = organizations.findByRma(req.organizationRma())
                 .orElseThrow(() -> new NotFoundException("Организация не найдена"));

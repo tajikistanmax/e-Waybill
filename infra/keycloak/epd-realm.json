@@ -1,0 +1,130 @@
+{
+  "realm": "epd",
+  "enabled": true,
+  "registrationAllowed": false,
+  "sslRequired": "external",
+  "roles": {
+    "realm": [
+      { "name": "DISPATCHER", "description": "Диспетчер (Танзимгар)" },
+      { "name": "DOCTOR", "description": "Медицинский работник (Духтур)" },
+      { "name": "MECHANIC", "description": "Механик — контролёр техсостояния" },
+      { "name": "COMPANY_ADMIN", "description": "Администратор перевозчика" },
+      { "name": "SYSTEM_ADMIN", "description": "Администратор системы (ГУП ЦЦТО)" },
+      { "name": "INSPECTOR", "description": "Инспектор дорожного контроля" }
+    ]
+  },
+  "clients": [
+    {
+      "clientId": "epd-web",
+      "name": "ЭПД РТ — веб-клиент",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": true,
+      "serviceAccountsEnabled": false,
+      "fullScopeAllowed": true,
+      "redirectUris": ["http://localhost:3000/*"],
+      "webOrigins": ["http://localhost:3000"],
+      "attributes": {
+        "pkce.code.challenge.method": "S256"
+      },
+      "protocolMappers": [
+        {
+          "name": "rma",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "user.attribute": "rma",
+            "claim.name": "rma",
+            "jsonType.label": "String",
+            "access.token.claim": "true",
+            "id.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        },
+        {
+          "name": "organization_rma",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "user.attribute": "organizationRma",
+            "claim.name": "organization_rma",
+            "jsonType.label": "String",
+            "access.token.claim": "true",
+            "id.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        }
+      ]
+    }
+  ],
+  "users": [
+    {
+      "username": "dispatcher@epd.tj",
+      "email": "dispatcher@epd.tj",
+      "firstName": "Диспетчер",
+      "lastName": "Тестовый",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        { "type": "password", "value": "epd123", "temporary": false }
+      ],
+      "realmRoles": ["DISPATCHER"],
+      "attributes": {
+        "rma": ["333333333"],
+        "organizationRma": ["025680800"]
+      }
+    },
+    {
+      "username": "doctor@epd.tj",
+      "email": "doctor@epd.tj",
+      "firstName": "Духтур",
+      "lastName": "Тестовый",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        { "type": "password", "value": "epd123", "temporary": false }
+      ],
+      "realmRoles": ["DOCTOR"],
+      "attributes": {
+        "rma": ["111111111"],
+        "organizationRma": ["025680800"]
+      }
+    },
+    {
+      "username": "mechanic@epd.tj",
+      "email": "mechanic@epd.tj",
+      "firstName": "Механик",
+      "lastName": "Тестовый",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        { "type": "password", "value": "epd123", "temporary": false }
+      ],
+      "realmRoles": ["MECHANIC"],
+      "attributes": {
+        "rma": ["222222222"],
+        "organizationRma": ["025680800"]
+      }
+    },
+    {
+      "username": "admin@epd.tj",
+      "email": "admin@epd.tj",
+      "firstName": "Администратор",
+      "lastName": "Тестовый",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        { "type": "password", "value": "epd123", "temporary": false }
+      ],
+      "realmRoles": ["COMPANY_ADMIN", "SYSTEM_ADMIN"],
+      "attributes": {
+        "rma": ["025680800"],
+        "organizationRma": ["025680800"]
+      }
+    }
+  ]
+}

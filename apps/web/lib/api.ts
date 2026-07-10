@@ -1,5 +1,15 @@
 // Клиент API платформы ЭПД РТ (dev: прокси через next.config rewrites)
 
+let authToken = '';
+
+export function setAuthToken(token: string) {
+  authToken = token;
+}
+
+export function authHeaders(extra?: Record<string, string>): Record<string, string> {
+  return { ...(extra ?? {}), ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}) };
+}
+
 export type Waybill = {
   id: string;
   number: string | null;
@@ -86,22 +96,22 @@ async function handle<T>(res: Response): Promise<T> {
 }
 
 export const md = {
-  organizations: () => fetch('/md-api/api/v1/organizations').then(r => handle<Record<string, unknown>[]>(r)),
-  drivers: (orgRma: string) => fetch(`/md-api/api/v1/drivers?organizationRma=${orgRma}`).then(r => handle<Record<string, unknown>[]>(r)),
-  vehicles: (orgRma: string) => fetch(`/md-api/api/v1/vehicles?organizationRma=${orgRma}`).then(r => handle<Record<string, unknown>[]>(r)),
-  employees: (orgRma: string) => fetch(`/md-api/api/v1/employees?organizationRma=${orgRma}`).then(r => handle<Record<string, unknown>[]>(r)),
+  organizations: () => fetch('/md-api/api/v1/organizations', { headers: authHeaders() }).then(r => handle<Record<string, unknown>[]>(r)),
+  drivers: (orgRma: string) => fetch(`/md-api/api/v1/drivers?organizationRma=${orgRma}`, { headers: authHeaders() }).then(r => handle<Record<string, unknown>[]>(r)),
+  vehicles: (orgRma: string) => fetch(`/md-api/api/v1/vehicles?organizationRma=${orgRma}`, { headers: authHeaders() }).then(r => handle<Record<string, unknown>[]>(r)),
+  employees: (orgRma: string) => fetch(`/md-api/api/v1/employees?organizationRma=${orgRma}`, { headers: authHeaders() }).then(r => handle<Record<string, unknown>[]>(r)),
 };
 
 export const wb = {
-  list: () => fetch('/wb-api/api/v1/waybills').then(r => handle<Waybill[]>(r)),
-  get: (id: string) => fetch(`/wb-api/api/v1/waybills/${id}`).then(r => handle<Waybill>(r)),
-  titles: (id: string) => fetch(`/wb-api/api/v1/waybills/${id}/titles`).then(r => handle<Title[]>(r)),
-  history: (id: string) => fetch(`/wb-api/api/v1/waybills/${id}/status-history`).then(r => handle<StatusEvent[]>(r)),
-  qr: (id: string) => fetch(`/wb-api/api/v1/waybills/${id}/qr`).then(r => handle<{ jws: string }>(r)),
+  list: () => fetch('/wb-api/api/v1/waybills', { headers: authHeaders() }).then(r => handle<Waybill[]>(r)),
+  get: (id: string) => fetch(`/wb-api/api/v1/waybills/${id}`, { headers: authHeaders() }).then(r => handle<Waybill>(r)),
+  titles: (id: string) => fetch(`/wb-api/api/v1/waybills/${id}/titles`, { headers: authHeaders() }).then(r => handle<Title[]>(r)),
+  history: (id: string) => fetch(`/wb-api/api/v1/waybills/${id}/status-history`, { headers: authHeaders() }).then(r => handle<StatusEvent[]>(r)),
+  qr: (id: string) => fetch(`/wb-api/api/v1/waybills/${id}/qr`, { headers: authHeaders() }).then(r => handle<{ jws: string }>(r)),
   post: <T = Waybill>(path: string, body?: unknown) =>
     fetch(`/wb-api/api/v1/waybills${path}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
       body: body != null ? JSON.stringify(body) : '{}',
     }).then(r => handle<T>(r)),
 };
