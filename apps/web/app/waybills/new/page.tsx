@@ -421,7 +421,12 @@ export default function NewWaybillPage() {
                   </div>
                   <div>
                     <label>{tt('wb.f.transitcountries')}</label>
-                    <input placeholder={tt('wb.ph.transit')} value={intl.transitCountries} onChange={e => setIntl({ ...intl, transitCountries: e.target.value })} />
+                    <select multiple
+                      value={intl.transitCountries ? intl.transitCountries.split(',').map(s => s.trim()).filter(Boolean) : []}
+                      onChange={e => setIntl({ ...intl, transitCountries: Array.from(e.target.selectedOptions).map(o => o.value).join(', ') })}
+                      style={{ minHeight: 92 }}>
+                      {countries.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+                    </select>
                   </div>
                   {t === 'WB_TRUCK_INTL' && (
                     <>
