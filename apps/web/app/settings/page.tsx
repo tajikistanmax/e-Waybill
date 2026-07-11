@@ -28,14 +28,14 @@ const MODULES: { key: string; icon: string; cls: string; st: St; href?: string; 
   { key: 'notify', icon: P.bell, cls: 'ic-amber', st: 'done', href: '/settings/notifications' },
   { key: 'integrations', icon: P.globe, cls: 'ic-blue', st: 'done', href: '/settings/integrations' },
   { key: 'security', icon: P.shield, cls: 'ic-red', st: 'done', href: '/settings/security' },
-  { key: 'print', icon: P.doc, cls: 'ic-cyan', st: 'partial' },
+  { key: 'print', icon: P.doc, cls: 'ic-cyan', st: 'partial', href: '/settings/print' },
   { key: 'dictionaries', icon: P.book, cls: 'ic-blue', st: 'done', href: '/dictionaries' },
   { key: 'classifiers', icon: P.globe, cls: 'ic-cyan', st: 'done', href: '/settings/classifiers' },
   { key: 'expiry', icon: P.alert, cls: 'ic-amber', st: 'done', href: '/settings/expiry' },
   { key: 'audit', icon: P.eye, cls: 'ic-amber', st: 'done', href: '/settings/audit', admin: true },
-  { key: 'backup', icon: P.shield, cls: 'ic-blue', st: 'planned' },
-  { key: 'performance', icon: P.chart, cls: 'ic-purple', st: 'planned' },
-  { key: 'interface', icon: P.globe, cls: 'ic-cyan', st: 'partial' },
+  { key: 'backup', icon: P.shield, cls: 'ic-blue', st: 'partial', href: '/settings/backup' },
+  { key: 'performance', icon: P.chart, cls: 'ic-purple', st: 'partial', href: '/settings/performance' },
+  { key: 'interface', icon: P.globe, cls: 'ic-cyan', st: 'partial', href: '/settings/interface' },
 ];
 
 export default function SettingsPage() {
