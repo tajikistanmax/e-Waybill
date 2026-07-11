@@ -1,6 +1,6 @@
 // Персональные кабинеты по ролям: стартовая страница и доступные пункты меню.
 
-export type NavKey = 'dashboard' | 'waybills' | 'dispatcher' | 'med' | 'tech' | 'driver' | 'inspector' | 'company' | 'registry' | 'violations' | 'reports' | 'dictionaries';
+export type NavKey = 'dashboard' | 'waybills' | 'dispatcher' | 'med' | 'tech' | 'driver' | 'inspector' | 'company' | 'registry' | 'violations' | 'reports' | 'dictionaries' | 'settings';
 
 /** Куда попадает пользователь после входа — в свой кабинет. */
 export function roleHome(roles: string[]): string {
@@ -19,8 +19,8 @@ export function visibleNav(roles: string[]): Set<NavKey> {
   const s = new Set<NavKey>();
   const add = (...keys: NavKey[]) => keys.forEach(k => s.add(k));
 
-  if (roles.includes('SYSTEM_ADMIN')) add('dashboard', 'waybills', 'med', 'tech', 'company', 'registry', 'violations', 'reports', 'dictionaries');
-  if (roles.includes('COMPANY_ADMIN')) add('dashboard', 'waybills', 'med', 'tech', 'company', 'registry', 'violations', 'reports', 'dictionaries');
+  if (roles.includes('SYSTEM_ADMIN')) add('dashboard', 'waybills', 'med', 'tech', 'company', 'registry', 'violations', 'reports', 'dictionaries', 'settings');
+  if (roles.includes('COMPANY_ADMIN')) add('dashboard', 'waybills', 'med', 'tech', 'company', 'registry', 'violations', 'reports', 'dictionaries', 'settings');
   if (roles.includes('DISPATCHER')) add('dispatcher', 'dashboard', 'waybills');
   if (roles.includes('DOCTOR')) add('med');
   if (roles.includes('MECHANIC')) add('tech');
