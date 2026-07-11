@@ -72,7 +72,7 @@ export default function DashboardPage() {
     { label: t('kpi.cancel'), value: stats.cancelled, icon: P.alert, cls: 'ic-red', trend: '−5.2%', up: false, spark: stats.sparkCancel, color: '#dc2626' },
   ];
 
-  const SYS = ['Сервер приложений', 'База данных', 'Служба авторизации', 'Сервис QR-подписи', 'Шина событий', 'Хранилище файлов'];
+  const SYS = ['sys.app', 'sys.db', 'sys.auth', 'sys.qr', 'sys.bus', 'sys.storage'];
 
   return (
     <>
@@ -159,7 +159,7 @@ export default function DashboardPage() {
         <div className="card">
           <h2>{t('dash.sysstate')}</h2>
           <div className="sys-list">
-            {SYS.map(s => <div className="row" key={s}>{s}<span className="st">{t('sys.online')}</span></div>)}
+            {SYS.map(s => <div className="row" key={s}>{t(s)}<span className="st">{t('sys.online')}</span></div>)}
           </div>
           <div className="sys-ok"><Icon d={P.check} cls="" style={{ width: 16, height: 16 }} /> {t('dash.sysok')}</div>
         </div>
@@ -176,7 +176,7 @@ export default function DashboardPage() {
                 const s = STATUS_LABELS[w.status] ?? { label: w.status, color: 'gray' };
                 return (
                   <tr key={w.id} className="clickable" onClick={() => router.push(`/waybills/${w.id}`)}>
-                    <td><span className="number">{w.number ?? '— черновик —'}</span></td>
+                    <td><span className="number">{w.number ?? t('common.draft')}</span></td>
                     <td>{tType(w.waybillType).replace(/\s*\(.*\)/, '')}</td>
                     <td>{w.vehicleRegNumber}</td>
                     <td>{String(w.driverSnapshot?.fullName ?? w.driverRma)}</td>
@@ -186,7 +186,7 @@ export default function DashboardPage() {
               })}
               {recent.length === 0 && !loading && (
                 <tr><td colSpan={5} style={{ textAlign: 'center', color: 'var(--muted)', padding: 26 }}>
-                  Пока нет — <Link href="/waybills/new" style={{ color: 'var(--blue-600)' }}>создать первый</Link>
+                  {t('dash.recent.emptypre')}<Link href="/waybills/new" style={{ color: 'var(--blue-600)' }}>{t('dash.recent.emptylink')}</Link>
                 </td></tr>
               )}
             </tbody>
@@ -197,30 +197,30 @@ export default function DashboardPage() {
           <h2>{t('dash.quick')}</h2>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
             <div className="q" style={{ background: 'var(--blue-050)', borderRadius: 11, padding: 14 }}>
-              <div className="ql" style={{ fontSize: 11, color: 'var(--muted)' }}>Всего документов</div>
+              <div className="ql" style={{ fontSize: 11, color: 'var(--muted)' }}>{t('dash.qs.total')}</div>
               <div style={{ fontSize: 22, fontWeight: 800 }}>{stats.total}</div>
             </div>
             <div className="q" style={{ background: 'var(--green-050)', borderRadius: 11, padding: 14 }}>
-              <div className="ql" style={{ fontSize: 11, color: 'var(--muted)' }}>Завершено</div>
+              <div className="ql" style={{ fontSize: 11, color: 'var(--muted)' }}>{t('kpi.done')}</div>
               <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--green)' }}>{stats.completed}</div>
             </div>
             <div className="q" style={{ background: 'var(--cyan-050)', borderRadius: 11, padding: 14 }}>
-              <div className="ql" style={{ fontSize: 11, color: 'var(--muted)' }}>На линии</div>
+              <div className="ql" style={{ fontSize: 11, color: 'var(--muted)' }}>{t('kpi.online')}</div>
               <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--cyan)' }}>{stats.onLine}</div>
             </div>
             <div className="q" style={{ background: 'var(--amber-050)', borderRadius: 11, padding: 14 }}>
-              <div className="ql" style={{ fontSize: 11, color: 'var(--muted)' }}>Оформлено сегодня</div>
+              <div className="ql" style={{ fontSize: 11, color: 'var(--muted)' }}>{t('kpi.today')}</div>
               <div style={{ fontSize: 22, fontWeight: 800, color: '#a9700a' }}>{stats.today}</div>
             </div>
           </div>
           <div style={{ marginTop: 16 }}>
-            <div className="card-h" style={{ marginBottom: 10 }}><h2 style={{ fontSize: 13 }}>Последняя активность</h2></div>
+            <div className="card-h" style={{ marginBottom: 10 }}><h2 style={{ fontSize: 13 }}>{t('dash.activity')}</h2></div>
             <div className="feed">
               {recent.slice(0, 4).map(w => (
                 <div className="fi" key={w.id}>
                   <span className="fic ic-blue"><Icon d={P.doc} cls="" /></span>
                   <div className="ft">
-                    <b>{w.number ?? 'Черновик'} · {tStatus(w.status)}</b>
+                    <b>{w.number ?? t('common.draftshort')} · {tStatus(w.status)}</b>
                     <span>{String(w.driverSnapshot?.fullName ?? w.driverRma)} · {w.vehicleRegNumber}</span>
                   </div>
                   <span className="ftime">{new Date(w.createdAt).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}</span>
