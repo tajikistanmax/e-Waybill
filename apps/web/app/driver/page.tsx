@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { wb, Waybill, STATUS_LABELS, TYPE_LABELS, authHeaders } from '@/lib/api';
+import { wb, Waybill, STATUS_LABELS, authHeaders } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 import { Icon, P } from '../icons';
 import QRCode from 'qrcode';
@@ -30,7 +30,7 @@ function mileage(w: Waybill): number | null {
  * не создаёт и не подписывает — только просматривает и предъявляет.
  */
 export default function DriverCabinet() {
-  const { t } = useT();
+  const { t, tType, tStatus } = useT();
   const [items, setItems] = useState<Waybill[]>([]);
   const [loading, setLoading] = useState(true);
   const [qr, setQr] = useState('');
@@ -105,7 +105,7 @@ export default function DriverCabinet() {
         <div className="card">
           <div className="card-h">
             <h2>{t('drv.current.h')}</h2>
-            {cs && <span className={`badge ${cs.color}`} style={{ marginLeft: 'auto' }}>{cs.label}</span>}
+            {cs && <span className={`badge ${cs.color}`} style={{ marginLeft: 'auto' }}>{tStatus(current.status)}</span>}
           </div>
           <div style={{ display: 'flex', gap: 28, flexWrap: 'wrap', alignItems: 'flex-start' }}>
             {/* Сведения */}
@@ -123,7 +123,7 @@ export default function DriverCabinet() {
                 <span className={`badge ${current.techPassed ? 'green' : 'gray'}`}>{t('drv.t3')} {current.techPassed ? '✓' : '…'}</span>
               </div>
               <dl className="kv">
-                <dt>{t('col.type')}</dt><dd>{TYPE_LABELS[current.waybillType] ?? current.waybillType}</dd>
+                <dt>{t('col.type')}</dt><dd>{tType(current.waybillType)}</dd>
                 <dt>{t('drv.routeschedule')}</dt><dd>{current.route ?? '—'} / {current.schedule ?? '—'}</dd>
                 <dt>{t('col.vehiclefull')}</dt><dd>{String(current.vehicleSnapshot?.brand ?? '')} {current.vehicleRegNumber}</dd>
                 <dt>{t('drv.validity')}</dt><dd>{fmtDateTime(current.validFrom)} → {fmtDateTime(current.validTo)}</dd>
@@ -203,11 +203,11 @@ export default function DriverCabinet() {
               return (
                 <tr key={w.id} className="clickable" onClick={() => router.push(`/waybills/${w.id}`)}>
                   <td><span className="number">{w.number ?? '— черновик —'}</span></td>
-                  <td>{(TYPE_LABELS[w.waybillType] ?? w.waybillType).replace(/\s*\(.*\)/, '')}</td>
+                  <td>{tType(w.waybillType).replace(/\s*\(.*\)/, '')}</td>
                   <td>{w.route ?? '—'}</td>
                   <td>{fmtDate(w.createdAt)}</td>
                   <td>{km != null ? `${km.toLocaleString('ru-RU')} км` : '—'}</td>
-                  <td><span className={`badge ${s.color}`}>{s.label}</span></td>
+                  <td><span className={`badge ${s.color}`}>{tStatus(w.status)}</span></td>
                 </tr>
               );
             })}

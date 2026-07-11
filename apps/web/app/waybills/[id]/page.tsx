@@ -1,7 +1,7 @@
 'use client';
 
 import { use, useCallback, useEffect, useState } from 'react';
-import { md, wb, Waybill, Title, StatusEvent, Payment, STATUS_LABELS, TYPE_LABELS } from '@/lib/api';
+import { md, wb, Waybill, Title, StatusEvent, Payment, STATUS_LABELS } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 import QRCode from 'qrcode';
 
@@ -26,7 +26,7 @@ export default function WaybillCard({ params }: { params: Promise<{ id: string }
   const [blockReason, setBlockReason] = useState('');
   const [payment, setPayment] = useState<Payment | null>(null);
   const [tab, setTab] = useState('main');
-  const { t } = useT();
+  const { t, tType, tStatus } = useT();
 
   const reload = useCallback(async () => {
     const data = await wb.get(id);
@@ -136,8 +136,8 @@ export default function WaybillCard({ params }: { params: Promise<{ id: string }
         <h1 style={{ marginBottom: 0 }}>
           {t('wb.card.h')} {w.number ? <span className="number">{w.number}</span> : t('wb.nonumber')}
         </h1>
-        <span style={{ color: 'var(--muted)', fontSize: 13 }}>{TYPE_LABELS[w.waybillType] ?? w.waybillType}</span>
-        <span className={`badge ${s.color}`}>{s.label}</span>
+        <span style={{ color: 'var(--muted)', fontSize: 13 }}>{tType(w.waybillType)}</span>
+        <span className={`badge ${s.color}`}>{tStatus(w.status)}</span>
         <span className="spacer" />
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
           {w.number && <a className="btn secondary" href={`/waybills/${id}/print`}>{t('wb.printform')}</a>}
@@ -315,7 +315,7 @@ export default function WaybillCard({ params }: { params: Promise<{ id: string }
           <h2>{t('wb.main.h')}</h2>
           <dl className="kv">
             <dt>{t('insp.wbnum')}</dt><dd>{w.number ?? '—'}</dd>
-            <dt>{t('col.type')}</dt><dd>{TYPE_LABELS[w.waybillType] ?? w.waybillType}</dd>
+            <dt>{t('col.type')}</dt><dd>{tType(w.waybillType)}</dd>
             <dt>{t('col.status')}</dt><dd><span className={`badge ${s.color}`}>{s.label}</span></dd>
             <dt>{t('wb.createdat')}</dt><dd>{w.createdAt ? new Date(w.createdAt).toLocaleString('ru-RU') : '—'}</dd>
             <dt>{t('drv.validity')}</dt><dd>{validFrom} → {validTo}</dd>
@@ -580,8 +580,8 @@ export default function WaybillCard({ params }: { params: Promise<{ id: string }
             <ul className="timeline">
               {history.map((h, i) => (
                 <li key={i}>
-                  {h.fromStatus ? `${STATUS_LABELS[h.fromStatus]?.label ?? h.fromStatus} → ` : ''}
-                  <b>{STATUS_LABELS[h.toStatus]?.label ?? h.toStatus}</b>
+                  {h.fromStatus ? `${tStatus(h.fromStatus)} → ` : ''}
+                  <b>{tStatus(h.toStatus)}</b>
                   {h.reason ? ` — ${h.reason}` : ''}
                   <div className="when">{new Date(h.createdAt).toLocaleString('ru-RU')} · {h.actor}</div>
                 </li>

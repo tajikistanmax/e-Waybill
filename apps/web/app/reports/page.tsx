@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { authHeaders, STATUS_LABELS, TYPE_LABELS } from '@/lib/api';
+import { authHeaders, STATUS_LABELS } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 import { Icon, P } from '../icons';
 
@@ -66,7 +66,7 @@ function BarRow({ label, value, max, color }: { label: string; value: number; ma
 
 /** Отчёты (раздел 8.13 ТЗ): сводка, журнал диспетчера, по водителям/ТС/топливу. */
 export default function ReportsPage() {
-  const { t } = useT();
+  const { t, tType, tStatus } = useT();
   const [from, setFrom] = useState(today(-30));
   const [to, setTo] = useState(today());
   const [journalDate, setJournalDate] = useState(today());
@@ -157,7 +157,7 @@ export default function ReportsPage() {
                 : Object.entries(summary.byStatus)
                     .sort((a, b) => b[1] - a[1])
                     .map(([k, v]) => (
-                      <BarRow key={k} label={STATUS_LABELS[k]?.label ?? k} value={v} max={statusMax} color={BAR_COLOR[STATUS_LABELS[k]?.color ?? 'blue'] ?? 'var(--blue-600)'} />
+                      <BarRow key={k} label={tStatus(k)} value={v} max={statusMax} color={BAR_COLOR[STATUS_LABELS[k]?.color ?? 'blue'] ?? 'var(--blue-600)'} />
                     ))}
             </div>
             <div className="card">
@@ -167,7 +167,7 @@ export default function ReportsPage() {
                 : Object.entries(summary.byType)
                     .sort((a, b) => b[1] - a[1])
                     .map(([k, v]) => (
-                      <BarRow key={k} label={(TYPE_LABELS[k] ?? k).replace(/\s*\(.*\)/, '')} value={v} max={typeMax} color="var(--blue-600)" />
+                      <BarRow key={k} label={tType(k).replace(/\s*\(.*\)/, '')} value={v} max={typeMax} color="var(--blue-600)" />
                     ))}
             </div>
           </div>
@@ -204,10 +204,10 @@ export default function ReportsPage() {
                 return (
                   <tr key={i}>
                     <td><span className="number">{r.number ?? '—'}</span></td>
-                    <td>{(TYPE_LABELS[r.waybillType] ?? r.waybillType).replace(/\s*\(.*\)/, '')}</td>
+                    <td>{tType(r.waybillType).replace(/\s*\(.*\)/, '')}</td>
                     <td>{r.vehicleRegNumber}</td>
                     <td>{r.driverName}</td>
-                    <td><span className={`badge ${s.color}`}>{s.label}</span></td>
+                    <td><span className={`badge ${s.color}`}>{tStatus(r.status)}</span></td>
                     <td>{r.odometerExit ?? '—'}</td>
                     <td>{r.odometerEntry ?? '—'}</td>
                   </tr>

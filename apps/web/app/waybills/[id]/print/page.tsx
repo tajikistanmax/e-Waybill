@@ -1,7 +1,8 @@
 'use client';
 
 import { use, useEffect, useState } from 'react';
-import { wb, Waybill, Title, TYPE_LABELS } from '@/lib/api';
+import { wb, Waybill, Title } from '@/lib/api';
+import { useT } from '@/lib/i18n';
 import QRCode from 'qrcode';
 
 /**
@@ -14,6 +15,7 @@ export default function PrintWaybill({ params }: { params: Promise<{ id: string 
   const [titles, setTitles] = useState<Title[]>([]);
   const [qrUrl, setQrUrl] = useState('');
   const [error, setError] = useState('');
+  const { tType } = useT();
 
   useEffect(() => {
     (async () => {
@@ -86,7 +88,7 @@ export default function PrintWaybill({ params }: { params: Promise<{ id: string 
         <h2>ПУТЕВОЙ ЛИСТ · ВАРАҚАИ РОҲХАТ</h2>
         <div className="num">{w.number ?? '(номер не присвоен)'}</div>
         <p style={{ textAlign: 'center', marginBottom: 10 }}>
-          {TYPE_LABELS[w.waybillType] ?? w.waybillType} · действителен: {fmt(w.validFrom)} — {fmt(w.validTo)}
+          {tType(w.waybillType)} · действителен: {fmt(w.validFrom)} — {fmt(w.validTo)}
         </p>
 
         <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 10 }}>

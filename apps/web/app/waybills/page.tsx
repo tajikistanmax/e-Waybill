@@ -17,7 +17,7 @@ export default function WaybillsPage() {
   const [q, setQ] = useState('');
   const [page, setPage] = useState(1);
   const router = useRouter();
-  const { t } = useT();
+  const { t, tType, tStatus } = useT();
 
   useEffect(() => { wb.list().then(setItems).catch(e => setError(e.message)); }, []);
 
@@ -55,14 +55,14 @@ export default function WaybillsPage() {
             <label>{t('col.status')}</label>
             <select value={status} onChange={e => { setStatus(e.target.value); setPage(1); }}>
               <option value="">{t('wb.f.allstatuses')}</option>
-              {Object.entries(STATUS_LABELS).map(([v, s]) => <option key={v} value={v}>{s.label}</option>)}
+              {Object.entries(STATUS_LABELS).map(([v]) => <option key={v} value={v}>{tStatus(v)}</option>)}
             </select>
           </div>
           <div>
             <label>{t('col.wbtype')}</label>
             <select value={type} onChange={e => { setType(e.target.value); setPage(1); }}>
               <option value="">{t('wb.f.alltypes')}</option>
-              {Object.entries(TYPE_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+              {Object.entries(TYPE_LABELS).map(([v]) => <option key={v} value={v}>{tType(v)}</option>)}
             </select>
           </div>
           <div>
@@ -88,14 +88,14 @@ export default function WaybillsPage() {
               return (
                 <tr key={w.id} className="clickable" onClick={() => router.push(`/waybills/${w.id}`)}>
                   <td><span className="number">{w.number ?? t('viol.draft')}</span></td>
-                  <td>{(TYPE_LABELS[w.waybillType] ?? w.waybillType).replace(/\s*\(.*\)/, '')}</td>
+                  <td>{tType(w.waybillType).replace(/\s*\(.*\)/, '')}</td>
                   <td>{String(w.organizationSnapshot?.name ?? w.organizationRma)}</td>
                   <td>{String(w.vehicleSnapshot?.brand ?? '')} {w.vehicleRegNumber}</td>
                   <td>{String(w.driverSnapshot?.fullName ?? w.driverRma)}</td>
                   <td>{fmt(w.validFrom)}</td>
                   <td><span className={`badge ${w.medPassed ? 'green' : 'gray'}`}>{w.medPassed ? t('st.passeddone') : '—'}</span></td>
                   <td><span className={`badge ${w.techPassed ? 'green' : 'gray'}`}>{w.techPassed ? t('st.passeddone') : '—'}</span></td>
-                  <td><span className={`badge ${s.color}`}>{s.label}</span></td>
+                  <td><span className={`badge ${s.color}`}>{tStatus(w.status)}</span></td>
                   <td onClick={e => e.stopPropagation()}>
                     <Link href={`/waybills/${w.id}`} className="tb-icon" style={{ width: 32, height: 32, display: 'inline-grid' }} title={t('btn.open')}>
                       <Icon d={P.eye} cls="" style={{ width: 17, height: 17, color: 'var(--muted)' }} />

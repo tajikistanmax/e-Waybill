@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { wb, Waybill, STATUS_LABELS, TYPE_LABELS } from '@/lib/api';
+import { wb, Waybill, STATUS_LABELS } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 import { Icon, P } from '../icons';
 
@@ -31,7 +31,7 @@ const TONE_FG: Record<string, string> = { ok: 'var(--green)', warn: '#a9700a', s
  * просроченные). Быстрая проверка на дороге — сканированием QR (страница /verify).
  */
 export default function InspectorCabinet() {
-  const { t } = useT();
+  const { t, tType, tStatus } = useT();
   const [items, setItems] = useState<Waybill[]>([]);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState('');
@@ -115,7 +115,7 @@ export default function InspectorCabinet() {
             </div>
             <dl className="kv">
               <dt>{t('insp.wbnum')}</dt><dd><span className="number">{checked.number ?? '— черновик —'}</span></dd>
-              <dt>{t('col.type')}</dt><dd>{TYPE_LABELS[checked.waybillType] ?? checked.waybillType}</dd>
+              <dt>{t('col.type')}</dt><dd>{tType(checked.waybillType)}</dd>
               <dt>{t('col.transport')}</dt><dd>{String(checked.vehicleSnapshot?.brand ?? '')} {checked.vehicleRegNumber}</dd>
               <dt>{t('col.driver')}</dt><dd>{String(checked.driverSnapshot?.fullName ?? checked.driverRma ?? '—')}</dd>
               <dt>{t('drv.validity')}</dt><dd>{fmtDateTime(checked.validFrom)} → {fmtDateTime(checked.validTo)}</dd>
@@ -157,11 +157,11 @@ export default function InspectorCabinet() {
               return (
                 <tr key={w.id} className="clickable" onClick={() => router.push(`/waybills/${w.id}`)}>
                   <td><span className="number">{w.number ?? '— черновик —'}</span></td>
-                  <td>{(TYPE_LABELS[w.waybillType] ?? w.waybillType).replace(/\s*\(.*\)/, '')}</td>
+                  <td>{tType(w.waybillType).replace(/\s*\(.*\)/, '')}</td>
                   <td>{w.vehicleRegNumber || '—'}</td>
                   <td>{String(w.driverSnapshot?.fullName ?? w.driverRma ?? '—')}</td>
                   <td>{fmtDateTime(w.createdAt)}</td>
-                  <td><span className={`badge ${s.color}`}>{s.label}</span></td>
+                  <td><span className={`badge ${s.color}`}>{tStatus(w.status)}</span></td>
                 </tr>
               );
             })}

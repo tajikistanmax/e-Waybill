@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { wb, Waybill, STATUS_LABELS, TYPE_LABELS } from '@/lib/api';
+import { wb, Waybill, STATUS_LABELS } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 import { Icon, P } from '../icons';
 
@@ -38,7 +38,7 @@ const ACTION_HINT: Record<string, string> = {
  * Диспетчер оформляет и ведёт путевые листы своей организации.
  */
 export default function DispatcherCabinet() {
-  const { t } = useT();
+  const { t, tType, tStatus } = useT();
   const [items, setItems] = useState<Waybill[]>([]);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
@@ -114,11 +114,11 @@ export default function DispatcherCabinet() {
               return (
                 <tr key={w.id} className="clickable" onClick={() => router.push(`/waybills/${w.id}`)}>
                   <td><span className="number">{w.number ?? '— черновик —'}</span></td>
-                  <td>{(TYPE_LABELS[w.waybillType] ?? w.waybillType).replace(/\s*\(.*\)/, '')}</td>
+                  <td>{tType(w.waybillType).replace(/\s*\(.*\)/, '')}</td>
                   <td>{w.vehicleRegNumber || '—'}</td>
                   <td>{String(w.driverSnapshot?.fullName ?? w.driverRma ?? '—')}</td>
                   <td style={{ color: 'var(--ink-soft)' }}>{t(ACTION_HINT[w.status])}</td>
-                  <td><span className={`badge ${s.color}`}>{s.label}</span></td>
+                  <td><span className={`badge ${s.color}`}>{tStatus(w.status)}</span></td>
                 </tr>
               );
             })}
@@ -149,10 +149,10 @@ export default function DispatcherCabinet() {
               return (
                 <tr key={w.id} className="clickable" onClick={() => router.push(`/waybills/${w.id}`)}>
                   <td><span className="number">{w.number ?? '— черновик —'}</span></td>
-                  <td>{(TYPE_LABELS[w.waybillType] ?? w.waybillType).replace(/\s*\(.*\)/, '')}</td>
+                  <td>{tType(w.waybillType).replace(/\s*\(.*\)/, '')}</td>
                   <td>{w.vehicleRegNumber || '—'}</td>
                   <td>{fmtDateTime(w.createdAt)}</td>
-                  <td><span className={`badge ${s.color}`}>{s.label}</span></td>
+                  <td><span className={`badge ${s.color}`}>{tStatus(w.status)}</span></td>
                 </tr>
               );
             })}

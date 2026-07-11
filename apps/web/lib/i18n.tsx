@@ -757,8 +757,40 @@ const DICT: Record<string, { ru: string; tj: string }> = {
   'wb.statushistory.h': { ru: 'История статусов', tj: 'Таърихи вазъиятҳо' },
 };
 
-const LangContext = createContext<{ lang: Lang; setLang: (l: Lang) => void; t: (k: string) => string }>({
-  lang: 'ru', setLang: () => {}, t: (k) => k,
+// Названия типов ПЛ и статусов — двуязычно. RU совпадает с TYPE_LABELS/STATUS_LABELS из lib/api
+// (цвет статуса берётся оттуда же), здесь — локализуемая подпись через tType()/tStatus().
+const WTYPE: Record<string, { ru: string; tj: string }> = {
+  WB_CAR: { ru: 'Легковой (3-С)', tj: 'Сабукрав (3-С)' },
+  WB_TAXI: { ru: 'Такси (3-С)', tj: 'Такси (3-С)' },
+  WB_MINIBUS: { ru: 'Микроавтобус (1-А)', tj: 'Микроавтобус (1-А)' },
+  WB_BUS: { ru: 'Автобус Т(1-АД)', tj: 'Автобус Т(1-АД)' },
+  WB_TROLLEYBUS: { ru: 'Троллейбус Т(1-АД)', tj: 'Троллейбус Т(1-АД)' },
+  WB_TRUCK: { ru: 'Грузовой (2-Б)', tj: 'Боркаш (2-Б)' },
+  WB_TRUCK_INTL: { ru: 'Грузовой международный (5Б-БМ)', tj: 'Боркаши байналмилалӣ (5Б-БМ)' },
+  WB_PAX_INTL: { ru: 'Пассажирский международный (4М-БМ)', tj: 'Мусофиркаши байналмилалӣ (4М-БМ)' },
+  WB_SPECIAL: { ru: 'Спецтехника', tj: 'Техникаи махсус' },
+  WB_DANGEROUS: { ru: 'Опасные грузы', tj: 'Борҳои хатарнок' },
+};
+const WSTATUS: Record<string, { ru: string; tj: string }> = {
+  DRAFT: { ru: 'Черновик', tj: 'Сиёҳнавис' },
+  CREATED: { ru: 'Ожидает осмотров', tj: 'Дар интизори ташхисҳо' },
+  MED_REJECTED: { ru: 'Медосмотр отклонён', tj: 'Ташхиси тиббӣ рад шуд' },
+  TECH_REJECTED: { ru: 'Техосмотр отклонён', tj: 'Назорати техникӣ рад шуд' },
+  AWAITING_PAYMENT: { ru: 'Ожидает оплаты', tj: 'Дар интизори пардохт' },
+  PAID: { ru: 'Оплачен', tj: 'Пардохта шуд' },
+  READY: { ru: 'Готов к выдаче', tj: 'Барои додан тайёр' },
+  ISSUED: { ru: 'Выдан', tj: 'Дода шуд' },
+  ACTIVE: { ru: 'Активен', tj: 'Фаъол' },
+  RETURNED: { ru: 'Возвращён', tj: 'Баргардонида шуд' },
+  COMPLETED: { ru: 'Завершён', tj: 'Анҷом ёфт' },
+  CANCELLED: { ru: 'Аннулирован', tj: 'Бекор шуд' },
+  EXPIRED: { ru: 'Просрочен', tj: 'Мӯҳлаташ гузашт' },
+  BLOCKED: { ru: 'Заблокирован', tj: 'Баста шуд' },
+  ARCHIVED: { ru: 'В архиве', tj: 'Дар бойгонӣ' },
+};
+
+const LangContext = createContext<{ lang: Lang; setLang: (l: Lang) => void; t: (k: string) => string; tType: (x: string) => string; tStatus: (x: string) => string }>({
+  lang: 'ru', setLang: () => {}, t: (k) => k, tType: (x) => x, tStatus: (x) => x,
 });
 
 export const useT = () => useContext(LangContext);
@@ -770,5 +802,7 @@ export function LangProvider({ children }: { children: React.ReactNode }) {
   }, []);
   const setLang = (l: Lang) => { setLangState(l); try { localStorage.setItem('dts_lang', l); } catch { /* ignore */ } };
   const t = (k: string) => DICT[k]?.[lang] ?? k;
-  return <LangContext.Provider value={{ lang, setLang, t }}>{children}</LangContext.Provider>;
+  const tType = (x: string) => WTYPE[x]?.[lang] ?? x;
+  const tStatus = (x: string) => WSTATUS[x]?.[lang] ?? x;
+  return <LangContext.Provider value={{ lang, setLang, t, tType, tStatus }}>{children}</LangContext.Provider>;
 }

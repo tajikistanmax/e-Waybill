@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState, type CSSProperties, type ReactNode } from 'react';
-import { md, wb, Waybill, TYPE_LABELS } from '@/lib/api';
+import { md, wb, Waybill } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 import { Icon, P } from '../icons';
 
@@ -40,7 +40,7 @@ const fmt = (s: string | null | undefined) =>
 
 /** АРМ механика (контролёр техсостояния): предрейсовый техконтроль Т3. */
 export default function TechWorkstation() {
-  const { t } = useT();
+  const { t, tType } = useT();
   const [queue, setQueue] = useState<Waybill[]>([]);
   const [mechanics, setMechanics] = useState<Record<string, { rma: string; name: string }[]>>({});
   const [selected, setSelected] = useState<Waybill | null>(null);
@@ -391,7 +391,7 @@ export default function TechWorkstation() {
               <tr key={w.id}>
                 <td><span className="plate" style={{ transform: 'scale(.9)', transformOrigin: 'left center' }}><span className="p-main">{w.vehicleRegNumber}</span><span className="p-reg">01</span></span></td>
                 <td>{String(w.vehicleSnapshot?.brand ?? '—')}</td>
-                <td>{TYPE_LABELS[w.waybillType] ?? w.waybillType}</td>
+                <td>{tType(w.waybillType)}</td>
                 <td>{String(w.organizationSnapshot?.name ?? w.organizationRma)}</td>
                 <td style={{ textAlign: 'right' }}><button className="btn" onClick={() => open(w)}>{t('tech.btn.check')}</button></td>
               </tr>

@@ -7,7 +7,7 @@ import {
   ResponsiveContainer, AreaChart, Area, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   PieChart, Pie, Cell,
 } from 'recharts';
-import { wb, Waybill, STATUS_LABELS, TYPE_LABELS } from '@/lib/api';
+import { wb, Waybill, STATUS_LABELS } from '@/lib/api';
 import { Icon, P } from '../icons';
 import { useT } from '@/lib/i18n';
 
@@ -23,7 +23,7 @@ export default function DashboardPage() {
   const [items, setItems] = useState<Waybill[]>([]);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
-  const { t } = useT();
+  const { t, tType, tStatus } = useT();
 
   useEffect(() => { wb.list().then(setItems).catch(() => {}).finally(() => setLoading(false)); }, []);
 
@@ -147,7 +147,7 @@ export default function DashboardPage() {
                 {stats.byType.map((t, i) => (
                   <div className="row" key={t.name}>
                     <span className="dot" style={{ background: TYPE_COLORS[i % TYPE_COLORS.length] }} />
-                    <span className="nm">{(TYPE_LABELS[t.name] ?? t.name).replace(/\s*\(.*\)/, '')}</span>
+                    <span className="nm">{tType(t.name).replace(/\s*\(.*\)/, '')}</span>
                     <span className="pc">{Math.round((t.value / stats.total) * 100)}%</span>
                   </div>
                 ))}
@@ -177,10 +177,10 @@ export default function DashboardPage() {
                 return (
                   <tr key={w.id} className="clickable" onClick={() => router.push(`/waybills/${w.id}`)}>
                     <td><span className="number">{w.number ?? '— черновик —'}</span></td>
-                    <td>{(TYPE_LABELS[w.waybillType] ?? w.waybillType).replace(/\s*\(.*\)/, '')}</td>
+                    <td>{tType(w.waybillType).replace(/\s*\(.*\)/, '')}</td>
                     <td>{w.vehicleRegNumber}</td>
                     <td>{String(w.driverSnapshot?.fullName ?? w.driverRma)}</td>
-                    <td><span className={`badge ${s.color}`}>{s.label}</span></td>
+                    <td><span className={`badge ${s.color}`}>{tStatus(w.status)}</span></td>
                   </tr>
                 );
               })}
@@ -220,7 +220,7 @@ export default function DashboardPage() {
                 <div className="fi" key={w.id}>
                   <span className="fic ic-blue"><Icon d={P.doc} cls="" /></span>
                   <div className="ft">
-                    <b>{w.number ?? 'Черновик'} · {STATUS_LABELS[w.status]?.label ?? w.status}</b>
+                    <b>{w.number ?? 'Черновик'} · {tStatus(w.status)}</b>
                     <span>{String(w.driverSnapshot?.fullName ?? w.driverRma)} · {w.vehicleRegNumber}</span>
                   </div>
                   <span className="ftime">{new Date(w.createdAt).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}</span>

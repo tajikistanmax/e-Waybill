@@ -41,7 +41,7 @@ const STEPS = [
 
 export default function NewWaybillPage() {
   const router = useRouter();
-  const { t: tt } = useT();
+  const { t: tt, tType } = useT();
   const [step, setStep] = useState(1);
   const [orgs, setOrgs] = useState<Option[]>([]);
   const [vehicles, setVehicles] = useState<Option[]>([]);
@@ -209,7 +209,7 @@ export default function NewWaybillPage() {
           {/* ======= ШАГ 1 — Выбор типа ======= */}
           {step === 1 && (
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-              {Object.entries(TYPE_LABELS).map(([value, label]) => {
+              {Object.entries(TYPE_LABELS).map(([value]) => {
                 const meta = TYPE_META[value];
                 const active = form.waybillType === value;
                 return (
@@ -229,7 +229,7 @@ export default function NewWaybillPage() {
                       <Icon d={meta.icon} cls="" style={{ width: 25, height: 25 }} />
                     </div>
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--ink)' }}>{label}</div>
+                      <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--ink)' }}>{tType(value)}</div>
                       <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2, lineHeight: 1.35 }}>{tt(meta.desc)}</div>
                       <span style={{ display: 'inline-block', marginTop: 8, fontSize: 10.5, fontWeight: 600, color: 'var(--ink-soft)', background: 'var(--line-soft)', padding: '3px 9px', borderRadius: 999 }}>{tt(meta.group)}</span>
                     </div>
@@ -397,7 +397,7 @@ export default function NewWaybillPage() {
                 <dt>{tt('wb.sum.type')}</dt>
                 <dd style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   {typeMeta && <span className={`ic-${typeMeta.color}`} style={{ width: 26, height: 26, borderRadius: 7, display: 'grid', placeItems: 'center', flex: 'none' }}><Icon d={typeMeta.icon} cls="" style={{ width: 16, height: 16 }} /></span>}
-                  <b>{TYPE_LABELS[t]}</b>
+                  <b>{tType(t)}</b>
                 </dd>
                 <dt>{tt('col.org')}</dt><dd>{orgLabel || '—'}</dd>
                 <dt>{tt('col.vehiclefull')}</dt><dd>{vehicleLabel || '—'}</dd>

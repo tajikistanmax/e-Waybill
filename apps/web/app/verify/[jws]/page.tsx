@@ -2,6 +2,7 @@
 
 import { use, useEffect, useState } from 'react';
 import { STATUS_LABELS } from '@/lib/api';
+import { useT } from '@/lib/i18n';
 
 type VerifyResult = {
   signatureValid: boolean;
@@ -27,6 +28,7 @@ export default function VerifyPage({ params }: { params: Promise<{ jws: string }
   const { jws } = use(params);
   const [result, setResult] = useState<VerifyResult | null>(null);
   const [error, setError] = useState('');
+  const { tStatus } = useT();
 
   useEffect(() => {
     fetch(`/wb-api/api/v1/verify/${jws}`)
@@ -66,7 +68,7 @@ export default function VerifyPage({ params }: { params: Promise<{ jws: string }
       <dl className="kv" style={{ textAlign: 'left', maxWidth: 520, margin: '20px auto' }}>
         <dt>Номер</dt><dd className="number">{result.number ?? result.claims?.num ?? '—'}</dd>
         <dt>Статус (онлайн)</dt>
-        <dd>{statusInfo ? <span className={`badge ${statusInfo.color}`}>{statusInfo.label}</span> : '—'}</dd>
+        <dd>{statusInfo ? <span className={`badge ${statusInfo.color}`}>{tStatus(status!)}</span> : '—'}</dd>
         <dt>Транспортное средство</dt><dd>{result.claims?.veh ?? '—'}</dd>
         <dt>Водитель</dt><dd>{result.claims?.drv ?? '—'}</dd>
         <dt>Организация</dt><dd>{result.claims?.org ?? '—'}</dd>

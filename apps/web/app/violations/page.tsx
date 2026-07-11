@@ -24,7 +24,7 @@ function sourceLabel(status: string, t: (k: string) => string): string {
  * блокировка инспектора (/block) и есть основное «нарушение».
  */
 export default function ViolationsPage() {
-  const { t } = useT();
+  const { t, tStatus } = useT();
   const [items, setItems] = useState<Waybill[]>([]);
   const [details, setDetails] = useState<Record<string, Detail | null>>({});
   const [scope, setScope] = useState<'blocked' | 'all'>('blocked');
@@ -136,7 +136,7 @@ export default function ViolationsPage() {
                   <td>{String(w.driverSnapshot?.fullName ?? w.driverRma)}</td>
                   <td>{String(w.organizationSnapshot?.name ?? w.organizationRma)}</td>
                   <td><span className={`badge ${w.status === 'BLOCKED' ? 'red' : 'gray'}`}>{sourceLabel(w.status, t)}</span></td>
-                  <td><span className={`badge ${s.color}`}>{s.label}</span></td>
+                  <td><span className={`badge ${s.color}`}>{tStatus(w.status)}</span></td>
                   <td onClick={e => e.stopPropagation()}>
                     <Link href={`/waybills/${w.id}`} className="tb-icon" style={{ width: 32, height: 32, display: 'inline-grid' }} title={t('btn.open')}>
                       <Icon d={P.eye} cls="" style={{ width: 17, height: 17, color: 'var(--muted)' }} />
