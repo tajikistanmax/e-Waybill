@@ -17,6 +17,7 @@ import tj.mintrans.epd.masterdata.config.CurrentUser;
 import tj.mintrans.epd.masterdata.domain.Driver;
 import tj.mintrans.epd.masterdata.repository.DriverRepository;
 import tj.mintrans.epd.masterdata.repository.OrganizationRepository;
+import tj.mintrans.epd.masterdata.service.AuditService;
 import tj.mintrans.epd.masterdata.web.error.NotFoundException;
 
 import java.time.LocalDate;
@@ -33,12 +34,14 @@ public class DriverController {
     private final DriverRepository drivers;
     private final OrganizationRepository organizations;
     private final CurrentUser currentUser;
+    private final AuditService audit;
 
     public DriverController(DriverRepository drivers, OrganizationRepository organizations,
-                            CurrentUser currentUser) {
+                            CurrentUser currentUser, AuditService audit) {
         this.drivers = drivers;
         this.organizations = organizations;
         this.currentUser = currentUser;
+        this.audit = audit;
     }
 
     public record DriverRequest(
@@ -81,6 +84,8 @@ public class DriverController {
         driver.setSafetyCourseValidTo(req.safetyCourseValidTo());
         driver.setPhone(req.phone());
         var saved = drivers.save(driver);
+        audit.record(existing.isPresent() ? AuditService.UPDATE : AuditService.CREATE,
+                "DRIVER", req.rma(), existing.map(Driver::getFullName).orElse(null), saved.getFullName());
         return ResponseEntity.status(existing.isPresent() ? HttpStatus.OK : HttpStatus.CREATED).body(saved);
     }
 

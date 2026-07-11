@@ -20,6 +20,7 @@ import tj.mintrans.epd.masterdata.config.CurrentUser;
 import tj.mintrans.epd.masterdata.domain.Employee;
 import tj.mintrans.epd.masterdata.repository.EmployeeRepository;
 import tj.mintrans.epd.masterdata.repository.OrganizationRepository;
+import tj.mintrans.epd.masterdata.service.AuditService;
 import tj.mintrans.epd.masterdata.web.error.NotFoundException;
 
 import java.util.List;
@@ -35,12 +36,14 @@ public class EmployeeController {
     private final EmployeeRepository employees;
     private final OrganizationRepository organizations;
     private final CurrentUser currentUser;
+    private final AuditService audit;
 
     public EmployeeController(EmployeeRepository employees, OrganizationRepository organizations,
-                              CurrentUser currentUser) {
+                              CurrentUser currentUser, AuditService audit) {
         this.employees = employees;
         this.organizations = organizations;
         this.currentUser = currentUser;
+        this.audit = audit;
     }
 
     public record EmployeeRequest(
@@ -70,6 +73,8 @@ public class EmployeeController {
         employee.setType(req.type());
         employee.setPhone(req.phone());
         var saved = employees.save(employee);
+        audit.record(existing.isPresent() ? AuditService.UPDATE : AuditService.CREATE,
+                "EMPLOYEE", req.rma(), existing.map(Employee::getName).orElse(null), saved.getName());
         return ResponseEntity.status(existing.isPresent() ? HttpStatus.OK : HttpStatus.CREATED).body(saved);
     }
 

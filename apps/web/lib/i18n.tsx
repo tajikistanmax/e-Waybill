@@ -891,6 +891,10 @@ const DICT: Record<string, { ru: string; tj: string }> = {
   'aud.empty': { ru: 'Записей нет', tj: 'Сабтҳо нест' },
   'aud.refresh': { ru: 'Обновить', tj: 'Навсозӣ' },
   'aud.ent.POLICY': { ru: 'Политика', tj: 'Сиёсат' },
+  'aud.ent.ORGANIZATION': { ru: 'Организация', tj: 'Ташкилот' },
+  'aud.ent.DRIVER': { ru: 'Водитель', tj: 'Ронанда' },
+  'aud.ent.VEHICLE': { ru: 'Транспорт', tj: 'Нақлиёт' },
+  'aud.ent.EMPLOYEE': { ru: 'Сотрудник', tj: 'Корманд' },
 };
 
 // Названия типов ПЛ и статусов — двуязычно. RU совпадает с TYPE_LABELS/STATUS_LABELS из lib/api

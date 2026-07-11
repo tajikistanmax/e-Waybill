@@ -22,6 +22,7 @@ import tj.mintrans.epd.masterdata.config.CurrentUser;
 import tj.mintrans.epd.masterdata.domain.Vehicle;
 import tj.mintrans.epd.masterdata.repository.OrganizationRepository;
 import tj.mintrans.epd.masterdata.repository.VehicleRepository;
+import tj.mintrans.epd.masterdata.service.AuditService;
 import tj.mintrans.epd.masterdata.web.error.NotFoundException;
 
 import java.math.BigDecimal;
@@ -39,12 +40,14 @@ public class VehicleController {
     private final VehicleRepository vehicles;
     private final OrganizationRepository organizations;
     private final CurrentUser currentUser;
+    private final AuditService audit;
 
     public VehicleController(VehicleRepository vehicles, OrganizationRepository organizations,
-                             CurrentUser currentUser) {
+                             CurrentUser currentUser, AuditService audit) {
         this.vehicles = vehicles;
         this.organizations = organizations;
         this.currentUser = currentUser;
+        this.audit = audit;
     }
 
     public record VehicleRequest(
@@ -93,6 +96,8 @@ public class VehicleController {
         vehicle.setTechInspectionValidTo(req.techInspectionValidTo());
         vehicle.setControlCardValidTo(req.controlCardValidTo());
         var saved = vehicles.save(vehicle);
+        audit.record(existing.isPresent() ? AuditService.UPDATE : AuditService.CREATE,
+                "VEHICLE", canonicalNumber, existing.map(Vehicle::getBrand).orElse(null), saved.getBrand());
         return ResponseEntity.status(existing.isPresent() ? HttpStatus.OK : HttpStatus.CREATED).body(saved);
     }
 

@@ -18,6 +18,7 @@ import org.springframework.web.bind.annotation.RestController;
 import tj.mintrans.epd.masterdata.config.CurrentUser;
 import tj.mintrans.epd.masterdata.domain.Organization;
 import tj.mintrans.epd.masterdata.repository.OrganizationRepository;
+import tj.mintrans.epd.masterdata.service.AuditService;
 import tj.mintrans.epd.masterdata.web.error.NotFoundException;
 
 import java.time.LocalDate;
@@ -33,10 +34,12 @@ public class OrganizationController {
 
     private final OrganizationRepository repository;
     private final CurrentUser currentUser;
+    private final AuditService audit;
 
-    public OrganizationController(OrganizationRepository repository, CurrentUser currentUser) {
+    public OrganizationController(OrganizationRepository repository, CurrentUser currentUser, AuditService audit) {
         this.repository = repository;
         this.currentUser = currentUser;
+        this.audit = audit;
     }
 
     public record OrganizationRequest(
@@ -79,6 +82,8 @@ public class OrganizationController {
         org.setLicenseFrom(req.licenseFrom());
         org.setLicenseTo(req.licenseTo());
         var saved = repository.save(org);
+        audit.record(existing.isPresent() ? AuditService.UPDATE : AuditService.CREATE,
+                "ORGANIZATION", req.rma(), existing.map(Organization::getName).orElse(null), saved.getName());
         return ResponseEntity.status(existing.isPresent() ? HttpStatus.OK : HttpStatus.CREATED).body(saved);
     }
 
