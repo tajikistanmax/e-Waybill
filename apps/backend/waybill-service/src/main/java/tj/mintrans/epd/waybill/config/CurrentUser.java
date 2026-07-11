@@ -16,10 +16,30 @@ import java.util.Optional;
 public class CurrentUser {
 
     private static final String ORGANIZATION_CLAIM = "organization_rma";
+    private static final String RMA_CLAIM = "rma";
 
     /** true, если запрос пришёл с JWT (а не анонимный внутренний вызов). */
     public boolean isJwtAuthenticated() {
         return authentication() instanceof JwtAuthenticationToken;
+    }
+
+    /** РМА самого субъекта из claim "rma" (для водителя — его РМА водителя). */
+    public Optional<String> rma() {
+        if (authentication() instanceof JwtAuthenticationToken jwt
+                && jwt.getToken().getClaim(RMA_CLAIM) instanceof String r && !r.isBlank()) {
+            return Optional.of(r);
+        }
+        return Optional.empty();
+    }
+
+    /** true, если у текущего субъекта есть realm-роль role (без префикса ROLE_). */
+    public boolean hasRole(String role) {
+        Authentication auth = authentication();
+        if (auth == null) {
+            return false;
+        }
+        String target = "ROLE_" + role;
+        return auth.getAuthorities().stream().anyMatch(a -> target.equals(a.getAuthority()));
     }
 
     /**

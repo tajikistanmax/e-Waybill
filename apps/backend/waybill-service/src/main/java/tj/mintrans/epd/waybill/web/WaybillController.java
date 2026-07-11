@@ -255,13 +255,22 @@ public class WaybillController {
                 return List.of();
             }
             organizationRma = own.get();
+            // Водитель (роль DRIVER) видит только СВОИ путевые листы (свои рейсы как основной
+            // или второй водитель), а не всей организации — иначе он видел бы чужие рейсы и QR.
+            final String driverRma = currentUser.hasRole("DRIVER") ? currentUser.rma().orElse("") : null;
             if (number != null) {
                 final String orgRma = organizationRma;
                 return waybills.findByNumber(number)
                         .filter(wb -> orgRma.equals(wb.getOrganizationRma()))
+                        .filter(wb -> driverRma == null || driverRma.equals(wb.getDriverRma()) || driverRma.equals(wb.getSecondDriverRma()))
                         .map(List::of).orElseGet(List::of);
             }
             var result = waybills.findByOrganizationRmaOrderByCreatedAtDesc(organizationRma);
+            if (driverRma != null) {
+                result = result.stream()
+                        .filter(wb -> driverRma.equals(wb.getDriverRma()) || driverRma.equals(wb.getSecondDriverRma()))
+                        .toList();
+            }
             if (status != null) {
                 final WaybillStatus st = status;
                 result = result.stream().filter(wb -> wb.getStatus() == st).toList();
