@@ -473,7 +473,8 @@ public class WaybillService {
     public Waybill confirmPayment(UUID id, String method, String externalRef, String actor) {
         var wb = get(id);
         requireStatus(wb, WaybillStatus.AWAITING_PAYMENT);
-        var payment = payments.findByWaybillId(id)
+        // Блокирующая загрузка платежа: сериализует одновременные доставки вебхука (идемпотентность).
+        var payment = payments.findByWaybillIdForUpdate(id)
                 .orElseThrow(() -> new NotFoundException("Запись об оплате не найдена"));
         if (tj.mintrans.epd.waybill.domain.WaybillPayment.STATUS_CONFIRMED.equals(payment.getStatus())) {
             throw new ConflictException("Оплата уже подтверждена");
