@@ -25,6 +25,10 @@ public class ApiErrors {
         public UnprocessableException(String m) { super(m); }
     }
 
+    public static class ForbiddenException extends RuntimeException {
+        public ForbiddenException(String m) { super(m); }
+    }
+
     @ExceptionHandler(NotFoundException.class)
     public ProblemDetail notFound(NotFoundException e) {
         return problem(HttpStatus.NOT_FOUND, "Не найдено", e.getMessage());
@@ -38,6 +42,11 @@ public class ApiErrors {
     @ExceptionHandler(UnprocessableException.class)
     public ProblemDetail unprocessable(UnprocessableException e) {
         return problem(HttpStatus.UNPROCESSABLE_ENTITY, "Ошибка валидации", e.getMessage());
+    }
+
+    @ExceptionHandler(ForbiddenException.class)
+    public ProblemDetail forbidden(ForbiddenException e) {
+        return problem(HttpStatus.FORBIDDEN, "Доступ запрещён", e.getMessage());
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)

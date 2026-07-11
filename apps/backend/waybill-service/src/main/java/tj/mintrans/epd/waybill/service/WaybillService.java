@@ -11,7 +11,9 @@ import tj.mintrans.epd.waybill.domain.WaybillType;
 import tj.mintrans.epd.waybill.repository.WaybillRepository;
 import tj.mintrans.epd.waybill.repository.WaybillStatusEventRepository;
 import tj.mintrans.epd.waybill.repository.WaybillTitleRepository;
+import tj.mintrans.epd.waybill.config.CurrentUser;
 import tj.mintrans.epd.waybill.web.error.ApiErrors.ConflictException;
+import tj.mintrans.epd.waybill.web.error.ApiErrors.ForbiddenException;
 import tj.mintrans.epd.waybill.web.error.ApiErrors.NotFoundException;
 import tj.mintrans.epd.waybill.web.error.ApiErrors.UnprocessableException;
 
@@ -37,6 +39,7 @@ public class WaybillService {
     private final MasterDataClient masterData;
     private final WaybillNumberGenerator numberGenerator;
     private final org.springframework.context.ApplicationEventPublisher eventPublisher;
+    private final CurrentUser currentUser;
     /** Оплата выключена по умолчанию (dev/этап 1а); в проде — PAYMENT_ENABLED=true. */
     private final boolean paymentEnabled;
     private final java.math.BigDecimal paymentFee;
@@ -48,6 +51,7 @@ public class WaybillService {
                           MasterDataClient masterData,
                           WaybillNumberGenerator numberGenerator,
                           org.springframework.context.ApplicationEventPublisher eventPublisher,
+                          CurrentUser currentUser,
                           @org.springframework.beans.factory.annotation.Value("${epd.payment.enabled:false}") boolean paymentEnabled,
                           @org.springframework.beans.factory.annotation.Value("${epd.payment.fee-somoni:10.00}") java.math.BigDecimal paymentFee) {
         this.waybills = waybills;
@@ -57,6 +61,7 @@ public class WaybillService {
         this.masterData = masterData;
         this.numberGenerator = numberGenerator;
         this.eventPublisher = eventPublisher;
+        this.currentUser = currentUser;
         this.paymentEnabled = paymentEnabled;
         this.paymentFee = paymentFee;
     }
@@ -68,6 +73,11 @@ public class WaybillService {
                           String driverRma, String secondDriverRma, String communicationType,
                           String route, String schedule, String specialMark,
                           Map<String, Object> typeData) {
+        // Мультиарендность: tenant-scoped пользователь оформляет ПЛ только за свою организацию.
+        if (currentUser.isTenantScoped()
+                && !currentUser.organizationRma().map(rma -> rma.equals(organizationRma)).orElse(false)) {
+            throw new ForbiddenException("Оформление путевого листа за другую организацию запрещено");
+        }
         var org = masterData.findOrganization(organizationRma)
                 .orElseThrow(() -> new NotFoundException("Организация не найдена"));
         var driver = masterData.findDriver(driverRma)
@@ -604,7 +614,15 @@ public class WaybillService {
     // ------------------------------------------------------------------ вспомогательные
 
     public Waybill get(UUID id) {
-        return waybills.findById(id).orElseThrow(() -> new NotFoundException("Путевой лист не найден"));
+        var wb = waybills.findById(id).orElseThrow(() -> new NotFoundException("Путевой лист не найден"));
+        // Мультиарендность: tenant-scoped пользователь (не-админ) видит и меняет только ПЛ
+        // своей организации. Все мутации проходят через get(), поэтому проверка одна.
+        // 404 (а не 403) — чтобы не раскрывать существование чужого документа.
+        if (currentUser.isTenantScoped()
+                && !currentUser.organizationRma().map(rma -> rma.equals(wb.getOrganizationRma())).orElse(false)) {
+            throw new NotFoundException("Путевой лист не найден");
+        }
+        return wb;
     }
 
     private void requireStatus(Waybill wb, WaybillStatus expected) {
