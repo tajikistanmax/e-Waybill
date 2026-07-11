@@ -13,9 +13,19 @@ type Row = Record<string, unknown>;
 export default function FleetPage() {
   const { t } = useT();
   const { roles } = useAuth();
-  const canAdd = roles.includes('DISPATCHER') || roles.includes('COMPANY_ADMIN') || roles.includes('SYSTEM_ADMIN');
+  const canManage = roles.includes('DISPATCHER') || roles.includes('COMPANY_ADMIN') || roles.includes('SYSTEM_ADMIN');
+  const canAdd = canManage;
+  // Правильная бизнес-логика: механик осматривает ТС (видит транспорт), врач — водителей (видит водителей).
+  // Управляющие роли (диспетчер/админ) видят и то, и другое.
+  const showVehicles = canManage || roles.includes('MECHANIC');
+  const showDrivers = canManage || roles.includes('DOCTOR');
 
   const [tab, setTab] = useState<'vehicles' | 'drivers'>('vehicles');
+  // Если текущая вкладка недоступна роли — переключаемся на доступную (после загрузки ролей).
+  useEffect(() => {
+    if (tab === 'vehicles' && !showVehicles && showDrivers) setTab('drivers');
+    else if (tab === 'drivers' && !showDrivers && showVehicles) setTab('vehicles');
+  }, [showVehicles, showDrivers, tab]);
   const [orgRma, setOrgRma] = useState('');
   const [q, setQ] = useState('');
   const [rows, setRows] = useState<Row[]>([]);
@@ -63,8 +73,10 @@ export default function FleetPage() {
     <>
       <div className="toolbar">
         <div>
-          <h1>{t('nav.fleet')}</h1>
-          <div className="page-lead" style={{ margin: 0 }}>{t('fleet.lead')}</div>
+          <h1>{showVehicles && showDrivers ? t('nav.fleet') : showDrivers ? t('fleet.tab.drivers') : t('fleet.tab.vehicles')}</h1>
+          <div className="page-lead" style={{ margin: 0 }}>
+            {showVehicles && showDrivers ? t('fleet.lead') : showDrivers ? t('fleet.lead.drivers') : t('fleet.lead.vehicles')}
+          </div>
         </div>
         {canAdd && (
           <button className="btn" style={{ marginLeft: 'auto' }} onClick={() => { setAdding(a => !a); setMsg(''); setErr(''); }}>
@@ -74,15 +86,17 @@ export default function FleetPage() {
         )}
       </div>
 
-      {/* Вкладки */}
-      <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
-        <button className={`btn ${tab === 'vehicles' ? 'primary' : 'secondary'}`} onClick={() => switchTab('vehicles')}>
-          <Icon d={P.car} cls="" style={{ width: 15, height: 15 }} /> {t('fleet.tab.vehicles')}
-        </button>
-        <button className={`btn ${tab === 'drivers' ? 'primary' : 'secondary'}`} onClick={() => switchTab('drivers')}>
-          <Icon d={P.user} cls="" style={{ width: 15, height: 15 }} /> {t('fleet.tab.drivers')}
-        </button>
-      </div>
+      {/* Вкладки — только доступные роли; панель скрыта, если доступна одна */}
+      {showVehicles && showDrivers && (
+        <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+          <button className={`btn ${tab === 'vehicles' ? 'primary' : 'secondary'}`} onClick={() => switchTab('vehicles')}>
+            <Icon d={P.car} cls="" style={{ width: 15, height: 15 }} /> {t('fleet.tab.vehicles')}
+          </button>
+          <button className={`btn ${tab === 'drivers' ? 'primary' : 'secondary'}`} onClick={() => switchTab('drivers')}>
+            <Icon d={P.user} cls="" style={{ width: 15, height: 15 }} /> {t('fleet.tab.drivers')}
+          </button>
+        </div>
+      )}
 
       {/* Форма добавления (по госномеру/ИНН → регистрация из единой платформы) */}
       {canAdd && adding && (
