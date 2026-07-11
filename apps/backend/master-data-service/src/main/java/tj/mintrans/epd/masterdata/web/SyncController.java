@@ -179,10 +179,13 @@ public class SyncController {
         var org = requireOrganization(req.organizationRma());
         var info = unifiedPlatform.findVehicle(req.registrationNumber())
                 .orElseThrow(() -> new NotFoundException("ТС %s не найдено в базе ГАИ".formatted(req.registrationNumber())));
-        var existing = vehicles.findByRegistrationNumber(info.registrationNumber());
+        // Каноническая форма госномера (как в прямом upsert) — исключаем раздвоение ТС по регистру.
+        var canonicalNumber = info.registrationNumber() == null
+                ? null : info.registrationNumber().trim().toUpperCase();
+        var existing = vehicles.findByRegistrationNumber(canonicalNumber);
         existing.ifPresent(v -> assertNotForeign(v.getOrganizationId(), org.getId(), "Транспорт"));
         var vehicle = existing.orElseGet(Vehicle::new);
-        vehicle.setRegistrationNumber(info.registrationNumber());
+        vehicle.setRegistrationNumber(canonicalNumber);
         vehicle.setOrganizationId(org.getId());
         vehicle.setTransportType(info.transportType());
         vehicle.setBrand(info.brand());

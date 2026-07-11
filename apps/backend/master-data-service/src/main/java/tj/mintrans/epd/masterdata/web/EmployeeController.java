@@ -103,6 +103,14 @@ public class EmployeeController {
 
     @GetMapping("/{id}")
     public Employee get(@PathVariable UUID id) {
-        return employees.findById(id).orElseThrow(() -> new NotFoundException("Сотрудник не найден"));
+        var employee = employees.findById(id).orElseThrow(() -> new NotFoundException("Сотрудник не найден"));
+        // Мультиарендность: не-админ не может прочитать сотрудника чужой организации по прямому id.
+        if (currentUser.isTenantScoped()) {
+            var org = currentUser.organizationRma().flatMap(organizations::findByRma).orElse(null);
+            if (org == null || !org.getId().equals(employee.getOrganizationId())) {
+                throw new NotFoundException("Сотрудник не найден");
+            }
+        }
+        return employee;
     }
 }

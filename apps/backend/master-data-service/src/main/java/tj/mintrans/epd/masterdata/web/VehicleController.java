@@ -1,6 +1,8 @@
 package tj.mintrans.epd.masterdata.web;
 
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
@@ -48,7 +50,7 @@ public class VehicleController {
     public record VehicleRequest(
             @NotBlank @Pattern(regexp = "[A-Za-zА-Яа-я0-9]{4,20}", message = "Госномер: буквы и цифры") String registrationNumber,
             @NotBlank @Pattern(regexp = "\\d{9,10}", message = "РМА организации должен содержать 9–10 цифр") String organizationRma,
-            @NotNull Short transportType,
+            @NotNull @Min(value = 1, message = "Тип ТС: 1–6") @Max(value = 6, message = "Тип ТС: 1–6") Short transportType,
             String brand,
             @Pattern(regexp = "\\d{4}", message = "Номер стоянки — 4 цифры") String parkingNumber,
             Integer capacity,
@@ -73,9 +75,12 @@ public class VehicleController {
     public ResponseEntity<Vehicle> upsert(@Valid @RequestBody VehicleRequest req) {
         var org = organizations.findByRma(req.organizationRma())
                 .orElseThrow(() -> new NotFoundException("Организация не найдена"));
-        var existing = vehicles.findByRegistrationNumber(req.registrationNumber());
+        // Госномер канонизируется (обрезка пробелов + верхний регистр), иначе "0114TJ01"
+        // и "0114tj01 " создали бы два физически одинаковых ТС и раздвоили бы поиск при выдаче ПЛ.
+        var canonicalNumber = canonical(req.registrationNumber());
+        var existing = vehicles.findByRegistrationNumber(canonicalNumber);
         var vehicle = existing.orElseGet(Vehicle::new);
-        vehicle.setRegistrationNumber(req.registrationNumber());
+        vehicle.setRegistrationNumber(canonicalNumber);
         vehicle.setOrganizationId(org.getId());
         vehicle.setTransportType(req.transportType());
         vehicle.setBrand(req.brand());
@@ -111,6 +116,8 @@ public class VehicleController {
     @GetMapping
     public List<Vehicle> list(@RequestParam(required = false) String registrationNumber,
                               @RequestParam(required = false) String organizationRma) {
+        // Поиск по госномеру — в той же канонической форме, что и хранение (регистронезависимо).
+        registrationNumber = canonical(registrationNumber);
         // Мультиарендность: не-админ видит только транспорт своей организации.
         // Анонимные (внутренние) вызовы не фильтруются.
         if (currentUser.isTenantScoped()) {
@@ -138,6 +145,19 @@ public class VehicleController {
 
     @GetMapping("/{id}")
     public Vehicle get(@PathVariable UUID id) {
-        return vehicles.findById(id).orElseThrow(() -> new NotFoundException("Транспорт не найден"));
+        var vehicle = vehicles.findById(id).orElseThrow(() -> new NotFoundException("Транспорт не найден"));
+        // Мультиарендность: не-админ не может прочитать ТС чужой организации по прямому id.
+        if (currentUser.isTenantScoped()) {
+            var org = currentUser.organizationRma().flatMap(organizations::findByRma).orElse(null);
+            if (org == null || !org.getId().equals(vehicle.getOrganizationId())) {
+                throw new NotFoundException("Транспорт не найден");
+            }
+        }
+        return vehicle;
+    }
+
+    /** Каноническая форма госномера: обрезка пробелов + верхний регистр (null → null). */
+    private static String canonical(String registrationNumber) {
+        return registrationNumber == null ? null : registrationNumber.trim().toUpperCase();
     }
 }

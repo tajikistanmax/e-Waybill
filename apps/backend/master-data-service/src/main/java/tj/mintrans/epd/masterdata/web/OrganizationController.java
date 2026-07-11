@@ -1,6 +1,8 @@
 package tj.mintrans.epd.masterdata.web;
 
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
 import org.springframework.http.HttpStatus;
@@ -42,7 +44,7 @@ public class OrganizationController {
             String kpp,
             @NotBlank String name,
             Short typeCompany,
-            Short regionId,
+            @Min(value = 1, message = "Код региона: 1–7") @Max(value = 7, message = "Код региона: 1–7") Short regionId,
             String cityName,
             String address,
             String phone,
@@ -97,6 +99,12 @@ public class OrganizationController {
 
     @GetMapping("/{id}")
     public Organization get(@PathVariable UUID id) {
-        return repository.findById(id).orElseThrow(() -> new NotFoundException("Организация не найдена"));
+        var org = repository.findById(id).orElseThrow(() -> new NotFoundException("Организация не найдена"));
+        // Мультиарендность: не-админ может прочитать только свою организацию.
+        if (currentUser.isTenantScoped()
+                && !currentUser.organizationRma().map(rma -> rma.equals(org.getRma())).orElse(false)) {
+            throw new NotFoundException("Организация не найдена");
+        }
+        return org;
     }
 }

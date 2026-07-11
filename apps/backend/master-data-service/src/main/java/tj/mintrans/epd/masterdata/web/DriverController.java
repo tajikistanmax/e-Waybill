@@ -114,6 +114,14 @@ public class DriverController {
 
     @GetMapping("/{id}")
     public Driver get(@PathVariable UUID id) {
-        return drivers.findById(id).orElseThrow(() -> new NotFoundException("Водитель не найден"));
+        var driver = drivers.findById(id).orElseThrow(() -> new NotFoundException("Водитель не найден"));
+        // Мультиарендность: не-админ не может прочитать водителя чужой организации по прямому id.
+        if (currentUser.isTenantScoped()) {
+            var org = currentUser.organizationRma().flatMap(organizations::findByRma).orElse(null);
+            if (org == null || !org.getId().equals(driver.getOrganizationId())) {
+                throw new NotFoundException("Водитель не найден");
+            }
+        }
+        return driver;
     }
 }
