@@ -82,14 +82,17 @@ $w = PostJson "$wb/api/v1/waybills/$($w.id)/issue" @{ driverConfirmation = "PIN"
 $w = PostJson "$wb/api/v1/waybills/$($w.id)/activate" @{ dispatcherRma = "333333333" } $hd
 Check "Выдан и активирован (Т4)" ($w.status -eq 'ACTIVE')
 
-# Витрина Neru: по госномеру находит действующий ПЛ (для камер/постов ГАИ)
-$neru = Invoke-RestMethod "$wb/api/v1/neru/active-by-plate?plate=0114tj01" -Headers $hd
+# Витрина Neru: по госномеру находит действующий ПЛ (инспектор/сервис/админ);
+# тенанту-перевозчику доступ запрещён (иначе перебор госномеров = утечка ПДн).
+$neru = Invoke-RestMethod "$wb/api/v1/neru/active-by-plate?plate=0114tj01" -Headers $ha
 Check "Neru: действующий ПЛ по госномеру" ($neru.vehicleRegNumber -eq '0114TJ01' -and $neru.status)
+try { Invoke-RestMethod "$wb/api/v1/neru/active-by-plate?plate=0114tj01" -Headers $hd | Out-Null; Check "Neru: тенанту-перевозчику запрещено (403)" $false }
+catch { Check "Neru: тенанту-перевозчику запрещено (403)" ($_.Exception.Response.StatusCode.value__ -eq 403) }
 
-# GPS: приём координаты и запрос последней позиции
-$ping = PostJson "$wb/api/v1/gps" @{ vehicleRegNumber = "0114TJ01"; lat = 38.5598; lon = 68.7870; speedKmh = 40; waybillId = $w.id } $hd
+# GPS: приём — только сервис/админ (трекеры); чтение последней позиции — своя организация
+$ping = PostJson "$wb/api/v1/gps" @{ vehicleRegNumber = "0114TJ01"; lat = 38.5598; lon = 68.7870; speedKmh = 40; waybillId = $w.id } $ha
 $last = Invoke-RestMethod "$wb/api/v1/gps/last?vehicleRegNumber=0114TJ01" -Headers $hd
-Check "GPS: приём и последняя позиция" ([decimal]$last.lat -eq [decimal]38.5598)
+Check "GPS: приём (сервис) и последняя позиция (своя орг)" ([decimal]$last.lat -eq [decimal]38.5598)
 
 # Негатив: второй ПЛ на то же ТС
 try {

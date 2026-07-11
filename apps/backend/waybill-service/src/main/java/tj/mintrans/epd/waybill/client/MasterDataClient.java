@@ -89,8 +89,12 @@ public class MasterDataClient {
     }
 
     public void updateVehicleOdometer(String vehicleId, int odometer) {
+        // Перенос пробега при закрытии ПЛ — СИСТЕМНАЯ операция: форсируем сервисный токен
+        // (API_INTEGRATOR), а не пользовательский, т.к. эндпоинт закрыт ролью сервиса и не
+        // должен зависеть от роли инициатора закрытия (диспетчер/бухгалтер).
         client.patch()
                 .uri("/api/v1/vehicles/{id}/odometer", vehicleId)
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + serviceToken.bearer())
                 .body(Map.of("odometer", odometer))
                 .retrieve()
                 .toBodilessEntity();

@@ -1,5 +1,6 @@
 package tj.mintrans.epd.waybill.web;
 
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -36,6 +37,7 @@ public class NeruController {
      * (маловероятно — на ТС допустим один действующий ПЛ) возвращаем самый свежий.
      */
     @GetMapping("/active-by-plate")
+    @PreAuthorize("hasAnyRole('INSPECTOR','API_INTEGRATOR','SYSTEM_ADMIN','MINTRANS_ANALYST')")
     public NeruWaybillView activeByPlate(@RequestParam String plate) {
         String canonical = plate.trim().toUpperCase();
         return waybills.findByVehicleRegNumberAndStatusIn(canonical, WaybillStatus.OPEN_STATUSES).stream()

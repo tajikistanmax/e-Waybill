@@ -72,22 +72,31 @@ public class NotificationService {
     // -------------------------------------------------------- чтение (тенант-скоуп)
 
     public List<Notification> list() {
-        return currentUser.organizationRma()
-                .map(repository::findTop100ByRecipientRmaOrderByCreatedAtDesc)
-                .orElseGet(repository::findTop100ByOrderByCreatedAtDesc);
+        // Тенант видит только свою организацию (пустой список, если org-claim нет);
+        // платформенные роли (админ/аналитик/инспектор/сервис) — все. Раньше решение
+        // принималось по наличию org-claim → субъект без claim видел ВСЕ организации.
+        if (currentUser.isTenantScoped()) {
+            return currentUser.organizationRma()
+                    .map(repository::findTop100ByRecipientRmaOrderByCreatedAtDesc)
+                    .orElseGet(List::of);
+        }
+        return repository.findTop100ByOrderByCreatedAtDesc();
     }
 
     public long unreadCount() {
-        return currentUser.organizationRma()
-                .map(repository::countByRecipientRmaAndReadAtIsNull)
-                .orElseGet(repository::countByReadAtIsNull);
+        if (currentUser.isTenantScoped()) {
+            return currentUser.organizationRma()
+                    .map(repository::countByRecipientRmaAndReadAtIsNull)
+                    .orElse(0L);
+        }
+        return repository.countByReadAtIsNull();
     }
 
     @Transactional
     public void markRead(UUID id) {
         repository.findById(id).ifPresent(n -> {
-            boolean own = currentUser.organizationRma()
-                    .map(rma -> rma.equals(n.getRecipientRma())).orElse(true); // platform-admin — без ограничения
+            boolean own = !currentUser.isTenantScoped()
+                    || currentUser.organizationRma().map(rma -> rma.equals(n.getRecipientRma())).orElse(false);
             if (own && n.getReadAt() == null) {
                 n.setReadAt(OffsetDateTime.now());
                 repository.save(n);

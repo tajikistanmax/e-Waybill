@@ -22,7 +22,12 @@ public class CurrentUser {
         return authentication() instanceof JwtAuthenticationToken;
     }
 
-    /** Платформенные роли, которым доступны данные всех организаций. */
+    /**
+     * Роли с доступом к данным всех организаций (не применяется тенант-фильтр):
+     * SYSTEM_ADMIN, MINTRANS_ANALYST (аналитика), INSPECTOR (дорожный контроль читает/
+     * блокирует ПЛ любой организации), API_INTEGRATOR (сервисный аккаунт агрегатора и
+     * межсервисных вызовов — в проде без него get() отдавал бы 404 на любой ПЛ).
+     */
     public boolean isPlatformAdmin() {
         Authentication auth = authentication();
         if (auth == null) {
@@ -30,7 +35,9 @@ public class CurrentUser {
         }
         return auth.getAuthorities().stream().anyMatch(a ->
                 "ROLE_SYSTEM_ADMIN".equals(a.getAuthority())
-                        || "ROLE_MINTRANS_ANALYST".equals(a.getAuthority()));
+                        || "ROLE_MINTRANS_ANALYST".equals(a.getAuthority())
+                        || "ROLE_INSPECTOR".equals(a.getAuthority())
+                        || "ROLE_API_INTEGRATOR".equals(a.getAuthority()));
     }
 
     /** РМА организации пользователя из claim "organization_rma" (если есть). */
