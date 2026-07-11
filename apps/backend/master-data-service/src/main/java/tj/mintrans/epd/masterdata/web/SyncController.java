@@ -55,6 +55,8 @@ public class SyncController {
     private final CurrentUser currentUser;
     private final AuditService audit;
 
+    private static final java.util.Set<String> SUBJECT_TYPES = java.util.Set.of("PHYSICAL", "IP", "LEGAL");
+
     public SyncController(UnifiedPlatformClient unifiedPlatform,
                           OrganizationRepository organizations,
                           DriverRepository drivers,
@@ -105,6 +107,7 @@ public class SyncController {
         requireOwnOrganization(req.inn());
         var subject = unifiedPlatform.findSubject(req.inn())
                 .orElseThrow(() -> new NotFoundException("Субъект с ИНН %s не найден в единой платформе (налоговая)".formatted(req.inn())));
+        assertPlatformSubject(subject, req.inn());
         var existing = organizations.findByRma(subject.inn());
         String oldName = existing.map(Organization::getName).orElse(null); // до мутации (existing и org — один объект)
         var org = existing.orElseGet(Organization::new);
@@ -135,6 +138,7 @@ public class SyncController {
         var org = requireOrganization(req.organizationRma());
         var subject = unifiedPlatform.findSubject(req.inn())
                 .orElseThrow(() -> new NotFoundException("Субъект с ИНН %s не найден в единой платформе (налоговая)".formatted(req.inn())));
+        assertPlatformSubject(subject, req.inn());
         var license = unifiedPlatform.findDriverLicense(req.inn())
                 .orElseThrow(() -> new NotFoundException("Водительское удостоверение для ИНН %s не найдено в базе ГАИ".formatted(req.inn())));
         var existing = drivers.findByRma(subject.inn());
@@ -167,6 +171,7 @@ public class SyncController {
         var org = requireOrganization(req.organizationRma());
         var subject = unifiedPlatform.findSubject(req.inn())
                 .orElseThrow(() -> new NotFoundException("Субъект с ИНН %s не найден в единой платформе (налоговая)".formatted(req.inn())));
+        assertPlatformSubject(subject, req.inn());
         var existing = employees.findByRma(subject.inn());
         existing.ifPresent(e -> assertNotForeign(e.getOrganizationId(), org.getId(), "Сотрудник"));
         String oldName = existing.map(Employee::getName).orElse(null); // до мутации
@@ -198,6 +203,18 @@ public class SyncController {
         // Каноническая форма госномера (как в прямом upsert) — исключаем раздвоение ТС по регистру.
         var canonicalNumber = info.registrationNumber() == null
                 ? null : info.registrationNumber().trim().toUpperCase();
+        // Ответ ГАИ должен относиться к ЗАПРОШЕННОМУ ТС и иметь тип из справочника ЭПД (1..6);
+        // иначе tenant с мисматч-ответом мог бы подменить чужое ТС, а мусорный тип сломал бы
+        // нормирование топлива. 502 — платформа вернула некорректные данные.
+        if (canonicalNumber == null
+                || !canonicalNumber.equals(req.registrationNumber().trim().toUpperCase())) {
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
+                    "Единая платформа вернула ТС с иным госномером, чем запрошено");
+        }
+        if (info.transportType() == null || info.transportType() < 1 || info.transportType() > 6) {
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
+                    "Единая платформа вернула недопустимый тип ТС: " + info.transportType());
+        }
         var existing = vehicles.findByRegistrationNumber(canonicalNumber);
         existing.ifPresent(v -> assertNotForeign(v.getOrganizationId(), org.getId(), "Транспорт"));
         String oldBrand = existing.map(Vehicle::getBrand).orElse(null); // до мутации
@@ -252,6 +269,24 @@ public class SyncController {
                 throw new org.springframework.security.access.AccessDeniedException(
                         "Доступ только к своей организации");
             }
+        }
+    }
+
+    /**
+     * Ответ единой платформы должен соответствовать запросу: субъект с ЗАПРОШЕННЫМ ИНН
+     * и известным типом (PHYSICAL|IP|LEGAL). Иначе tenant, чью организацию проверяли по
+     * req.inn, при мисматч-ответе платформы мог бы создать/обновить запись под ЧУЖИМ РМА
+     * (organizations.findByRma(subject.inn) уводил бы от проверенного req.inn). 502 —
+     * платформа вернула некорректные данные (не пишем мусор в реплику).
+     */
+    private static void assertPlatformSubject(UnifiedPlatformClient.Subject s, String requestedInn) {
+        if (s.inn() == null || !s.inn().equals(requestedInn)) {
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
+                    "Единая платформа вернула субъект с иным ИНН, чем запрошено");
+        }
+        if (!SUBJECT_TYPES.contains(s.subjectType())) {
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
+                    "Единая платформа вернула неизвестный тип субъекта: " + s.subjectType());
         }
     }
 
