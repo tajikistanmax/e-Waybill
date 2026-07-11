@@ -202,7 +202,36 @@ public class WaybillService {
             }
             default -> { /* прочие типы — свободная схема type_data */ }
         }
+        validateCustomFields(wb.getWaybillType(), data);
         wb.setTypeData(data.isEmpty() ? null : data);
+    }
+
+    /**
+     * Серверная проверка обязательных доп.полей типа ПЛ (конструктор полей, master-data):
+     * API-клиент/интегратор не должен обойти обязательность, заданную администратором
+     * (на фронте она уже проверяется). Применяется только к порталу/стандартному create —
+     * не к legacy-агрегатору (тот идёт мимо validateTypeData). Значения — в data.custom.
+     */
+    private void validateCustomFields(WaybillType type, Map<String, Object> data) {
+        var fieldDefs = masterData.listFieldDefinitions(type.name());
+        if (fieldDefs.isEmpty()) {
+            return;
+        }
+        var custom = new java.util.HashMap<String, Object>();
+        if (data.get("custom") instanceof Map<?, ?> m) {
+            m.forEach((k, v) -> custom.put(String.valueOf(k), v));
+        }
+        for (var fd : fieldDefs) {
+            if (Boolean.TRUE.equals(fd.get("required"))) {
+                String key = str(fd.get("fieldKey"));
+                Object value = custom.get(key);
+                if (value == null || str(value).isBlank()) {
+                    String label = str(fd.get("labelRu"));
+                    throw new UnprocessableException(
+                            "Обязательное дополнительное поле «%s» не заполнено".formatted(label.isBlank() ? key : label));
+                }
+            }
+        }
     }
 
     /** trailers формы 2-Б: не более 2 прицепов, у каждого обязательны госномер и марка. */

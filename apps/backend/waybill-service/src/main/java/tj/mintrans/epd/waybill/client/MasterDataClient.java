@@ -132,6 +132,11 @@ public class MasterDataClient {
         return list("/api/v1/dictionaries/tariffs");
     }
 
+    /** Активные определения доп.полей (конструктор полей) для типа ПЛ — для серверной валидации обязательных. */
+    public List<Map<String, Object>> listFieldDefinitions(String waybillType) {
+        return list("/api/v1/field-definitions?waybillType={t}", waybillType);
+    }
+
     private List<Map<String, Object>> list(String uri, Object... vars) {
         List<Map<String, Object>> list = client.get().uri(uri, vars).retrieve().body(LIST_OF_MAPS);
         return list == null ? List.of() : list;
