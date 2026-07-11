@@ -81,13 +81,23 @@ public class StubUnifiedPlatformClient implements UnifiedPlatformClient {
         short transportType = (short) (h % 6 + 1);
         var brands = BRANDS.get(transportType - 1);
         var today = LocalDate.now();
+        // Пассажировместимость по типу ТС; для грузовых (5, 6) — null. ВАЖНО: через switch, а не
+        // тернарную цепочку int?:null — иначе смешение int/Integer даёт тип int и распаковка
+        // null (для грузовых) роняет NPE. Грузовой транспорт обязан синхронизироваться.
+        Integer capacity = switch (transportType) {
+            case 1 -> 90;
+            case 2 -> 100;
+            case 3 -> 18;
+            case 4 -> 4;
+            default -> null;
+        };
         return Optional.of(new VehicleInfo(
                 reg,
                 transportType,
                 brands.get(h % brands.size()),
                 "TJ%09d".formatted(h % 1_000_000_000),
                 (short) (2012 + h % 13),
-                transportType == 1 ? 90 : transportType == 2 ? 100 : transportType == 3 ? 18 : transportType == 4 ? 4 : null,
+                capacity,
                 transportType >= 5 ? BigDecimal.valueOf(h % 15 + 5) : null,
                 today.plusMonths(6),   // техосмотр действует
                 today.plusMonths(12))); // контрольная карточка действует
