@@ -46,6 +46,12 @@ epd:
     # Legacy-агрегаторы (ЧУРА/НЕРУ) в dev ходят без токена. В проде — false:
     # требуется client-credentials токен клиента epd-aggregator (роль API_INTEGRATOR).
     aggregator-open: ${AGGREGATOR_OPEN:true}
+  signing:
+    # Подпись титулов ПЛ. stub (dev) — SHA-256 хеш содержимого (НЕ юридически значима);
+    # cades (prod) — квалифицированная ЭП через Crypto Service УЦ РТ (Закон РТ № 1965) +
+    # метка доверенного времени TSP. Переключается без изменения кода (TitleSigner).
+    mode: ${SIGNING_MODE:stub}
+    crypto-url: ${SIGNING_CRYPTO_URL:http://localhost:9099}
 
 springdoc:
   swagger-ui:

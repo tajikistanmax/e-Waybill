@@ -12,16 +12,14 @@ import tj.mintrans.epd.waybill.repository.WaybillRepository;
 import tj.mintrans.epd.waybill.repository.WaybillStatusEventRepository;
 import tj.mintrans.epd.waybill.repository.WaybillTitleRepository;
 import tj.mintrans.epd.waybill.config.CurrentUser;
+import tj.mintrans.epd.waybill.signing.TitleSigner;
 import tj.mintrans.epd.waybill.web.error.ApiErrors.ConflictException;
 import tj.mintrans.epd.waybill.web.error.ApiErrors.ForbiddenException;
 import tj.mintrans.epd.waybill.web.error.ApiErrors.NotFoundException;
 import tj.mintrans.epd.waybill.web.error.ApiErrors.UnprocessableException;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
-import java.util.HexFormat;
 import java.util.Map;
 import java.util.UUID;
 
@@ -40,6 +38,7 @@ public class WaybillService {
     private final WaybillNumberGenerator numberGenerator;
     private final org.springframework.context.ApplicationEventPublisher eventPublisher;
     private final CurrentUser currentUser;
+    private final TitleSigner titleSigner;
     /** Оплата выключена по умолчанию (dev/этап 1а); в проде — PAYMENT_ENABLED=true. */
     private final boolean paymentEnabled;
     private final java.math.BigDecimal paymentFee;
@@ -52,6 +51,7 @@ public class WaybillService {
                           WaybillNumberGenerator numberGenerator,
                           org.springframework.context.ApplicationEventPublisher eventPublisher,
                           CurrentUser currentUser,
+                          TitleSigner titleSigner,
                           @org.springframework.beans.factory.annotation.Value("${epd.payment.enabled:false}") boolean paymentEnabled,
                           @org.springframework.beans.factory.annotation.Value("${epd.payment.fee-somoni:10.00}") java.math.BigDecimal paymentFee) {
         this.waybills = waybills;
@@ -62,6 +62,7 @@ public class WaybillService {
         this.numberGenerator = numberGenerator;
         this.eventPublisher = eventPublisher;
         this.currentUser = currentUser;
+        this.titleSigner = titleSigner;
         this.paymentEnabled = paymentEnabled;
         this.paymentFee = paymentFee;
     }
@@ -689,8 +690,8 @@ public class WaybillService {
         title.setSignerRma(signerRma);
         title.setSignerRole(signerRole);
         title.setData(data);
-        // Dev-подпись: хеш содержимого. Prod: квалифицированная ЭП (CAdES) через Crypto Service.
-        title.setSignature(sha256(wb.getId() + titleType + signerRma + data));
+        // Подпись титула через TitleSigner (dev: SHA-256; prod: квалифицированная ЭП CAdES — УЦ РТ).
+        title.setSignature(titleSigner.sign(wb.getId(), titleType, signerRma, data));
         titles.save(title);
     }
 
@@ -721,15 +722,6 @@ public class WaybillService {
         result.put("verdict", passed ? "ДОПУЩЕН" : "НЕ ДОПУЩЕН");
         result.put("employeeName", employee.get("name"));
         return result;
-    }
-
-    private static String sha256(String value) {
-        try {
-            var digest = MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8));
-            return "sha256:" + HexFormat.of().formatHex(digest);
-        } catch (Exception e) {
-            throw new IllegalStateException(e);
-        }
     }
 
     private static String str(Object o) { return o == null ? "" : o.toString(); }
