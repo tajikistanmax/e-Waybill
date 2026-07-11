@@ -37,17 +37,13 @@ public class SecurityConfig {
                         .requestMatchers("/.well-known/**").permitAll()
                         // Публичная проверка QR (инспектор без логина)
                         .requestMatchers("/api/v1/verify/**").permitAll()
-                        // TODO(prod, ВАЖНО — аудит): GET и межсервисный PATCH одометра сейчас permitAll,
-                        // т.к. поток агрегатора (ЧУРА/НЕРУ) и часть вызовов waybill-service идут БЕЗ
-                        // пользовательского токена. Закрыть client-credentials токеном сервисного
-                        // аккаунта (waybill-service, aggregator) и требовать authenticated() —
-                        // иначе анонимное чтение ПДн. Требует инфраструктуры сервисной аутентификации.
-                        .requestMatchers(HttpMethod.GET, "/api/v1/**").permitAll()
-                        .requestMatchers(HttpMethod.PATCH, "/api/v1/vehicles/*/odometer").permitAll()
-                        // TODO: ВРЕМЕННО открыто. Следующий этап — scoped-токены
-                        // агрегаторов (API_INTEGRATOR): убрать permitAll и требовать
-                        // client-credentials токен с ограничением по клиенту.
-                        .requestMatchers("/api/v1/aggregator/**").permitAll()
+                        // GET и межсервисный PATCH одометра требуют токена (закрыт анонимный доступ
+                        // к ПДн — аудит). Пользователь ходит со своим JWT (тенант-фильтр по организации),
+                        // а межсервисные вызовы waybill-service без пользователя (агрегатор ЧУРА/НЕРУ,
+                        // планировщик) — с сервисным client-credentials токеном epd-aggregator
+                        // (роль API_INTEGRATOR = платформенное чтение всех организаций).
+                        .requestMatchers(HttpMethod.GET, "/api/v1/**").authenticated()
+                        .requestMatchers(HttpMethod.PATCH, "/api/v1/vehicles/*/odometer").authenticated()
                         .requestMatchers("/error").permitAll()
                         .anyRequest().authenticated())
                 .oauth2ResourceServer(oauth2 -> oauth2

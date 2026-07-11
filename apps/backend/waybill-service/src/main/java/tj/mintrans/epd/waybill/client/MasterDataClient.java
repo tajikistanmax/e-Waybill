@@ -25,22 +25,33 @@ import java.util.Optional;
 public class MasterDataClient {
 
     private final RestClient client;
+    private final ServiceTokenProvider serviceToken;
 
-    public MasterDataClient(@Value("${epd.master-data.base-url}") String baseUrl) {
+    public MasterDataClient(@Value("${epd.master-data.base-url}") String baseUrl,
+                            ServiceTokenProvider serviceToken) {
+        this.serviceToken = serviceToken;
         this.client = RestClient.builder()
                 .baseUrl(baseUrl)
-                .requestInterceptor(MasterDataClient::forwardBearerToken)
+                .requestInterceptor(this::authorize)
                 .build();
     }
 
-    /** Проброс Authorization входящего HTTP-запроса в вызов master-data (token relay). */
-    private static ClientHttpResponse forwardBearerToken(HttpRequest request, byte[] body,
-                                                         ClientHttpRequestExecution execution) throws IOException {
-        if (RequestContextHolder.getRequestAttributes() instanceof ServletRequestAttributes attrs) {
-            String authorization = attrs.getRequest().getHeader(HttpHeaders.AUTHORIZATION);
-            if (authorization != null && !request.getHeaders().containsKey(HttpHeaders.AUTHORIZATION)) {
-                request.getHeaders().set(HttpHeaders.AUTHORIZATION, authorization);
+    /**
+     * Аутентификация вызова master-data: пробрасывается Bearer текущего пользователя (token relay);
+     * если запрос без токена (агрегатор ЧУРА/НЕРУ, планировщик) — берётся сервисный client-credentials
+     * токен (роль API_INTEGRATOR), чтобы master-data не приходилось держать GET открытым анонимно.
+     */
+    private ClientHttpResponse authorize(HttpRequest request, byte[] body,
+                                         ClientHttpRequestExecution execution) throws IOException {
+        if (!request.getHeaders().containsKey(HttpHeaders.AUTHORIZATION)) {
+            String userAuthorization = null;
+            if (RequestContextHolder.getRequestAttributes() instanceof ServletRequestAttributes attrs) {
+                userAuthorization = attrs.getRequest().getHeader(HttpHeaders.AUTHORIZATION);
             }
+            String authorization = userAuthorization != null
+                    ? userAuthorization
+                    : "Bearer " + serviceToken.bearer();
+            request.getHeaders().set(HttpHeaders.AUTHORIZATION, authorization);
         }
         return execution.execute(request, body);
     }

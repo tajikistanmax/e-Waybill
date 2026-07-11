@@ -23,7 +23,11 @@ public class CurrentUser {
         return authentication() instanceof JwtAuthenticationToken;
     }
 
-    /** Платформенные роли, которым доступны данные всех организаций. */
+    /**
+     * Платформенные роли, которым доступны данные всех организаций.
+     * API_INTEGRATOR — сервисный аккаунт межсервисных вызовов (waybill-service → master-data
+     * для агрегатора/планировщика): читает справочники любой организации, тенант-фильтр не применяется.
+     */
     public boolean isPlatformAdmin() {
         Authentication auth = authentication();
         if (auth == null) {
@@ -31,7 +35,8 @@ public class CurrentUser {
         }
         return auth.getAuthorities().stream().anyMatch(a ->
                 "ROLE_SYSTEM_ADMIN".equals(a.getAuthority())
-                        || "ROLE_MINTRANS_ANALYST".equals(a.getAuthority()));
+                        || "ROLE_MINTRANS_ANALYST".equals(a.getAuthority())
+                        || "ROLE_API_INTEGRATOR".equals(a.getAuthority()));
     }
 
     /** РМА организации пользователя из claim "organization_rma" (если есть). */

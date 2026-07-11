@@ -25,6 +25,13 @@ spring:
 epd:
   master-data:
     base-url: ${MASTER_DATA_URL:http://localhost:8081}
+  service-account:
+    # Сервисный client-credentials токен для межсервисных вызовов master-data без
+    # пользовательского токена (агрегатор ЧУРА/НЕРУ, планировщик). Клиент epd-aggregator
+    # (роль API_INTEGRATOR). Секрет в проде заменить/вынести в Vault!
+    token-uri: ${SERVICE_TOKEN_URI:http://localhost:8180/realms/epd/protocol/openid-connect/token}
+    client-id: ${SERVICE_CLIENT_ID:epd-aggregator}
+    client-secret: ${SERVICE_CLIENT_SECRET:epd_aggregator_dev_secret}
   payment:
     # Оплата ПЛ (AWAITING_PAYMENT → PAID). Выключена в dev; агрегаторские ПЛ
     # (source=AGGREGATOR) покрыты абонементом и не тарифицируются в любом случае.
