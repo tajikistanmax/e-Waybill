@@ -6,6 +6,7 @@ import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -123,9 +124,12 @@ public class VehicleController {
 
     @GetMapping
     public List<Vehicle> list(@RequestParam(required = false) String registrationNumber,
-                              @RequestParam(required = false) String organizationRma) {
+                              @RequestParam(required = false) String organizationRma,
+                              @RequestParam(required = false) String q,
+                              @RequestParam(defaultValue = "25") int limit) {
         // Поиск по госномеру — в той же канонической форме, что и хранение (регистронезависимо).
         registrationNumber = canonical(registrationNumber);
+        int cap = Math.min(Math.max(limit, 1), 100);
         // Мультиарендность: не-админ видит только транспорт своей организации.
         // Анонимные (внутренние) вызовы не фильтруются.
         if (currentUser.isTenantScoped()) {
@@ -133,12 +137,21 @@ public class VehicleController {
             if (org == null) {
                 return List.of();
             }
+            // q — подстрочный поиск по госномеру с лимитом (автопарки в тысячи ТС).
+            if (q != null) {
+                return vehicles.searchByOrg(org.getId(), q.trim(), PageRequest.of(0, cap));
+            }
             if (registrationNumber != null) {
                 return vehicles.findByRegistrationNumber(registrationNumber)
                         .filter(v -> org.getId().equals(v.getOrganizationId()))
                         .map(List::of).orElseGet(List::of);
             }
             return vehicles.findByOrganizationId(org.getId());
+        }
+        // Платформенная роль: подстрочный поиск в пределах указанной организации.
+        if (q != null && organizationRma != null) {
+            var org = organizations.findByRma(organizationRma).orElse(null);
+            return org == null ? List.of() : vehicles.searchByOrg(org.getId(), q.trim(), PageRequest.of(0, cap));
         }
         if (registrationNumber != null) {
             return vehicles.findByRegistrationNumber(registrationNumber).map(List::of).orElseGet(List::of);

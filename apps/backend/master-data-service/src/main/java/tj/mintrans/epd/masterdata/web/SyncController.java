@@ -130,9 +130,10 @@ public class SyncController {
         return saved(existing.isPresent(), savedOrg);
     }
 
-    /** Водитель по ИНН — ФИО из налоговой, ВУ и медсправка из ГАИ/Минздрава. */
+    /** Водитель по ИНН — ФИО из налоговой, ВУ и медсправка из ГАИ/Минздрава.
+     *  Добавлять водителя своей организации может и диспетчер (tenant-скоуп по своей орг). */
     @PostMapping("/driver")
-    @PreAuthorize("hasAnyRole('COMPANY_ADMIN','SYSTEM_ADMIN')")
+    @PreAuthorize("hasAnyRole('DISPATCHER','COMPANY_ADMIN','SYSTEM_ADMIN')")
     public ResponseEntity<Driver> syncDriver(@Valid @RequestBody SyncDriverRequest req) {
         requireOwnOrganization(req.organizationRma());
         var org = requireOrganization(req.organizationRma());
@@ -192,9 +193,10 @@ public class SyncController {
 
     // ------------------------------------------------------------ объекты
 
-    /** ТС по госномеру — марка, VIN, год, вместимость, техосмотр из базы ГАИ. */
+    /** ТС по госномеру — марка, VIN, год, вместимость, техосмотр из базы ГАИ.
+     *  Добавлять ТС своей организации может и диспетчер (tenant-скоуп по своей орг). */
     @PostMapping("/vehicle")
-    @PreAuthorize("hasAnyRole('COMPANY_ADMIN','SYSTEM_ADMIN')")
+    @PreAuthorize("hasAnyRole('DISPATCHER','COMPANY_ADMIN','SYSTEM_ADMIN')")
     public ResponseEntity<Vehicle> syncVehicle(@Valid @RequestBody SyncVehicleRequest req) {
         requireOwnOrganization(req.organizationRma());
         var org = requireOrganization(req.organizationRma());

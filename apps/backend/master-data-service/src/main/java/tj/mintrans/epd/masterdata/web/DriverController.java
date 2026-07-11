@@ -3,6 +3,7 @@ package tj.mintrans.epd.masterdata.web;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -92,7 +93,10 @@ public class DriverController {
 
     @GetMapping
     public List<Driver> list(@RequestParam(required = false) String rma,
-                             @RequestParam(required = false) String organizationRma) {
+                             @RequestParam(required = false) String organizationRma,
+                             @RequestParam(required = false) String q,
+                             @RequestParam(defaultValue = "25") int limit) {
+        int cap = Math.min(Math.max(limit, 1), 100);
         // Мультиарендность: не-админ видит только водителей своей организации.
         // Анонимные (внутренние) вызовы не фильтруются.
         if (currentUser.isTenantScoped()) {
@@ -100,12 +104,20 @@ public class DriverController {
             if (org == null) {
                 return List.of();
             }
+            // q — подстрочный поиск по ИНН(РМА) или ФИО с лимитом (тысячи водителей).
+            if (q != null) {
+                return drivers.searchByOrg(org.getId(), q.trim(), PageRequest.of(0, cap));
+            }
             if (rma != null) {
                 return drivers.findByRma(rma)
                         .filter(d -> org.getId().equals(d.getOrganizationId()))
                         .map(List::of).orElseGet(List::of);
             }
             return drivers.findByOrganizationId(org.getId());
+        }
+        if (q != null && organizationRma != null) {
+            var org = organizations.findByRma(organizationRma).orElse(null);
+            return org == null ? List.of() : drivers.searchByOrg(org.getId(), q.trim(), PageRequest.of(0, cap));
         }
         if (rma != null) {
             return drivers.findByRma(rma).map(List::of).orElseGet(List::of);
