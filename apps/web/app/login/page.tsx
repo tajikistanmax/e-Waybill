@@ -100,17 +100,17 @@ export default function LoginPage() {
         </div>
 
         <div className="float-card float-panel">
-          <div className="fp-head"><Icon d={P.chart} cls="" style={{ width: 16, height: 16, color: 'var(--blue-600)' }} /> Панель управления</div>
+          <div className="fp-head"><Icon d={P.chart} cls="" style={{ width: 16, height: 16, color: 'var(--blue-600)' }} /> {t('login.p.h')}</div>
           <div className="fp-mini">
-            <div className="m"><div className="ml">Транспорт</div><div className="mv">128</div></div>
-            <div className="m"><div className="ml">Путевые листы</div><div className="mv">3 246</div></div>
-            <div className="m"><div className="ml">Активные рейсы</div><div className="mv">86</div></div>
-            <div className="m"><div className="ml">Нарушения</div><div className="mv" style={{ color: 'var(--red)' }}>3</div></div>
+            <div className="m"><div className="ml">{t('col.transport')}</div><div className="mv">128</div></div>
+            <div className="m"><div className="ml">{t('nav.waybills')}</div><div className="mv">3 246</div></div>
+            <div className="m"><div className="ml">{t('login.p.activetrips')}</div><div className="mv">86</div></div>
+            <div className="m"><div className="ml">{t('nav.violations')}</div><div className="mv" style={{ color: 'var(--red)' }}>3</div></div>
           </div>
         </div>
 
         <div className="float-card float-donut">
-          <div className="fp-head" style={{ marginBottom: 10 }}>Статус транспорта</div>
+          <div className="fp-head" style={{ marginBottom: 10 }}>{t('login.p.vehstatus')}</div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
             <svg width="72" height="72" viewBox="0 0 42 42">
               <circle cx="21" cy="21" r="15.9" fill="none" stroke="#e4e9f0" strokeWidth="6" />
@@ -118,19 +118,19 @@ export default function LoginPage() {
               <circle cx="21" cy="21" r="15.9" fill="none" stroke="#16a34a" strokeWidth="6" strokeDasharray="24 76" strokeDashoffset="-37" strokeLinecap="round" />
             </svg>
             <div className="donut-legend" style={{ fontSize: 11.5 }}>
-              <div className="row"><span className="dot" style={{ background: '#2563eb' }} />На линии<span className="pc">86</span></div>
-              <div className="row"><span className="dot" style={{ background: '#16a34a' }} />В рейсе<span className="pc">28</span></div>
-              <div className="row"><span className="dot" style={{ background: '#e4e9f0' }} />Стоит<span className="pc">14</span></div>
+              <div className="row"><span className="dot" style={{ background: '#2563eb' }} />{t('kpi.online')}<span className="pc">86</span></div>
+              <div className="row"><span className="dot" style={{ background: '#16a34a' }} />{t('login.p.intrip')}<span className="pc">28</span></div>
+              <div className="row"><span className="dot" style={{ background: '#e4e9f0' }} />{t('login.p.parked')}<span className="pc">14</span></div>
             </div>
           </div>
         </div>
 
         <div className="float-card float-list">
-          <div className="fp-head" style={{ marginBottom: 10 }}>Путевые листы</div>
+          <div className="fp-head" style={{ marginBottom: 10 }}>{t('nav.waybills')}</div>
           <div className="donut-legend" style={{ fontSize: 12 }}>
-            <div className="row"><Icon d={P.check} cls="" style={{ width: 14, height: 14, color: 'var(--green)' }} />Оформлено<span className="pc">2 156</span></div>
-            <div className="row"><Icon d={P.check} cls="" style={{ width: 14, height: 14, color: 'var(--blue-600)' }} />Действуют<span className="pc">1 090</span></div>
-            <div className="row"><Icon d={P.check} cls="" style={{ width: 14, height: 14, color: 'var(--muted)' }} />Завершено<span className="pc">1 000</span></div>
+            <div className="row"><Icon d={P.check} cls="" style={{ width: 14, height: 14, color: 'var(--green)' }} />{t('login.p.issued')}<span className="pc">2 156</span></div>
+            <div className="row"><Icon d={P.check} cls="" style={{ width: 14, height: 14, color: 'var(--blue-600)' }} />{t('login.p.valid')}<span className="pc">1 090</span></div>
+            <div className="row"><Icon d={P.check} cls="" style={{ width: 14, height: 14, color: 'var(--muted)' }} />{t('kpi.done')}<span className="pc">1 000</span></div>
           </div>
         </div>
 
