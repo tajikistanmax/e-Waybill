@@ -95,6 +95,18 @@ export type Policy = {
   updatedAt?: string | null;
 };
 
+export type AuditEntry = {
+  id: string;
+  occurredAt: string;
+  actor: string | null;
+  actorOrg: string | null;
+  action: 'CREATE' | 'UPDATE' | 'DELETE';
+  entityType: string;
+  entityKey: string | null;
+  oldValue: string | null;
+  newValue: string | null;
+};
+
 async function handle<T>(res: Response): Promise<T> {
   if (!res.ok) {
     let detail = `Ошибка ${res.status}`;
@@ -139,6 +151,10 @@ export const md = {
   savePolicy: (body: Record<string, unknown>) => mdPost('policies', body) as Promise<Policy>,
   deletePolicy: (id: string) => fetch(`/md-api/api/v1/policies/${id}`, { method: 'DELETE', headers: authHeaders() })
     .then(r => { if (!r.ok && r.status !== 204) throw new Error(`Ошибка ${r.status}`); }),
+  // Журнал аудита (только SYSTEM_ADMIN).
+  audit: (entityType?: string, limit = 100) => fetch(
+    `/md-api/api/v1/audit?limit=${limit}${entityType ? `&entityType=${entityType}` : ''}`,
+    { headers: authHeaders() }).then(r => handle<AuditEntry[]>(r)),
 };
 
 export type Payment = {

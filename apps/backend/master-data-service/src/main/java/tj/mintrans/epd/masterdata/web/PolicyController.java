@@ -17,6 +17,7 @@ import org.springframework.web.server.ResponseStatusException;
 import tj.mintrans.epd.masterdata.config.CurrentUser;
 import tj.mintrans.epd.masterdata.domain.Policy;
 import tj.mintrans.epd.masterdata.repository.PolicyRepository;
+import tj.mintrans.epd.masterdata.service.AuditService;
 import tj.mintrans.epd.masterdata.service.PolicyResolver;
 import tj.mintrans.epd.masterdata.web.error.NotFoundException;
 
@@ -37,11 +38,21 @@ public class PolicyController {
     private final PolicyRepository policies;
     private final PolicyResolver resolver;
     private final CurrentUser currentUser;
+    private final AuditService audit;
 
-    public PolicyController(PolicyRepository policies, PolicyResolver resolver, CurrentUser currentUser) {
+    public PolicyController(PolicyRepository policies, PolicyResolver resolver,
+                            CurrentUser currentUser, AuditService audit) {
         this.policies = policies;
         this.resolver = resolver;
         this.currentUser = currentUser;
+        this.audit = audit;
+    }
+
+    /** Человекочитаемый ключ правила для аудита: «УРОВЕНЬ[:ключ] / правило». */
+    private static String auditKey(String scopeLevel, String scopeKey, String ruleKey) {
+        return scopeKey == null || scopeKey.isBlank()
+                ? "%s / %s".formatted(scopeLevel, ruleKey)
+                : "%s:%s / %s".formatted(scopeLevel, scopeKey, ruleKey);
     }
 
     public record PolicyRequest(
@@ -84,6 +95,7 @@ public class PolicyController {
         }
         assertCanWrite(req.scopeLevel(), scopeKey);
         var existing = policies.findByScopeLevelAndScopeKeyAndRuleKey(req.scopeLevel(), scopeKey, req.ruleKey());
+        String oldValue = existing.map(Policy::getRuleValue).orElse(null);
         var policy = existing.orElseGet(Policy::new);
         policy.setScopeLevel(req.scopeLevel());
         policy.setScopeKey(scopeKey);
@@ -93,6 +105,8 @@ public class PolicyController {
         policy.setUpdatedBy(currentUser.organizationRma().orElse("platform"));
         policy.setUpdatedAt(OffsetDateTime.now());
         var saved = policies.save(policy);
+        audit.record(existing.isPresent() ? AuditService.UPDATE : AuditService.CREATE,
+                "POLICY", auditKey(req.scopeLevel(), scopeKey, req.ruleKey()), oldValue, req.ruleValue());
         return ResponseEntity.status(existing.isPresent() ? HttpStatus.OK : HttpStatus.CREATED).body(saved);
     }
 
@@ -101,6 +115,9 @@ public class PolicyController {
         var policy = policies.findById(id).orElseThrow(() -> new NotFoundException("Политика не найдена"));
         assertCanWrite(policy.getScopeLevel(), policy.getScopeKey());
         policies.delete(policy);
+        audit.record(AuditService.DELETE, "POLICY",
+                auditKey(policy.getScopeLevel(), policy.getScopeKey(), policy.getRuleKey()),
+                policy.getRuleValue(), null);
         return ResponseEntity.noContent().build();
     }
 

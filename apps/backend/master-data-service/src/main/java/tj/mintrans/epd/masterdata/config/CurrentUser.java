@@ -59,6 +59,18 @@ public class CurrentUser {
         return Optional.empty();
     }
 
+    /** Имя субъекта для журнала аудита: preferred_username, иначе sub (если есть JWT). */
+    public Optional<String> username() {
+        if (authentication() instanceof JwtAuthenticationToken jwt) {
+            Object preferred = jwt.getToken().getClaim("preferred_username");
+            if (preferred instanceof String s && !s.isBlank()) {
+                return Optional.of(s);
+            }
+            return Optional.ofNullable(jwt.getToken().getSubject());
+        }
+        return Optional.empty();
+    }
+
     /** true, если к запросу нужно применять фильтр по организации пользователя. */
     public boolean isTenantScoped() {
         return isJwtAuthenticated() && !isPlatformAdmin();
