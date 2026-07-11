@@ -4,6 +4,7 @@ import { Fragment, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { md, wb, TYPE_LABELS } from '@/lib/api';
 import { Icon, P } from '../../icons';
+import { useT } from '@/lib/i18n';
 
 type Option = { value: string; label: string };
 type Trailer = { registrationNumber: string; brand: string };
@@ -16,28 +17,31 @@ const TRUCK_ICON = 'M3 6h10v9H3zM13 9h4l3 3v3h-7zM7 18a2 2 0 1 0 0-4 2 2 0 0 0 0
 
 type TypeMeta = { icon: string; color: string; group: string; desc: string };
 
+// group/desc — ключи словаря i18n (переводятся через tt() при отрисовке)
 const TYPE_META: Record<string, TypeMeta> = {
-  WB_BUS:         { icon: BUS_ICON,   color: 'blue',   group: 'Пассажирские перевозки',   desc: 'Городские и пригородные автобусные перевозки' },
-  WB_TROLLEYBUS:  { icon: BUS_ICON,   color: 'green',  group: 'Пассажирские перевозки',   desc: 'Городской электротранспорт' },
-  WB_MINIBUS:     { icon: BUS_ICON,   color: 'cyan',   group: 'Пассажирские перевозки',   desc: 'Маршрутные микроавтобусы' },
-  WB_CAR:         { icon: P.car,      color: 'amber',  group: 'Легковые перевозки',       desc: 'Служебный легковой автомобиль' },
-  WB_TAXI:        { icon: P.car,      color: 'purple', group: 'Легковые перевозки',       desc: 'Таксомоторные перевозки' },
-  WB_TRUCK:       { icon: TRUCK_ICON, color: 'blue',   group: 'Грузовые перевозки',       desc: 'Грузовые автомобильные перевозки' },
-  WB_TRUCK_INTL:  { icon: TRUCK_ICON, color: 'purple', group: 'Международные перевозки',   desc: 'Международные грузовые рейсы' },
-  WB_PAX_INTL:    { icon: P.globe,    color: 'cyan',   group: 'Международные перевозки',   desc: 'Международные пассажирские рейсы' },
-  WB_SPECIAL:     { icon: P.wrench,   color: 'red',    group: 'Спецтехника',              desc: 'Строительные и специальные машины' },
-  WB_DANGEROUS:   { icon: P.alert,    color: 'red',    group: 'Спецтехника',              desc: 'Перевозка опасных грузов' },
+  WB_BUS:         { icon: BUS_ICON,   color: 'blue',   group: 'wb.grp.pax',     desc: 'wb.desc.WB_BUS' },
+  WB_TROLLEYBUS:  { icon: BUS_ICON,   color: 'green',  group: 'wb.grp.pax',     desc: 'wb.desc.WB_TROLLEYBUS' },
+  WB_MINIBUS:     { icon: BUS_ICON,   color: 'cyan',   group: 'wb.grp.pax',     desc: 'wb.desc.WB_MINIBUS' },
+  WB_CAR:         { icon: P.car,      color: 'amber',  group: 'wb.grp.car',     desc: 'wb.desc.WB_CAR' },
+  WB_TAXI:        { icon: P.car,      color: 'purple', group: 'wb.grp.car',     desc: 'wb.desc.WB_TAXI' },
+  WB_TRUCK:       { icon: TRUCK_ICON, color: 'blue',   group: 'wb.grp.truck',   desc: 'wb.desc.WB_TRUCK' },
+  WB_TRUCK_INTL:  { icon: TRUCK_ICON, color: 'purple', group: 'wb.grp.intl',    desc: 'wb.desc.WB_TRUCK_INTL' },
+  WB_PAX_INTL:    { icon: P.globe,    color: 'cyan',   group: 'wb.grp.intl',    desc: 'wb.desc.WB_PAX_INTL' },
+  WB_SPECIAL:     { icon: P.wrench,   color: 'red',    group: 'wb.grp.special', desc: 'wb.desc.WB_SPECIAL' },
+  WB_DANGEROUS:   { icon: P.alert,    color: 'red',    group: 'wb.grp.special', desc: 'wb.desc.WB_DANGEROUS' },
 };
 
+// title/sub — ключи словаря i18n
 const STEPS = [
-  { n: 1, title: 'Выбор типа',  sub: 'Тип путевого листа' },
-  { n: 2, title: 'Транспорт',   sub: 'Организация, ТС и водитель' },
-  { n: 3, title: 'Маршрут',     sub: 'Маршрут и параметры' },
-  { n: 4, title: 'Проверка',    sub: 'Создание путевого листа' },
+  { n: 1, title: 'wb.step1.t', sub: 'wb.step1.s' },
+  { n: 2, title: 'wb.step2.t', sub: 'wb.step2.s' },
+  { n: 3, title: 'wb.step3.t', sub: 'wb.step3.s' },
+  { n: 4, title: 'wb.step4.t', sub: 'wb.step4.s' },
 ];
 
 export default function NewWaybillPage() {
   const router = useRouter();
+  const { t: tt } = useT();
   const [step, setStep] = useState(1);
   const [orgs, setOrgs] = useState<Option[]>([]);
   const [vehicles, setVehicles] = useState<Option[]>([]);
@@ -106,12 +110,12 @@ export default function NewWaybillPage() {
   const stepOk = (s: number) => s === 1 ? !!form.waybillType : s === 2 ? canStep2 : s === 3 ? canStep3 : true;
 
   const checks = [
-    { title: 'Организация активна', sub: orgLabel || 'Организация не выбрана', ok: !!orgRma },
-    { title: 'Водитель активен', sub: driverLabel || 'Водитель не выбран', ok: !!form.driverRma },
-    { title: 'Удостоверение действительно', sub: 'Категории действительны', ok: true },
-    { title: 'Лицензия действительна', sub: '№ 012345 до 10.11.2026', ok: true },
-    { title: 'Контрольная карточка действительна', sub: 'КК № 5678 до 10.10.2025', ok: true },
-    { title: 'Нет активного ПЛ', sub: 'У водителя нет активных путевых листов', ok: true },
+    { title: tt('wb.chk.org'), sub: orgLabel || tt('wb.chk.org.no'), ok: !!orgRma },
+    { title: tt('wb.chk.driver'), sub: driverLabel || tt('wb.chk.driver.no'), ok: !!form.driverRma },
+    { title: tt('wb.chk.license'), sub: tt('wb.chk.license.s'), ok: true },
+    { title: tt('wb.chk.lic'), sub: tt('wb.chk.lic.s'), ok: true },
+    { title: tt('wb.chk.card'), sub: tt('wb.chk.card.s'), ok: true },
+    { title: tt('wb.chk.noactive'), sub: tt('wb.chk.noactive.s'), ok: true },
   ];
   const allChecksOk = checks.every(c => c.ok);
 
@@ -156,9 +160,9 @@ export default function NewWaybillPage() {
   return (
     <>
       <div className="toolbar">
-        <h1>Создание путевого листа</h1>
+        <h1>{tt('wb.new.h')}</h1>
         <div className="spacer" />
-        <span className="page-lead" style={{ margin: 0 }}>Шаг {step} из {STEPS.length} · {cur.sub}</span>
+        <span className="page-lead" style={{ margin: 0 }}>{tt('wb.step')} {step} {tt('paging.of')} {STEPS.length} · {tt(cur.sub)}</span>
       </div>
       {error && <div className="error">{error}</div>}
 
@@ -183,8 +187,8 @@ export default function NewWaybillPage() {
                     {done ? <Icon d={P.check} cls="" style={{ width: 20, height: 20 }} /> : s.n}
                   </div>
                   <div>
-                    <div style={{ fontSize: 13, fontWeight: 600, color: current ? 'var(--blue-700)' : done ? 'var(--ink)' : 'var(--muted)' }}>{s.title}</div>
-                    <div style={{ fontSize: 11, color: 'var(--faint)', marginTop: 2 }}>{s.sub}</div>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: current ? 'var(--blue-700)' : done ? 'var(--ink)' : 'var(--muted)' }}>{tt(s.title)}</div>
+                    <div style={{ fontSize: 11, color: 'var(--faint)', marginTop: 2 }}>{tt(s.sub)}</div>
                   </div>
                 </div>
                 {i < STEPS.length - 1 && (
@@ -199,8 +203,8 @@ export default function NewWaybillPage() {
       {/* ---------- Тело шага ---------- */}
       <div style={{ display: 'grid', gridTemplateColumns: step === 4 ? '1fr' : 'minmax(0, 1fr) 340px', gap: 18, alignItems: 'start' }}>
         <div className="card">
-          <h2 style={{ marginBottom: 4 }}>Шаг {step}. {cur.title}</h2>
-          <p className="page-lead" style={{ marginBottom: 18 }}>{cur.sub}</p>
+          <h2 style={{ marginBottom: 4 }}>{tt('wb.step')} {step}. {tt(cur.title)}</h2>
+          <p className="page-lead" style={{ marginBottom: 18 }}>{tt(cur.sub)}</p>
 
           {/* ======= ШАГ 1 — Выбор типа ======= */}
           {step === 1 && (
@@ -226,8 +230,8 @@ export default function NewWaybillPage() {
                     </div>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--ink)' }}>{label}</div>
-                      <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2, lineHeight: 1.35 }}>{meta.desc}</div>
-                      <span style={{ display: 'inline-block', marginTop: 8, fontSize: 10.5, fontWeight: 600, color: 'var(--ink-soft)', background: 'var(--line-soft)', padding: '3px 9px', borderRadius: 999 }}>{meta.group}</span>
+                      <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2, lineHeight: 1.35 }}>{tt(meta.desc)}</div>
+                      <span style={{ display: 'inline-block', marginTop: 8, fontSize: 10.5, fontWeight: 600, color: 'var(--ink-soft)', background: 'var(--line-soft)', padding: '3px 9px', borderRadius: 999 }}>{tt(meta.group)}</span>
                     </div>
                     <Icon d={P.chevron} cls="" style={{ width: 18, height: 18, color: active ? 'var(--blue-600)' : 'var(--faint)', flex: 'none' }} />
                   </button>
@@ -240,23 +244,23 @@ export default function NewWaybillPage() {
           {step === 2 && (
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px 18px' }}>
               <div style={{ gridColumn: '1 / -1' }}>
-                <label>Организация</label>
+                <label>{tt('col.org')}</label>
                 <select required value={orgRma} onChange={e => { setOrgRma(e.target.value); setForm(f => ({ ...f, vehicleRegNumber: '', driverRma: '' })); setIntl(v => ({ ...v, secondDriverRma: '' })); }}>
-                  <option value="">— выберите организацию —</option>
+                  <option value="">{tt('wb.opt.selectorg')}</option>
                   {orgs.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                 </select>
               </div>
               <div>
-                <label>Транспортное средство</label>
+                <label>{tt('col.vehiclefull')}</label>
                 <select required disabled={!orgRma} value={form.vehicleRegNumber} onChange={e => setForm({ ...form, vehicleRegNumber: e.target.value })}>
-                  <option value="">{orgRma ? '— выберите ТС —' : 'сначала выберите организацию'}</option>
+                  <option value="">{orgRma ? tt('wb.opt.selectvehicle') : tt('wb.opt.orgfirst')}</option>
                   {vehicles.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                 </select>
               </div>
               <div>
-                <label>Водитель</label>
+                <label>{tt('col.driver')}</label>
                 <select required disabled={!orgRma} value={form.driverRma} onChange={e => setForm({ ...form, driverRma: e.target.value })}>
-                  <option value="">{orgRma ? '— выберите водителя —' : 'сначала выберите организацию'}</option>
+                  <option value="">{orgRma ? tt('wb.opt.selectdriver') : tt('wb.opt.orgfirst')}</option>
                   {drivers.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                 </select>
               </div>
@@ -267,24 +271,24 @@ export default function NewWaybillPage() {
           {step === 3 && (
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px 18px' }}>
               <div>
-                <label>Вид сообщения</label>
+                <label>{tt('wb.f.commtype')}</label>
                 <select disabled={isIntl} value={isIntl ? 'INTERNATIONAL' : form.communicationType}
                   onChange={e => setForm({ ...form, communicationType: e.target.value })}>
-                  <option value="URBAN">Городское (шаҳрӣ)</option>
-                  <option value="SUBURBAN">Пригородное (наздишаҳрӣ)</option>
-                  <option value="INTERCITY">Междугородное (байнишаҳрӣ)</option>
-                  <option value="INTERNATIONAL">Международное (байналмилалӣ)</option>
+                  <option value="URBAN">{tt('wb.comm.urban')}</option>
+                  <option value="SUBURBAN">{tt('wb.comm.suburban')}</option>
+                  <option value="INTERCITY">{tt('wb.comm.intercity')}</option>
+                  <option value="INTERNATIONAL">{tt('wb.comm.intl')}</option>
                 </select>
               </div>
 
               {/* --- 3-С: вид услуги --- */}
               {isCar && (
                 <div>
-                  <label>Вид услуги (намуди хизматрасонӣ)</label>
+                  <label>{tt('wb.f.servicekind')}</label>
                   <select value={serviceKind} onChange={e => setServiceKind(e.target.value)}>
-                    <option value="TAXI">Такси (фармоишӣ)</option>
-                    <option value="ROUTE">Маршрут (хатсайр)</option>
-                    <option value="HOURLY">Почасовой (соатбайъ)</option>
+                    <option value="TAXI">{tt('wb.svc.taxi')}</option>
+                    <option value="ROUTE">{tt('wb.svc.route')}</option>
+                    <option value="HOURLY">{tt('wb.svc.hourly')}</option>
                   </select>
                 </div>
               )}
@@ -292,40 +296,40 @@ export default function NewWaybillPage() {
               {/* --- 2-Б: вид перевозки --- */}
               {isTruck && (
                 <div>
-                  <label>Вид перевозки</label>
+                  <label>{tt('wb.f.shipmentkind')}</label>
                   <select value={shipmentKind} onChange={e => setShipmentKind(e.target.value)}>
-                    <option value="PIECEWORK">Сдельная (корбайъ)</option>
-                    <option value="HOURLY">Почасовая (соатбайъ)</option>
+                    <option value="PIECEWORK">{tt('wb.ship.piecework')}</option>
+                    <option value="HOURLY">{tt('wb.ship.hourly')}</option>
                   </select>
                 </div>
               )}
 
               <div>
-                <label>Маршрут (хатсайр){isCar && serviceKind === 'ROUTE' ? ' — обязателен' : ''}</label>
+                <label>{tt('wb.f.route')}{isCar && serviceKind === 'ROUTE' ? tt('wb.required.suffix') : ''}</label>
                 <input required={isCar && serviceKind === 'ROUTE'} value={form.route}
-                  onChange={e => setForm({ ...form, route: e.target.value })} placeholder="Маршрут № 3 / Душанбе — Алматы" />
+                  onChange={e => setForm({ ...form, route: e.target.value })} placeholder={tt('wb.ph.route')} />
               </div>
               <div>
-                <label>График (реҷа)</label>
-                <input value={form.schedule} onChange={e => setForm({ ...form, schedule: e.target.value })} placeholder="Реҷаи 1" />
+                <label>{tt('wb.f.schedule')}</label>
+                <input value={form.schedule} onChange={e => setForm({ ...form, schedule: e.target.value })} placeholder={tt('wb.ph.schedule')} />
               </div>
 
               {/* --- 2-Б: прицепы --- */}
               {isTruck && (
                 <div style={{ gridColumn: '1 / -1' }}>
-                  <label>Прицепы (ядак) — до 2</label>
+                  <label>{tt('wb.f.trailers')}</label>
                   {trailers.map((tr, i) => (
                     <div key={i} style={{ display: 'flex', gap: 8, marginBottom: 6 }}>
-                      <input placeholder="Госномер прицепа" required value={tr.registrationNumber}
+                      <input placeholder={tt('wb.ph.trailernum')} required value={tr.registrationNumber}
                         onChange={e => setTrailers(ts => ts.map((x, j) => j === i ? { ...x, registrationNumber: e.target.value } : x))} />
-                      <input placeholder="Марка" required value={tr.brand}
+                      <input placeholder={tt('col.brand')} required value={tr.brand}
                         onChange={e => setTrailers(ts => ts.map((x, j) => j === i ? { ...x, brand: e.target.value } : x))} />
                       <button type="button" className="btn danger" onClick={() => setTrailers(ts => ts.filter((_, j) => j !== i))}>✗</button>
                     </div>
                   ))}
                   {trailers.length < 2 && (
                     <button type="button" className="btn secondary" onClick={() => setTrailers(ts => [...ts, { registrationNumber: '', brand: '' }])}>
-                      + Добавить прицеп
+                      {tt('wb.btn.addtrailer')}
                     </button>
                   )}
                 </div>
@@ -335,44 +339,44 @@ export default function NewWaybillPage() {
               {isIntl && (
                 <>
                   <div>
-                    <label>Второй водитель (для дальних рейсов)</label>
+                    <label>{tt('wb.f.seconddriver')}</label>
                     <select value={intl.secondDriverRma} onChange={e => setIntl({ ...intl, secondDriverRma: e.target.value })}>
-                      <option value="">— нет —</option>
+                      <option value="">{tt('wb.opt.none')}</option>
                       {drivers.filter(d => d.value !== form.driverRma).map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                     </select>
                   </div>
                   <div>
-                    <label>Номер дозвола (E-PERMIT)</label>
+                    <label>{tt('wb.f.permit')}</label>
                     <input required placeholder="EP-2026-..." value={intl.permitNumber} onChange={e => setIntl({ ...intl, permitNumber: e.target.value })} />
                   </div>
                   <div>
-                    <label>Виза действительна до</label>
+                    <label>{tt('wb.f.visato')}</label>
                     <input type="date" required value={intl.visaValidTo} onChange={e => setIntl({ ...intl, visaValidTo: e.target.value })} />
                   </div>
                   <div>
-                    <label>Страна выдачи визы</label>
-                    <input required placeholder="Узбекистан" value={intl.visaCountry} onChange={e => setIntl({ ...intl, visaCountry: e.target.value })} />
+                    <label>{tt('wb.f.visacountry')}</label>
+                    <input required placeholder={tt('wb.ph.uzbekistan')} value={intl.visaCountry} onChange={e => setIntl({ ...intl, visaCountry: e.target.value })} />
                   </div>
                   <div>
-                    <label>Страна погрузки / отправления</label>
-                    <input required placeholder="Таджикистан" value={intl.loadCountry} onChange={e => setIntl({ ...intl, loadCountry: e.target.value })} />
+                    <label>{tt('wb.f.loadcountry')}</label>
+                    <input required placeholder={tt('wb.ph.tajikistan')} value={intl.loadCountry} onChange={e => setIntl({ ...intl, loadCountry: e.target.value })} />
                   </div>
                   <div>
-                    <label>Страна разгрузки / назначения</label>
-                    <input required placeholder="Казахстан" value={intl.unloadCountry} onChange={e => setIntl({ ...intl, unloadCountry: e.target.value })} />
+                    <label>{tt('wb.f.unloadcountry')}</label>
+                    <input required placeholder={tt('wb.ph.kazakhstan')} value={intl.unloadCountry} onChange={e => setIntl({ ...intl, unloadCountry: e.target.value })} />
                   </div>
                   <div>
-                    <label>Транзитные страны (через запятую)</label>
-                    <input placeholder="Узбекистан, Кыргызстан" value={intl.transitCountries} onChange={e => setIntl({ ...intl, transitCountries: e.target.value })} />
+                    <label>{tt('wb.f.transitcountries')}</label>
+                    <input placeholder={tt('wb.ph.transit')} value={intl.transitCountries} onChange={e => setIntl({ ...intl, transitCountries: e.target.value })} />
                   </div>
                   {t === 'WB_TRUCK_INTL' && (
                     <>
                       <div>
-                        <label>Наименование груза (номгӯи бор)</label>
-                        <input required placeholder="Хлопок" value={intl.cargoName} onChange={e => setIntl({ ...intl, cargoName: e.target.value })} />
+                        <label>{tt('wb.f.cargoname')}</label>
+                        <input required placeholder={tt('wb.ph.cotton')} value={intl.cargoName} onChange={e => setIntl({ ...intl, cargoName: e.target.value })} />
                       </div>
                       <div>
-                        <label>Книжка ББА / TIR (если есть)</label>
+                        <label>{tt('wb.f.bba')}</label>
                         <input placeholder="XB 1234567" value={intl.bbaNumber} onChange={e => setIntl({ ...intl, bbaNumber: e.target.value })} />
                       </div>
                     </>
@@ -387,24 +391,24 @@ export default function NewWaybillPage() {
             <>
               <div className="sys-ok" style={{ marginTop: 0, marginBottom: 18 }}>
                 <Icon d={P.check} cls="" style={{ width: 16, height: 16 }} />
-                Все проверки пройдены — путевой лист готов к созданию
+                {tt('wb.allchecks.ok')}
               </div>
               <dl className="kv">
-                <dt>Тип путевого листа</dt>
+                <dt>{tt('wb.sum.type')}</dt>
                 <dd style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   {typeMeta && <span className={`ic-${typeMeta.color}`} style={{ width: 26, height: 26, borderRadius: 7, display: 'grid', placeItems: 'center', flex: 'none' }}><Icon d={typeMeta.icon} cls="" style={{ width: 16, height: 16 }} /></span>}
                   <b>{TYPE_LABELS[t]}</b>
                 </dd>
-                <dt>Организация</dt><dd>{orgLabel || '—'}</dd>
-                <dt>Транспортное средство</dt><dd>{vehicleLabel || '—'}</dd>
-                <dt>Водитель</dt><dd>{driverLabel || '—'}</dd>
-                <dt>Вид сообщения</dt>
-                <dd>{isIntl ? 'Международное (байналмилалӣ)' : ({ URBAN: 'Городское (шаҳрӣ)', SUBURBAN: 'Пригородное (наздишаҳрӣ)', INTERCITY: 'Междугородное (байнишаҳрӣ)', INTERNATIONAL: 'Международное (байналмилалӣ)' } as Record<string, string>)[form.communicationType]}</dd>
-                <dt>Маршрут</dt><dd>{form.route || '—'}</dd>
-                <dt>График</dt><dd>{form.schedule || '—'}</dd>
-                {isCar && (<><dt>Вид услуги</dt><dd>{({ TAXI: 'Такси (фармоишӣ)', ROUTE: 'Маршрут (хатсайр)', HOURLY: 'Почасовой (соатбайъ)' } as Record<string, string>)[serviceKind]}</dd></>)}
-                {isTruck && (<><dt>Вид перевозки</dt><dd>{shipmentKind === 'HOURLY' ? 'Почасовая (соатбайъ)' : 'Сдельная (корбайъ)'}{trailers.length ? ` · прицепов: ${trailers.length}` : ''}</dd></>)}
-                {isIntl && (<><dt>Международный рейс</dt><dd>{intl.loadCountry || '—'} → {intl.unloadCountry || '—'} · дозвол {intl.permitNumber || '—'}{intl.secondDriverRma ? ' · со вторым водителем' : ''}</dd></>)}
+                <dt>{tt('col.org')}</dt><dd>{orgLabel || '—'}</dd>
+                <dt>{tt('col.vehiclefull')}</dt><dd>{vehicleLabel || '—'}</dd>
+                <dt>{tt('col.driver')}</dt><dd>{driverLabel || '—'}</dd>
+                <dt>{tt('wb.f.commtype')}</dt>
+                <dd>{isIntl ? tt('wb.comm.intl') : tt(({ URBAN: 'wb.comm.urban', SUBURBAN: 'wb.comm.suburban', INTERCITY: 'wb.comm.intercity', INTERNATIONAL: 'wb.comm.intl' } as Record<string, string>)[form.communicationType])}</dd>
+                <dt>{tt('col.route')}</dt><dd>{form.route || '—'}</dd>
+                <dt>{tt('wb.schedule')}</dt><dd>{form.schedule || '—'}</dd>
+                {isCar && (<><dt>{tt('wb.svc.label')}</dt><dd>{tt(({ TAXI: 'wb.svc.taxi', ROUTE: 'wb.svc.route', HOURLY: 'wb.svc.hourly' } as Record<string, string>)[serviceKind])}</dd></>)}
+                {isTruck && (<><dt>{tt('wb.ship.label')}</dt><dd>{shipmentKind === 'HOURLY' ? tt('wb.ship.hourly') : tt('wb.ship.piecework')}{trailers.length ? ` · ${tt('wb.trailerscount')}: ${trailers.length}` : ''}</dd></>)}
+                {isIntl && (<><dt>{tt('wb.intl.trip')}</dt><dd>{intl.loadCountry || '—'} → {intl.unloadCountry || '—'} · {tt('wb.permit.short')} {intl.permitNumber || '—'}{intl.secondDriverRma ? tt('wb.withsecond') : ''}</dd></>)}
               </dl>
             </>
           )}
@@ -412,16 +416,16 @@ export default function NewWaybillPage() {
           {/* ---------- Навигация ---------- */}
           <div style={{ display: 'flex', gap: 8, marginTop: 24, paddingTop: 18, borderTop: '1px solid var(--line-soft)' }}>
             <button type="button" className="btn secondary" disabled={step === 1} onClick={() => setStep(s => Math.max(1, s - 1))}>
-              <Icon d={P.collapse} cls="" style={{ width: 16, height: 16 }} /> Назад
+              <Icon d={P.collapse} cls="" style={{ width: 16, height: 16 }} /> {tt('wb.btn.back')}
             </button>
             <div style={{ flex: 1 }} />
             {step < STEPS.length ? (
               <button type="button" className="btn" disabled={!stepOk(step)} onClick={() => setStep(s => Math.min(STEPS.length, s + 1))}>
-                Далее <Icon d={P.chevron} cls="" style={{ width: 16, height: 16 }} />
+                {tt('wb.btn.next')} <Icon d={P.chevron} cls="" style={{ width: 16, height: 16 }} />
               </button>
             ) : (
               <button type="button" className="btn" disabled={busy || !canStep2 || !canStep3} onClick={submit}>
-                {busy ? 'Создание…' : 'Создать путевой лист'}
+                {busy ? tt('wb.btn.creating') : tt('wb.btn.create')}
               </button>
             )}
           </div>
@@ -433,22 +437,22 @@ export default function NewWaybillPage() {
             {step === 1 && (
               <>
                 <div className="card" style={{ marginBottom: 0 }}>
-                  <div className="card-h"><h2>Параметры создания</h2></div>
+                  <div className="card-h"><h2>{tt('wb.side.params')}</h2></div>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-                    <span style={{ color: 'var(--muted)', fontSize: 13 }}>Организация</span>
+                    <span style={{ color: 'var(--muted)', fontSize: 13 }}>{tt('col.org')}</span>
                     {orgRma
-                      ? <span className="badge green">Выбрана</span>
-                      : <span className="badge gray">На шаге 2</span>}
+                      ? <span className="badge green">{tt('wb.chosen')}</span>
+                      : <span className="badge gray">{tt('wb.onstep2')}</span>}
                   </div>
-                  <div style={{ fontSize: 13.5, color: 'var(--ink)', fontWeight: 600 }}>{orgLabel || 'Будет выбрана на шаге «Транспорт»'}</div>
+                  <div style={{ fontSize: 13.5, color: 'var(--ink)', fontWeight: 600 }}>{orgLabel || tt('wb.willchoose')}</div>
                 </div>
                 <div className="card" style={{ marginBottom: 0 }}>
-                  <div className="card-h"><h2>Правила и подсказки</h2></div>
+                  <div className="card-h"><h2>{tt('wb.side.rules')}</h2></div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                     {[
-                      { ic: P.help, tx: 'Тип путевого листа определяет набор необходимых полей и правил заполнения.' },
-                      { ic: P.shield, tx: 'Выбор типа можно изменить позже — на предыдущих шагах мастера.' },
-                      { ic: P.doc, tx: 'Для разных типов действуют разные нормативы и требования проверок.' },
+                      { ic: P.help, tx: tt('wb.hint.type') },
+                      { ic: P.shield, tx: tt('wb.hint.change') },
+                      { ic: P.doc, tx: tt('wb.hint.norms') },
                     ].map((r, i) => (
                       <div key={i} style={{ display: 'flex', gap: 10, fontSize: 12.5, color: 'var(--ink-soft)' }}>
                         <span className="ic-blue" style={{ width: 28, height: 28, borderRadius: 8, display: 'grid', placeItems: 'center', flex: 'none' }}><Icon d={r.ic} cls="" style={{ width: 15, height: 15 }} /></span>
@@ -462,21 +466,21 @@ export default function NewWaybillPage() {
 
             {step === 2 && (
               <div className="card" style={{ marginBottom: 0 }}>
-                <div className="card-h"><h2>Выбранное</h2></div>
+                <div className="card-h"><h2>{tt('wb.side.selected')}</h2></div>
                 <div style={{ marginBottom: 14 }}>
-                  <div style={{ fontSize: 11, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 4 }}>Транспортное средство</div>
+                  <div style={{ fontSize: 11, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 4 }}>{tt('col.vehiclefull')}</div>
                   {form.vehicleRegNumber
                     ? <div style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--ink)' }}>{vehicleLabel}</div>
-                    : <div style={{ fontSize: 13, color: 'var(--faint)' }}>не выбрано</div>}
+                    : <div style={{ fontSize: 13, color: 'var(--faint)' }}>{tt('wb.notchosen.veh')}</div>}
                 </div>
                 <div style={{ marginBottom: 14 }}>
-                  <div style={{ fontSize: 11, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 4 }}>Водитель</div>
+                  <div style={{ fontSize: 11, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 4 }}>{tt('col.driver')}</div>
                   {form.driverRma
                     ? <div style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--ink)' }}>{driverLabel}</div>
-                    : <div style={{ fontSize: 13, color: 'var(--faint)' }}>не выбран</div>}
+                    : <div style={{ fontSize: 13, color: 'var(--faint)' }}>{tt('wb.notchosen.drv')}</div>}
                 </div>
                 <div className={canStep2 ? 'sys-ok' : ''} style={canStep2 ? {} : { fontSize: 12.5, color: 'var(--muted)' }}>
-                  {canStep2 ? (<><Icon d={P.check} cls="" style={{ width: 16, height: 16 }} /> ТС и водитель выбраны</>) : 'Выберите организацию, ТС и водителя'}
+                  {canStep2 ? (<><Icon d={P.check} cls="" style={{ width: 16, height: 16 }} /> {tt('wb.vehdrv.ok')}</>) : tt('wb.vehdrv.choose')}
                 </div>
               </div>
             )}
@@ -484,8 +488,8 @@ export default function NewWaybillPage() {
             {step === 3 && (
               <div className="card" style={{ marginBottom: 0 }}>
                 <div className="card-h">
-                  <h2>Автоматическая проверка</h2>
-                  {allChecksOk && <span className="badge green" style={{ marginLeft: 'auto' }}>Все пройдены</span>}
+                  <h2>{tt('wb.side.autocheck')}</h2>
+                  {allChecksOk && <span className="badge green" style={{ marginLeft: 'auto' }}>{tt('wb.allpassed')}</span>}
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column' }}>
                   {checks.map((c, i) => (

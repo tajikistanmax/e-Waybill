@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { ResponsiveContainer, AreaChart, Area } from 'recharts';
 import { md, wb, Waybill } from '@/lib/api';
+import { useT } from '@/lib/i18n';
 import { Icon, P } from '../icons';
 
 /* Локальные пути иконок (не входят в общий набор icons.tsx). */
@@ -24,11 +25,11 @@ const SPARK = {
 
 /* Представительное расписание на сегодня (визуальный виджет). */
 const SCHEDULE = [
-  { time: '11:00', name: 'Давлатов Шерзод У.', org: 'ТаджикТранс ООО', pl: 'PL-2025-000124', st: 'Подтверждён', color: 'green', bar: 'var(--green)' },
-  { time: '11:30', name: 'Холматов Бахром Р.', org: 'СеверТранс', pl: 'PL-2025-000125', st: 'В процессе', color: 'blue', bar: 'var(--blue-500)' },
-  { time: '12:00', name: 'Юсупов Мухаммад И.', org: 'АвтоСервис', pl: 'PL-2025-000126', st: 'Запланирован', color: 'gray', bar: 'var(--line)' },
-  { time: '12:30', name: 'Ибрагимов Саид А.', org: 'Логистик Таджикистан', pl: 'PL-2025-000127', st: 'Запланирован', color: 'gray', bar: 'var(--line)' },
-  { time: '13:00', name: 'Курбонов Хусейн К.', org: 'ТаджикТранс ООО', pl: 'PL-2025-000128', st: 'Запланирован', color: 'gray', bar: 'var(--line)' },
+  { time: '11:00', name: 'Давлатов Шерзод У.', org: 'ТаджикТранс ООО', pl: 'PL-2025-000124', st: 'st.confirmed', color: 'green', bar: 'var(--green)' },
+  { time: '11:30', name: 'Холматов Бахром Р.', org: 'СеверТранс', pl: 'PL-2025-000125', st: 'st.inprocess', color: 'blue', bar: 'var(--blue-500)' },
+  { time: '12:00', name: 'Юсупов Мухаммад И.', org: 'АвтоСервис', pl: 'PL-2025-000126', st: 'st.planned', color: 'gray', bar: 'var(--line)' },
+  { time: '12:30', name: 'Ибрагимов Саид А.', org: 'Логистик Таджикистан', pl: 'PL-2025-000127', st: 'st.planned', color: 'gray', bar: 'var(--line)' },
+  { time: '13:00', name: 'Курбонов Хусейн К.', org: 'ТаджикТранс ООО', pl: 'PL-2025-000128', st: 'st.planned', color: 'gray', bar: 'var(--line)' },
 ];
 
 const MEDIC = 'Иванова Е. А.';
@@ -75,6 +76,7 @@ async function medRecordsOf(w: Waybill): Promise<MedRecord[]> {
  * Кабинет медика — панель управления предрейсовыми медосмотрами водителей.
  */
 export default function MedWorkstation() {
+  const { t } = useT();
   const [items, setItems] = useState<Waybill[]>([]);
   const [doctors, setDoctors] = useState<Record<string, { rma: string; name: string }[]>>({});
   const [selected, setSelected] = useState<Waybill | null>(null);
@@ -144,7 +146,7 @@ export default function MedWorkstation() {
   async function decide(passed: boolean) {
     if (!selected) return;
     const doctor = doctors[selected.organizationRma]?.[0];
-    if (!doctor) { setError('В организации нет зарегистрированного врача'); return; }
+    if (!doctor) { setError(t('med.err.nodoctor')); return; }
     setError('');
     try {
       await wb.post(`/${selected.id}/confirm-med`, {
@@ -158,8 +160,8 @@ export default function MedWorkstation() {
         },
       });
       setOk(passed
-        ? `Водитель допущен (врач ${doctor.name})`
-        : 'Водитель НЕ допущен — путевой лист отклонён');
+        ? `${t('med.ok.allowed')} (${t('med.doctor')} ${doctor.name})`
+        : t('med.ok.denied'));
       setSelected(null);
       await reload();
     } catch (e) {
@@ -168,17 +170,17 @@ export default function MedWorkstation() {
   }
 
   const kpis = [
-    { label: 'Ожидают медосмотр', value: String(pre.length), icon: P.users, cls: 'ic-blue', trend: '+3 за час', tone: '', color: '#2563eb', spark: SPARK.wait },
-    { label: 'Допущено сегодня', value: String(passedToday), icon: P.check, cls: 'ic-green', trend: '+8.3% к вчера', tone: 'up', color: '#16a34a', spark: SPARK.pass },
-    { label: 'Не допущено сегодня', value: String(rejectedToday), icon: XMARK, cls: 'ic-red', trend: '−50% к вчера', tone: 'down', color: '#dc2626', spark: SPARK.fail },
-    { label: 'Среднее время осмотра', value: '— мин —', icon: CLK, cls: 'ic-amber', trend: '−12% к вчера', tone: 'down', color: '#ea9615', spark: SPARK.time },
+    { label: t('med.kpi.wait'), value: String(pre.length), icon: P.users, cls: 'ic-blue', trend: t('med.trend.hour'), tone: '', color: '#2563eb', spark: SPARK.wait },
+    { label: t('med.kpi.passed'), value: String(passedToday), icon: P.check, cls: 'ic-green', trend: t('med.trend.pass'), tone: 'up', color: '#16a34a', spark: SPARK.pass },
+    { label: t('med.kpi.failed'), value: String(rejectedToday), icon: XMARK, cls: 'ic-red', trend: t('med.trend.fail'), tone: 'down', color: '#dc2626', spark: SPARK.fail },
+    { label: t('med.kpi.avgtime'), value: t('med.kpi.avgtime.v'), icon: CLK, cls: 'ic-amber', trend: t('med.trend.time'), tone: 'down', color: '#ea9615', spark: SPARK.time },
   ];
 
   const actions: { title: string; sub: string; icon: string; cls: string; href?: string; onClick?: () => void }[] = [
-    { title: 'Открыть новый осмотр', sub: 'Начать медосмотр водителя', icon: P.med, cls: 'ic-blue', onClick: () => { if (pre[0]) openExam(pre[0]); } },
-    { title: 'Поиск по № ПЛ', sub: 'Найти путевой лист', icon: SEARCH, cls: 'ic-cyan', href: '/waybills' },
-    { title: 'История осмотров', sub: 'Просмотр завершенных осмотров', icon: P.doc, cls: 'ic-purple', href: '/waybills' },
-    { title: 'Печать журнала', sub: 'Печать журнала медосмотров', icon: PRINTER, cls: 'ic-green', onClick: () => window.print() },
+    { title: t('med.act.new.t'), sub: t('med.act.new.s'), icon: P.med, cls: 'ic-blue', onClick: () => { if (pre[0]) openExam(pre[0]); } },
+    { title: t('med.act.search.t'), sub: t('med.act.search.s'), icon: SEARCH, cls: 'ic-cyan', href: '/waybills' },
+    { title: t('med.history'), sub: t('med.act.hist.s'), icon: P.doc, cls: 'ic-purple', href: '/waybills' },
+    { title: t('med.act.print.t'), sub: t('med.act.print.s'), icon: PRINTER, cls: 'ic-green', onClick: () => window.print() },
   ];
 
   return (
@@ -186,8 +188,8 @@ export default function MedWorkstation() {
       {/* Заголовок + дата/время */}
       <div className="toolbar">
         <div>
-          <h1>Кабинет медика</h1>
-          <div className="page-lead" style={{ margin: 0 }}>Панель управления медосмотрами водителей</div>
+          <h1>{t('med.h')}</h1>
+          <div className="page-lead" style={{ margin: 0 }}>{t('med.lead')}</div>
         </div>
         <span className="spacer" />
         <div style={{ display: 'flex', alignItems: 'center', gap: 20, color: 'var(--muted)', fontSize: 13, fontWeight: 500 }}>
@@ -243,28 +245,28 @@ export default function MedWorkstation() {
 
       {/* Переключатель вида */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 18 }}>
-        <button className={`btn ${view === 'queue' ? '' : 'secondary'}`} onClick={() => setView('queue')}>Очередь на осмотр</button>
-        <button className={`btn ${view === 'history' ? '' : 'secondary'}`} onClick={() => setView('history')}>История осмотров</button>
+        <button className={`btn ${view === 'queue' ? '' : 'secondary'}`} onClick={() => setView('queue')}>{t('med.tab.queue')}</button>
+        <button className={`btn ${view === 'history' ? '' : 'secondary'}`} onClick={() => setView('history')}>{t('med.history')}</button>
       </div>
 
       {view === 'history' ? (
         <div className="card">
           <div className="card-h">
-            <h2>История осмотров</h2>
+            <h2>{t('med.history')}</h2>
             <input
               value={examSearch}
               onChange={e => setExamSearch(e.target.value)}
-              placeholder="Поиск по водителю или № ПЛ"
+              placeholder={t('med.search.ph')}
               style={{ marginLeft: 'auto', width: 320 }}
             />
           </div>
           {allExams === null ? (
-            <p style={{ color: 'var(--muted)', fontSize: 13, padding: 12 }}>Загрузка истории осмотров…</p>
+            <p style={{ color: 'var(--muted)', fontSize: 13, padding: 12 }}>{t('med.loading.history')}</p>
           ) : (
             <>
               <table>
                 <thead>
-                  <tr><th>Дата и время</th><th>№ ПЛ</th><th>Водитель</th><th>Компания</th><th>АД</th><th>Пульс</th><th>Темп.</th><th>Алкотест</th><th>Медработник</th><th>Результат</th></tr>
+                  <tr><th>{t('col.datetime')}</th><th>{t('col.wbnum')}</th><th>{t('col.driver')}</th><th>{t('col.company')}</th><th>{t('col.bp')}</th><th>{t('col.pulse')}</th><th>{t('col.temp')}</th><th>{t('col.alco')}</th><th>{t('role.DOCTOR')}</th><th>{t('col.result')}</th></tr>
                 </thead>
                 <tbody>
                   {allExams
@@ -280,15 +282,15 @@ export default function MedWorkstation() {
                         <td>{r.temperature}</td>
                         <td>{r.alcotest}</td>
                         <td>{r.medic}</td>
-                        <td><span className={`badge ${r.passed ? 'green' : 'red'}`}>{r.passed ? 'Допущен' : 'Не допущен'}</span></td>
+                        <td><span className={`badge ${r.passed ? 'green' : 'red'}`}>{r.passed ? t('st.passed') : t('st.failed')}</span></td>
                       </tr>
                     ))}
                   {allExams.length === 0 && (
-                    <tr><td colSpan={10} style={{ textAlign: 'center', color: 'var(--muted)', padding: 28 }}>Завершённых осмотров пока нет</td></tr>
+                    <tr><td colSpan={10} style={{ textAlign: 'center', color: 'var(--muted)', padding: 28 }}>{t('med.empty.history')}</td></tr>
                   )}
                 </tbody>
               </table>
-              <div style={{ marginTop: 12, fontSize: 12.5, color: 'var(--muted)' }}>Показаны последние {allExams.length} записей</div>
+              <div style={{ marginTop: 12, fontSize: 12.5, color: 'var(--muted)' }}>{t('med.shown.pre')} {allExams.length} {t('med.shown.post')}</div>
             </>
           )}
         </div>
@@ -299,20 +301,20 @@ export default function MedWorkstation() {
         {/* Очередь на медосмотр */}
         <div className="card" style={{ marginBottom: 0 }}>
           <div className="card-h">
-            <h2>Очередь на предрейсовый медосмотр</h2>
+            <h2>{t('med.queue.h')}</h2>
             <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 16 }}>
-              <span style={{ color: 'var(--muted)', fontSize: 12.5 }}>{pre.length} в очереди</span>
+              <span style={{ color: 'var(--muted)', fontSize: 12.5 }}>{pre.length} {t('med.inqueue')}</span>
               <button
                 onClick={() => reload().catch(e => setError((e as Error).message))}
                 style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--blue-600)', fontWeight: 600, fontSize: 12.5, display: 'inline-flex', alignItems: 'center', gap: 6, fontFamily: 'inherit' }}
               >
-                <Icon d={REFRESH} cls="" style={{ width: 15, height: 15 }} /> Обновить
+                <Icon d={REFRESH} cls="" style={{ width: 15, height: 15 }} /> {t('btn.refresh')}
               </button>
             </div>
           </div>
           <table>
             <thead>
-              <tr><th>№ ПЛ</th><th>Водитель</th><th>Компания</th><th>Время</th><th>Статус</th><th></th></tr>
+              <tr><th>{t('col.wbnum')}</th><th>{t('col.driver')}</th><th>{t('col.company')}</th><th>{t('col.time')}</th><th>{t('col.status')}</th><th></th></tr>
             </thead>
             <tbody>
               {pre.map(w => (
@@ -321,25 +323,25 @@ export default function MedWorkstation() {
                   <td>{String(w.driverSnapshot?.fullName ?? w.driverRma)}</td>
                   <td>{String(w.organizationSnapshot?.name ?? w.organizationRma)}</td>
                   <td>{hhmm(w.createdAt)}</td>
-                  <td><span className="badge amber">Ожидает</span></td>
+                  <td><span className="badge amber">{t('st.waiting')}</span></td>
                   <td style={{ textAlign: 'right' }}>
-                    <button className="btn secondary" onClick={() => openExam(w)}>Начать осмотр</button>
+                    <button className="btn secondary" onClick={() => openExam(w)}>{t('med.btn.start')}</button>
                   </td>
                 </tr>
               ))}
               {pre.length === 0 && (
-                <tr><td colSpan={6} style={{ color: 'var(--muted)', textAlign: 'center', padding: 28 }}>Очередь пуста — все водители осмотрены</td></tr>
+                <tr><td colSpan={6} style={{ color: 'var(--muted)', textAlign: 'center', padding: 28 }}>{t('med.empty.queue')}</td></tr>
               )}
             </tbody>
           </table>
           <div style={{ display: 'flex', alignItems: 'center', marginTop: 14, fontSize: 12.5, color: 'var(--muted)' }}>
-            <span>Показаны 1–{pre.length} из {pre.length}</span>
+            <span>{t('paging.shown')} 1–{pre.length} {t('paging.of')} {pre.length}</span>
             <span style={{ flex: 1 }} />
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <select defaultValue="10" style={{ width: 'auto', padding: '6px 10px', fontSize: 12.5 }}>
-                <option value="10">10 на странице</option>
-                <option value="20">20 на странице</option>
-                <option value="50">50 на странице</option>
+                <option value="10">10 {t('paging.perpage')}</option>
+                <option value="20">20 {t('paging.perpage')}</option>
+                <option value="50">50 {t('paging.perpage')}</option>
               </select>
               <button className="btn secondary" style={{ padding: '7px 10px' }}><Icon d={P.collapse} cls="" style={{ width: 14, height: 14 }} /></button>
               <button className="btn" style={{ padding: '7px 13px' }}>1</button>
@@ -352,26 +354,26 @@ export default function MedWorkstation() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
           {/* Расписание на сегодня */}
           <div className="card" style={{ marginBottom: 0 }}>
-            <h2>Расписание на сегодня</h2>
+            <h2>{t('med.schedule.h')}</h2>
             {SCHEDULE.map(s => (
               <div key={s.pl} style={{ display: 'flex', gap: 12, padding: '11px 0', borderBottom: '1px solid var(--line-soft)' }}>
                 <div style={{ width: 42, flex: 'none', fontWeight: 700, fontSize: 13, color: 'var(--ink)', fontVariantNumeric: 'tabular-nums' }}>{s.time}</div>
                 <div style={{ flex: 1, minWidth: 0, borderLeft: `2px solid ${s.bar}`, paddingLeft: 11 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <b style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink)' }}>{s.name}</b>
-                    <span className={`badge ${s.color}`} style={{ marginLeft: 'auto' }}>{s.st}</span>
+                    <span className={`badge ${s.color}`} style={{ marginLeft: 'auto' }}>{t(s.st)}</span>
                   </div>
                   <div style={{ color: 'var(--muted)', fontSize: 12, marginTop: 2 }}>{s.org}</div>
                   <div className="number" style={{ fontSize: 11.5, marginTop: 2 }}>{s.pl}</div>
                 </div>
               </div>
             ))}
-            <Link className="link" href="/waybills" style={{ display: 'inline-block', marginTop: 12 }}>Полное расписание →</Link>
+            <Link className="link" href="/waybills" style={{ display: 'inline-block', marginTop: 12 }}>{t('med.schedule.full')}</Link>
           </div>
 
           {/* Быстрые действия */}
           <div className="card" style={{ marginBottom: 0 }}>
-            <h2>Быстрые действия</h2>
+            <h2>{t('med.quickactions')}</h2>
             <div style={{ display: 'flex', flexDirection: 'column' }}>
               {actions.map((a, idx) => {
                 const inner = (
@@ -410,10 +412,10 @@ export default function MedWorkstation() {
 
       {/* Последние завершённые осмотры */}
       <div className="card">
-        <div className="card-h"><h2>Последние завершенные осмотры</h2></div>
+        <div className="card-h"><h2>{t('med.recent.h')}</h2></div>
         <table>
           <thead>
-            <tr><th>№ ПЛ</th><th>Водитель</th><th>Компания</th><th>Время</th><th>Результат</th><th>Медработник</th><th></th></tr>
+            <tr><th>{t('col.wbnum')}</th><th>{t('col.driver')}</th><th>{t('col.company')}</th><th>{t('col.time')}</th><th>{t('col.result')}</th><th>{t('role.DOCTOR')}</th><th></th></tr>
           </thead>
           <tbody>
             {done.map(w => (
@@ -424,23 +426,23 @@ export default function MedWorkstation() {
                 <td>{hhmm(w.createdAt)}</td>
                 <td>
                   {w.medPassed
-                    ? <span className="badge green">Допущен</span>
-                    : <span className="badge red">Не допущен</span>}
+                    ? <span className="badge green">{t('st.passed')}</span>
+                    : <span className="badge red">{t('st.failed')}</span>}
                 </td>
                 <td>{MEDIC}</td>
                 <td style={{ textAlign: 'right' }}>
-                  <Link href={`/waybills/${w.id}`} style={{ color: 'var(--faint)', display: 'inline-flex' }} aria-label="Просмотр">
+                  <Link href={`/waybills/${w.id}`} style={{ color: 'var(--faint)', display: 'inline-flex' }} aria-label={t('btn.view')}>
                     <Icon d={P.eye} cls="" style={{ width: 18, height: 18 }} />
                   </Link>
                 </td>
               </tr>
             ))}
             {done.length === 0 && (
-              <tr><td colSpan={7} style={{ color: 'var(--muted)', textAlign: 'center', padding: 28 }}>Пока нет завершённых осмотров</td></tr>
+              <tr><td colSpan={7} style={{ color: 'var(--muted)', textAlign: 'center', padding: 28 }}>{t('med.empty.recent')}</td></tr>
             )}
           </tbody>
         </table>
-        <button className="link" onClick={() => setView('history')} style={{ display: 'inline-block', marginTop: 12, background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit', padding: 0 }}>Перейти в историю осмотров →</button>
+        <button className="link" onClick={() => setView('history')} style={{ display: 'inline-block', marginTop: 12, background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit', padding: 0 }}>{t('med.gotohistory')}</button>
       </div>
       </>
       )}
@@ -453,10 +455,10 @@ export default function MedWorkstation() {
         >
           <div className="card" onClick={e => e.stopPropagation()} style={{ width: 540, maxWidth: '100%', margin: 0, borderColor: 'var(--blue-500)', boxShadow: 'var(--shadow-lg)' }}>
             <div className="card-h">
-              <h2>Предрейсовый медосмотр</h2>
+              <h2>{t('med.modal.h')}</h2>
               <button
                 onClick={() => setSelected(null)}
-                aria-label="Закрыть"
+                aria-label={t('btn.close')}
                 style={{ marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)' }}
               >
                 <Icon d={XMARK} cls="" style={{ width: 18, height: 18 }} />
@@ -470,17 +472,17 @@ export default function MedWorkstation() {
 
             {/* Медицинская история водителя */}
             <div style={{ marginBottom: 16 }}>
-              <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink-soft)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '.04em' }}>Предыдущие осмотры водителя</div>
-              {driverHist === null && <div style={{ fontSize: 12.5, color: 'var(--muted)' }}>Загрузка истории…</div>}
-              {driverHist && driverHist.length === 0 && <div style={{ fontSize: 12.5, color: 'var(--muted)' }}>Осмотров ранее не было</div>}
+              <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink-soft)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '.04em' }}>{t('med.prevexams')}</div>
+              {driverHist === null && <div style={{ fontSize: 12.5, color: 'var(--muted)' }}>{t('med.loading.short')}</div>}
+              {driverHist && driverHist.length === 0 && <div style={{ fontSize: 12.5, color: 'var(--muted)' }}>{t('med.noexams')}</div>}
               {driverHist && driverHist.length > 0 && (
                 <table style={{ fontSize: 12.5 }}>
-                  <thead><tr><th>Дата</th><th>АД</th><th>Пульс</th><th>Темп.</th><th>Алког.</th><th>Итог</th></tr></thead>
+                  <thead><tr><th>{t('col.date')}</th><th>{t('col.bp')}</th><th>{t('col.pulse')}</th><th>{t('col.temp')}</th><th>{t('col.alcoshort')}</th><th>{t('col.verdict')}</th></tr></thead>
                   <tbody>
                     {driverHist.map((r, i) => (
                       <tr key={i}>
                         <td>{dt(r.date)}</td><td style={{ fontWeight: 600 }}>{r.pressure}</td><td>{r.pulse}</td><td>{r.temperature}</td><td>{r.alcotest}</td>
-                        <td><span className={`badge ${r.passed ? 'green' : 'red'}`}>{r.passed ? 'Допущен' : 'Не допущен'}</span></td>
+                        <td><span className={`badge ${r.passed ? 'green' : 'red'}`}>{r.passed ? t('st.passed') : t('st.failed')}</span></td>
                       </tr>
                     ))}
                   </tbody>
@@ -492,29 +494,29 @@ export default function MedWorkstation() {
 
             <form className="grid" onSubmit={e => e.preventDefault()}>
               <div>
-                <label>Артериальное давление, мм рт. ст.</label>
+                <label>{t('med.f.pressure')}</label>
                 <input value={form.pressure} onChange={e => setForm({ ...form, pressure: e.target.value })} />
               </div>
               <div>
-                <label>Пульс, уд/мин</label>
+                <label>{t('med.f.pulse')}</label>
                 <input type="number" value={form.pulse} onChange={e => setForm({ ...form, pulse: e.target.value })} />
               </div>
               <div>
-                <label>Температура, °C</label>
+                <label>{t('med.f.temp')}</label>
                 <input type="number" step="0.1" value={form.temperature} onChange={e => setForm({ ...form, temperature: e.target.value })} />
               </div>
               <div>
-                <label>Алкотест, ‰</label>
+                <label>{t('med.f.alco')}</label>
                 <input type="number" step="0.01" value={form.alcotest} onChange={e => setForm({ ...form, alcotest: e.target.value })} />
               </div>
               <div className="full" style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                 <button className="btn success" onClick={() => decide(true)}>
-                  <Icon d={P.check} cls="" style={{ width: 16, height: 16 }} /> Допустить
+                  <Icon d={P.check} cls="" style={{ width: 16, height: 16 }} /> {t('med.btn.allow')}
                 </button>
                 <button className="btn danger" onClick={() => decide(false)}>
-                  <Icon d={XMARK} cls="" style={{ width: 16, height: 16 }} /> Не допустить
+                  <Icon d={XMARK} cls="" style={{ width: 16, height: 16 }} /> {t('med.btn.deny')}
                 </button>
-                <button className="btn secondary" onClick={() => setSelected(null)}>Отмена</button>
+                <button className="btn secondary" onClick={() => setSelected(null)}>{t('btn.cancel')}</button>
               </div>
             </form>
           </div>

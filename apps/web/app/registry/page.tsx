@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { md } from '@/lib/api';
+import { useT } from '@/lib/i18n';
 import { Icon, P } from '../icons';
 
 type Row = Record<string, unknown>;
@@ -12,18 +13,18 @@ const TRANSPORT_TYPES: Record<number, string> = {
   1: 'Автобус', 2: 'Троллейбус', 3: 'Микроавтобус', 4: 'Легковой (сабукрав)', 5: 'Грузовой (2-Б)', 6: 'Грузовой межд. (5Б-БМ)',
 };
 
-const TABS: { key: Tab; label: string; icon: string }[] = [
-  { key: 'vehicles', label: 'Транспорт', icon: P.car },
-  { key: 'drivers', label: 'Водители', icon: P.users },
-  { key: 'employees', label: 'Сотрудники', icon: P.building },
+const TABS: { key: Tab; labelKey: string; icon: string }[] = [
+  { key: 'vehicles', labelKey: 'col.transport', icon: P.car },
+  { key: 'drivers', labelKey: 'col.drivers', icon: P.users },
+  { key: 'employees', labelKey: 'col.employees', icon: P.building },
 ];
 
 /** Плашка источника/статуса записи (source из единой платформы — из ЕПМ, иначе ручной ввод). */
-function sourceBadge(row: Row) {
-  if (row.suspended) return <span className="badge red">Заблокирован</span>;
+function sourceBadge(row: Row, t: (k: string) => string) {
+  if (row.suspended) return <span className="badge red">{t('insp.v.blocked.t')}</span>;
   return String(row.source) === 'UNIFIED'
-    ? <span className="badge blue">Единая платформа</span>
-    : <span className="badge gray">Ручной ввод</span>;
+    ? <span className="badge blue">{t('reg.src.unified')}</span>
+    : <span className="badge gray">{t('comp.src.manual')}</span>;
 }
 
 /**
@@ -32,6 +33,7 @@ function sourceBadge(row: Row) {
  * платформенного администратора возвращают всё, для арендо-ограниченных ролей — свою организацию.
  */
 export default function RegistryPage() {
+  const { t } = useT();
   const [tab, setTab] = useState<Tab>('vehicles');
   const [rows, setRows] = useState<Row[]>([]);
   const [orgs, setOrgs] = useState<Row[]>([]);
@@ -71,18 +73,18 @@ export default function RegistryPage() {
     });
   }, [rows, q, orgFilter, orgById]);
 
-  const active = TABS.find(t => t.key === tab)!;
-  const emptyText = loading ? 'Загрузка…' : 'Записей нет';
+  const active = TABS.find(x => x.key === tab)!;
+  const emptyText = loading ? t('common.loading') : t('common.norecords');
 
   return (
     <>
       <div className="toolbar">
         <div>
-          <h1>Реестры</h1>
-          <div className="page-lead" style={{ margin: 0 }}>Все транспортные средства, водители и сотрудники по всем организациям</div>
+          <h1>{t('nav.registry')}</h1>
+          <div className="page-lead" style={{ margin: 0 }}>{t('reg.lead')}</div>
         </div>
         <span className="spacer" />
-        <a className="btn secondary" href="/company">Управление в разделе «Компания» →</a>
+        <a className="btn secondary" href="/company">{t('reg.managelink')}</a>
       </div>
 
       {error && <div className="error">{error}</div>}
@@ -105,8 +107,8 @@ export default function RegistryPage() {
               <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                 <span className="k-ic ic-blue"><Icon d={s.icon} cls="" /></span>
                 <div style={{ minWidth: 0 }}>
-                  <div style={{ fontWeight: 700, fontSize: 14, color: sel ? 'var(--blue-700)' : 'var(--ink)' }}>{s.label}</div>
-                  <div style={{ fontSize: 11.5, color: 'var(--muted)' }}>{sel ? `Показано ${filtered.length} из ${rows.length}` : 'Открыть реестр'}</div>
+                  <div style={{ fontWeight: 700, fontSize: 14, color: sel ? 'var(--blue-700)' : 'var(--ink)' }}>{t(s.labelKey)}</div>
+                  <div style={{ fontSize: 11.5, color: 'var(--muted)' }}>{sel ? `${t('reg.shown')} ${filtered.length} ${t('paging.of')} ${rows.length}` : t('reg.openregistry')}</div>
                 </div>
               </div>
             </button>
@@ -117,19 +119,19 @@ export default function RegistryPage() {
       {/* Фильтры + таблица */}
       <div className="card">
         <div className="card-h">
-          <h2>{active.label}</h2>
+          <h2>{t(active.labelKey)}</h2>
           <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
             <select value={orgFilter} onChange={e => setOrgFilter(e.target.value)} style={{ width: 240 }}>
-              <option value="">Все организации</option>
+              <option value="">{t('reg.allorgs')}</option>
               {orgs.map(o => <option key={String(o.id)} value={String(o.id)}>{String(o.name ?? o.rma)}</option>)}
             </select>
-            <input value={q} onChange={e => setQ(e.target.value)} placeholder="Поиск по номеру, ФИО, компании…" style={{ width: 260 }} />
+            <input value={q} onChange={e => setQ(e.target.value)} placeholder={t('reg.search')} style={{ width: 260 }} />
           </div>
         </div>
 
         {tab === 'vehicles' && (
           <table>
-            <thead><tr><th>Госномер</th><th>Тип</th><th>Марка</th><th>Организация</th><th>Одометр</th><th>Техосмотр до</th><th>Источник</th></tr></thead>
+            <thead><tr><th>{t('col.regnum')}</th><th>{t('col.type')}</th><th>{t('col.brand')}</th><th>{t('col.org')}</th><th>{t('col.odometer')}</th><th>{t('col.techto')}</th><th>{t('col.source')}</th></tr></thead>
             <tbody>
               {filtered.map(r => (
                 <tr key={String(r.id)}>
@@ -139,7 +141,7 @@ export default function RegistryPage() {
                   <td style={{ fontWeight: 600, color: 'var(--ink)' }}>{orgName(r)}</td>
                   <td>{String(r.odometer ?? '—')}</td>
                   <td>{String(r.techInspectionValidTo ?? '—')}</td>
-                  <td>{sourceBadge(r)}</td>
+                  <td>{sourceBadge(r, t)}</td>
                 </tr>
               ))}
               {filtered.length === 0 && <tr><td colSpan={7} style={{ textAlign: 'center', color: 'var(--muted)', padding: 22 }}>{emptyText}</td></tr>}
@@ -149,7 +151,7 @@ export default function RegistryPage() {
 
         {tab === 'drivers' && (
           <table>
-            <thead><tr><th>Ф.И.О.</th><th>ИНН/РМА</th><th>Организация</th><th>ВУ</th><th>Категории</th><th>ВУ до</th><th>Медсправка до</th><th>Источник</th></tr></thead>
+            <thead><tr><th>{t('col.fio')}</th><th>{t('col.innrma')}</th><th>{t('col.org')}</th><th>{t('tech.license')}</th><th>{t('tech.categories')}</th><th>{t('col.licto')}</th><th>{t('col.medto')}</th><th>{t('col.source')}</th></tr></thead>
             <tbody>
               {filtered.map(r => (
                 <tr key={String(r.id)}>
@@ -160,7 +162,7 @@ export default function RegistryPage() {
                   <td>{String(r.licenseCategories ?? '—')}</td>
                   <td>{String(r.licenseValidTo ?? '—')}</td>
                   <td>{String(r.medCertValidTo ?? '—')}</td>
-                  <td>{sourceBadge(r)}</td>
+                  <td>{sourceBadge(r, t)}</td>
                 </tr>
               ))}
               {filtered.length === 0 && <tr><td colSpan={8} style={{ textAlign: 'center', color: 'var(--muted)', padding: 22 }}>{emptyText}</td></tr>}
@@ -170,7 +172,7 @@ export default function RegistryPage() {
 
         {tab === 'employees' && (
           <table>
-            <thead><tr><th>Ф.И.О.</th><th>ИНН/РМА</th><th>Организация</th><th>Должность</th><th>Телефон</th><th>Источник</th></tr></thead>
+            <thead><tr><th>{t('col.fio')}</th><th>{t('col.innrma')}</th><th>{t('col.org')}</th><th>{t('col.position')}</th><th>{t('col.phone')}</th><th>{t('col.source')}</th></tr></thead>
             <tbody>
               {filtered.map(r => (
                 <tr key={String(r.id)}>
@@ -179,7 +181,7 @@ export default function RegistryPage() {
                   <td>{orgName(r)}</td>
                   <td>{EMPLOYEE_TYPES[Number(r.type)] ?? String(r.type)}</td>
                   <td>{String(r.phone ?? '—')}</td>
-                  <td>{sourceBadge(r)}</td>
+                  <td>{sourceBadge(r, t)}</td>
                 </tr>
               ))}
               {filtered.length === 0 && <tr><td colSpan={6} style={{ textAlign: 'center', color: 'var(--muted)', padding: 22 }}>{emptyText}</td></tr>}
@@ -188,7 +190,7 @@ export default function RegistryPage() {
         )}
 
         <div style={{ marginTop: 12, fontSize: 12.5, color: 'var(--muted)' }}>
-          Всего: {filtered.length}{rows.length !== filtered.length ? ` из ${rows.length}` : ''}
+          {t('dash.total')}: {filtered.length}{rows.length !== filtered.length ? ` ${t('paging.of')} ${rows.length}` : ''}
         </div>
       </div>
     </>

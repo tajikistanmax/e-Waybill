@@ -43,7 +43,7 @@ export default function WaybillsPage() {
         <h1>{t('nav.waybill.registry')}</h1>
         <span className="spacer" />
         <Link className="btn" href="/waybills/new"><Icon d={P.doc} cls="" style={{ width: 16, height: 16 }} /> {t('nav.waybill.new')}</Link>
-        <button className="btn secondary" onClick={() => window.print()}><Icon d={P.mail} cls="" style={{ width: 16, height: 16 }} /> Печать</button>
+        <button className="btn secondary" onClick={() => window.print()}><Icon d={P.mail} cls="" style={{ width: 16, height: 16 }} /> {t('wb.print')}</button>
       </div>
 
       {error && <div className="error">{error}</div>}
@@ -52,24 +52,24 @@ export default function WaybillsPage() {
       <div className="card">
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1.4fr auto', gap: 14, alignItems: 'end' }}>
           <div>
-            <label>Статус</label>
+            <label>{t('col.status')}</label>
             <select value={status} onChange={e => { setStatus(e.target.value); setPage(1); }}>
-              <option value="">Все статусы</option>
+              <option value="">{t('wb.f.allstatuses')}</option>
               {Object.entries(STATUS_LABELS).map(([v, s]) => <option key={v} value={v}>{s.label}</option>)}
             </select>
           </div>
           <div>
-            <label>Тип ПЛ</label>
+            <label>{t('col.wbtype')}</label>
             <select value={type} onChange={e => { setType(e.target.value); setPage(1); }}>
-              <option value="">Все типы</option>
+              <option value="">{t('wb.f.alltypes')}</option>
               {Object.entries(TYPE_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
             </select>
           </div>
           <div>
-            <label>Поиск</label>
-            <input value={q} onChange={e => { setQ(e.target.value); setPage(1); }} placeholder="№ ПЛ, водитель, транспорт или компания" />
+            <label>{t('wb.f.search')}</label>
+            <input value={q} onChange={e => { setQ(e.target.value); setPage(1); }} placeholder={t('wb.search.ph')} />
           </div>
-          <button className="btn secondary" onClick={reset}>Сбросить фильтры</button>
+          <button className="btn secondary" onClick={reset}>{t('wb.resetfilters')}</button>
         </div>
       </div>
 
@@ -78,8 +78,8 @@ export default function WaybillsPage() {
         <table>
           <thead>
             <tr>
-              <th>№ ПЛ</th><th>Тип</th><th>Компания</th><th>Транспорт</th><th>Водитель</th>
-              <th>Начало</th><th>Медосмотр</th><th>Техосмотр</th><th>Статус</th><th></th>
+              <th>{t('col.wbnum')}</th><th>{t('col.type')}</th><th>{t('col.company')}</th><th>{t('col.transport')}</th><th>{t('col.driver')}</th>
+              <th>{t('wb.col.start')}</th><th>{t('wb.col.med')}</th><th>{t('wb.col.tech')}</th><th>{t('col.status')}</th><th></th>
             </tr>
           </thead>
           <tbody>
@@ -87,17 +87,17 @@ export default function WaybillsPage() {
               const s = STATUS_LABELS[w.status] ?? { label: w.status, color: 'gray' };
               return (
                 <tr key={w.id} className="clickable" onClick={() => router.push(`/waybills/${w.id}`)}>
-                  <td><span className="number">{w.number ?? '— черновик —'}</span></td>
+                  <td><span className="number">{w.number ?? t('viol.draft')}</span></td>
                   <td>{(TYPE_LABELS[w.waybillType] ?? w.waybillType).replace(/\s*\(.*\)/, '')}</td>
                   <td>{String(w.organizationSnapshot?.name ?? w.organizationRma)}</td>
                   <td>{String(w.vehicleSnapshot?.brand ?? '')} {w.vehicleRegNumber}</td>
                   <td>{String(w.driverSnapshot?.fullName ?? w.driverRma)}</td>
                   <td>{fmt(w.validFrom)}</td>
-                  <td><span className={`badge ${w.medPassed ? 'green' : 'gray'}`}>{w.medPassed ? 'Пройден' : '—'}</span></td>
-                  <td><span className={`badge ${w.techPassed ? 'green' : 'gray'}`}>{w.techPassed ? 'Пройден' : '—'}</span></td>
+                  <td><span className={`badge ${w.medPassed ? 'green' : 'gray'}`}>{w.medPassed ? t('st.passeddone') : '—'}</span></td>
+                  <td><span className={`badge ${w.techPassed ? 'green' : 'gray'}`}>{w.techPassed ? t('st.passeddone') : '—'}</span></td>
                   <td><span className={`badge ${s.color}`}>{s.label}</span></td>
                   <td onClick={e => e.stopPropagation()}>
-                    <Link href={`/waybills/${w.id}`} className="tb-icon" style={{ width: 32, height: 32, display: 'inline-grid' }} title="Открыть">
+                    <Link href={`/waybills/${w.id}`} className="tb-icon" style={{ width: 32, height: 32, display: 'inline-grid' }} title={t('btn.open')}>
                       <Icon d={P.eye} cls="" style={{ width: 17, height: 17, color: 'var(--muted)' }} />
                     </Link>
                   </td>
@@ -106,7 +106,7 @@ export default function WaybillsPage() {
             })}
             {view.length === 0 && (
               <tr><td colSpan={10} style={{ textAlign: 'center', color: 'var(--muted)', padding: 34 }}>
-                Путевых листов не найдено
+                {t('wb.empty')}
               </td></tr>
             )}
           </tbody>
@@ -114,7 +114,7 @@ export default function WaybillsPage() {
 
         {/* Пагинация */}
         <div style={{ display: 'flex', alignItems: 'center', padding: '14px 16px', borderTop: '1px solid var(--line)', fontSize: 13, color: 'var(--muted)' }}>
-          <span>Всего записей: <b style={{ color: 'var(--ink)' }}>{filtered.length}</b></span>
+          <span>{t('dict.totalrecords')}: <b style={{ color: 'var(--ink)' }}>{filtered.length}</b></span>
           <span style={{ flex: 1 }} />
           <button className="btn secondary" disabled={page <= 1} onClick={() => setPage(p => p - 1)} style={{ padding: '6px 12px' }}>‹</button>
           <span style={{ margin: '0 12px' }}>{page} / {pages}</span>

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { authHeaders, STATUS_LABELS, TYPE_LABELS } from '@/lib/api';
+import { useT } from '@/lib/i18n';
 import { Icon, P } from '../icons';
 
 type Summary = {
@@ -65,6 +66,7 @@ function BarRow({ label, value, max, color }: { label: string; value: number; ma
 
 /** Отчёты (раздел 8.13 ТЗ): сводка, журнал диспетчера, по водителям/ТС/топливу. */
 export default function ReportsPage() {
+  const { t } = useT();
   const [from, setFrom] = useState(today(-30));
   const [to, setTo] = useState(today());
   const [journalDate, setJournalDate] = useState(today());
@@ -95,27 +97,27 @@ export default function ReportsPage() {
   const typeMax = summary ? Math.max(1, ...Object.values(summary.byType)) : 1;
 
   const KPIS = summary ? [
-    { label: 'Путевых листов', value: summary.totals.waybills, icon: P.doc, cls: 'ic-blue' },
-    { label: 'Завершено', value: summary.totals.completed, icon: P.check, cls: 'ic-green' },
-    { label: 'Активно', value: summary.totals.active, icon: P.car, cls: 'ic-cyan' },
-    { label: 'Аннулировано', value: summary.totals.cancelled, icon: P.alert, cls: 'ic-red' },
+    { label: t('kpi.total'), value: summary.totals.waybills, icon: P.doc, cls: 'ic-blue' },
+    { label: t('kpi.done'), value: summary.totals.completed, icon: P.check, cls: 'ic-green' },
+    { label: t('st.active'), value: summary.totals.active, icon: P.car, cls: 'ic-cyan' },
+    { label: t('kpi.cancel'), value: summary.totals.cancelled, icon: P.alert, cls: 'ic-red' },
   ] : [];
 
   return (
     <>
       <div className="toolbar">
         <div>
-          <h1>Отчёты и аналитика</h1>
-          <div className="page-lead" style={{ margin: 0 }}>Сводка, журнал диспетчера и отчёты по водителям, транспорту и топливу (ҳисоботҳо)</div>
+          <h1>{t('nav.reports')}</h1>
+          <div className="page-lead" style={{ margin: 0 }}>{t('rep.lead')}</div>
         </div>
       </div>
 
       <div className="toolbar">
-        <button className={`btn ${tab === 'summary' ? '' : 'secondary'}`} onClick={() => setTab('summary')}>Сводка</button>
-        <button className={`btn ${tab === 'journal' ? '' : 'secondary'}`} onClick={() => setTab('journal')}>Журнал диспетчера</button>
-        <button className={`btn ${tab === 'driver' ? '' : 'secondary'}`} onClick={() => setTab('driver')}>По водителям</button>
-        <button className={`btn ${tab === 'vehicle' ? '' : 'secondary'}`} onClick={() => setTab('vehicle')}>По транспорту</button>
-        <button className={`btn ${tab === 'fuel' ? '' : 'secondary'}`} onClick={() => setTab('fuel')}>Топливо</button>
+        <button className={`btn ${tab === 'summary' ? '' : 'secondary'}`} onClick={() => setTab('summary')}>{t('rep.tab.summary')}</button>
+        <button className={`btn ${tab === 'journal' ? '' : 'secondary'}`} onClick={() => setTab('journal')}>{t('rep.tab.journal')}</button>
+        <button className={`btn ${tab === 'driver' ? '' : 'secondary'}`} onClick={() => setTab('driver')}>{t('rep.tab.driver')}</button>
+        <button className={`btn ${tab === 'vehicle' ? '' : 'secondary'}`} onClick={() => setTab('vehicle')}>{t('rep.tab.vehicle')}</button>
+        <button className={`btn ${tab === 'fuel' ? '' : 'secondary'}`} onClick={() => setTab('fuel')}>{t('rep.tab.fuel')}</button>
         <span className="spacer" />
         {tab === 'journal' ? (
           <input type="date" style={{ width: 170 }} value={journalDate} onChange={e => setJournalDate(e.target.value)} />
@@ -149,9 +151,9 @@ export default function ReportsPage() {
           {/* Распределения */}
           <div className="grid-2">
             <div className="card">
-              <h2>Путевые листы по статусам</h2>
+              <h2>{t('rep.bystatus')}</h2>
               {Object.entries(summary.byStatus).length === 0
-                ? <p style={{ color: 'var(--muted)', fontSize: 13 }}>Нет данных за период</p>
+                ? <p style={{ color: 'var(--muted)', fontSize: 13 }}>{t('rep.nodata')}</p>
                 : Object.entries(summary.byStatus)
                     .sort((a, b) => b[1] - a[1])
                     .map(([k, v]) => (
@@ -159,9 +161,9 @@ export default function ReportsPage() {
                     ))}
             </div>
             <div className="card">
-              <h2>Путевые листы по типам</h2>
+              <h2>{t('dash.bytype')}</h2>
               {Object.entries(summary.byType).length === 0
-                ? <p style={{ color: 'var(--muted)', fontSize: 13 }}>Нет данных за период</p>
+                ? <p style={{ color: 'var(--muted)', fontSize: 13 }}>{t('rep.nodata')}</p>
                 : Object.entries(summary.byType)
                     .sort((a, b) => b[1] - a[1])
                     .map(([k, v]) => (
@@ -172,19 +174,19 @@ export default function ReportsPage() {
 
           {/* Показатели периода */}
           <div className="card">
-            <h2>Показатели за период</h2>
+            <h2>{t('rep.periodmetrics')}</h2>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14 }}>
               <div style={{ background: 'var(--blue-050)', borderRadius: 11, padding: 16 }}>
-                <div style={{ fontSize: 11.5, color: 'var(--muted)' }}>Пробег</div>
-                <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--blue-700)', marginTop: 4 }}>{summary.totals.distanceKm.toLocaleString('ru-RU')} <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--muted)' }}>км</span></div>
+                <div style={{ fontSize: 11.5, color: 'var(--muted)' }}>{t('col.mileage')}</div>
+                <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--blue-700)', marginTop: 4 }}>{summary.totals.distanceKm.toLocaleString('ru-RU')} <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--muted)' }}>{t('unit.km')}</span></div>
               </div>
               <div style={{ background: 'var(--cyan-050)', borderRadius: 11, padding: 16 }}>
-                <div style={{ fontSize: 11.5, color: 'var(--muted)' }}>Топливо выдано</div>
-                <div style={{ fontSize: 22, fontWeight: 800, color: '#0b7f97', marginTop: 4 }}>{summary.totals.fuelGivenLiters.toLocaleString('ru-RU')} <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--muted)' }}>л</span></div>
+                <div style={{ fontSize: 11.5, color: 'var(--muted)' }}>{t('rep.fuelgiven')}</div>
+                <div style={{ fontSize: 22, fontWeight: 800, color: '#0b7f97', marginTop: 4 }}>{summary.totals.fuelGivenLiters.toLocaleString('ru-RU')} <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--muted)' }}>{t('unit.l')}</span></div>
               </div>
               <div style={{ background: 'var(--green-050)', borderRadius: 11, padding: 16 }}>
-                <div style={{ fontSize: 11.5, color: 'var(--muted)' }}>Выручка</div>
-                <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--green)', marginTop: 4 }}>{summary.totals.revenue.toLocaleString('ru-RU')} <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--muted)' }}>сомони</span></div>
+                <div style={{ fontSize: 11.5, color: 'var(--muted)' }}>{t('rep.revenue')}</div>
+                <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--green)', marginTop: 4 }}>{summary.totals.revenue.toLocaleString('ru-RU')} <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--muted)' }}>{t('unit.somoni')}</span></div>
               </div>
             </div>
           </div>
@@ -193,9 +195,9 @@ export default function ReportsPage() {
 
       {tab === 'journal' && (
         <div className="card">
-          <h2>Журнал диспетчера (дафтари қайди танзимгар) за {journalDate}</h2>
+          <h2>{t('rep.journal.title')} {journalDate}</h2>
           <table>
-            <thead><tr><th>Номер</th><th>Тип</th><th>ТС</th><th>Водитель</th><th>Статус</th><th>Одометр выезд</th><th>Одометр возврат</th></tr></thead>
+            <thead><tr><th>{t('col.number')}</th><th>{t('col.type')}</th><th>{t('col.vehicle')}</th><th>{t('col.driver')}</th><th>{t('col.status')}</th><th>{t('rep.col.odoexit')}</th><th>{t('rep.col.odoentry')}</th></tr></thead>
             <tbody>
               {journal.map((r, i) => {
                 const s = STATUS_LABELS[r.status] ?? { label: r.status, color: 'gray' };
@@ -211,7 +213,7 @@ export default function ReportsPage() {
                   </tr>
                 );
               })}
-              {journal.length === 0 && <tr><td colSpan={7} style={{ textAlign: 'center', color: 'var(--muted)', padding: 20 }}>Записей нет</td></tr>}
+              {journal.length === 0 && <tr><td colSpan={7} style={{ textAlign: 'center', color: 'var(--muted)', padding: 20 }}>{t('common.norecords')}</td></tr>}
             </tbody>
           </table>
         </div>
@@ -219,9 +221,9 @@ export default function ReportsPage() {
 
       {(tab === 'driver' || tab === 'vehicle') && (
         <div className="card">
-          <h2>{tab === 'driver' ? 'По водителям' : 'По транспортным средствам'}</h2>
+          <h2>{tab === 'driver' ? t('rep.tab.driver') : t('rep.byvehicle')}</h2>
           <table>
-            <thead><tr><th>{tab === 'driver' ? 'Водитель' : 'ТС'}</th><th>ПЛ всего</th><th>Завершено</th><th>Пробег, км</th></tr></thead>
+            <thead><tr><th>{tab === 'driver' ? t('col.driver') : t('col.vehicle')}</th><th>{t('rep.col.wbtotal')}</th><th>{t('kpi.done')}</th><th>{t('drv.kpi.km')}</th></tr></thead>
             <tbody>
               {(tab === 'driver' ? byDriver : byVehicle).map((r, i) => (
                 <tr key={i}>
@@ -229,7 +231,7 @@ export default function ReportsPage() {
                   <td>{r.waybills}</td><td>{r.completed}</td><td>{r.distanceKm.toLocaleString('ru-RU')}</td>
                 </tr>
               ))}
-              {(tab === 'driver' ? byDriver : byVehicle).length === 0 && <tr><td colSpan={4} style={{ textAlign: 'center', color: 'var(--muted)', padding: 20 }}>Записей нет</td></tr>}
+              {(tab === 'driver' ? byDriver : byVehicle).length === 0 && <tr><td colSpan={4} style={{ textAlign: 'center', color: 'var(--muted)', padding: 20 }}>{t('common.norecords')}</td></tr>}
             </tbody>
           </table>
         </div>
@@ -237,14 +239,14 @@ export default function ReportsPage() {
 
       {tab === 'fuel' && (
         <div className="card">
-          <h2>Отчёт по топливу (ҳисоботи сузишворӣ)</h2>
+          <h2>{t('rep.fuel.h')}</h2>
           <table>
-            <thead><tr><th>Вид топлива</th><th>Выдано, л</th><th>Остаток на конец, л</th></tr></thead>
+            <thead><tr><th>{t('rep.col.fueltype')}</th><th>{t('rep.col.given')}</th><th>{t('rep.col.remain')}</th></tr></thead>
             <tbody>
               {fuel.map((r, i) => (
                 <tr key={i}><td style={{ fontWeight: 600, color: 'var(--ink)' }}>{r.fuelName ?? FUEL_NAMES[r.fuelType] ?? r.fuelType}</td><td>{r.given.toLocaleString('ru-RU')}</td><td>{r.remainEnd.toLocaleString('ru-RU')}</td></tr>
               ))}
-              {fuel.length === 0 && <tr><td colSpan={3} style={{ textAlign: 'center', color: 'var(--muted)', padding: 20 }}>Записей нет</td></tr>}
+              {fuel.length === 0 && <tr><td colSpan={3} style={{ textAlign: 'center', color: 'var(--muted)', padding: 20 }}>{t('common.norecords')}</td></tr>}
             </tbody>
           </table>
         </div>

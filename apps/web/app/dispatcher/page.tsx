@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { wb, Waybill, STATUS_LABELS, TYPE_LABELS } from '@/lib/api';
+import { useT } from '@/lib/i18n';
 import { Icon, P } from '../icons';
 
 function fmtDateTime(iso: string | null) {
@@ -18,17 +19,17 @@ function isToday(iso: string | null) {
   return d.getFullYear() === n.getFullYear() && d.getMonth() === n.getMonth() && d.getDate() === n.getDate();
 }
 
-/** Что нужно сделать по путевому листу в данном статусе (подсказка диспетчеру). */
+/** Что нужно сделать по путевому листу в данном статусе (подсказка диспетчеру). Значения — ключи i18n. */
 const ACTION_HINT: Record<string, string> = {
-  DRAFT: 'Оформить титул Т1',
-  CREATED: 'Ожидает медосмотра и техконтроля',
-  MED_REJECTED: 'Медосмотр отклонён — заменить водителя',
-  TECH_REJECTED: 'Техконтроль отклонён — заменить ТС',
-  AWAITING_PAYMENT: 'Ожидает оплаты',
-  PAID: 'Оплачен — подготовить к выдаче',
-  READY: 'Готов — выдать водителю',
-  RETURNED: 'Возвращён — закрыть путевой лист',
-  BLOCKED: 'Заблокирован инспектором',
+  DRAFT: 'disp.hint.draft',
+  CREATED: 'disp.hint.created',
+  MED_REJECTED: 'disp.hint.medrej',
+  TECH_REJECTED: 'disp.hint.techrej',
+  AWAITING_PAYMENT: 'disp.hint.await',
+  PAID: 'disp.hint.paid',
+  READY: 'disp.hint.ready',
+  RETURNED: 'disp.hint.returned',
+  BLOCKED: 'disp.hint.blocked',
 };
 
 /**
@@ -37,6 +38,7 @@ const ACTION_HINT: Record<string, string> = {
  * Диспетчер оформляет и ведёт путевые листы своей организации.
  */
 export default function DispatcherCabinet() {
+  const { t } = useT();
   const [items, setItems] = useState<Waybill[]>([]);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
@@ -67,21 +69,21 @@ export default function DispatcherCabinet() {
   );
 
   const kpis = [
-    { label: 'Всего путевых листов', value: stats.total, icon: P.doc, cls: 'ic-blue' },
-    { label: 'В работе', value: stats.active, icon: P.car, cls: 'ic-cyan' },
-    { label: 'Требуют действия', value: stats.pending, icon: P.alert, cls: 'ic-amber' },
-    { label: 'Оформлено сегодня', value: stats.today, icon: P.check, cls: 'ic-green' },
+    { label: t('disp.kpi.total'), value: stats.total, icon: P.doc, cls: 'ic-blue' },
+    { label: t('disp.kpi.active'), value: stats.active, icon: P.car, cls: 'ic-cyan' },
+    { label: t('disp.kpi.pending'), value: stats.pending, icon: P.alert, cls: 'ic-amber' },
+    { label: t('kpi.today'), value: stats.today, icon: P.check, cls: 'ic-green' },
   ];
 
   return (
     <>
       <div className="toolbar">
         <div>
-          <h1>Кабинет диспетчера</h1>
-          <div className="page-lead" style={{ margin: 0 }}>Оформление и контроль путевых листов</div>
+          <h1>{t('nav.dispatcher')}</h1>
+          <div className="page-lead" style={{ margin: 0 }}>{t('disp.lead')}</div>
         </div>
         <Link href="/waybills/new" className="btn" style={{ marginLeft: 'auto', textDecoration: 'none' }}>
-          <Icon d={P.doc} cls="" /> Создать путевой лист
+          <Icon d={P.doc} cls="" /> {t('nav.waybill.new')}
         </Link>
       </div>
 
@@ -99,12 +101,12 @@ export default function DispatcherCabinet() {
       {/* Требуют внимания */}
       <div className="card">
         <div className="card-h">
-          <h2>Требуют внимания</h2>
-          <Link className="link" href="/waybills">Весь реестр →</Link>
+          <h2>{t('disp.attention.h')}</h2>
+          <Link className="link" href="/waybills">{t('disp.allregistry')}</Link>
         </div>
         <table>
           <thead>
-            <tr><th>Номер</th><th>Тип</th><th>Транспорт</th><th>Водитель</th><th>Что сделать</th><th>Статус</th></tr>
+            <tr><th>{t('col.number')}</th><th>{t('col.type')}</th><th>{t('col.transport')}</th><th>{t('col.driver')}</th><th>{t('col.todo')}</th><th>{t('col.status')}</th></tr>
           </thead>
           <tbody>
             {attention.map(w => {
@@ -115,7 +117,7 @@ export default function DispatcherCabinet() {
                   <td>{(TYPE_LABELS[w.waybillType] ?? w.waybillType).replace(/\s*\(.*\)/, '')}</td>
                   <td>{w.vehicleRegNumber || '—'}</td>
                   <td>{String(w.driverSnapshot?.fullName ?? w.driverRma ?? '—')}</td>
-                  <td style={{ color: 'var(--ink-soft)' }}>{ACTION_HINT[w.status]}</td>
+                  <td style={{ color: 'var(--ink-soft)' }}>{t(ACTION_HINT[w.status])}</td>
                   <td><span className={`badge ${s.color}`}>{s.label}</span></td>
                 </tr>
               );
@@ -123,7 +125,7 @@ export default function DispatcherCabinet() {
             {attention.length === 0 && !loading && (
               <tr>
                 <td colSpan={6} style={{ textAlign: 'center', color: 'var(--muted)', padding: 26 }}>
-                  Все путевые листы в порядке — нет ожидающих действий
+                  {t('disp.attention.empty')}
                 </td>
               </tr>
             )}
@@ -134,12 +136,12 @@ export default function DispatcherCabinet() {
       {/* Последние путевые листы */}
       <div className="card">
         <div className="card-h">
-          <h2>Последние путевые листы</h2>
-          <Link className="link" href="/waybills">Все документы →</Link>
+          <h2>{t('dash.recent')}</h2>
+          <Link className="link" href="/waybills">{t('dash.all')} →</Link>
         </div>
         <table>
           <thead>
-            <tr><th>Номер</th><th>Тип</th><th>Транспорт</th><th>Создан</th><th>Статус</th></tr>
+            <tr><th>{t('col.number')}</th><th>{t('col.type')}</th><th>{t('col.transport')}</th><th>{t('col.created')}</th><th>{t('col.status')}</th></tr>
           </thead>
           <tbody>
             {recent.map(w => {
@@ -156,7 +158,7 @@ export default function DispatcherCabinet() {
             })}
             {recent.length === 0 && !loading && (
               <tr>
-                <td colSpan={5} style={{ textAlign: 'center', color: 'var(--muted)', padding: 26 }}>Путевых листов пока нет</td>
+                <td colSpan={5} style={{ textAlign: 'center', color: 'var(--muted)', padding: 26 }}>{t('disp.empty.recent')}</td>
               </tr>
             )}
           </tbody>

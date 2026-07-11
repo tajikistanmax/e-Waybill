@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { wb, Waybill, STATUS_LABELS, TYPE_LABELS, authHeaders } from '@/lib/api';
+import { useT } from '@/lib/i18n';
 import { Icon, P } from '../icons';
 import QRCode from 'qrcode';
 
@@ -29,6 +30,7 @@ function mileage(w: Waybill): number | null {
  * не создаёт и не подписывает — только просматривает и предъявляет.
  */
 export default function DriverCabinet() {
+  const { t } = useT();
   const [items, setItems] = useState<Waybill[]>([]);
   const [loading, setLoading] = useState(true);
   const [qr, setQr] = useState('');
@@ -81,10 +83,10 @@ export default function DriverCabinet() {
   }, [current]);
 
   const kpis = [
-    { label: 'Всего рейсов', value: stats.total, icon: P.doc, cls: 'ic-blue' },
-    { label: 'Активных', value: stats.active, icon: P.car, cls: 'ic-cyan' },
-    { label: 'Завершено', value: stats.completed, icon: P.check, cls: 'ic-green' },
-    { label: 'Пробег, км', value: stats.km, icon: P.route, cls: 'ic-purple' },
+    { label: t('drv.kpi.total'), value: stats.total, icon: P.doc, cls: 'ic-blue' },
+    { label: t('drv.kpi.active'), value: stats.active, icon: P.car, cls: 'ic-cyan' },
+    { label: t('kpi.done'), value: stats.completed, icon: P.check, cls: 'ic-green' },
+    { label: t('drv.kpi.km'), value: stats.km, icon: P.route, cls: 'ic-purple' },
   ];
 
   const cs = current ? STATUS_LABELS[current.status] ?? { label: current.status, color: 'gray' } : null;
@@ -93,8 +95,8 @@ export default function DriverCabinet() {
     <>
       <div className="toolbar">
         <div>
-          <h1>Кабинет водителя</h1>
-          <div className="page-lead" style={{ margin: 0 }}>Мои путевые листы и рейсы</div>
+          <h1>{t('drv.h')}</h1>
+          <div className="page-lead" style={{ margin: 0 }}>{t('drv.lead')}</div>
         </div>
       </div>
 
@@ -102,7 +104,7 @@ export default function DriverCabinet() {
       {current ? (
         <div className="card">
           <div className="card-h">
-            <h2>Текущий путевой лист</h2>
+            <h2>{t('drv.current.h')}</h2>
             {cs && <span className={`badge ${cs.color}`} style={{ marginLeft: 'auto' }}>{cs.label}</span>}
           </div>
           <div style={{ display: 'flex', gap: 28, flexWrap: 'wrap', alignItems: 'flex-start' }}>
@@ -117,14 +119,14 @@ export default function DriverCabinet() {
                 >
                   {current.number ?? '— черновик —'}
                 </span>
-                <span className={`badge ${current.medPassed ? 'green' : 'gray'}`}>Т2 медосмотр {current.medPassed ? '✓' : '…'}</span>
-                <span className={`badge ${current.techPassed ? 'green' : 'gray'}`}>Т3 техконтроль {current.techPassed ? '✓' : '…'}</span>
+                <span className={`badge ${current.medPassed ? 'green' : 'gray'}`}>{t('drv.t2')} {current.medPassed ? '✓' : '…'}</span>
+                <span className={`badge ${current.techPassed ? 'green' : 'gray'}`}>{t('drv.t3')} {current.techPassed ? '✓' : '…'}</span>
               </div>
               <dl className="kv">
-                <dt>Тип</dt><dd>{TYPE_LABELS[current.waybillType] ?? current.waybillType}</dd>
-                <dt>Маршрут / график</dt><dd>{current.route ?? '—'} / {current.schedule ?? '—'}</dd>
-                <dt>Транспортное средство</dt><dd>{String(current.vehicleSnapshot?.brand ?? '')} {current.vehicleRegNumber}</dd>
-                <dt>Срок действия</dt><dd>{fmtDateTime(current.validFrom)} → {fmtDateTime(current.validTo)}</dd>
+                <dt>{t('col.type')}</dt><dd>{TYPE_LABELS[current.waybillType] ?? current.waybillType}</dd>
+                <dt>{t('drv.routeschedule')}</dt><dd>{current.route ?? '—'} / {current.schedule ?? '—'}</dd>
+                <dt>{t('col.vehiclefull')}</dt><dd>{String(current.vehicleSnapshot?.brand ?? '')} {current.vehicleRegNumber}</dd>
+                <dt>{t('drv.validity')}</dt><dd>{fmtDateTime(current.validFrom)} → {fmtDateTime(current.validTo)}</dd>
               </dl>
             </div>
 
@@ -140,13 +142,13 @@ export default function DriverCabinet() {
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={qr}
-                    alt="QR-код путевого листа"
+                    alt={t('drv.qr.alt')}
                     width={200}
                     height={200}
                     style={{ background: '#fff', borderRadius: 12, padding: 10 }}
                   />
-                  <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink)' }}>Предъявите QR-код инспектору</div>
-                  <div style={{ fontSize: 12, color: 'var(--muted)' }}>Код действителен при активном путевом листе</div>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink)' }}>{t('drv.qr.show')}</div>
+                  <div style={{ fontSize: 12, color: 'var(--muted)' }}>{t('drv.qr.valid')}</div>
                 </>
               ) : (
                 <div
@@ -155,7 +157,7 @@ export default function DriverCabinet() {
                     borderRadius: 12, color: 'var(--muted)', fontSize: 12.5, textAlign: 'center', padding: 16,
                   }}
                 >
-                  QR-код станет доступен после готовности путевого листа
+                  {t('drv.qr.pending')}
                 </div>
               )}
             </div>
@@ -164,9 +166,9 @@ export default function DriverCabinet() {
       ) : (
         <div className="card" style={{ textAlign: 'center', padding: '38px 20px' }}>
           <span className="k-ic ic-blue" style={{ display: 'inline-grid', marginBottom: 12 }}><Icon d={P.doc} cls="" /></span>
-          <h2 style={{ marginBottom: 6 }}>Активного путевого листа нет</h2>
+          <h2 style={{ marginBottom: 6 }}>{t('drv.empty.h')}</h2>
           <div style={{ color: 'var(--muted)', fontSize: 13.5 }}>
-            Когда диспетчер выдаст вам путевой лист, он появится здесь с QR-кодом для проверки.
+            {t('drv.empty.note')}
           </div>
         </div>
       )}
@@ -187,12 +189,12 @@ export default function DriverCabinet() {
       {/* История рейсов */}
       <div className="card">
         <div className="card-h">
-          <h2>История моих рейсов</h2>
-          <Link className="link" href="/waybills">Все путевые листы →</Link>
+          <h2>{t('drv.hist.h')}</h2>
+          <Link className="link" href="/waybills">{t('drv.allwb')}</Link>
         </div>
         <table>
           <thead>
-            <tr><th>Номер</th><th>Тип</th><th>Маршрут</th><th>Дата</th><th>Пробег</th><th>Статус</th></tr>
+            <tr><th>{t('col.number')}</th><th>{t('col.type')}</th><th>{t('col.route')}</th><th>{t('col.date')}</th><th>{t('col.mileage')}</th><th>{t('col.status')}</th></tr>
           </thead>
           <tbody>
             {history.map(w => {
@@ -211,7 +213,7 @@ export default function DriverCabinet() {
             })}
             {history.length === 0 && !loading && (
               <tr>
-                <td colSpan={6} style={{ textAlign: 'center', color: 'var(--muted)', padding: 26 }}>Рейсов пока нет</td>
+                <td colSpan={6} style={{ textAlign: 'center', color: 'var(--muted)', padding: 26 }}>{t('drv.empty.trips')}</td>
               </tr>
             )}
           </tbody>

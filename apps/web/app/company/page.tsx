@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { authHeaders, md } from '@/lib/api';
+import { useT } from '@/lib/i18n';
 import { Icon, P } from '../icons';
 
 type Row = Record<string, unknown>;
@@ -66,6 +67,7 @@ function rowToForm(row: Record<string, unknown>, keys: string[]): Record<string,
  * приходят из единой платформы Минтранса (налоговая, ГАИ, Минздрав).
  */
 export default function CompanyPage() {
+  const { t } = useT();
   const [orgs, setOrgs] = useState<Row[]>([]);
   const [counts, setCounts] = useState<Record<string, Counts>>({});
   const [orgRma, setOrgRma] = useState('');
@@ -250,10 +252,10 @@ export default function CompanyPage() {
   }, [counts, orgs]);
 
   const KPIS = [
-    { label: 'Организаций', value: orgs.length, icon: P.building, cls: 'ic-blue' },
-    { label: 'Транспорта', value: totals.vehicles, icon: P.car, cls: 'ic-cyan' },
-    { label: 'Водителей', value: totals.drivers, icon: P.users, cls: 'ic-purple' },
-    { label: 'Активных', value: totals.active, icon: P.check, cls: 'ic-green' },
+    { label: t('comp.kpi.orgs'), value: orgs.length, icon: P.building, cls: 'ic-blue' },
+    { label: t('comp.kpi.transport'), value: totals.vehicles, icon: P.car, cls: 'ic-cyan' },
+    { label: t('comp.kpi.drivers'), value: totals.drivers, icon: P.users, cls: 'ic-purple' },
+    { label: t('comp.kpi.active'), value: totals.active, icon: P.check, cls: 'ic-green' },
   ];
 
   const filteredOrgs = orgs.filter(o => {
@@ -266,8 +268,8 @@ export default function CompanyPage() {
     <>
       <div className="toolbar">
         <div>
-          <h1>Организации</h1>
-          <div className="page-lead" style={{ margin: 0 }}>Перевозчики, транспорт, водители и сотрудники — из единой платформы Минтранса или ручным вводом</div>
+          <h1>{t('comp.h')}</h1>
+          <div className="page-lead" style={{ margin: 0 }}>{t('comp.lead')}</div>
         </div>
       </div>
 
@@ -292,17 +294,17 @@ export default function CompanyPage() {
       {/* Таблица организаций */}
       <div className="card">
         <div className="card-h">
-          <h2>Список организаций</h2>
+          <h2>{t('comp.orglist')}</h2>
           <input
             value={orgSearch}
             onChange={e => setOrgSearch(e.target.value)}
-            placeholder="Поиск по названию или ИНН"
+            placeholder={t('comp.search.org')}
             style={{ marginLeft: 'auto', width: 300 }}
           />
         </div>
         <table>
           <thead>
-            <tr><th>Название</th><th>ИНН / РМА</th><th>Тип</th><th>Транспорт</th><th>Водители</th><th>Статус</th><th>Действия</th></tr>
+            <tr><th>{t('col.name')}</th><th>{t('col.innrma')}</th><th>{t('col.type')}</th><th>{t('col.transport')}</th><th>{t('col.drivers')}</th><th>{t('col.status')}</th><th>{t('col.actions')}</th></tr>
           </thead>
           <tbody>
             {filteredOrgs.map(o => {
@@ -322,68 +324,65 @@ export default function CompanyPage() {
                   <td>{SUBJECT_TYPES[String(o.subjectType)] ?? '—'}</td>
                   <td>{c ? c.vehicles : '—'}</td>
                   <td>{c ? c.drivers : '—'}</td>
-                  <td><span className={`badge ${active ? 'green' : 'red'}`}>{active ? 'Активна' : 'Лицензия истекла'}</span></td>
+                  <td><span className={`badge ${active ? 'green' : 'red'}`}>{active ? t('comp.badge.active') : t('comp.badge.licexpired')}</span></td>
                   <td onClick={e => e.stopPropagation()}>
-                    <button type="button" className="btn secondary" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => editOrg(o)}>Изменить</button>
+                    <button type="button" className="btn secondary" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => editOrg(o)}>{t('btn.edit')}</button>
                   </td>
                 </tr>
               );
             })}
             {filteredOrgs.length === 0 && (
               <tr><td colSpan={7} style={{ textAlign: 'center', color: 'var(--muted)', padding: 24 }}>
-                {orgs.length === 0 ? 'Организаций пока нет — добавьте по ИНН ниже' : 'Ничего не найдено'}
+                {orgs.length === 0 ? t('comp.empty.orgs') : t('common.notfound')}
               </td></tr>
             )}
           </tbody>
         </table>
         {orgs.length > 0 && (
-          <div style={{ marginTop: 12, fontSize: 12.5, color: 'var(--muted)' }}>Всего организаций: {orgs.length}</div>
+          <div style={{ marginTop: 12, fontSize: 12.5, color: 'var(--muted)' }}>{t('comp.totalorgs')}: {orgs.length}</div>
         )}
       </div>
 
       {/* Добавление организации: из единой платформы (по ИНН) или ручным вводом */}
       <div className="card">
         <div className="card-h">
-          <h2>Добавить организацию</h2>
+          <h2>{t('comp.addorg')}</h2>
           <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
-            <button type="button" className={`btn ${orgMode === 'sync' ? '' : 'secondary'}`} onClick={() => setOrgMode('sync')}>Из единой платформы</button>
-            <button type="button" className={`btn ${orgMode === 'manual' ? '' : 'secondary'}`} onClick={() => setOrgMode('manual')}>Ручной ввод</button>
+            <button type="button" className={`btn ${orgMode === 'sync' ? '' : 'secondary'}`} onClick={() => setOrgMode('sync')}>{t('comp.src.unified')}</button>
+            <button type="button" className={`btn ${orgMode === 'manual' ? '' : 'secondary'}`} onClick={() => setOrgMode('manual')}>{t('comp.src.manual')}</button>
           </div>
         </div>
         {orgMode === 'sync' ? (
           <>
-            <p className="hint">
-              Субъекты (физлицо, ИП, юрлицо) регистрируются один раз в единой платформе Минтранса.
-              Укажите ИНН — название, тип, адрес и лицензия придут из налоговой и платформы лицензирования.
-            </p>
+            <p className="hint">{t('comp.hint.syncorg')}</p>
             <form className="grid" onSubmit={syncOrganization}>
               <div>
-                <label>ИНН организации / ИП (9–10 цифр)</label>
+                <label>{t('comp.f.orginn')}</label>
                 <input required pattern="\d{9,10}" placeholder="025680800" value={orgInn} onChange={e => setOrgInn(e.target.value)} />
               </div>
               <div style={{ alignSelf: 'end' }}>
-                <button className="btn" type="submit">Загрузить из единой платформы</button>
+                <button className="btn" type="submit">{t('comp.btn.loadunified')}</button>
               </div>
             </form>
           </>
         ) : (
           <>
-            <p className="hint">Полный ручной ввод всех реквизитов организации. Обязательны РМА/ИНН и название; остальные поля — по мере данных.</p>
+            <p className="hint">{t('comp.hint.manualorg')}</p>
             <form className="grid" onSubmit={createOrgManual}>
-              <div><label>РМА / ИНН (9–10 цифр) *</label><input required pattern="\d{9,10}" placeholder="025680800" {...om('rma')} /></div>
-              <div><label>Название *</label><input required placeholder="ООО «ТрансЛогистик»" {...om('name')} /></div>
-              <div><label>КПП</label><input {...om('kpp')} /></div>
-              <div><label>Тип компании (код, legacy)</label><input type="number" placeholder="1" {...om('typeCompany')} /></div>
-              <div><label>Регион (1–7)</label><input type="number" min={1} max={7} {...om('regionId')} /></div>
-              <div><label>Город</label><input placeholder="Душанбе" {...om('cityName')} /></div>
-              <div><label>Адрес</label><input {...om('address')} /></div>
-              <div><label>Телефон</label><input {...om('phone')} /></div>
-              <div><label>Email</label><input type="email" {...om('email')} /></div>
-              <div><label>Руководитель</label><input {...om('nameHead')} /></div>
-              <div><label>Банк</label><input {...om('bank')} /></div>
-              <div><label>Лицензия с</label><input type="date" {...om('licenseFrom')} /></div>
-              <div><label>Лицензия по</label><input type="date" {...om('licenseTo')} /></div>
-              <div className="full"><button className="btn" type="submit">Сохранить организацию</button></div>
+              <div><label>{t('comp.f.rmainn')}</label><input required pattern="\d{9,10}" placeholder="025680800" {...om('rma')} /></div>
+              <div><label>{t('comp.f.name_req')}</label><input required placeholder="ООО «ТрансЛогистик»" {...om('name')} /></div>
+              <div><label>{t('comp.f.kpp')}</label><input {...om('kpp')} /></div>
+              <div><label>{t('comp.f.typecompany')}</label><input type="number" placeholder="1" {...om('typeCompany')} /></div>
+              <div><label>{t('f.region')}</label><input type="number" min={1} max={7} {...om('regionId')} /></div>
+              <div><label>{t('comp.f.city')}</label><input placeholder="Душанбе" {...om('cityName')} /></div>
+              <div><label>{t('col.address')}</label><input {...om('address')} /></div>
+              <div><label>{t('col.phone')}</label><input {...om('phone')} /></div>
+              <div><label>{t('comp.f.email')}</label><input type="email" {...om('email')} /></div>
+              <div><label>{t('comp.f.head')}</label><input {...om('nameHead')} /></div>
+              <div><label>{t('comp.f.bank')}</label><input {...om('bank')} /></div>
+              <div><label>{t('comp.f.licfrom')}</label><input type="date" {...om('licenseFrom')} /></div>
+              <div><label>{t('comp.f.licto')}</label><input type="date" {...om('licenseTo')} /></div>
+              <div className="full"><button className="btn" type="submit">{t('comp.btn.saveorg')}</button></div>
             </form>
           </>
         )}
@@ -392,14 +391,14 @@ export default function CompanyPage() {
       {org && (
         <div className="card">
           <dl className="kv">
-            <dt>Организация</dt>
+            <dt>{t('col.org')}</dt>
             <dd>
-              <b>{String(org.name)}</b> · ИНН/РМА {String(org.rma)}{' '}
-              {org.source === 'UNIFIED' && <span className="badge blue">из единой платформы</span>}
+              <b>{String(org.name)}</b> · {t('col.innrma')} {String(org.rma)}{' '}
+              {org.source === 'UNIFIED' && <span className="badge blue">{t('comp.badge.unified')}</span>}
             </dd>
-            <dt>Субъект / регион</dt>
-            <dd>{SUBJECT_TYPES[String(org.subjectType)] ?? '—'} · {String(org.cityName ?? '')} (регион {String(org.regionId ?? '—')})</dd>
-            <dt>Лицензия перевозчика</dt>
+            <dt>{t('comp.kv.subjectregion')}</dt>
+            <dd>{SUBJECT_TYPES[String(org.subjectType)] ?? '—'} · {String(org.cityName ?? '')} ({t('col.region').toLowerCase()} {String(org.regionId ?? '—')})</dd>
+            <dt>{t('comp.kv.carrierlic')}</dt>
             <dd>{String(org.licenseFrom ?? '—')} → {String(org.licenseTo ?? '—')}</dd>
           </dl>
         </div>
@@ -407,21 +406,21 @@ export default function CompanyPage() {
 
       {/* Разделы выбранной организации */}
       <div className="toolbar">
-        <button className={`btn ${tab === 'drivers' ? '' : 'secondary'}`} onClick={() => { setTab('drivers'); setShowForm(false); }}>Водители</button>
-        <button className={`btn ${tab === 'vehicles' ? '' : 'secondary'}`} onClick={() => { setTab('vehicles'); setShowForm(false); }}>Транспорт</button>
-        <button className={`btn ${tab === 'employees' ? '' : 'secondary'}`} onClick={() => { setTab('employees'); setShowForm(false); }}>Сотрудники</button>
+        <button className={`btn ${tab === 'drivers' ? '' : 'secondary'}`} onClick={() => { setTab('drivers'); setShowForm(false); }}>{t('col.drivers')}</button>
+        <button className={`btn ${tab === 'vehicles' ? '' : 'secondary'}`} onClick={() => { setTab('vehicles'); setShowForm(false); }}>{t('col.transport')}</button>
+        <button className={`btn ${tab === 'employees' ? '' : 'secondary'}`} onClick={() => { setTab('employees'); setShowForm(false); }}>{t('col.employees')}</button>
         <span className="spacer" />
         {org && <span style={{ color: 'var(--muted)', fontSize: 12.5, marginRight: 4 }}>{String(org.name)}</span>}
-        <button className="btn" disabled={!orgRma} onClick={() => setShowForm(f => !f)}>{showForm ? 'Скрыть форму' : '+ Добавить'}</button>
+        <button className="btn" disabled={!orgRma} onClick={() => setShowForm(f => !f)}>{showForm ? t('comp.btn.hideform') : t('btn.add')}</button>
       </div>
 
       {showForm && (
         <div className="card" style={{ borderColor: 'var(--blue-500)' }}>
           <div className="card-h">
-            <h2>{tab === 'drivers' ? 'Добавить водителя' : tab === 'vehicles' ? 'Добавить транспорт' : 'Добавить сотрудника'}</h2>
+            <h2>{tab === 'drivers' ? t('comp.add.driver') : tab === 'vehicles' ? t('comp.add.vehicle') : t('comp.add.employee')}</h2>
             <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
-              <button type="button" className={`btn ${entityMode === 'sync' ? '' : 'secondary'}`} onClick={() => setEntityMode('sync')}>Из единой платформы</button>
-              <button type="button" className={`btn ${entityMode === 'manual' ? '' : 'secondary'}`} onClick={() => setEntityMode('manual')}>Ручной ввод</button>
+              <button type="button" className={`btn ${entityMode === 'sync' ? '' : 'secondary'}`} onClick={() => setEntityMode('sync')}>{t('comp.src.unified')}</button>
+              <button type="button" className={`btn ${entityMode === 'manual' ? '' : 'secondary'}`} onClick={() => setEntityMode('manual')}>{t('comp.src.manual')}</button>
             </div>
           </div>
 
@@ -429,91 +428,91 @@ export default function CompanyPage() {
             <>
               {tab === 'drivers' && (
                 <>
-                  <p className="hint">ФИО и телефон — из налоговой; водительское удостоверение и медсправка — из баз ГАИ и Минздрава. Вручную ничего не вводится.</p>
+                  <p className="hint">{t('comp.hint.syncdriver')}</p>
                   <form className="grid" onSubmit={submit}>
-                    <div><label>ИНН водителя (9–10 цифр)</label><input required pattern="\d{9,10}" value={driverForm.inn} onChange={e => setDriverForm({ ...driverForm, inn: e.target.value })} /></div>
-                    <div><label>Табельный номер (в вашей компании)</label><input value={driverForm.tabNumber} onChange={e => setDriverForm({ ...driverForm, tabNumber: e.target.value })} /></div>
-                    <div className="full"><button className="btn" type="submit">Добавить из единой платформы</button></div>
+                    <div><label>{t('comp.f.driverinn')}</label><input required pattern="\d{9,10}" value={driverForm.inn} onChange={e => setDriverForm({ ...driverForm, inn: e.target.value })} /></div>
+                    <div><label>{t('comp.f.tabcompany')}</label><input value={driverForm.tabNumber} onChange={e => setDriverForm({ ...driverForm, tabNumber: e.target.value })} /></div>
+                    <div className="full"><button className="btn" type="submit">{t('comp.btn.addunified')}</button></div>
                   </form>
                 </>
               )}
               {tab === 'vehicles' && (
                 <>
-                  <p className="hint">Марка, VIN, год выпуска, вместимость и техосмотр — из базы ГАИ через единую платформу.</p>
+                  <p className="hint">{t('comp.hint.syncvehicle')}</p>
                   <form className="grid" onSubmit={submit}>
-                    <div><label>Госномер</label><input required placeholder="0101TJ01" value={vehicleForm.registrationNumber} onChange={e => setVehicleForm({ ...vehicleForm, registrationNumber: e.target.value })} /></div>
-                    <div><label>Стоянка (4 цифры, локально)</label><input pattern="\d{4}" value={vehicleForm.parkingNumber} onChange={e => setVehicleForm({ ...vehicleForm, parkingNumber: e.target.value })} /></div>
-                    <div className="full"><button className="btn" type="submit">Добавить из базы ГАИ</button></div>
+                    <div><label>{t('col.regnum')}</label><input required placeholder="0101TJ01" value={vehicleForm.registrationNumber} onChange={e => setVehicleForm({ ...vehicleForm, registrationNumber: e.target.value })} /></div>
+                    <div><label>{t('comp.f.parkinglocal')}</label><input pattern="\d{4}" value={vehicleForm.parkingNumber} onChange={e => setVehicleForm({ ...vehicleForm, parkingNumber: e.target.value })} /></div>
+                    <div className="full"><button className="btn" type="submit">{t('comp.btn.addgai')}</button></div>
                   </form>
                 </>
               )}
               {tab === 'employees' && (
                 <>
-                  <p className="hint">ФИО — из налоговой; должность (врач/механик/диспетчер) — ваша, локальная.</p>
+                  <p className="hint">{t('comp.hint.syncemployee')}</p>
                   <form className="grid" onSubmit={submit}>
-                    <div><label>ИНН сотрудника (9–10 цифр)</label><input required pattern="\d{9,10}" value={employeeForm.inn} onChange={e => setEmployeeForm({ ...employeeForm, inn: e.target.value })} /></div>
-                    <div><label>Должность</label>
+                    <div><label>{t('comp.f.empinn')}</label><input required pattern="\d{9,10}" value={employeeForm.inn} onChange={e => setEmployeeForm({ ...employeeForm, inn: e.target.value })} /></div>
+                    <div><label>{t('col.position')}</label>
                       <select value={employeeForm.type} onChange={e => setEmployeeForm({ ...employeeForm, type: e.target.value })}>
                         {Object.entries(EMPLOYEE_TYPES).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
                       </select>
                     </div>
-                    <div><label>Табельный номер</label><input value={employeeForm.tabNumber} onChange={e => setEmployeeForm({ ...employeeForm, tabNumber: e.target.value })} /></div>
-                    <div className="full"><button className="btn" type="submit">Добавить из единой платформы</button></div>
+                    <div><label>{t('f.tab')}</label><input value={employeeForm.tabNumber} onChange={e => setEmployeeForm({ ...employeeForm, tabNumber: e.target.value })} /></div>
+                    <div className="full"><button className="btn" type="submit">{t('comp.btn.addunified')}</button></div>
                   </form>
                 </>
               )}
             </>
           ) : (
             <>
-              <p className="hint">Полный ручной ввод в организацию «{org ? String(org.name) : ''}». Обязательные поля отмечены *.</p>
+              <p className="hint">{t('comp.hint.manual.pre')} «{org ? String(org.name) : ''}»{t('comp.hint.manual.post')}</p>
               {tab === 'drivers' && (
                 <form className="grid" onSubmit={submitManual}>
-                  <div><label>РМА / ИНН (9–10 цифр) *</label><input required pattern="\d{9,10}" {...dm('rma')} /></div>
-                  <div><label>Ф.И.О. *</label><input required placeholder="Иванов Иван Иванович" {...dm('fullName')} /></div>
-                  <div><label>Табельный номер</label><input {...dm('tabNumber')} /></div>
-                  <div><label>Номер ВУ</label><input placeholder="77 01 123456" {...dm('licenseNumber')} /></div>
-                  <div><label>Категории (напр. B, C, CE)</label><input {...dm('licenseCategories')} /></div>
-                  <div><label>ВУ действует до</label><input type="date" {...dm('licenseValidTo')} /></div>
-                  <div><label>Классность (степень)</label><input type="number" {...dm('degree')} /></div>
-                  <div><label>Медсправка №</label><input {...dm('medCertNumber')} /></div>
-                  <div><label>Медсправка до</label><input type="date" {...dm('medCertValidTo')} /></div>
-                  <div><label>Курс БДД до</label><input type="date" {...dm('safetyCourseValidTo')} /></div>
-                  <div><label>Телефон</label><input {...dm('phone')} /></div>
-                  <div className="full"><button className="btn" type="submit">Сохранить водителя</button></div>
+                  <div><label>{t('comp.f.rmainn')}</label><input required pattern="\d{9,10}" {...dm('rma')} /></div>
+                  <div><label>{t('comp.f.fio_req')}</label><input required placeholder="Иванов Иван Иванович" {...dm('fullName')} /></div>
+                  <div><label>{t('f.tab')}</label><input {...dm('tabNumber')} /></div>
+                  <div><label>{t('comp.f.licnum')}</label><input placeholder="77 01 123456" {...dm('licenseNumber')} /></div>
+                  <div><label>{t('comp.f.cats')}</label><input {...dm('licenseCategories')} /></div>
+                  <div><label>{t('comp.f.licvalid')}</label><input type="date" {...dm('licenseValidTo')} /></div>
+                  <div><label>{t('comp.f.degree')}</label><input type="number" {...dm('degree')} /></div>
+                  <div><label>{t('comp.f.medcertnum')}</label><input {...dm('medCertNumber')} /></div>
+                  <div><label>{t('col.medto')}</label><input type="date" {...dm('medCertValidTo')} /></div>
+                  <div><label>{t('comp.f.safetyto')}</label><input type="date" {...dm('safetyCourseValidTo')} /></div>
+                  <div><label>{t('col.phone')}</label><input {...dm('phone')} /></div>
+                  <div className="full"><button className="btn" type="submit">{t('comp.btn.savedriver')}</button></div>
                 </form>
               )}
               {tab === 'vehicles' && (
                 <form className="grid" onSubmit={submitManual}>
-                  <div><label>Госномер *</label><input required pattern="[A-Za-zА-Яа-я0-9]{4,20}" placeholder="0101TJ01" {...vm('registrationNumber')} /></div>
-                  <div><label>Тип ТС *</label>
+                  <div><label>{t('comp.f.regnum_req')}</label><input required pattern="[A-Za-zА-Яа-я0-9]{4,20}" placeholder="0101TJ01" {...vm('registrationNumber')} /></div>
+                  <div><label>{t('comp.f.vehtype_req')}</label>
                     <select required {...vm('transportType')}>
                       {Object.entries(TRANSPORT_TYPES).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
                     </select>
                   </div>
-                  <div><label>Марка / модель</label><input placeholder="КАМАЗ 65115" {...vm('brand')} /></div>
-                  <div><label>Стоянка (4 цифры)</label><input pattern="\d{4}" {...vm('parkingNumber')} /></div>
-                  <div><label>Вместимость, мест</label><input type="number" {...vm('capacity')} /></div>
-                  <div><label>Грузоподъёмность, т</label><input type="number" step="0.01" {...vm('carrying')} /></div>
-                  <div><label>Одометр, км</label><input type="number" {...vm('odometer')} /></div>
+                  <div><label>{t('tech.f.brandmodel')}</label><input placeholder="КАМАЗ 65115" {...vm('brand')} /></div>
+                  <div><label>{t('comp.f.parking')}</label><input pattern="\d{4}" {...vm('parkingNumber')} /></div>
+                  <div><label>{t('comp.f.capacity')}</label><input type="number" {...vm('capacity')} /></div>
+                  <div><label>{t('comp.f.carrying')}</label><input type="number" step="0.01" {...vm('carrying')} /></div>
+                  <div><label>{t('comp.f.odometerkm')}</label><input type="number" {...vm('odometer')} /></div>
                   <div><label>VIN</label><input {...vm('vincode')} /></div>
-                  <div><label>Год выпуска</label><input type="number" min={1950} max={2100} {...vm('yearManufacture')} /></div>
-                  <div><label>Техосмотр до</label><input type="date" {...vm('techInspectionValidTo')} /></div>
-                  <div><label>Контрольная карточка до</label><input type="date" {...vm('controlCardValidTo')} /></div>
-                  <div className="full"><button className="btn" type="submit">Сохранить транспорт</button></div>
+                  <div><label>{t('comp.f.year')}</label><input type="number" min={1950} max={2100} {...vm('yearManufacture')} /></div>
+                  <div><label>{t('col.techto')}</label><input type="date" {...vm('techInspectionValidTo')} /></div>
+                  <div><label>{t('comp.f.controlcardto')}</label><input type="date" {...vm('controlCardValidTo')} /></div>
+                  <div className="full"><button className="btn" type="submit">{t('comp.btn.savevehicle')}</button></div>
                 </form>
               )}
               {tab === 'employees' && (
                 <form className="grid" onSubmit={submitManual}>
-                  <div><label>РМА / ИНН (9–10 цифр) *</label><input required pattern="\d{9,10}" {...em('rma')} /></div>
-                  <div><label>Ф.И.О. *</label><input required placeholder="Петров Пётр Петрович" {...em('name')} /></div>
-                  <div><label>Должность *</label>
+                  <div><label>{t('comp.f.rmainn')}</label><input required pattern="\d{9,10}" {...em('rma')} /></div>
+                  <div><label>{t('comp.f.fio_req')}</label><input required placeholder="Петров Пётр Петрович" {...em('name')} /></div>
+                  <div><label>{t('comp.f.position_req')}</label>
                     <select required {...em('type')}>
                       {Object.entries(EMPLOYEE_TYPES).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
                     </select>
                   </div>
-                  <div><label>Табельный номер</label><input {...em('tabNumber')} /></div>
-                  <div><label>Телефон</label><input {...em('phone')} /></div>
-                  <div className="full"><button className="btn" type="submit">Сохранить сотрудника</button></div>
+                  <div><label>{t('f.tab')}</label><input {...em('tabNumber')} /></div>
+                  <div><label>{t('col.phone')}</label><input {...em('phone')} /></div>
+                  <div className="full"><button className="btn" type="submit">{t('comp.btn.saveemployee')}</button></div>
                 </form>
               )}
             </>
@@ -524,48 +523,48 @@ export default function CompanyPage() {
       <div className="card">
         {tab === 'drivers' && (
           <table>
-            <thead><tr><th>Ф.И.О.</th><th>ИНН/РМА</th><th>Табель</th><th>ВУ</th><th>Категории</th><th>ВУ до</th><th>Медсправка до</th><th>Действия</th></tr></thead>
+            <thead><tr><th>{t('col.fio')}</th><th>{t('col.innrma')}</th><th>{t('col.tab')}</th><th>{t('tech.license')}</th><th>{t('tech.categories')}</th><th>{t('col.licto')}</th><th>{t('col.medto')}</th><th>{t('col.actions')}</th></tr></thead>
             <tbody>
               {rows.map(r => (
                 <tr key={String(r.id)}>
                   <td style={{ fontWeight: 600, color: 'var(--ink)' }}>{String(r.fullName)}</td><td><span className="number">{String(r.rma)}</span></td><td>{String(r.tabNumber ?? '—')}</td>
                   <td>{String(r.licenseNumber ?? '—')}</td><td>{String(r.licenseCategories ?? '—')}</td>
                   <td>{String(r.licenseValidTo ?? '—')}</td><td>{String(r.medCertValidTo ?? '—')}</td>
-                  <td><button type="button" className="btn secondary" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => editEntity(r)}>Изменить</button></td>
+                  <td><button type="button" className="btn secondary" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => editEntity(r)}>{t('btn.edit')}</button></td>
                 </tr>
               ))}
-              {rows.length === 0 && <tr><td colSpan={8} style={{ textAlign: 'center', color: 'var(--muted)', padding: 20 }}>Пока пусто — добавьте водителя по ИНН</td></tr>}
+              {rows.length === 0 && <tr><td colSpan={8} style={{ textAlign: 'center', color: 'var(--muted)', padding: 20 }}>{t('comp.empty.drivers')}</td></tr>}
             </tbody>
           </table>
         )}
         {tab === 'vehicles' && (
           <table>
-            <thead><tr><th>Госномер</th><th>Тип</th><th>Марка</th><th>Стоянка</th><th>Одометр</th><th>Техосмотр до</th><th>Карточка до</th><th>Действия</th></tr></thead>
+            <thead><tr><th>{t('col.regnum')}</th><th>{t('col.type')}</th><th>{t('col.brand')}</th><th>{t('col.parking')}</th><th>{t('col.odometer')}</th><th>{t('col.techto')}</th><th>{t('col.cardto')}</th><th>{t('col.actions')}</th></tr></thead>
             <tbody>
               {rows.map(r => (
                 <tr key={String(r.id)}>
                   <td><span className="number">{String(r.registrationNumber)}</span></td><td>{TRANSPORT_TYPES[Number(r.transportType)] ?? String(r.transportType)}</td>
                   <td>{String(r.brand ?? '—')}</td><td>{String(r.parkingNumber ?? '—')}</td><td>{String(r.odometer)}</td>
                   <td>{String(r.techInspectionValidTo ?? '—')}</td><td>{String(r.controlCardValidTo ?? '—')}</td>
-                  <td><button type="button" className="btn secondary" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => editEntity(r)}>Изменить</button></td>
+                  <td><button type="button" className="btn secondary" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => editEntity(r)}>{t('btn.edit')}</button></td>
                 </tr>
               ))}
-              {rows.length === 0 && <tr><td colSpan={8} style={{ textAlign: 'center', color: 'var(--muted)', padding: 20 }}>Пока пусто — добавьте ТС по госномеру</td></tr>}
+              {rows.length === 0 && <tr><td colSpan={8} style={{ textAlign: 'center', color: 'var(--muted)', padding: 20 }}>{t('comp.empty.vehicles')}</td></tr>}
             </tbody>
           </table>
         )}
         {tab === 'employees' && (
           <table>
-            <thead><tr><th>Ф.И.О.</th><th>ИНН/РМА</th><th>Должность</th><th>Табель</th><th>Телефон</th><th>Действия</th></tr></thead>
+            <thead><tr><th>{t('col.fio')}</th><th>{t('col.innrma')}</th><th>{t('col.position')}</th><th>{t('col.tab')}</th><th>{t('col.phone')}</th><th>{t('col.actions')}</th></tr></thead>
             <tbody>
               {rows.map(r => (
                 <tr key={String(r.id)}>
                   <td style={{ fontWeight: 600, color: 'var(--ink)' }}>{String(r.name)}</td><td><span className="number">{String(r.rma)}</span></td><td>{EMPLOYEE_TYPES[Number(r.type)] ?? String(r.type)}</td>
                   <td>{String(r.tabNumber ?? '—')}</td><td>{String(r.phone ?? '—')}</td>
-                  <td><button type="button" className="btn secondary" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => editEntity(r)}>Изменить</button></td>
+                  <td><button type="button" className="btn secondary" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => editEntity(r)}>{t('btn.edit')}</button></td>
                 </tr>
               ))}
-              {rows.length === 0 && <tr><td colSpan={6} style={{ textAlign: 'center', color: 'var(--muted)', padding: 20 }}>Пока пусто — добавьте сотрудника по ИНН</td></tr>}
+              {rows.length === 0 && <tr><td colSpan={6} style={{ textAlign: 'center', color: 'var(--muted)', padding: 20 }}>{t('comp.empty.employees')}</td></tr>}
             </tbody>
           </table>
         )}

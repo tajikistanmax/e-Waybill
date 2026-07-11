@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { wb, Waybill, STATUS_LABELS, TYPE_LABELS } from '@/lib/api';
+import { useT } from '@/lib/i18n';
 import { Icon, P } from '../icons';
 
 function fmtDateTime(iso: string | null) {
@@ -11,14 +12,14 @@ function fmtDateTime(iso: string | null) {
     : '—';
 }
 
-/** Итог проверки путевого листа инспектором — цвет/текст баннера. */
+/** Итог проверки путевого листа инспектором — цвет/текст баннера. title/note — ключи i18n. */
 function verdict(w: Waybill): { tone: 'ok' | 'warn' | 'stop'; title: string; note: string } {
-  if (w.status === 'BLOCKED') return { tone: 'stop', title: 'Заблокирован', note: 'Путевой лист заблокирован инспектором — эксплуатация запрещена.' };
-  if (w.status === 'EXPIRED') return { tone: 'stop', title: 'Просрочен', note: 'Срок действия путевого листа истёк.' };
-  if (w.status === 'CANCELLED') return { tone: 'stop', title: 'Аннулирован', note: 'Путевой лист аннулирован и недействителен.' };
-  if (!w.medPassed || !w.techPassed) return { tone: 'warn', title: 'Осмотры не пройдены', note: 'Не пройден предрейсовый медосмотр или техконтроль.' };
-  if (['ISSUED', 'ACTIVE', 'RETURNED'].includes(w.status)) return { tone: 'ok', title: 'Допущен к рейсу', note: 'Медосмотр и техконтроль пройдены, путевой лист действителен.' };
-  return { tone: 'warn', title: 'Не на линии', note: 'Путевой лист ещё не выдан водителю или уже завершён.' };
+  if (w.status === 'BLOCKED') return { tone: 'stop', title: 'insp.v.blocked.t', note: 'insp.v.blocked.n' };
+  if (w.status === 'EXPIRED') return { tone: 'stop', title: 'insp.v.expired.t', note: 'insp.v.expired.n' };
+  if (w.status === 'CANCELLED') return { tone: 'stop', title: 'insp.v.cancelled.t', note: 'insp.v.cancelled.n' };
+  if (!w.medPassed || !w.techPassed) return { tone: 'warn', title: 'insp.v.noexam.t', note: 'insp.v.noexam.n' };
+  if (['ISSUED', 'ACTIVE', 'RETURNED'].includes(w.status)) return { tone: 'ok', title: 'insp.v.ok.t', note: 'insp.v.ok.n' };
+  return { tone: 'warn', title: 'insp.v.offline.t', note: 'insp.v.offline.n' };
 }
 
 const TONE_BG: Record<string, string> = { ok: 'var(--green-050)', warn: 'var(--amber-050)', stop: 'var(--red-050)' };
@@ -30,6 +31,7 @@ const TONE_FG: Record<string, string> = { ok: 'var(--green)', warn: '#a9700a', s
  * просроченные). Быстрая проверка на дороге — сканированием QR (страница /verify).
  */
 export default function InspectorCabinet() {
+  const { t } = useT();
   const [items, setItems] = useState<Waybill[]>([]);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState('');
@@ -74,28 +76,28 @@ export default function InspectorCabinet() {
     <>
       <div className="toolbar">
         <div>
-          <h1>Кабинет инспектора</h1>
-          <div className="page-lead" style={{ margin: 0 }}>Дорожный контроль путевых листов</div>
+          <h1>{t('nav.inspector')}</h1>
+          <div className="page-lead" style={{ margin: 0 }}>{t('insp.lead')}</div>
         </div>
       </div>
 
       {/* Консоль проверки */}
       <div className="card">
-        <div className="card-h"><h2>Проверка путевого листа</h2></div>
+        <div className="card-h"><h2>{t('insp.check.h')}</h2></div>
         <form onSubmit={runCheck} style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
           <div style={{ flex: 1, minWidth: 260 }}>
-            <label>Госномер или № путевого листа</label>
+            <label>{t('insp.f.query')}</label>
             <input
               value={query}
               onChange={e => setQuery(e.target.value)}
-              placeholder="напр. 0114TJ01 или 01-26-04-0000009-6"
+              placeholder={t('insp.f.query.ph')}
               style={{ width: '100%' }}
             />
           </div>
-          <button className="btn" type="submit"><Icon d={P.eye} cls="" /> Проверить</button>
+          <button className="btn" type="submit"><Icon d={P.eye} cls="" /> {t('btn.check')}</button>
         </form>
         <div className="hint" style={{ marginTop: 14, marginBottom: 0 }}>
-          На дороге отсканируйте QR-код с путевого листа — откроется страница проверки подписи, работающая офлайн.
+          {t('insp.hint')}
         </div>
 
         {/* Результат */}
@@ -108,46 +110,46 @@ export default function InspectorCabinet() {
               }}
             >
               <Icon d={v.tone === 'ok' ? P.check : v.tone === 'stop' ? P.shield : P.alert} cls="" />
-              {v.title}
-              <span style={{ fontWeight: 500, fontSize: 13, color: 'var(--ink-soft)', marginLeft: 6 }}>{v.note}</span>
+              {t(v.title)}
+              <span style={{ fontWeight: 500, fontSize: 13, color: 'var(--ink-soft)', marginLeft: 6 }}>{t(v.note)}</span>
             </div>
             <dl className="kv">
-              <dt>Номер ПЛ</dt><dd><span className="number">{checked.number ?? '— черновик —'}</span></dd>
-              <dt>Тип</dt><dd>{TYPE_LABELS[checked.waybillType] ?? checked.waybillType}</dd>
-              <dt>Транспорт</dt><dd>{String(checked.vehicleSnapshot?.brand ?? '')} {checked.vehicleRegNumber}</dd>
-              <dt>Водитель</dt><dd>{String(checked.driverSnapshot?.fullName ?? checked.driverRma ?? '—')}</dd>
-              <dt>Срок действия</dt><dd>{fmtDateTime(checked.validFrom)} → {fmtDateTime(checked.validTo)}</dd>
-              <dt>Медосмотр / техконтроль</dt>
+              <dt>{t('insp.wbnum')}</dt><dd><span className="number">{checked.number ?? '— черновик —'}</span></dd>
+              <dt>{t('col.type')}</dt><dd>{TYPE_LABELS[checked.waybillType] ?? checked.waybillType}</dd>
+              <dt>{t('col.transport')}</dt><dd>{String(checked.vehicleSnapshot?.brand ?? '')} {checked.vehicleRegNumber}</dd>
+              <dt>{t('col.driver')}</dt><dd>{String(checked.driverSnapshot?.fullName ?? checked.driverRma ?? '—')}</dd>
+              <dt>{t('drv.validity')}</dt><dd>{fmtDateTime(checked.validFrom)} → {fmtDateTime(checked.validTo)}</dd>
+              <dt>{t('insp.medtech')}</dt>
               <dd>
                 <span className={`badge ${checked.medPassed ? 'green' : 'gray'}`}>Т2 {checked.medPassed ? '✓' : '…'}</span>{' '}
                 <span className={`badge ${checked.techPassed ? 'green' : 'gray'}`}>Т3 {checked.techPassed ? '✓' : '…'}</span>
               </dd>
             </dl>
             <button className="btn secondary" style={{ marginTop: 14 }} onClick={() => router.push(`/waybills/${checked.id}`)}>
-              Открыть карточку путевого листа
+              {t('insp.opencard')}
             </button>
           </div>
         )}
         {notFound && (
           <div style={{ marginTop: 16, color: 'var(--muted)', fontSize: 13.5 }}>
-            Путевой лист по запросу «{query}» не найден.
+            {t('insp.notfound.pre')} «{query}» {t('insp.notfound.post')}
           </div>
         )}
       </div>
 
       {/* KPI */}
       <div className="kpi-row" style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
-        <div className="kpi"><div className="k-top"><span className="k-ic ic-cyan"><Icon d={P.car} cls="" /></span></div><div className="k-label">На линии</div><div className="k-value">{loading ? '—' : stats.onLine}</div></div>
-        <div className="kpi"><div className="k-top"><span className="k-ic ic-red"><Icon d={P.shield} cls="" /></span></div><div className="k-label">Заблокировано</div><div className="k-value">{loading ? '—' : stats.blocked}</div></div>
-        <div className="kpi"><div className="k-top"><span className="k-ic ic-amber"><Icon d={P.alert} cls="" /></span></div><div className="k-label">Просрочено</div><div className="k-value">{loading ? '—' : stats.expired}</div></div>
+        <div className="kpi"><div className="k-top"><span className="k-ic ic-cyan"><Icon d={P.car} cls="" /></span></div><div className="k-label">{t('kpi.online')}</div><div className="k-value">{loading ? '—' : stats.onLine}</div></div>
+        <div className="kpi"><div className="k-top"><span className="k-ic ic-red"><Icon d={P.shield} cls="" /></span></div><div className="k-label">{t('insp.kpi.blocked')}</div><div className="k-value">{loading ? '—' : stats.blocked}</div></div>
+        <div className="kpi"><div className="k-top"><span className="k-ic ic-amber"><Icon d={P.alert} cls="" /></span></div><div className="k-label">{t('insp.kpi.expired')}</div><div className="k-value">{loading ? '—' : stats.expired}</div></div>
       </div>
 
       {/* Проблемные листы */}
       <div className="card">
-        <div className="card-h"><h2>Проблемные путевые листы</h2></div>
+        <div className="card-h"><h2>{t('insp.problems.h')}</h2></div>
         <table>
           <thead>
-            <tr><th>Номер</th><th>Тип</th><th>Транспорт</th><th>Водитель</th><th>Создан</th><th>Статус</th></tr>
+            <tr><th>{t('col.number')}</th><th>{t('col.type')}</th><th>{t('col.transport')}</th><th>{t('col.driver')}</th><th>{t('col.created')}</th><th>{t('col.status')}</th></tr>
           </thead>
           <tbody>
             {problems.map(w => {
@@ -164,7 +166,7 @@ export default function InspectorCabinet() {
               );
             })}
             {problems.length === 0 && !loading && (
-              <tr><td colSpan={6} style={{ textAlign: 'center', color: 'var(--muted)', padding: 26 }}>Проблемных путевых листов нет</td></tr>
+              <tr><td colSpan={6} style={{ textAlign: 'center', color: 'var(--muted)', padding: 26 }}>{t('insp.problems.empty')}</td></tr>
             )}
           </tbody>
         </table>

@@ -2,6 +2,7 @@
 
 import { use, useCallback, useEffect, useState } from 'react';
 import { md, wb, Waybill, Title, StatusEvent, Payment, STATUS_LABELS, TYPE_LABELS } from '@/lib/api';
+import { useT } from '@/lib/i18n';
 import QRCode from 'qrcode';
 
 type Employees = { doctors: { rma: string; name: string }[]; mechanics: { rma: string; name: string }[]; dispatchers: { rma: string; name: string }[] };
@@ -25,6 +26,7 @@ export default function WaybillCard({ params }: { params: Promise<{ id: string }
   const [blockReason, setBlockReason] = useState('');
   const [payment, setPayment] = useState<Payment | null>(null);
   const [tab, setTab] = useState('main');
+  const { t } = useT();
 
   const reload = useCallback(async () => {
     const data = await wb.get(id);
@@ -78,14 +80,14 @@ export default function WaybillCard({ params }: { params: Promise<{ id: string }
     setError(''); setOk('');
     try {
       await fn();
-      setOk(label + ' — выполнено');
+      setOk(label + t('wb.done.suffix'));
       await reload();
     } catch (e) {
       setError((e as Error).message);
     }
   }
 
-  if (!w) return error ? <div className="error">{error}</div> : <p>Загрузка…</p>;
+  if (!w) return error ? <div className="error">{error}</div> : <p>{t('common.loading')}</p>;
 
   const s = STATUS_LABELS[w.status] ?? { label: w.status, color: 'gray' };
   const dispatcher = emp.dispatchers[0]?.rma;
@@ -112,14 +114,14 @@ export default function WaybillCard({ params }: { params: Promise<{ id: string }
   const sumValue: React.CSSProperties = { marginTop: 6, fontSize: 14, color: 'var(--ink)', fontWeight: 600 };
 
   const tabs: { key: string; label: string }[] = [
-    { key: 'main', label: 'Основное' },
-    { key: 'driver', label: 'Водитель' },
-    { key: 'vehicle', label: 'Транспорт' },
-    ...(showRoute ? [{ key: 'route', label: 'Маршрут' }] : []),
-    { key: 'fuel', label: 'Топливо' },
-    { key: 'inspections', label: 'Осмотры' },
+    { key: 'main', label: t('wb.tab.main') },
+    { key: 'driver', label: t('col.driver') },
+    { key: 'vehicle', label: t('col.transport') },
+    ...(showRoute ? [{ key: 'route', label: t('col.route') }] : []),
+    { key: 'fuel', label: t('col.fuel') },
+    { key: 'inspections', label: t('wb.tab.inspections') },
     { key: 'qr', label: 'QR' },
-    { key: 'history', label: 'История' },
+    { key: 'history', label: t('wb.tab.history') },
   ];
 
   // Плашка госномера (класс .plate из дизайн-системы)
@@ -132,81 +134,81 @@ export default function WaybillCard({ params }: { params: Promise<{ id: string }
       {/* Шапка документа */}
       <div className="toolbar">
         <h1 style={{ marginBottom: 0 }}>
-          Путевой лист {w.number ? <span className="number">{w.number}</span> : '(без номера)'}
+          {t('wb.card.h')} {w.number ? <span className="number">{w.number}</span> : t('wb.nonumber')}
         </h1>
         <span style={{ color: 'var(--muted)', fontSize: 13 }}>{TYPE_LABELS[w.waybillType] ?? w.waybillType}</span>
         <span className={`badge ${s.color}`}>{s.label}</span>
         <span className="spacer" />
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-          {w.number && <a className="btn secondary" href={`/waybills/${id}/print`}>🖨 Печатная форма</a>}
+          {w.number && <a className="btn secondary" href={`/waybills/${id}/print`}>{t('wb.printform')}</a>}
           {w.status === 'DRAFT' && (
             <button className="btn" disabled={!dispatcher}
-              onClick={() => act('Т1 подписан', () => wb.post(`/${id}/titles/t1`, { dispatcherRma: dispatcher }))}>
-              Подписать Т1 (диспетчер {emp.dispatchers[0]?.name ?? '—'})
+              onClick={() => act(t('wb.act.t1'), () => wb.post(`/${id}/titles/t1`, { dispatcherRma: dispatcher }))}>
+              {t('wb.btn.signt1')} ({t('wb.r.dispatcher')} {emp.dispatchers[0]?.name ?? '—'})
             </button>
           )}
           {w.status === 'CREATED' && !w.medPassed && (
             <button className="btn" disabled={!doctor}
-              onClick={() => act('Медосмотр пройден', () => wb.post(`/${id}/confirm-med`, {
+              onClick={() => act(t('wb.act.med'), () => wb.post(`/${id}/confirm-med`, {
                 employeeRma: doctor, passed: true,
                 indicators: { pressure: '120/80', pulse: 72, temperature: 36.6, alcotest: 0 },
               }))}>
-              Т2 — медосмотр (врач {emp.doctors[0]?.name ?? '—'})
+              {t('wb.btn.t2')} ({t('wb.r.doctor')} {emp.doctors[0]?.name ?? '—'})
             </button>
           )}
           {w.status === 'CREATED' && !w.techPassed && (
             <button className="btn" disabled={!mechanic}
-              onClick={() => act('Техконтроль пройден', () => wb.post(`/${id}/confirm-tech`, {
+              onClick={() => act(t('wb.act.tech'), () => wb.post(`/${id}/confirm-tech`, {
                 employeeRma: mechanic, passed: true,
                 checklist: { brakes: 'OK', steering: 'OK', lights: 'OK' },
               }))}>
-              Т3 — техконтроль (механик {emp.mechanics[0]?.name ?? '—'})
+              {t('wb.btn.t3')} ({t('wb.r.mechanic')} {emp.mechanics[0]?.name ?? '—'})
             </button>
           )}
           {w.status === 'AWAITING_PAYMENT' && (
             <span>
               {payment && (
                 <span className="badge amber" style={{ marginRight: 8 }}>
-                  К оплате: {payment.amount} {payment.currency}
+                  {t('wb.topay')}: {payment.amount} {payment.currency}
                 </span>
               )}
               <button className="btn"
-                onClick={() => act('Оплата подтверждена', () => wb.post(`/${id}/confirm-payment`, { method: 'BANK' }))}>
-                Подтвердить оплату (бухгалтер)
+                onClick={() => act(t('wb.act.paid'), () => wb.post(`/${id}/confirm-payment`, { method: 'BANK' }))}>
+                {t('wb.btn.confirmpay')} ({t('wb.r.accountant')})
               </button>
             </span>
           )}
           {w.status === 'READY' && (
-            <button className="btn" onClick={() => act('Выдан водителю', () => wb.post(`/${id}/issue`, { driverConfirmation: 'PIN' }))}>
-              Выдать водителю
+            <button className="btn" onClick={() => act(t('wb.act.issued'), () => wb.post(`/${id}/issue`, { driverConfirmation: 'PIN' }))}>
+              {t('wb.btn.issue')}
             </button>
           )}
           {w.status === 'ISSUED' && (
             <button className="btn" disabled={!dispatcher}
-              onClick={() => act('Выезд на линию', () => wb.post(`/${id}/activate`, { dispatcherRma: dispatcher }))}>
-              Т4 — выезд на линию
+              onClick={() => act(t('wb.act.activated'), () => wb.post(`/${id}/activate`, { dispatcherRma: dispatcher }))}>
+              {t('wb.btn.t4')}
             </button>
           )}
           {w.status === 'ACTIVE' && (
             <span>
-              <input style={{ width: 180, marginRight: 8, display: 'inline-block' }} placeholder="Одометр возврата"
+              <input style={{ width: 180, marginRight: 8, display: 'inline-block' }} placeholder={t('wb.ph.odoentry')}
                 value={odometerEntry} onChange={e => setOdometerEntry(e.target.value)} />
               <button className="btn" disabled={!dispatcher || !odometerEntry}
-                onClick={() => act('Возвращение', () => wb.post(`/${id}/return`, { dispatcherRma: dispatcher, odometerEntry: Number(odometerEntry) }))}>
-                Т5 — возвращение
+                onClick={() => act(t('wb.act.returned'), () => wb.post(`/${id}/return`, { dispatcherRma: dispatcher, odometerEntry: Number(odometerEntry) }))}>
+                {t('wb.btn.t5')}
               </button>
             </span>
           )}
           {w.status === 'RETURNED' && (
             <>
               <button className="btn secondary" disabled={!doctor}
-                onClick={() => act('Т6 подписан', () => wb.post(`/${id}/confirm-med`, {
+                onClick={() => act(t('wb.act.t6'), () => wb.post(`/${id}/confirm-med`, {
                   employeeRma: doctor, passed: true, indicators: { pressure: '125/82', pulse: 74, alcotest: 0 },
                 }))}>
-                Т6 — послерейсовый медосмотр
+                {t('wb.btn.t6')}
               </button>
-              <button className="btn" onClick={() => act('Закрыт', () => wb.post(`/${id}/close`, { actor: dispatcher }))}>
-                Закрыть путевой лист
+              <button className="btn" onClick={() => act(t('wb.act.closed'), () => wb.post(`/${id}/close`, { actor: dispatcher }))}>
+                {t('wb.btn.close')}
               </button>
             </>
           )}
@@ -214,44 +216,44 @@ export default function WaybillCard({ params }: { params: Promise<{ id: string }
             <span>
               <select style={{ width: 300, marginRight: 8, display: 'inline-block' }}
                 value={replacement} onChange={e => setReplacement(e.target.value)}>
-                <option value="">{w.status === 'MED_REJECTED' ? '— новый водитель —' : '— новое ТС —'}</option>
+                <option value="">{w.status === 'MED_REJECTED' ? t('wb.opt.newdriver') : t('wb.opt.newveh')}</option>
                 {candidates.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
               </select>
               <button className="btn" disabled={!dispatcher || !replacement}
                 onClick={() => act(
-                  w.status === 'MED_REJECTED' ? 'Водитель заменён — на повторный осмотр' : 'ТС заменено — на повторный контроль',
+                  w.status === 'MED_REJECTED' ? t('wb.act.repldriver') : t('wb.act.replveh'),
                   () => wb.post(`/${id}/${w.status === 'MED_REJECTED' ? 'replace-driver' : 'replace-vehicle'}`,
                     w.status === 'MED_REJECTED'
                       ? { newDriverRma: replacement, dispatcherRma: dispatcher }
                       : { newVehicleRegNumber: replacement, dispatcherRma: dispatcher }))}>
-                {w.status === 'MED_REJECTED' ? 'Заменить водителя (титул CORRECTION)' : 'Заменить ТС (титул CORRECTION)'}
+                {w.status === 'MED_REJECTED' ? t('wb.btn.repldriver') : t('wb.btn.replveh')}
               </button>
             </span>
           )}
           {w.status === 'ACTIVE' && (
             <span>
-              <input style={{ width: 260, marginRight: 8, display: 'inline-block' }} placeholder="Причина блокировки (нарушение)"
+              <input style={{ width: 260, marginRight: 8, display: 'inline-block' }} placeholder={t('wb.ph.blockreason')}
                 value={blockReason} onChange={e => setBlockReason(e.target.value)} />
               <button className="btn danger" disabled={!blockReason}
-                onClick={() => act('Заблокирован инспектором', () => wb.post(`/${id}/block`, { reason: blockReason }))}>
-                Блокировать (инспектор)
+                onClick={() => act(t('wb.act.blocked'), () => wb.post(`/${id}/block`, { reason: blockReason }))}>
+                {t('wb.btn.block')} ({t('wb.r.inspector')})
               </button>
             </span>
           )}
           {w.status === 'BLOCKED' && (
             <span>
-              <input style={{ width: 260, marginRight: 8, display: 'inline-block' }} placeholder="Обоснование разблокировки"
+              <input style={{ width: 260, marginRight: 8, display: 'inline-block' }} placeholder={t('wb.ph.unblockreason')}
                 value={blockReason} onChange={e => setBlockReason(e.target.value)} />
               <button className="btn" disabled={!blockReason}
-                onClick={() => act('Разблокирован', () => wb.post(`/${id}/unblock`, { reason: blockReason }))}>
-                Разблокировать (админ Минтранса)
+                onClick={() => act(t('wb.act.unblocked'), () => wb.post(`/${id}/unblock`, { reason: blockReason }))}>
+                {t('wb.btn.unblock')} ({t('wb.r.mintrans')})
               </button>
             </span>
           )}
           {!['COMPLETED', 'CANCELLED', 'EXPIRED', 'ARCHIVED'].includes(w.status) && (
             <button className="btn danger"
-              onClick={() => act('Аннулирован', () => wb.post(`/${id}/cancel`, { reason: 'Отмена диспетчером', actor: dispatcher ?? 'dispatcher' }))}>
-              Аннулировать
+              onClick={() => act(t('wb.act.cancelled'), () => wb.post(`/${id}/cancel`, { reason: 'Отмена диспетчером', actor: dispatcher ?? 'dispatcher' }))}>
+              {t('wb.btn.cancel')}
             </button>
           )}
         </div>
@@ -263,26 +265,26 @@ export default function WaybillCard({ params }: { params: Promise<{ id: string }
       <div className="card">
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: 20, alignItems: 'start' }}>
           <div>
-            <div style={sumLabel}>Транспортное средство</div>
+            <div style={sumLabel}>{t('col.vehiclefull')}</div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 6, flexWrap: 'wrap' }}>
               {plate}
               {vehicleName && <span style={{ fontWeight: 600 }}>{vehicleName}</span>}
             </div>
           </div>
           <div>
-            <div style={sumLabel}>Водитель</div>
+            <div style={sumLabel}>{t('col.driver')}</div>
             <div style={sumValue}>{driverName}</div>
           </div>
           <div>
-            <div style={sumLabel}>Организация</div>
+            <div style={sumLabel}>{t('col.org')}</div>
             <div style={sumValue}>{orgName}</div>
           </div>
           <div>
-            <div style={sumLabel}>Срок действия</div>
+            <div style={sumLabel}>{t('drv.validity')}</div>
             <div style={{ ...sumValue, fontWeight: 500, fontSize: 13 }}>{validFrom} → {validTo}</div>
           </div>
           <div>
-            <div style={sumLabel}>Отметки</div>
+            <div style={sumLabel}>{t('wb.marks')}</div>
             <div style={{ marginTop: 6, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
               <span className={`badge ${w.medPassed ? 'green' : 'gray'}`}>Т2 {w.medPassed ? '✓' : '…'}</span>
               <span className={`badge ${w.techPassed ? 'green' : 'gray'}`}>Т3 {w.techPassed ? '✓' : '…'}</span>
@@ -310,16 +312,16 @@ export default function WaybillCard({ params }: { params: Promise<{ id: string }
       {/* Основное */}
       {tab === 'main' && (
         <div className="card">
-          <h2>Общая информация</h2>
+          <h2>{t('wb.main.h')}</h2>
           <dl className="kv">
-            <dt>Номер ПЛ</dt><dd>{w.number ?? '—'}</dd>
-            <dt>Тип</dt><dd>{TYPE_LABELS[w.waybillType] ?? w.waybillType}</dd>
-            <dt>Статус</dt><dd><span className={`badge ${s.color}`}>{s.label}</span></dd>
-            <dt>Дата создания</dt><dd>{w.createdAt ? new Date(w.createdAt).toLocaleString('ru-RU') : '—'}</dd>
-            <dt>Срок действия</dt><dd>{validFrom} → {validTo}</dd>
-            <dt>Организация</dt><dd>{orgName}</dd>
-            <dt>Маршрут / график</dt><dd>{w.route ?? '—'} / {w.schedule ?? '—'}</dd>
-            {w.specialMark && <><dt>Особая отметка</dt><dd>{w.specialMark}</dd></>}
+            <dt>{t('insp.wbnum')}</dt><dd>{w.number ?? '—'}</dd>
+            <dt>{t('col.type')}</dt><dd>{TYPE_LABELS[w.waybillType] ?? w.waybillType}</dd>
+            <dt>{t('col.status')}</dt><dd><span className={`badge ${s.color}`}>{s.label}</span></dd>
+            <dt>{t('wb.createdat')}</dt><dd>{w.createdAt ? new Date(w.createdAt).toLocaleString('ru-RU') : '—'}</dd>
+            <dt>{t('drv.validity')}</dt><dd>{validFrom} → {validTo}</dd>
+            <dt>{t('col.org')}</dt><dd>{orgName}</dd>
+            <dt>{t('drv.routeschedule')}</dt><dd>{w.route ?? '—'} / {w.schedule ?? '—'}</dd>
+            {w.specialMark && <><dt>{t('wb.specialmark')}</dt><dd>{w.specialMark}</dd></>}
           </dl>
         </div>
       )}
@@ -327,16 +329,16 @@ export default function WaybillCard({ params }: { params: Promise<{ id: string }
       {/* Водитель */}
       {tab === 'driver' && (
         <div className="card">
-          <h2>Водитель</h2>
+          <h2>{t('col.driver')}</h2>
           <dl className="kv">
-            <dt>ФИО</dt><dd>{driverName}</dd>
+            <dt>{t('col.fio')}</dt><dd>{driverName}</dd>
             <dt>РМА</dt><dd>{w.driverRma}</dd>
           </dl>
           {w.secondDriverRma && (
             <>
-              <h2 style={{ marginTop: 18 }}>Второй водитель</h2>
+              <h2 style={{ marginTop: 18 }}>{t('wb.seconddriver')}</h2>
               <dl className="kv">
-                <dt>ФИО</dt><dd>{String((td.secondDriverSnapshot as Record<string, unknown>)?.fullName ?? w.secondDriverRma)}</dd>
+                <dt>{t('col.fio')}</dt><dd>{String((td.secondDriverSnapshot as Record<string, unknown>)?.fullName ?? w.secondDriverRma)}</dd>
                 <dt>РМА</dt><dd>{w.secondDriverRma}</dd>
               </dl>
             </>
@@ -347,13 +349,13 @@ export default function WaybillCard({ params }: { params: Promise<{ id: string }
       {/* Транспорт */}
       {tab === 'vehicle' && (
         <div className="card">
-          <h2>Транспортное средство</h2>
+          <h2>{t('col.vehiclefull')}</h2>
           {plate && <div style={{ marginBottom: 14 }}>{plate}</div>}
           <dl className="kv">
-            <dt>Госномер</dt><dd>{w.vehicleRegNumber || '—'}</dd>
-            <dt>Марка / модель</dt><dd>{vehicleName || '—'}</dd>
+            <dt>{t('col.regnum')}</dt><dd>{w.vehicleRegNumber || '—'}</dd>
+            <dt>{t('tech.f.brandmodel')}</dt><dd>{vehicleName || '—'}</dd>
             {trailers.map((tr, i) => (
-              <span key={i} style={{ display: 'contents' }}><dt>Прицеп {i + 1} (ядак)</dt><dd>{tr.registrationNumber} · {tr.brand}</dd></span>
+              <span key={i} style={{ display: 'contents' }}><dt>{t('wb.trailer')} {i + 1}</dt><dd>{tr.registrationNumber} · {tr.brand}</dd></span>
             ))}
           </dl>
         </div>
@@ -362,17 +364,17 @@ export default function WaybillCard({ params }: { params: Promise<{ id: string }
       {/* Маршрут (маршрут/сообщение + международные поля) */}
       {tab === 'route' && showRoute && (
         <div className="card">
-          <h2>Маршрут и сообщение</h2>
+          <h2>{t('wb.route.h')}</h2>
           <dl className="kv">
-            <dt>Маршрут</dt><dd>{w.route ?? '—'}</dd>
-            <dt>График</dt><dd>{w.schedule ?? '—'}</dd>
-            {'serviceKind' in td && <><dt>Вид услуги</dt><dd>{{ TAXI: 'Такси (фармоишӣ)', ROUTE: 'Маршрут (хатсайр)', HOURLY: 'Почасовой (соатбайъ)' }[String(td.serviceKind)] ?? String(td.serviceKind)}</dd></>}
-            {'shipmentKind' in td && <><dt>Вид перевозки</dt><dd>{String(td.shipmentKind) === 'PIECEWORK' ? 'Сдельная (корбайъ)' : 'Почасовая (соатбайъ)'}</dd></>}
-            {'permitNumber' in td && <><dt>Дозвол (E-PERMIT)</dt><dd>{String(td.permitNumber)}</dd></>}
-            {'visaValidTo' in td && <><dt>Виза</dt><dd>до {String(td.visaValidTo)} · {String(td.visaCountry ?? '')}</dd></>}
-            {'loadCountry' in td && <><dt>Маршрут рейса</dt><dd>{String(td.loadCountry)} → {Array.isArray(td.transitCountries) && td.transitCountries.length ? `${(td.transitCountries as string[]).join(', ')} → ` : ''}{String(td.unloadCountry)}</dd></>}
-            {'cargoName' in td && <><dt>Груз (номгӯи бор)</dt><dd>{String(td.cargoName)}</dd></>}
-            {'bbaNumber' in td && <><dt>Книжка ББА/TIR</dt><dd>{String(td.bbaNumber)}</dd></>}
+            <dt>{t('col.route')}</dt><dd>{w.route ?? '—'}</dd>
+            <dt>{t('wb.schedule')}</dt><dd>{w.schedule ?? '—'}</dd>
+            {'serviceKind' in td && <><dt>{t('wb.svc.label')}</dt><dd>{{ TAXI: t('wb.svc.taxi'), ROUTE: t('wb.svc.route'), HOURLY: t('wb.svc.hourly') }[String(td.serviceKind)] ?? String(td.serviceKind)}</dd></>}
+            {'shipmentKind' in td && <><dt>{t('wb.ship.label')}</dt><dd>{String(td.shipmentKind) === 'PIECEWORK' ? t('wb.ship.piecework') : t('wb.ship.hourly')}</dd></>}
+            {'permitNumber' in td && <><dt>{t('wb.dt.permit')}</dt><dd>{String(td.permitNumber)}</dd></>}
+            {'visaValidTo' in td && <><dt>{t('wb.visa')}</dt><dd>{t('wb.until')} {String(td.visaValidTo)} · {String(td.visaCountry ?? '')}</dd></>}
+            {'loadCountry' in td && <><dt>{t('wb.triproute')}</dt><dd>{String(td.loadCountry)} → {Array.isArray(td.transitCountries) && td.transitCountries.length ? `${(td.transitCountries as string[]).join(', ')} → ` : ''}{String(td.unloadCountry)}</dd></>}
+            {'cargoName' in td && <><dt>{t('wb.cargo')}</dt><dd>{String(td.cargoName)}</dd></>}
+            {'bbaNumber' in td && <><dt>{t('wb.bba')}</dt><dd>{String(td.bbaNumber)}</dd></>}
           </dl>
         </div>
       )}
@@ -381,19 +383,19 @@ export default function WaybillCard({ params }: { params: Promise<{ id: string }
       {tab === 'fuel' && (
         <>
           <div className="card">
-            <h2>Одометр и пробег</h2>
+            <h2>{t('wb.odo.h')}</h2>
             <dl className="kv">
-              <dt>Одометр (выезд → возврат)</dt><dd>{w.odometerExit ?? '—'} → {w.odometerEntry ?? '—'}</dd>
-              <dt>Пробег</dt><dd>{mileage != null ? `${mileage} км` : '—'}</dd>
+              <dt>{t('wb.odo.exitentry')}</dt><dd>{w.odometerExit ?? '—'} → {w.odometerEntry ?? '—'}</dd>
+              <dt>{t('col.mileage')}</dt><dd>{mileage != null ? `${mileage} ${t('unit.km')}` : '—'}</dd>
             </dl>
           </div>
 
           {(w.status === 'ACTIVE' || workDays.length > 0) && (
             <div className="card">
-              <h2>Рабочие дни (многодневный ПЛ)</h2>
+              <h2>{t('wb.workdays.h')}</h2>
               {workDays.length > 0 && (
                 <table style={{ marginBottom: 12 }}>
-                  <thead><tr><th>Дата</th><th>Выезд</th><th>Возврат</th><th>Одометр</th><th>Круги</th><th>Выручка</th></tr></thead>
+                  <thead><tr><th>{t('col.date')}</th><th>{t('wb.th.exit')}</th><th>{t('wb.th.entry')}</th><th>{t('col.odometer')}</th><th>{t('wb.th.laps')}</th><th>{t('rep.revenue')}</th></tr></thead>
                   <tbody>
                     {workDays.map((d, i) => (
                       <tr key={String(d.id ?? i)}>
@@ -412,7 +414,7 @@ export default function WaybillCard({ params }: { params: Promise<{ id: string }
                 <>
                   <form className="grid" onSubmit={async e => {
                     e.preventDefault();
-                    await act('Рабочий день добавлен', () => wb.post(`/${id}/work-days`, {
+                    await act(t('wb.act.dayadded'), () => wb.post(`/${id}/work-days`, {
                       workDate: dayForm.workDate,
                       exitTime: dayForm.exitTime || null,
                       entryTime: dayForm.entryTime || null,
@@ -422,44 +424,44 @@ export default function WaybillCard({ params }: { params: Promise<{ id: string }
                       revenue: dayForm.revenue ? Number(dayForm.revenue) : null,
                     }));
                   }}>
-                    <div><label>Дата</label><input type="date" required value={dayForm.workDate} onChange={e => setDayForm({ ...dayForm, workDate: e.target.value })} /></div>
-                    <div><label>Выезд / возврат</label>
+                    <div><label>{t('col.date')}</label><input type="date" required value={dayForm.workDate} onChange={e => setDayForm({ ...dayForm, workDate: e.target.value })} /></div>
+                    <div><label>{t('wb.f.exitentry')}</label>
                       <span style={{ display: 'flex', gap: 6 }}>
                         <input type="time" value={dayForm.exitTime} onChange={e => setDayForm({ ...dayForm, exitTime: e.target.value })} />
                         <input type="time" value={dayForm.entryTime} onChange={e => setDayForm({ ...dayForm, entryTime: e.target.value })} />
                       </span>
                     </div>
-                    <div><label>Одометр выезд / возврат</label>
+                    <div><label>{t('wb.f.odoexitentry')}</label>
                       <span style={{ display: 'flex', gap: 6 }}>
                         <input type="number" value={dayForm.odometerExit} onChange={e => setDayForm({ ...dayForm, odometerExit: e.target.value })} />
                         <input type="number" value={dayForm.odometerEntry} onChange={e => setDayForm({ ...dayForm, odometerEntry: e.target.value })} />
                       </span>
                     </div>
-                    <div><label>Круги / выручка</label>
+                    <div><label>{t('wb.f.lapsrevenue')}</label>
                       <span style={{ display: 'flex', gap: 6 }}>
                         <input type="number" value={dayForm.laps} onChange={e => setDayForm({ ...dayForm, laps: e.target.value })} />
                         <input type="number" step="0.01" value={dayForm.revenue} onChange={e => setDayForm({ ...dayForm, revenue: e.target.value })} />
                       </span>
                     </div>
-                    <div className="full"><button className="btn secondary" type="submit">+ Добавить день</button></div>
+                    <div className="full"><button className="btn secondary" type="submit">{t('wb.btn.addday')}</button></div>
                   </form>
                   <form className="grid" style={{ marginTop: 10 }} onSubmit={async e => {
                     e.preventDefault();
-                    await act('Топливо записано', () => wb.post(`/${id}/fuel`, {
+                    await act(t('wb.act.fuelrecorded'), () => wb.post(`/${id}/fuel`, {
                       fuelType: Number(fuelForm.fuelType),
                       fuelGiven: fuelForm.fuelGiven ? Number(fuelForm.fuelGiven) : null,
                       remainBeforeExit: fuelForm.remainBeforeExit ? Number(fuelForm.remainBeforeExit) : null,
                     }));
                   }}>
-                    <div><label>Вид топлива</label>
+                    <div><label>{t('rep.col.fueltype')}</label>
                       <select value={fuelForm.fuelType} onChange={e => setFuelForm({ ...fuelForm, fuelType: e.target.value })}>
-                        <option value="1">Бензин</option><option value="2">Дизель</option>
-                        <option value="3">Газ сжиженный</option><option value="4">Газ природный</option>
+                        <option value="1">{t('wb.fuel.petrol')}</option><option value="2">{t('wb.fuel.diesel')}</option>
+                        <option value="3">{t('wb.fuel.lpg')}</option><option value="4">{t('wb.fuel.cng')}</option>
                       </select>
                     </div>
-                    <div><label>Выдано, л</label><input type="number" step="0.1" required value={fuelForm.fuelGiven} onChange={e => setFuelForm({ ...fuelForm, fuelGiven: e.target.value })} /></div>
-                    <div><label>Остаток перед выездом, л</label><input type="number" step="0.1" value={fuelForm.remainBeforeExit} onChange={e => setFuelForm({ ...fuelForm, remainBeforeExit: e.target.value })} /></div>
-                    <div className="full"><button className="btn secondary" type="submit">+ Записать топливо</button></div>
+                    <div><label>{t('rep.col.given')}</label><input type="number" step="0.1" required value={fuelForm.fuelGiven} onChange={e => setFuelForm({ ...fuelForm, fuelGiven: e.target.value })} /></div>
+                    <div><label>{t('wb.f.remainbefore')}</label><input type="number" step="0.1" value={fuelForm.remainBeforeExit} onChange={e => setFuelForm({ ...fuelForm, remainBeforeExit: e.target.value })} /></div>
+                    <div className="full"><button className="btn secondary" type="submit">{t('wb.btn.recordfuel')}</button></div>
                   </form>
                 </>
               )}
@@ -468,7 +470,7 @@ export default function WaybillCard({ params }: { params: Promise<{ id: string }
 
           {(w.status === 'RETURNED' || w.status === 'COMPLETED') && (
             <div className="card">
-              <h2>Нормирование топлива</h2>
+              <h2>{t('wb.fuelnorm.h')}</h2>
               {!fuelCalc ? (
                 <button className="btn secondary" onClick={async () => {
                   try {
@@ -476,30 +478,30 @@ export default function WaybillCard({ params }: { params: Promise<{ id: string }
                     const r = await fetch(`/wb-api/api/v1/waybills/${id}/fuel-calculation`, { headers: authHeaders() });
                     if (!r.ok) {
                       const p = await r.json().catch(() => null);
-                      throw new Error(p?.detail ?? `Ошибка ${r.status}`);
+                      throw new Error(p?.detail ?? `${t('wb.error')} ${r.status}`);
                     }
                     setFuelCalc(await r.json());
                   } catch (e) {
                     setError((e as Error).message);
                   }
                 }}>
-                  Рассчитать норму расхода
+                  {t('wb.btn.calcnorm')}
                 </button>
               ) : (
                 <dl className="kv">
-                  <dt>Пробег</dt><dd>{String(fuelCalc.km)} км</dd>
-                  <dt>Базовая норма</dt><dd>{String(fuelCalc.baseNormPer100km)} л/100км</dd>
-                  <dt>Коэффициенты</dt>
+                  <dt>{t('col.mileage')}</dt><dd>{String(fuelCalc.km)} {t('unit.km')}</dd>
+                  <dt>{t('wb.basenorm')}</dt><dd>{String(fuelCalc.baseNormPer100km)} л/100км</dd>
+                  <dt>{t('dict.sec.coefficients')}</dt>
                   <dd>{Array.isArray(fuelCalc.coefficientsApplied) && fuelCalc.coefficientsApplied.length
                     ? (fuelCalc.coefficientsApplied as Record<string, unknown>[]).map(c => `${c.name} ×${c.value}`).join(', ')
-                    : 'не применялись'}</dd>
-                  <dt>Норма</dt><dd><b>{String(fuelCalc.normLiters)} л</b></dd>
-                  <dt>Факт (выдано)</dt><dd>{String(fuelCalc.factLiters)} л</dd>
-                  <dt>Отклонение</dt>
+                    : t('wb.notapplied')}</dd>
+                  <dt>{t('wb.norm')}</dt><dd><b>{String(fuelCalc.normLiters)} л</b></dd>
+                  <dt>{t('wb.fact')}</dt><dd>{String(fuelCalc.factLiters)} л</dd>
+                  <dt>{t('wb.deviation')}</dt>
                   <dd style={{ color: Number(fuelCalc.deviationLiters) > 0 ? 'var(--accent)' : 'var(--brand)' }}>
                     {Number(fuelCalc.deviationLiters) > 0 ? '+' : ''}{String(fuelCalc.deviationLiters)} л
                   </dd>
-                  {fuelCalc.tripCost != null && <><dt>Стоимость рейса (нархнома)</dt><dd>{String(fuelCalc.tripCost)} сомони ({String(fuelCalc.tariffPerKm)} сомони/км)</dd></>}
+                  {fuelCalc.tripCost != null && <><dt>{t('wb.tripcost')}</dt><dd>{String(fuelCalc.tripCost)} сомони ({String(fuelCalc.tariffPerKm)} сомони/км)</dd></>}
                 </dl>
               )}
             </div>
@@ -510,16 +512,16 @@ export default function WaybillCard({ params }: { params: Promise<{ id: string }
       {/* Осмотры: Т2 медосмотр и Т3 техконтроль */}
       {tab === 'inspections' && (
         <div className="card">
-          <h2>Осмотры и допуски</h2>
+          <h2>{t('wb.insp.h')}</h2>
           <dl className="kv">
-            <dt>Т2 — предрейсовый медосмотр</dt>
-            <dd><span className={`badge ${w.medPassed ? 'green' : 'gray'}`}>{w.medPassed ? 'Пройден ✓' : 'Ожидается'}</span></dd>
-            <dt>Т3 — технический контроль</dt>
-            <dd><span className={`badge ${w.techPassed ? 'green' : 'gray'}`}>{w.techPassed ? 'Пройден ✓' : 'Ожидается'}</span></dd>
+            <dt>{t('wb.insp.t2')}</dt>
+            <dd><span className={`badge ${w.medPassed ? 'green' : 'gray'}`}>{w.medPassed ? t('wb.passed') : t('wb.awaiting')}</span></dd>
+            <dt>{t('wb.insp.t3')}</dt>
+            <dd><span className={`badge ${w.techPassed ? 'green' : 'gray'}`}>{w.techPassed ? t('wb.passed') : t('wb.awaiting')}</span></dd>
           </dl>
           {titlesWithData.length > 0 && (
             <>
-              <h2 style={{ marginTop: 18 }}>Показатели</h2>
+              <h2 style={{ marginTop: 18 }}>{t('wb.indicators')}</h2>
               {titlesWithData.map(t => (
                 <div key={t.id} style={{ marginTop: 12 }}>
                   <div style={{ fontWeight: 600, marginBottom: 6 }}>{t.titleType} · {t.signerRole} ({t.signerRma})</div>
@@ -540,18 +542,18 @@ export default function WaybillCard({ params }: { params: Promise<{ id: string }
       {/* QR */}
       {tab === 'qr' && (
         <div className="card" style={{ textAlign: 'center' }}>
-          <h2>QR-код для дорожного контроля</h2>
+          <h2>{t('wb.qr.h')}</h2>
           {qrUrl ? (
             <>
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={qrUrl} alt="QR путевого листа" />
+              <img src={qrUrl} alt={t('drv.qr.alt')} />
               <p style={{ color: 'var(--muted)', fontSize: 13 }}>
-                Инспектор проверяет подпись офлайн — без доступа к сети
+                {t('wb.qr.offline')}
               </p>
             </>
           ) : (
             <p style={{ color: 'var(--muted)', fontSize: 13 }}>
-              QR-код станет доступен после присвоения номера и готовности путевого листа
+              {t('wb.qr.pending')}
             </p>
           )}
         </div>
@@ -561,20 +563,20 @@ export default function WaybillCard({ params }: { params: Promise<{ id: string }
       {tab === 'history' && (
         <>
           <div className="card">
-            <h2>Титулы</h2>
+            <h2>{t('wb.titles.h')}</h2>
             <ul className="timeline">
-              {titles.map(t => (
-                <li key={t.id}>
-                  <b>{t.titleType}</b> — {t.signerRole} ({t.signerRma})
-                  <div className="when">{new Date(t.signedAt).toLocaleString('ru-RU')}</div>
+              {titles.map(ttl => (
+                <li key={ttl.id}>
+                  <b>{ttl.titleType}</b> — {ttl.signerRole} ({ttl.signerRma})
+                  <div className="when">{new Date(ttl.signedAt).toLocaleString('ru-RU')}</div>
                 </li>
               ))}
-              {titles.length === 0 && <li>Титулы ещё не подписаны</li>}
+              {titles.length === 0 && <li>{t('wb.titles.empty')}</li>}
             </ul>
           </div>
 
           <div className="card">
-            <h2>История статусов</h2>
+            <h2>{t('wb.statushistory.h')}</h2>
             <ul className="timeline">
               {history.map((h, i) => (
                 <li key={i}>
