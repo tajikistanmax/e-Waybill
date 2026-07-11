@@ -31,7 +31,7 @@ async function postJson(url: string, body: unknown) {
   if (!res.ok) {
     const p = await res.json().catch(() => null);
     const fields = p?.errors?.map((e: { field: string; message: string }) => `${e.field} — ${e.message}`).join('; ');
-    throw new Error(p?.detail ?? p?.title ?? `Ошибка ${res.status}` + (fields ? `: ${fields}` : ''));
+    throw new Error((p?.detail ?? p?.title ?? `Ошибка ${res.status}`) + (fields ? `: ${fields}` : ''));
   }
   return res.json();
 }

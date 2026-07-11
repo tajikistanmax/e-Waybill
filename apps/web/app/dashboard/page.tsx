@@ -22,15 +22,16 @@ function dayKey(d: Date) { return d.toLocaleDateString('ru-RU', { day: '2-digit'
 export default function DashboardPage() {
   const [items, setItems] = useState<Waybill[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   const router = useRouter();
   const { t, tType, tStatus } = useT();
 
-  useEffect(() => { wb.list().then(setItems).catch(() => {}).finally(() => setLoading(false)); }, []);
+  useEffect(() => { wb.list().then(setItems).catch((e: Error) => setError(e.message)).finally(() => setLoading(false)); }, []);
 
   const stats = useMemo(() => {
     const total = items.length;
     const today = items.filter(w => isToday(w.createdAt)).length;
-    const onLine = items.filter(w => ['ACTIVE', 'IN_TRIP', 'RETURNED'].includes(w.status)).length;
+    const onLine = items.filter(w => ['ISSUED', 'ACTIVE', 'RETURNED'].includes(w.status)).length;
     const completed = items.filter(w => w.status === 'COMPLETED').length;
     const cancelled = items.filter(w => ['CANCELLED', 'EXPIRED', 'BLOCKED'].includes(w.status)).length;
 
@@ -81,6 +82,8 @@ export default function DashboardPage() {
         <span className="spacer" />
         <Link className="btn" href="/waybills/new"><Icon d={P.doc} cls="" style={{ width: 17, height: 17 }} /> {t('dash.new')}</Link>
       </div>
+
+      {error && <div className="error">{error}</div>}
 
       {/* KPI */}
       <div className="kpi-row">

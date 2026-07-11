@@ -9,19 +9,28 @@ const TITLES: Record<string, { t: string; c: string }> = {
   '/dashboard': { t: 'nav.dashboard', c: 'dash.lead' },
   '/waybills': { t: 'nav.waybill.registry', c: 'nav.waybills' },
   '/waybills/new': { t: 'nav.waybill.new', c: 'nav.waybills' },
+  '/dispatcher': { t: 'nav.dispatcher', c: 'nav.group.workplaces' },
   '/med': { t: 'nav.med', c: 'nav.group.workplaces' },
   '/tech': { t: 'nav.tech', c: 'nav.group.workplaces' },
+  '/driver': { t: 'nav.driver', c: 'nav.group.workplaces' },
+  '/inspector': { t: 'nav.inspector', c: 'nav.group.workplaces' },
   '/company': { t: 'nav.company', c: 'nav.group.management' },
+  '/registry': { t: 'nav.registry', c: 'nav.group.management' },
+  '/violations': { t: 'nav.violations', c: 'nav.group.management' },
   '/reports': { t: 'nav.reports', c: 'nav.group.management' },
   '/dictionaries': { t: 'nav.dictionaries', c: 'nav.group.management' },
+  '/settings': { t: 'nav.settings', c: 'nav.group.management' },
 };
 
 export function Topbar() {
   const pathname = usePathname();
   const { username, roles, logout } = useAuth();
   const { t, lang, setLang } = useT();
-  const meta = TITLES[pathname] ?? (pathname.startsWith('/waybills/') ? { t: 'nav.waybills', c: 'nav.waybills' } : { t: 'app.title', c: '' });
-  const roleKey = roles.find(r => ['SYSTEM_ADMIN', 'DISPATCHER', 'DOCTOR', 'MECHANIC', 'ACCOUNTANT', 'COMPANY_ADMIN', 'INSPECTOR'].includes(r));
+  const meta = TITLES[pathname]
+    ?? (pathname.startsWith('/waybills/') ? { t: 'nav.waybills', c: 'nav.waybills' }
+      : pathname.startsWith('/settings/') ? { t: 'nav.settings', c: 'nav.group.management' }
+      : { t: 'app.title', c: '' });
+  const roleKey = roles.find(r => ['SYSTEM_ADMIN', 'COMPANY_ADMIN', 'DISPATCHER', 'DOCTOR', 'MECHANIC', 'ACCOUNTANT', 'INSPECTOR', 'DRIVER', 'API_INTEGRATOR'].includes(r));
   const roleLabel = roleKey ? t('role.' + roleKey) : '';
   const initials = (username || 'ЭП').slice(0, 2).toUpperCase();
   const now = new Date().toLocaleDateString(lang === 'tj' ? 'tg-TJ' : 'ru-RU', { day: 'numeric', month: 'long', year: 'numeric' });

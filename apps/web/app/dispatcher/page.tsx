@@ -41,10 +41,11 @@ export default function DispatcherCabinet() {
   const { t, tType, tStatus } = useT();
   const [items, setItems] = useState<Waybill[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   const router = useRouter();
 
   useEffect(() => {
-    wb.list().then(setItems).catch(() => {}).finally(() => setLoading(false));
+    wb.list().then(setItems).catch((e: Error) => setError(e.message)).finally(() => setLoading(false));
   }, []);
 
   const stats = useMemo(() => {
@@ -86,6 +87,8 @@ export default function DispatcherCabinet() {
           <Icon d={P.doc} cls="" /> {t('nav.waybill.new')}
         </Link>
       </div>
+
+      {error && <div className="error">{error}</div>}
 
       {/* KPI */}
       <div className="kpi-row" style={{ gridTemplateColumns: 'repeat(4, 1fr)' }}>

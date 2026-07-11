@@ -33,11 +33,12 @@ export default function DriverCabinet() {
   const { t, tType, tStatus } = useT();
   const [items, setItems] = useState<Waybill[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   const [qr, setQr] = useState('');
   const router = useRouter();
 
   useEffect(() => {
-    wb.list().then(setItems).catch(() => {}).finally(() => setLoading(false));
+    wb.list().then(setItems).catch((e: Error) => setError(e.message)).finally(() => setLoading(false));
   }, []);
 
   // Текущий ПЛ: сначала активный, затем выданный, затем готовый к выдаче.
@@ -99,6 +100,8 @@ export default function DriverCabinet() {
           <div className="page-lead" style={{ margin: 0 }}>{t('drv.lead')}</div>
         </div>
       </div>
+
+      {error && <div className="error">{error}</div>}
 
       {/* Текущий путевой лист */}
       {current ? (

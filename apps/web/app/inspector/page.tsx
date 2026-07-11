@@ -37,10 +37,11 @@ export default function InspectorCabinet() {
   const [query, setQuery] = useState('');
   const [checked, setChecked] = useState<Waybill | null>(null);
   const [notFound, setNotFound] = useState(false);
+  const [error, setError] = useState('');
   const router = useRouter();
 
   useEffect(() => {
-    wb.list().then(setItems).catch(() => {}).finally(() => setLoading(false));
+    wb.list().then(setItems).catch((e: Error) => setError(e.message)).finally(() => setLoading(false));
   }, []);
 
   function runCheck(e: React.FormEvent) {
@@ -80,6 +81,8 @@ export default function InspectorCabinet() {
           <div className="page-lead" style={{ margin: 0 }}>{t('insp.lead')}</div>
         </div>
       </div>
+
+      {error && <div className="error">{error}</div>}
 
       {/* Консоль проверки */}
       <div className="card">
