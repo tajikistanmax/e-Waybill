@@ -920,6 +920,7 @@ const DICT: Record<string, { ru: string; tj: string }> = {
   'cls.active': { ru: 'Активен', tj: 'Фаъол' },
   'cls.add': { ru: 'Добавить', tj: 'Илова кардан' },
   'cls.empty': { ru: 'Записей нет', tj: 'Сабтҳо нест' },
+  'wb.opt.country': { ru: '— выберите страну —', tj: '— кишварро интихоб кунед —' },
 };
 
 // Названия типов ПЛ и статусов — двуязычно. RU совпадает с TYPE_LABELS/STATUS_LABELS из lib/api

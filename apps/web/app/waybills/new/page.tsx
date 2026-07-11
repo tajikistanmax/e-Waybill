@@ -46,6 +46,7 @@ export default function NewWaybillPage() {
   const [orgs, setOrgs] = useState<Option[]>([]);
   const [vehicles, setVehicles] = useState<Option[]>([]);
   const [drivers, setDrivers] = useState<Option[]>([]);
+  const [countries, setCountries] = useState<Option[]>([]);
   const [orgRma, setOrgRma] = useState('');
   const [form, setForm] = useState({
     waybillType: 'WB_BUS',
@@ -85,6 +86,13 @@ export default function NewWaybillPage() {
       .then(list => setDrivers(list.map(d => ({ value: String(d.rma), label: `${d.fullName} (${d.rma})` }))))
       .catch(e => setError(e.message));
   }, [orgRma]);
+
+  // Страны из классификатора — для полей международного ПЛ (значение = наименование).
+  useEffect(() => {
+    md.classifiers('COUNTRY')
+      .then(list => setCountries(list.map(c => ({ value: c.nameRu, label: c.nameRu }))))
+      .catch(() => { /* классификатор недоступен — поля останутся пустыми */ });
+  }, []);
 
   useEffect(() => { window.scrollTo({ top: 0 }); }, [step]);
 
@@ -355,15 +363,24 @@ export default function NewWaybillPage() {
                   </div>
                   <div>
                     <label>{tt('wb.f.visacountry')}</label>
-                    <input required placeholder={tt('wb.ph.uzbekistan')} value={intl.visaCountry} onChange={e => setIntl({ ...intl, visaCountry: e.target.value })} />
+                    <select required value={intl.visaCountry} onChange={e => setIntl({ ...intl, visaCountry: e.target.value })}>
+                      <option value="">{tt('wb.opt.country')}</option>
+                      {countries.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+                    </select>
                   </div>
                   <div>
                     <label>{tt('wb.f.loadcountry')}</label>
-                    <input required placeholder={tt('wb.ph.tajikistan')} value={intl.loadCountry} onChange={e => setIntl({ ...intl, loadCountry: e.target.value })} />
+                    <select required value={intl.loadCountry} onChange={e => setIntl({ ...intl, loadCountry: e.target.value })}>
+                      <option value="">{tt('wb.opt.country')}</option>
+                      {countries.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+                    </select>
                   </div>
                   <div>
                     <label>{tt('wb.f.unloadcountry')}</label>
-                    <input required placeholder={tt('wb.ph.kazakhstan')} value={intl.unloadCountry} onChange={e => setIntl({ ...intl, unloadCountry: e.target.value })} />
+                    <select required value={intl.unloadCountry} onChange={e => setIntl({ ...intl, unloadCountry: e.target.value })}>
+                      <option value="">{tt('wb.opt.country')}</option>
+                      {countries.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+                    </select>
                   </div>
                   <div>
                     <label>{tt('wb.f.transitcountries')}</label>
