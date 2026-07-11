@@ -567,9 +567,22 @@ public class WaybillService {
         var wb = get(id);
         requireStatus(wb, WaybillStatus.ISSUED);
         requireEmployee(dispatcherRma, 3, "Диспетчер");
+        Integer lastKnown = wb.getVehicleSnapshot() != null
+                ? intOrNull(wb.getVehicleSnapshot().get("odometer")) : null;
+        // Непрерывность одометра (антифрод): явный выезд не может быть отрицательным и не может
+        // быть меньше последнего зафиксированного пробега ТС — иначе это скрутка/подмена показаний.
+        if (odometerExit != null) {
+            if (odometerExit < 0) {
+                throw new UnprocessableException("Одометр выезда не может быть отрицательным");
+            }
+            if (lastKnown != null && odometerExit < lastKnown) {
+                throw new UnprocessableException(
+                        "Одометр выезда (%d) меньше последнего зафиксированного пробега ТС (%d) — проверьте показания"
+                                .formatted(odometerExit, lastKnown));
+            }
+        }
         int exit = odometerExit != null ? odometerExit
-                : intOrNull(wb.getVehicleSnapshot().get("odometer")) != null
-                    ? intOrNull(wb.getVehicleSnapshot().get("odometer")) : 0;
+                : lastKnown != null ? lastKnown : 0;
         wb.setOdometerExit(exit);
         addTitle(wb, "T4", dispatcherRma, "DISPATCHER", Map.of("odometerExit", exit));
         transition(wb, WaybillStatus.ACTIVE, dispatcherRma, "Выезд на линию");
