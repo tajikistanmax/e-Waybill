@@ -1,8 +1,12 @@
 package tj.mintrans.epd.masterdata.web;
 
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.DecimalMin;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -145,7 +149,8 @@ public class DictionaryController {
     public record FuelNormRequest(
             @NotNull Short transportType,
             String brand,
-            @NotNull BigDecimal baseNorm) {
+            @NotNull @DecimalMin(value = "0.0", inclusive = false,
+                    message = "Норма расхода должна быть положительной") BigDecimal baseNorm) {
     }
 
     @GetMapping("/fuel-norms")
@@ -170,12 +175,14 @@ public class DictionaryController {
     // ------------------------------------------------------------------ коэффициенты
 
     public record CoefficientRequest(
-            @NotBlank String kind,
+            @NotBlank @Pattern(regexp = "WINTER|CITY|HIGHLAND|USAGE",
+                    message = "Вид коэффициента: WINTER | CITY | HIGHLAND | USAGE") String kind,
             @NotBlank String name,
-            @NotNull BigDecimal value,
+            @NotNull @DecimalMin(value = "0.0", inclusive = false,
+                    message = "Коэффициент должен быть положительным") BigDecimal value,
             Short regionId,
-            Short monthFrom,
-            Short monthTo) {
+            @Min(1) @Max(12) Short monthFrom,
+            @Min(1) @Max(12) Short monthTo) {
     }
 
     @GetMapping("/coefficients")
@@ -202,7 +209,8 @@ public class DictionaryController {
     public record TariffRequest(
             @NotNull Short transportType,
             Short fuelType,
-            @NotNull BigDecimal pricePerKm) {
+            @NotNull @DecimalMin(value = "0.0", inclusive = false,
+                    message = "Тариф за км должен быть положительным") BigDecimal pricePerKm) {
     }
 
     @GetMapping("/tariffs")
