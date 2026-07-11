@@ -144,6 +144,25 @@ public class WaybillService {
                     throw new UnprocessableException("Срок действия дозвола %s истёк (E-PERMIT)"
                             .formatted(str(data.get("permitNumber"))));
                 }
+                // Дозвол выдаётся для конкретной страны: он должен относиться к заявленному рейсу
+                // (страна погрузки/разгрузки/транзита). Иначе действующий дозвол на одну страну
+                // проходил бы для рейса в любую другую. Сверяем без учёта регистра/пробелов.
+                String permitCountry = str(permit.get("country"));
+                if (!permitCountry.isBlank()) {
+                    var tripCountries = new java.util.HashSet<String>();
+                    tripCountries.add(str(data.get("loadCountry")).trim().toLowerCase());
+                    tripCountries.add(str(data.get("unloadCountry")).trim().toLowerCase());
+                    if (data.get("transitCountries") instanceof java.util.List<?> tl) {
+                        for (Object c : tl) {
+                            if (c instanceof String s) tripCountries.add(s.trim().toLowerCase());
+                        }
+                    }
+                    if (!tripCountries.contains(permitCountry.trim().toLowerCase())) {
+                        throw new UnprocessableException(
+                                "Дозвол %s выдан для страны «%s», не заявленной в рейсе (погрузка/разгрузка/транзит)"
+                                        .formatted(str(data.get("permitNumber")), permitCountry));
+                    }
+                }
                 if (wb.getWaybillType() == WaybillType.WB_TRUCK_INTL) {
                     requireText(data, "cargoName", "Укажите наименование груза (cargoName)");
                 }
