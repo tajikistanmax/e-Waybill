@@ -28,6 +28,7 @@ import tj.mintrans.epd.masterdata.repository.CoefficientRepository;
 import tj.mintrans.epd.masterdata.repository.FuelNormRepository;
 import tj.mintrans.epd.masterdata.repository.RouteRepository;
 import tj.mintrans.epd.masterdata.repository.TariffRepository;
+import tj.mintrans.epd.masterdata.service.AuditService;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -49,16 +50,18 @@ public class DictionaryController {
     private final CoefficientRepository coefficients;
     private final TariffRepository tariffs;
     private final CurrentUser currentUser;
+    private final AuditService audit;
 
     public DictionaryController(RouteRepository routes, ClientRepository clients,
                                 FuelNormRepository fuelNorms, CoefficientRepository coefficients,
-                                TariffRepository tariffs, CurrentUser currentUser) {
+                                TariffRepository tariffs, CurrentUser currentUser, AuditService audit) {
         this.routes = routes;
         this.clients = clients;
         this.fuelNorms = fuelNorms;
         this.coefficients = coefficients;
         this.tariffs = tariffs;
         this.currentUser = currentUser;
+        this.audit = audit;
     }
 
     /**
@@ -102,13 +105,17 @@ public class DictionaryController {
     public ResponseEntity<Route> upsertRoute(@Valid @RequestBody RouteRequest req) {
         String org = resolveWriteOrg(req.organizationRma());
         var existing = routes.findByOrganizationRmaAndNumber(org, req.number());
+        String oldValue = existing.map(Route::getName).orElse(null); // до мутации (existing и route — один объект)
         var route = existing.orElseGet(Route::new);
         route.setOrganizationRma(org);
         route.setNumber(req.number());
         route.setName(req.name());
         route.setTransportType(req.transportType());
         route.setRegionId(req.regionId());
-        return saved(existing, routes.save(route));
+        var savedRoute = routes.save(route);
+        audit.record(existing.isPresent() ? AuditService.UPDATE : AuditService.CREATE,
+                "ROUTE", org + "/" + req.number(), oldValue, req.name());
+        return saved(existing, savedRoute);
     }
 
     // ------------------------------------------------------------------ клиенты
@@ -135,13 +142,17 @@ public class DictionaryController {
     public ResponseEntity<Client> upsertClient(@Valid @RequestBody ClientRequest req) {
         String org = resolveWriteOrg(req.organizationRma());
         var existing = clients.findByOrganizationRmaAndNumber(org, req.number());
+        String oldValue = existing.map(Client::getName).orElse(null); // до мутации
         var client = existing.orElseGet(Client::new);
         client.setOrganizationRma(org);
         client.setNumber(req.number());
         client.setName(req.name());
         client.setAddress(req.address());
         client.setPhone(req.phone());
-        return saved(existing, clients.save(client));
+        var savedClient = clients.save(client);
+        audit.record(existing.isPresent() ? AuditService.UPDATE : AuditService.CREATE,
+                "CLIENT", org + "/" + req.number(), oldValue, req.name());
+        return saved(existing, savedClient);
     }
 
     // ------------------------------------------------------------------ нормы расхода
@@ -165,11 +176,16 @@ public class DictionaryController {
         var existing = brand == null
                 ? fuelNorms.findByTransportTypeAndBrandIsNull(req.transportType())
                 : fuelNorms.findByTransportTypeAndBrand(req.transportType(), brand);
+        String oldValue = existing.map(n -> String.valueOf(n.getBaseNorm())).orElse(null); // до мутации
         var norm = existing.orElseGet(FuelNorm::new);
         norm.setTransportType(req.transportType());
         norm.setBrand(brand);
         norm.setBaseNorm(req.baseNorm());
-        return saved(existing, fuelNorms.save(norm));
+        var savedNorm = fuelNorms.save(norm);
+        audit.record(existing.isPresent() ? AuditService.UPDATE : AuditService.CREATE,
+                "FUEL_NORM", req.transportType() + "/" + (brand == null ? "*" : brand),
+                oldValue, String.valueOf(req.baseNorm()));
+        return saved(existing, savedNorm);
     }
 
     // ------------------------------------------------------------------ коэффициенты
@@ -194,6 +210,7 @@ public class DictionaryController {
     @PreAuthorize("hasRole('SYSTEM_ADMIN')")
     public ResponseEntity<Coefficient> upsertCoefficient(@Valid @RequestBody CoefficientRequest req) {
         var existing = coefficients.findByKindAndName(req.kind(), req.name());
+        String oldValue = existing.map(c -> String.valueOf(c.getValue())).orElse(null); // до мутации
         var coefficient = existing.orElseGet(Coefficient::new);
         coefficient.setKind(req.kind());
         coefficient.setName(req.name());
@@ -201,7 +218,10 @@ public class DictionaryController {
         coefficient.setRegionId(req.regionId());
         coefficient.setMonthFrom(req.monthFrom());
         coefficient.setMonthTo(req.monthTo());
-        return saved(existing, coefficients.save(coefficient));
+        var savedCoefficient = coefficients.save(coefficient);
+        audit.record(existing.isPresent() ? AuditService.UPDATE : AuditService.CREATE,
+                "COEFFICIENT", req.kind() + "/" + req.name(), oldValue, String.valueOf(req.value()));
+        return saved(existing, savedCoefficient);
     }
 
     // ------------------------------------------------------------------ тарифы (нархнома)
@@ -224,11 +244,16 @@ public class DictionaryController {
         var existing = req.fuelType() == null
                 ? tariffs.findByTransportTypeAndFuelTypeIsNull(req.transportType())
                 : tariffs.findByTransportTypeAndFuelType(req.transportType(), req.fuelType());
+        String oldValue = existing.map(t -> String.valueOf(t.getPricePerKm())).orElse(null); // до мутации
         var tariff = existing.orElseGet(Tariff::new);
         tariff.setTransportType(req.transportType());
         tariff.setFuelType(req.fuelType());
         tariff.setPricePerKm(req.pricePerKm());
-        return saved(existing, tariffs.save(tariff));
+        var savedTariff = tariffs.save(tariff);
+        audit.record(existing.isPresent() ? AuditService.UPDATE : AuditService.CREATE,
+                "TARIFF", req.transportType() + "/" + (req.fuelType() == null ? "*" : req.fuelType()),
+                oldValue, String.valueOf(req.pricePerKm()));
+        return saved(existing, savedTariff);
     }
 
     // ------------------------------------------------------------------ вспомогательное
