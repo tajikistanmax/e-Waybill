@@ -2,6 +2,7 @@ package tj.mintrans.epd.masterdata.client;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
@@ -23,7 +24,12 @@ public class HttpUnifiedPlatformClient implements UnifiedPlatformClient {
     private final RestClient client;
 
     public HttpUnifiedPlatformClient(@Value("${epd.unified-platform.base-url}") String baseUrl) {
-        this.client = RestClient.builder().baseUrl(baseUrl).build();
+        // Явные таймауты: без них зависший налоговая/ГАИ/E-PERMIT удерживал бы поток Tomcat
+        // бесконечно, и параллельные sync/permit-запросы исчерпали бы пул (отказ в обслуживании).
+        var factory = new SimpleClientHttpRequestFactory();
+        factory.setConnectTimeout(3000);
+        factory.setReadTimeout(5000);
+        this.client = RestClient.builder().baseUrl(baseUrl).requestFactory(factory).build();
     }
 
     @Override
