@@ -1,9 +1,12 @@
 'use client';
 
+import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Icon, P } from './icons';
 import { useAuth } from '@/lib/auth';
 import { useT } from '@/lib/i18n';
+import { wb } from '@/lib/api';
 
 const TITLES: Record<string, { t: string; c: string }> = {
   '/dashboard': { t: 'nav.dashboard', c: 'dash.lead' },
@@ -24,8 +27,20 @@ const TITLES: Record<string, { t: string; c: string }> = {
 
 export function Topbar() {
   const pathname = usePathname();
-  const { username, roles, logout } = useAuth();
+  const { username, roles, logout, authenticated } = useAuth();
   const { t, lang, setLang } = useT();
+  const [unread, setUnread] = useState(0);
+
+  // Счётчик непрочитанных: при входе, при смене страницы и по событию notif-changed
+  // (страница уведомлений шлёт его после прочтения — счётчик обновляется сразу).
+  useEffect(() => {
+    if (!authenticated) { setUnread(0); return; }
+    let alive = true;
+    const refetch = () => wb.unreadCount().then(r => { if (alive) setUnread(r.count); }).catch(() => {});
+    refetch();
+    window.addEventListener('notif-changed', refetch);
+    return () => { alive = false; window.removeEventListener('notif-changed', refetch); };
+  }, [authenticated, pathname]);
   const meta = TITLES[pathname]
     ?? (pathname.startsWith('/waybills/') ? { t: 'nav.waybills', c: 'nav.waybills' }
       : pathname.startsWith('/settings/') ? { t: 'nav.settings', c: 'nav.group.management' }
@@ -47,7 +62,10 @@ export function Topbar() {
         <button className={lang === 'tj' ? 'on' : ''} onClick={() => setLang('tj')}>TJ</button>
       </span>
       <span style={{ fontSize: 12.5, color: 'var(--muted)', margin: '0 4px' }}>{now}</span>
-      <span className="tb-icon"><Icon d={P.bell} /><span className="tb-badge">3</span></span>
+      <Link href="/notifications" className="tb-icon" aria-label={t('notif.title')} style={{ position: 'relative' }}>
+        <Icon d={P.bell} />
+        {unread > 0 && <span className="tb-badge">{unread > 99 ? '99+' : unread}</span>}
+      </Link>
       <span className="tb-icon"><Icon d={P.mail} /></span>
       <span className="tb-icon"><Icon d={P.help} /></span>
       <div className="tb-user">

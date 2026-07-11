@@ -107,6 +107,17 @@ export type AuditEntry = {
   newValue: string | null;
 };
 
+export type NotificationItem = {
+  id: string;
+  recipientRma: string;
+  waybillId: string | null;
+  kind: string;
+  title: string;
+  body: string | null;
+  createdAt: string;
+  readAt: string | null;
+};
+
 async function handle<T>(res: Response): Promise<T> {
   if (!res.ok) {
     let detail = `Ошибка ${res.status}`;
@@ -183,4 +194,11 @@ export const wb = {
       headers: authHeaders({ 'Content-Type': 'application/json' }),
       body: body != null ? JSON.stringify(body) : '{}',
     }).then(r => handle<T>(r)),
+  // Уведомления организации (waybill-service).
+  notifications: () => fetch('/wb-api/api/v1/notifications', { headers: authHeaders() }).then(r => handle<NotificationItem[]>(r)),
+  unreadCount: () => fetch('/wb-api/api/v1/notifications/unread-count', { headers: authHeaders() }).then(r => handle<{ count: number }>(r)),
+  markNotifRead: (id: string) => fetch(`/wb-api/api/v1/notifications/${id}/read`, { method: 'POST', headers: authHeaders() })
+    .then(r => { if (!r.ok && r.status !== 204) throw new Error(`Ошибка ${r.status}`); }),
+  markAllNotifRead: () => fetch('/wb-api/api/v1/notifications/read-all', { method: 'POST', headers: authHeaders() })
+    .then(r => { if (!r.ok && r.status !== 204) throw new Error(`Ошибка ${r.status}`); }),
 };
