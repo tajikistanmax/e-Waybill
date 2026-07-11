@@ -1,9 +1,10 @@
 'use client';
 
-import { Fragment, useEffect, useState } from 'react';
+import { Fragment, useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { md, wb, TYPE_LABELS, type FieldDefinition } from '@/lib/api';
 import { Icon, P } from '../../icons';
+import { SearchSelect, type SSOption } from '../../SearchSelect';
 import { useT } from '@/lib/i18n';
 
 type Option = { value: string; label: string };
@@ -44,8 +45,10 @@ export default function NewWaybillPage() {
   const { t: tt, tType } = useT();
   const [step, setStep] = useState(1);
   const [orgs, setOrgs] = useState<Option[]>([]);
-  const [vehicles, setVehicles] = useState<Option[]>([]);
-  const [drivers, setDrivers] = useState<Option[]>([]);
+  // Выбранные ТС/водитель — храним саму опцию (label для шага проверки), без загрузки всего парка.
+  const [selVehicle, setSelVehicle] = useState<SSOption | null>(null);
+  const [selDriver, setSelDriver] = useState<SSOption | null>(null);
+  const [selSecondDriver, setSelSecondDriver] = useState<SSOption | null>(null);
   const [countries, setCountries] = useState<Option[]>([]);
   const [adrClasses, setAdrClasses] = useState<Option[]>([]);
   const [permitTypes, setPermitTypes] = useState<Option[]>([]);
@@ -82,14 +85,16 @@ export default function NewWaybillPage() {
       .catch(e => setError(e.message));
   }, []);
 
-  useEffect(() => {
-    if (!orgRma) { setVehicles([]); setDrivers([]); return; }
-    md.vehicles(orgRma)
-      .then(list => setVehicles(list.map(v => ({ value: String(v.registrationNumber), label: `${v.registrationNumber} — ${v.brand ?? ''}` }))))
-      .catch(e => setError(e.message));
-    md.drivers(orgRma)
-      .then(list => setDrivers(list.map(d => ({ value: String(d.rma), label: `${d.fullName} (${d.rma})` }))))
-      .catch(e => setError(e.message));
+  // Поисковые загрузчики (серверный подстрочный поиск, лимит 25) — для автопарков в тысячи ТС/водителей.
+  const searchVehicles = useCallback(async (q: string): Promise<SSOption[]> => {
+    if (!orgRma) return [];
+    const list = await md.searchVehicles(orgRma, q);
+    return list.map(v => ({ value: String(v.registrationNumber), label: String(v.registrationNumber), sub: String(v.brand ?? '') }));
+  }, [orgRma]);
+  const searchDrivers = useCallback(async (q: string): Promise<SSOption[]> => {
+    if (!orgRma) return [];
+    const list = await md.searchDrivers(orgRma, q);
+    return list.map(d => ({ value: String(d.rma), label: String(d.fullName), sub: `ИНН ${d.rma}` }));
   }, [orgRma]);
 
   // Классификаторы для форм международных/опасных ПЛ (значение = наименование/код).
@@ -121,6 +126,7 @@ export default function NewWaybillPage() {
   useEffect(() => {
     if (intl.secondDriverRma && intl.secondDriverRma === form.driverRma) {
       setIntl(prev => ({ ...prev, secondDriverRma: '' }));
+      setSelSecondDriver(null);
     }
   }, [form.driverRma, intl.secondDriverRma]);
 
@@ -133,8 +139,8 @@ export default function NewWaybillPage() {
   const isDangerous = t === 'WB_DANGEROUS';
 
   const orgLabel = orgs.find(o => o.value === orgRma)?.label ?? '';
-  const vehicleLabel = vehicles.find(v => v.value === form.vehicleRegNumber)?.label ?? '';
-  const driverLabel = drivers.find(d => d.value === form.driverRma)?.label ?? '';
+  const vehicleLabel = selVehicle?.label ?? form.vehicleRegNumber;
+  const driverLabel = selDriver ? `${selDriver.label} (${selDriver.value})` : form.driverRma;
   const typeMeta = TYPE_META[t];
 
   // ---- Валидация шагов ----
@@ -294,24 +300,34 @@ export default function NewWaybillPage() {
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px 18px' }}>
               <div style={{ gridColumn: '1 / -1' }}>
                 <label>{tt('col.org')}</label>
-                <select required value={orgRma} onChange={e => { setOrgRma(e.target.value); setForm(f => ({ ...f, vehicleRegNumber: '', driverRma: '' })); setIntl(v => ({ ...v, secondDriverRma: '' })); }}>
+                <select required value={orgRma} onChange={e => { setOrgRma(e.target.value); setForm(f => ({ ...f, vehicleRegNumber: '', driverRma: '' })); setIntl(v => ({ ...v, secondDriverRma: '' })); setSelVehicle(null); setSelDriver(null); setSelSecondDriver(null); }}>
                   <option value="">{tt('wb.opt.selectorg')}</option>
                   {orgs.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                 </select>
               </div>
               <div>
                 <label>{tt('col.vehiclefull')}</label>
-                <select required disabled={!orgRma} value={form.vehicleRegNumber} onChange={e => setForm({ ...form, vehicleRegNumber: e.target.value })}>
-                  <option value="">{orgRma ? tt('wb.opt.selectvehicle') : tt('wb.opt.orgfirst')}</option>
-                  {vehicles.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                </select>
+                <SearchSelect
+                  value={form.vehicleRegNumber}
+                  selectedLabel={selVehicle ? `${selVehicle.label}${selVehicle.sub ? ' — ' + selVehicle.sub : ''}` : form.vehicleRegNumber}
+                  placeholder={orgRma ? tt('wb.search.vehicle') : tt('wb.opt.orgfirst')}
+                  disabled={!orgRma}
+                  onSearch={searchVehicles}
+                  onSelect={o => { setSelVehicle(o); setForm(f => ({ ...f, vehicleRegNumber: o.value })); }}
+                  onClear={() => { setSelVehicle(null); setForm(f => ({ ...f, vehicleRegNumber: '' })); }}
+                  loadingText={tt('wb.search.loading')} emptyText={tt('wb.search.empty')} hintText={tt('wb.search.vehicle.hint')} />
               </div>
               <div>
                 <label>{tt('col.driver')}</label>
-                <select required disabled={!orgRma} value={form.driverRma} onChange={e => setForm({ ...form, driverRma: e.target.value })}>
-                  <option value="">{orgRma ? tt('wb.opt.selectdriver') : tt('wb.opt.orgfirst')}</option>
-                  {drivers.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                </select>
+                <SearchSelect
+                  value={form.driverRma}
+                  selectedLabel={selDriver ? `${selDriver.label} (${selDriver.value})` : form.driverRma}
+                  placeholder={orgRma ? tt('wb.search.driver') : tt('wb.opt.orgfirst')}
+                  disabled={!orgRma}
+                  onSearch={searchDrivers}
+                  onSelect={o => { setSelDriver(o); setForm(f => ({ ...f, driverRma: o.value })); }}
+                  onClear={() => { setSelDriver(null); setForm(f => ({ ...f, driverRma: '' })); }}
+                  loadingText={tt('wb.search.loading')} emptyText={tt('wb.search.empty')} hintText={tt('wb.search.driver.hint')} />
               </div>
             </div>
           )}
@@ -406,10 +422,15 @@ export default function NewWaybillPage() {
                 <>
                   <div>
                     <label>{tt('wb.f.seconddriver')}</label>
-                    <select value={intl.secondDriverRma} onChange={e => setIntl({ ...intl, secondDriverRma: e.target.value })}>
-                      <option value="">{tt('wb.opt.none')}</option>
-                      {drivers.filter(d => d.value !== form.driverRma).map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                    </select>
+                    <SearchSelect
+                      value={intl.secondDriverRma}
+                      selectedLabel={selSecondDriver ? `${selSecondDriver.label} (${selSecondDriver.value})` : intl.secondDriverRma}
+                      placeholder={tt('wb.search.driver')}
+                      disabled={!orgRma}
+                      onSearch={async q => (await searchDrivers(q)).filter(d => d.value !== form.driverRma)}
+                      onSelect={o => { setSelSecondDriver(o); setIntl(v => ({ ...v, secondDriverRma: o.value })); }}
+                      onClear={() => { setSelSecondDriver(null); setIntl(v => ({ ...v, secondDriverRma: '' })); }}
+                      loadingText={tt('wb.search.loading')} emptyText={tt('wb.search.empty')} hintText={tt('wb.search.driver.hint')} />
                   </div>
                   <div>
                     <label>{tt('wb.f.permit')}</label>

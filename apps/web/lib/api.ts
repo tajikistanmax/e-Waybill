@@ -197,6 +197,18 @@ export const md = {
   drivers: (orgRma: string) => fetch(`/md-api/api/v1/drivers?organizationRma=${orgRma}`, { headers: authHeaders() }).then(r => handle<Record<string, unknown>[]>(r)),
   vehicles: (orgRma: string) => fetch(`/md-api/api/v1/vehicles?organizationRma=${orgRma}`, { headers: authHeaders() }).then(r => handle<Record<string, unknown>[]>(r)),
   employees: (orgRma: string) => fetch(`/md-api/api/v1/employees?organizationRma=${orgRma}`, { headers: authHeaders() }).then(r => handle<Record<string, unknown>[]>(r)),
+  // Серверный подстрочный поиск (для автопарков в тысячи ТС/водителей): ТС по госномеру,
+  // водители по ИНН или ФИО. Пустой q → первые limit (просмотр). Org-скоуп на бэкенде.
+  searchVehicles: (orgRma: string, q: string, limit = 25) => fetch(
+    `/md-api/api/v1/vehicles?organizationRma=${encodeURIComponent(orgRma)}&q=${encodeURIComponent(q)}&limit=${limit}`,
+    { headers: authHeaders() }).then(r => handle<Record<string, unknown>[]>(r)),
+  searchDrivers: (orgRma: string, q: string, limit = 25) => fetch(
+    `/md-api/api/v1/drivers?organizationRma=${encodeURIComponent(orgRma)}&q=${encodeURIComponent(q)}&limit=${limit}`,
+    { headers: authHeaders() }).then(r => handle<Record<string, unknown>[]>(r)),
+  // Добавление ТС/водителя своей организации по госномеру/ИНН — данные из единой платформы
+  // (ГАИ/налоговая). Доступно диспетчеру и администратору компании (tenant-скоуп на бэкенде).
+  syncVehicle: (body: Record<string, unknown>) => mdPost('sync/vehicle', body),
+  syncDriver: (body: Record<string, unknown>) => mdPost('sync/driver', body),
   // Глобальные реестры (все организации). Для платформенного админа возвращают всё,
   // для арендо-ограниченного пользователя (COMPANY_ADMIN и т.п.) — только свою организацию.
   allDrivers: () => fetch('/md-api/api/v1/drivers', { headers: authHeaders() }).then(r => handle<Record<string, unknown>[]>(r)),
