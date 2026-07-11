@@ -113,6 +113,14 @@ export default function NewWaybillPage() {
       .catch(() => setCustomDefs([]));
   }, [form.waybillType]);
 
+  // Второй водитель не должен совпасть с основным: при смене основного сбрасываем коллизию
+  // (селект второго фильтрует основного и молча показал бы «нет», но слал бы устаревший РМА).
+  useEffect(() => {
+    if (intl.secondDriverRma && intl.secondDriverRma === form.driverRma) {
+      setIntl(prev => ({ ...prev, secondDriverRma: '' }));
+    }
+  }, [form.driverRma, intl.secondDriverRma]);
+
   useEffect(() => { window.scrollTo({ top: 0 }); }, [step]);
 
   const t = form.waybillType;

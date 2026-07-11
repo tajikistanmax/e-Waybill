@@ -1,5 +1,8 @@
 package tj.mintrans.epd.waybill.signing;
 
+import jakarta.annotation.PostConstruct;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
@@ -17,6 +20,15 @@ import java.util.UUID;
 @Component
 @ConditionalOnProperty(name = "epd.signing.mode", havingValue = "stub", matchIfMissing = true)
 public class StubTitleSigner implements TitleSigner {
+
+    private static final Logger log = LoggerFactory.getLogger(StubTitleSigner.class);
+
+    /** Явное предупреждение при старте: подпись — заглушка, а не юридически значимая ЭП. */
+    @PostConstruct
+    void warnNotLegallyValid() {
+        log.warn("ПОДПИСЬ ТИТУЛОВ — DEV-ЗАГЛУШКА (SHA-256, НЕ юридически значимая ЭП). "
+                + "Для прода задайте epd.signing.mode=cades (квалифицированная ЭП через УЦ РТ, Закон № 1965).");
+    }
 
     @Override
     public String sign(UUID waybillId, String titleType, String signerRma, Map<String, Object> data) {

@@ -68,7 +68,13 @@ public class PolicyController {
     @GetMapping("/effective")
     public Map<String, String> effective(@RequestParam(required = false) String organizationRma,
                                          @RequestParam(required = false) String waybillType) {
-        return resolver.effective(organizationRma, waybillType);
+        // Тенант получает эффективные правила только СВОЕЙ организации (иначе перебором
+        // organizationRma можно подсмотреть ORGANIZATION-переопределения чужой орг).
+        // Платформа и сервисный аккаунт (waybill-service) — по запрошенному параметру.
+        String org = currentUser.isTenantScoped()
+                ? currentUser.organizationRma().orElse(null)
+                : organizationRma;
+        return resolver.effective(org, waybillType);
     }
 
     /** Список политик. Не-админ видит национальные, по типам ПЛ и политики своей организации. */

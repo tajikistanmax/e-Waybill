@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useT } from '@/lib/i18n';
+import { useAuth } from '@/lib/auth';
 import { Icon, P } from '../icons';
 
 type St = 'done' | 'partial' | 'planned';
@@ -9,7 +10,7 @@ type St = 'done' | 'partial' | 'planned';
 /** Разделы административной подсистемы «Настройки» (по ТЗ spec/ТЗ-ЕДИНОЕ-DTS.md §29).
  *  st: done — доступно, partial — частично (есть основа), planned — планируется.
  *  href — куда ведёт уже существующая настройка. */
-const MODULES: { key: string; icon: string; cls: string; st: St; href?: string }[] = [
+const MODULES: { key: string; icon: string; cls: string; st: St; href?: string; admin?: boolean }[] = [
   { key: 'rules', icon: P.settings, cls: 'ic-green', st: 'done', href: '/settings/policies' },
   { key: 'general', icon: P.help, cls: 'ic-blue', st: 'planned' },
   { key: 'org', icon: P.building, cls: 'ic-blue', st: 'partial', href: '/company' },
@@ -31,7 +32,7 @@ const MODULES: { key: string; icon: string; cls: string; st: St; href?: string }
   { key: 'dictionaries', icon: P.book, cls: 'ic-blue', st: 'done', href: '/dictionaries' },
   { key: 'classifiers', icon: P.globe, cls: 'ic-cyan', st: 'done', href: '/settings/classifiers' },
   { key: 'expiry', icon: P.alert, cls: 'ic-amber', st: 'done', href: '/settings/expiry' },
-  { key: 'audit', icon: P.eye, cls: 'ic-amber', st: 'done', href: '/settings/audit' },
+  { key: 'audit', icon: P.eye, cls: 'ic-amber', st: 'done', href: '/settings/audit', admin: true },
   { key: 'backup', icon: P.shield, cls: 'ic-blue', st: 'planned' },
   { key: 'performance', icon: P.chart, cls: 'ic-purple', st: 'planned' },
   { key: 'interface', icon: P.globe, cls: 'ic-cyan', st: 'partial' },
@@ -39,6 +40,11 @@ const MODULES: { key: string; icon: string; cls: string; st: St; href?: string }
 
 export default function SettingsPage() {
   const { t } = useT();
+  const { roles } = useAuth();
+  const sysAdmin = roles.includes('SYSTEM_ADMIN');
+  // admin-модули (напр. журнал аудита — эндпоинт SYSTEM_ADMIN-only) не показываем прочим,
+  // иначе COMPANY_ADMIN откроет плитку и получит 403.
+  const modules = MODULES.filter(m => !m.admin || sysAdmin);
 
   const stBadge = (st: St) =>
     st === 'done' ? <span className="badge green">{t('set.st.done')}</span>
@@ -57,7 +63,7 @@ export default function SettingsPage() {
       <div className="hint" style={{ marginBottom: 18 }}>{t('set.note')}</div>
 
       <div className="kpi-row" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 14 }}>
-        {MODULES.map(m => {
+        {modules.map(m => {
           const inner = (
             <>
               <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>

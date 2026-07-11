@@ -64,7 +64,7 @@ export default function ExpirySettingsPage() {
             <tr>
               <th style={{ width: 130 }}>{t('aud.col.entity')}</th>
               <th>{t('cls.name.ru')}</th>
-              <th>{t('col.type') === 'col.type' ? 'Документ' : t('col.type')}</th>
+              <th>{t('exp.col.doc')}</th>
               <th style={{ width: 120 }}>{t('exp.col.validto')}</th>
               <th style={{ width: 120 }}>{t('exp.col.left')}</th>
             </tr>
