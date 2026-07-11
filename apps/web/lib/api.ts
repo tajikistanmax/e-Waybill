@@ -107,6 +107,16 @@ export type AuditEntry = {
   newValue: string | null;
 };
 
+export type ClassifierItem = {
+  id: string;
+  category: string;
+  code: string;
+  nameRu: string;
+  nameTj: string | null;
+  sortOrder: number;
+  active: boolean;
+};
+
 export type NotificationItem = {
   id: string;
   recipientRma: string;
@@ -161,6 +171,13 @@ export const md = {
   policies: () => fetch('/md-api/api/v1/policies', { headers: authHeaders() }).then(r => handle<Policy[]>(r)),
   savePolicy: (body: Record<string, unknown>) => mdPost('policies', body) as Promise<Policy>,
   deletePolicy: (id: string) => fetch(`/md-api/api/v1/policies/${id}`, { method: 'DELETE', headers: authHeaders() })
+    .then(r => { if (!r.ok && r.status !== 204) throw new Error(`Ошибка ${r.status}`); }),
+  // Классификаторы (страны, классы ADR, виды дозволов).
+  classifiers: (category: string, all = false) => fetch(
+    `/md-api/api/v1/classifiers?category=${category}${all ? '&all=true' : ''}`,
+    { headers: authHeaders() }).then(r => handle<ClassifierItem[]>(r)),
+  saveClassifier: (body: Record<string, unknown>) => mdPost('classifiers', body) as Promise<ClassifierItem>,
+  deleteClassifier: (id: string) => fetch(`/md-api/api/v1/classifiers/${id}`, { method: 'DELETE', headers: authHeaders() })
     .then(r => { if (!r.ok && r.status !== 204) throw new Error(`Ошибка ${r.status}`); }),
   // Журнал аудита (только SYSTEM_ADMIN).
   audit: (entityType?: string, limit = 100) => fetch(
