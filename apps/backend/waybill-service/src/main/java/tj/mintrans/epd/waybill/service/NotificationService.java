@@ -6,6 +6,7 @@ import org.springframework.transaction.annotation.Transactional;
 import tj.mintrans.epd.waybill.config.CurrentUser;
 import tj.mintrans.epd.waybill.domain.Notification;
 import tj.mintrans.epd.waybill.event.WaybillStatusChanged;
+import tj.mintrans.epd.waybill.notify.NotificationChannel;
 import tj.mintrans.epd.waybill.repository.NotificationRepository;
 
 import java.time.OffsetDateTime;
@@ -30,10 +31,13 @@ public class NotificationService {
 
     private final NotificationRepository repository;
     private final CurrentUser currentUser;
+    private final List<NotificationChannel> channels;
 
-    public NotificationService(NotificationRepository repository, CurrentUser currentUser) {
+    public NotificationService(NotificationRepository repository, CurrentUser currentUser,
+                               List<NotificationChannel> channels) {
         this.repository = repository;
         this.currentUser = currentUser;
+        this.channels = channels;
     }
 
     /** Создать уведомление по событию перехода (новая транзакция; best-effort). */
@@ -56,6 +60,10 @@ public class NotificationService {
             }
             n.setBody(body);
             repository.save(n);
+            // Доставка во внешние каналы (SMS/push/…), если подключены. Каждый — best-effort.
+            for (NotificationChannel channel : channels) {
+                try { channel.send(n); } catch (RuntimeException ignored) { /* канал не должен рушить */ }
+            }
         } catch (RuntimeException ex) {
             // Уведомление best-effort: сбой записи не должен влиять на бизнес-поток.
         }
