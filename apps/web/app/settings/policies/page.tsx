@@ -7,8 +7,15 @@ import { useAuth } from '@/lib/auth';
 import { useT } from '@/lib/i18n';
 import { Icon, P } from '../../icons';
 
-/** Известные правила движка политик (для тумблеров и выпадающих списков). */
-const RULES = ['require_med_pre', 'require_tech_check', 'require_med_post', 'require_gps'] as const;
+/** Каталог правил движка политик: тип значения (bool — тумблер, int — число). */
+const RULE_TYPES: Record<string, 'bool' | 'int'> = {
+  require_med_pre: 'bool',
+  require_tech_check: 'bool',
+  require_med_post: 'bool',
+  require_gps: 'bool',
+  max_validity_days: 'int',
+};
+const ALL_RULES = Object.keys(RULE_TYPES);
 
 export default function PoliciesSettingsPage() {
   const { t, tType } = useT();
@@ -20,7 +27,7 @@ export default function PoliciesSettingsPage() {
   const [ok, setOk] = useState('');
   const [busy, setBusy] = useState(false);
   const [form, setForm] = useState<{ scopeKey: string; ruleKey: string; ruleValue: string }>(
-    { scopeKey: '', ruleKey: RULES[0], ruleValue: 'true' });
+    { scopeKey: '', ruleKey: ALL_RULES[0], ruleValue: 'true' });
 
   const reload = useCallback(async () => {
     try { setRows(await md.policies()); setError(''); }
@@ -50,9 +57,8 @@ export default function PoliciesSettingsPage() {
   const byOrg = rows.filter(p => p.scopeLevel === 'ORGANIZATION').sort((a, b) => a.scopeKey.localeCompare(b.scopeKey));
 
   const ruleName = (key: string) => {
-    const k = `pol.r.${key}`;
-    const translated = t(k);
-    return translated === k ? key : translated;
+    const translated = t(`pol.r.${key}`);
+    return translated === `pol.r.${key}` ? key : translated;
   };
 
   const Toggle = ({ value, disabled, onChange }: { value: boolean; disabled?: boolean; onChange: (v: boolean) => void }) => (
@@ -66,6 +72,38 @@ export default function PoliciesSettingsPage() {
       {value ? t('pol.on') : t('pol.off')}
     </button>
   );
+
+  /** Числовое значение с сохранением по кнопке (пусто = лимит типа). */
+  const NumberValue = ({ current, disabled, onSave }: { current?: string; disabled?: boolean; onSave: (v: string) => void }) => {
+    const [v, setV] = useState(current ?? '');
+    useEffect(() => { setV(current ?? ''); }, [current]);
+    const dirty = (v.trim() || '') !== (current ?? '');
+    return (
+      <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
+        <input type="number" min={1} value={v} disabled={disabled || busy}
+          onChange={e => setV(e.target.value)} placeholder="—" style={{ width: 68 }} />
+        {dirty && !disabled && (
+          <button type="button" className="badge blue" style={{ cursor: 'pointer', border: 'none' }}
+            disabled={busy} onClick={() => onSave(v.trim())}>{t('pol.set')}</button>
+        )}
+      </span>
+    );
+  };
+
+  const removeBtn = (id: string) => (
+    <button title={t('pol.remove')} disabled={busy} onClick={() => remove(id)}
+      style={{ background: 'none', border: '1px solid var(--line)', borderRadius: 6, padding: '4px 8px', cursor: 'pointer', color: 'var(--red)' }}>
+      <Icon d={P.trash} cls="" style={{ width: 15, height: 15 }} />
+    </button>
+  );
+
+  /** Ячейка значения политики в таблицах переопределений (по типу значения правила). */
+  const valueCell = (p: Policy, canEdit: boolean) =>
+    RULE_TYPES[p.ruleKey] === 'int'
+      ? <NumberValue current={p.ruleValue} disabled={!canEdit}
+          onSave={v => save({ scopeLevel: p.scopeLevel, scopeKey: p.scopeKey, ruleKey: p.ruleKey, ruleValue: v })} />
+      : <Toggle value={p.ruleValue === 'true'} disabled={!canEdit}
+          onChange={v => save({ scopeLevel: p.scopeLevel, scopeKey: p.scopeKey, ruleKey: p.ruleKey, ruleValue: String(v) })} />;
 
   return (
     <>
@@ -83,52 +121,45 @@ export default function PoliciesSettingsPage() {
       {error && <div className="error" style={{ marginBottom: 14 }}>{error}</div>}
       {ok && <div className="badge green" style={{ marginBottom: 14 }}>{ok}</div>}
 
-      {/* Национальные умолчания — тумблеры */}
+      {/* Национальные умолчания */}
       <div className="card" style={{ marginBottom: 18 }}>
         <h3 style={{ margin: '4px 0 12px' }}>{t('pol.national')}</h3>
         <table>
-          <thead><tr><th>{t('pol.rule')}</th><th style={{ width: 120 }}>{t('pol.value')}</th></tr></thead>
+          <thead><tr><th>{t('pol.rule')}</th><th style={{ width: 160 }}>{t('pol.value')}</th></tr></thead>
           <tbody>
-            {RULES.map(rule => {
+            {ALL_RULES.map(rule => {
               const p = national(rule);
-              const on = p ? p.ruleValue === 'true' : false;
               return (
                 <tr key={rule}>
                   <td style={{ fontWeight: 600 }}>{ruleName(rule)}</td>
                   <td>
-                    <Toggle value={on} disabled={!isSysAdmin}
-                      onChange={v => save({ scopeLevel: 'NATIONAL', ruleKey: rule, ruleValue: String(v) })} />
+                    {RULE_TYPES[rule] === 'int'
+                      ? <NumberValue current={p?.ruleValue} disabled={!isSysAdmin}
+                          onSave={v => save({ scopeLevel: 'NATIONAL', ruleKey: rule, ruleValue: v })} />
+                      : <Toggle value={p ? p.ruleValue === 'true' : false} disabled={!isSysAdmin}
+                          onChange={v => save({ scopeLevel: 'NATIONAL', ruleKey: rule, ruleValue: String(v) })} />}
                   </td>
                 </tr>
               );
             })}
           </tbody>
         </table>
+        <div className="hint" style={{ marginTop: 10 }}>{t('pol.numhint')}</div>
       </div>
 
       {/* Переопределения по типу ПЛ */}
       <div className="card" style={{ marginBottom: 18 }}>
         <h3 style={{ margin: '4px 0 12px' }}>{t('pol.bytype')}</h3>
         <table>
-          <thead><tr><th>{t('col.type')}</th><th>{t('pol.rule')}</th><th style={{ width: 110 }}>{t('pol.value')}</th><th style={{ width: 100 }} /></tr></thead>
+          <thead><tr><th>{t('col.type')}</th><th>{t('pol.rule')}</th><th style={{ width: 160 }}>{t('pol.value')}</th><th style={{ width: 80 }} /></tr></thead>
           <tbody>
             {byType.length === 0 && <tr><td colSpan={4} style={{ color: 'var(--muted)' }}>{t('pol.empty')}</td></tr>}
             {byType.map(p => (
               <tr key={p.id}>
                 <td style={{ fontWeight: 600 }}>{tType(p.scopeKey)}</td>
                 <td>{ruleName(p.ruleKey)}</td>
-                <td>
-                  <Toggle value={p.ruleValue === 'true'} disabled={!isSysAdmin}
-                    onChange={v => save({ scopeLevel: 'VEHICLE_TYPE', scopeKey: p.scopeKey, ruleKey: p.ruleKey, ruleValue: String(v) })} />
-                </td>
-                <td>
-                  {isSysAdmin && (
-                    <button title={t('pol.remove')} disabled={busy} onClick={() => remove(p.id)}
-                      style={{ background: 'none', border: '1px solid var(--line)', borderRadius: 6, padding: '4px 8px', cursor: 'pointer', color: 'var(--red)' }}>
-                      <Icon d={P.trash} cls="" style={{ width: 15, height: 15 }} />
-                    </button>
-                  )}
-                </td>
+                <td>{valueCell(p, isSysAdmin)}</td>
+                <td>{isSysAdmin && removeBtn(p.id)}</td>
               </tr>
             ))}
           </tbody>
@@ -139,22 +170,15 @@ export default function PoliciesSettingsPage() {
       <div className="card">
         <h3 style={{ margin: '4px 0 12px' }}>{t('pol.byorg')}</h3>
         <table>
-          <thead><tr><th>{t('pol.org')}</th><th>{t('pol.rule')}</th><th style={{ width: 110 }}>{t('pol.value')}</th><th style={{ width: 100 }} /></tr></thead>
+          <thead><tr><th>{t('pol.org')}</th><th>{t('pol.rule')}</th><th style={{ width: 160 }}>{t('pol.value')}</th><th style={{ width: 80 }} /></tr></thead>
           <tbody>
             {byOrg.length === 0 && <tr><td colSpan={4} style={{ color: 'var(--muted)' }}>{t('pol.empty')}</td></tr>}
             {byOrg.map(p => (
               <tr key={p.id}>
                 <td><span className="number">{p.scopeKey}</span></td>
                 <td>{ruleName(p.ruleKey)}</td>
-                <td>
-                  <Toggle value={p.ruleValue === 'true'}
-                    onChange={v => save({ scopeLevel: 'ORGANIZATION', scopeKey: p.scopeKey, ruleKey: p.ruleKey, ruleValue: String(v) })} />
-                </td>
-                <td>
-                  <button className="btn-icon" title={t('pol.remove')} disabled={busy} onClick={() => remove(p.id)}>
-                    <Icon d={P.trash} cls="" style={{ width: 15, height: 15 }} />
-                  </button>
-                </td>
+                <td>{valueCell(p, true)}</td>
+                <td>{removeBtn(p.id)}</td>
               </tr>
             ))}
           </tbody>
@@ -169,19 +193,23 @@ export default function PoliciesSettingsPage() {
           </label>
           <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12.5 }}>
             {t('pol.rule')}
-            <select value={form.ruleKey} onChange={e => setForm({ ...form, ruleKey: e.target.value })}>
-              {RULES.map(r => <option key={r} value={r}>{ruleName(r)}</option>)}
+            <select value={form.ruleKey}
+              onChange={e => setForm({ ...form, ruleKey: e.target.value, ruleValue: RULE_TYPES[e.target.value] === 'int' ? '1' : 'true' })}>
+              {ALL_RULES.map(r => <option key={r} value={r}>{ruleName(r)}</option>)}
             </select>
           </label>
           <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12.5 }}>
             {t('pol.value')}
-            <select value={form.ruleValue} onChange={e => setForm({ ...form, ruleValue: e.target.value })}>
-              <option value="true">{t('pol.on')}</option>
-              <option value="false">{t('pol.off')}</option>
-            </select>
+            {RULE_TYPES[form.ruleKey] === 'int'
+              ? <input type="number" min={1} value={form.ruleValue}
+                  onChange={e => setForm({ ...form, ruleValue: e.target.value })} style={{ width: 100 }} />
+              : <select value={form.ruleValue} onChange={e => setForm({ ...form, ruleValue: e.target.value })}>
+                  <option value="true">{t('pol.on')}</option>
+                  <option value="false">{t('pol.off')}</option>
+                </select>}
           </label>
-          <button className="btn" disabled={busy || !form.scopeKey.trim()}
-            onClick={() => save({ scopeLevel: 'ORGANIZATION', scopeKey: form.scopeKey.trim(), ruleKey: form.ruleKey, ruleValue: form.ruleValue })}>
+          <button className="btn" disabled={busy || !form.scopeKey.trim() || !form.ruleValue.trim()}
+            onClick={() => save({ scopeLevel: 'ORGANIZATION', scopeKey: form.scopeKey.trim(), ruleKey: form.ruleKey, ruleValue: form.ruleValue.trim() })}>
             <Icon d={P.plus} cls="" style={{ width: 15, height: 15 }} /> {t('pol.add')}
           </button>
         </div>

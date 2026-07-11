@@ -289,12 +289,29 @@ public class WaybillService {
         requireStatus(wb, WaybillStatus.DRAFT);
         var dispatcher = requireEmployee(dispatcherRma, 3, "Диспетчер");
         var from = validFrom != null ? validFrom : OffsetDateTime.now();
-        int days = validityDays != null ? validityDays : wb.getWaybillType().maxValidityDays();
+        // Лимит срока действия: легальный максимум типа ПЛ, который политика max_validity_days
+        // (уровни NATIONAL/ORGANIZATION/VEHICLE_TYPE) может только УЖЕСТОЧИТЬ, но не превысить.
+        int typeCap = wb.getWaybillType().maxValidityDays();
+        int effectiveCap = typeCap;
+        String maxDaysRule = masterData
+                .effectivePolicies(wb.getOrganizationRma(), wb.getWaybillType().name())
+                .get("max_validity_days");
+        if (maxDaysRule != null) {
+            try {
+                int policyCap = Integer.parseInt(maxDaysRule.trim());
+                if (policyCap >= 1) {
+                    effectiveCap = Math.min(typeCap, policyCap);
+                }
+            } catch (NumberFormatException ignored) {
+                // некорректное значение политики — остаётся легальный лимит типа
+            }
+        }
+        int days = validityDays != null ? validityDays : effectiveCap;
         if (days < 1) {
             throw new UnprocessableException("Срок действия должен быть не менее 1 дня");
         }
-        if (days > wb.getWaybillType().maxValidityDays()) {
-            throw new UnprocessableException("Срок действия превышает лимит типа: %d дней".formatted(wb.getWaybillType().maxValidityDays()));
+        if (days > effectiveCap) {
+            throw new UnprocessableException("Срок действия превышает лимит: %d дн.".formatted(effectiveCap));
         }
         wb.setValidFrom(from);
         wb.setValidTo(from.plusDays(days));
