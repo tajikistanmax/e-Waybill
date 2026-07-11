@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { ResponsiveContainer, AreaChart, Area } from 'recharts';
 import { md, wb, Waybill } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 import { Icon, P } from '../icons';
@@ -14,24 +13,6 @@ const XMARK = 'M18 6 6 18M6 6l12 12';
 const REFRESH = 'M23 4v6h-6M1 20v-6h6M3.5 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.65 4.36A9 9 0 0 0 20.5 15';
 const SEARCH = 'M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16zM21 21l-4.35-4.35';
 const PRINTER = 'M6 9V3h12v6M6 18H4a1 1 0 0 1-1-1v-5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v5a1 1 0 0 1-1 1h-2M6 14h12v7H6z';
-
-/* Спарклайны KPI (представительные данные для визуализации тренда). */
-const SPARK = {
-  wait: [{ v: 6 }, { v: 8 }, { v: 7 }, { v: 9 }, { v: 8 }, { v: 11 }, { v: 10 }, { v: 12 }],
-  pass: [{ v: 18 }, { v: 20 }, { v: 19 }, { v: 24 }, { v: 22 }, { v: 26 }, { v: 25 }, { v: 28 }],
-  fail: [{ v: 5 }, { v: 4 }, { v: 6 }, { v: 3 }, { v: 4 }, { v: 2 }, { v: 3 }, { v: 2 }],
-  time: [{ v: 6 }, { v: 5.6 }, { v: 5.2 }, { v: 5 }, { v: 4.8 }, { v: 4.6 }, { v: 4.5 }, { v: 4.53 }],
-};
-
-/* Представительное расписание на сегодня (визуальный виджет). */
-const SCHEDULE = [
-  { time: '11:00', name: 'Давлатов Шерзод У.', org: 'ТаджикТранс ООО', pl: 'PL-2025-000124', st: 'st.confirmed', color: 'green', bar: 'var(--green)' },
-  { time: '11:30', name: 'Холматов Бахром Р.', org: 'СеверТранс', pl: 'PL-2025-000125', st: 'st.inprocess', color: 'blue', bar: 'var(--blue-500)' },
-  { time: '12:00', name: 'Юсупов Мухаммад И.', org: 'АвтоСервис', pl: 'PL-2025-000126', st: 'st.planned', color: 'gray', bar: 'var(--line)' },
-  { time: '12:30', name: 'Ибрагимов Саид А.', org: 'Логистик Таджикистан', pl: 'PL-2025-000127', st: 'st.planned', color: 'gray', bar: 'var(--line)' },
-  { time: '13:00', name: 'Курбонов Хусейн К.', org: 'ТаджикТранс ООО', pl: 'PL-2025-000128', st: 'st.planned', color: 'gray', bar: 'var(--line)' },
-];
-
 
 function isToday(iso: string) {
   const d = new Date(iso), n = new Date();
@@ -176,10 +157,10 @@ export default function MedWorkstation() {
   }
 
   const kpis = [
-    { label: t('med.kpi.wait'), value: String(pre.length), icon: P.users, cls: 'ic-blue', trend: t('med.trend.hour'), tone: '', color: '#2563eb', spark: SPARK.wait },
-    { label: t('med.kpi.passed'), value: String(passedToday), icon: P.check, cls: 'ic-green', trend: t('med.trend.pass'), tone: 'up', color: '#16a34a', spark: SPARK.pass },
-    { label: t('med.kpi.failed'), value: String(rejectedToday), icon: XMARK, cls: 'ic-red', trend: t('med.trend.fail'), tone: 'down', color: '#dc2626', spark: SPARK.fail },
-    { label: t('med.kpi.avgtime'), value: t('med.kpi.avgtime.v'), icon: CLK, cls: 'ic-amber', trend: t('med.trend.time'), tone: 'down', color: '#ea9615', spark: SPARK.time },
+    { label: t('med.kpi.wait'), value: String(pre.length), icon: P.users, cls: 'ic-blue' },
+    { label: t('med.kpi.passed'), value: String(passedToday), icon: P.check, cls: 'ic-green' },
+    { label: t('med.kpi.failed'), value: String(rejectedToday), icon: XMARK, cls: 'ic-red' },
+    { label: t('med.kpi.examined'), value: String(passedToday + rejectedToday), icon: P.doc, cls: 'ic-amber' },
   ];
 
   const actions: { title: string; sub: string; icon: string; cls: string; href?: string; onClick?: () => void }[] = [
@@ -215,36 +196,11 @@ export default function MedWorkstation() {
 
       {/* KPI */}
       <div className="kpi-row" style={{ gridTemplateColumns: 'repeat(4, 1fr)' }}>
-        {kpis.map((k, i) => (
-          <div className="kpi" key={k.label} style={{ gap: 14 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-              <span className={`k-ic ${k.cls}`}><Icon d={k.icon} cls="" /></span>
-              <div style={{ minWidth: 0 }}>
-                <div className="k-label">{k.label}</div>
-                <div className="k-value" style={{ marginTop: 6 }}>{k.value}</div>
-              </div>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 10 }}>
-              <span
-                className={'k-trend' + (k.tone === 'up' ? ' up' : k.tone === 'down' ? ' down' : '')}
-                style={k.tone ? undefined : { color: 'var(--muted)' }}
-              >
-                {k.trend}
-              </span>
-              <div className="k-spark" style={{ width: 104, height: 32 }}>
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={k.spark} margin={{ top: 4, bottom: 0, left: 0, right: 0 }}>
-                    <defs>
-                      <linearGradient id={`sp-${i}`} x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor={k.color} stopOpacity={0.35} />
-                        <stop offset="100%" stopColor={k.color} stopOpacity={0} />
-                      </linearGradient>
-                    </defs>
-                    <Area type="monotone" dataKey="v" stroke={k.color} strokeWidth={2} fill={`url(#sp-${i})`} />
-                  </AreaChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
+        {kpis.map(k => (
+          <div className="kpi" key={k.label}>
+            <div className="k-top"><span className={`k-ic ${k.cls}`}><Icon d={k.icon} cls="" /></span></div>
+            <div className="k-label">{k.label}</div>
+            <div className="k-value">{k.value}</div>
           </div>
         ))}
       </div>
@@ -349,22 +305,23 @@ export default function MedWorkstation() {
 
         {/* Правая колонка */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
-          {/* Расписание на сегодня */}
+          {/* Очередь на сегодня — реальные ожидающие медосмотра (не мок) */}
           <div className="card" style={{ marginBottom: 0 }}>
             <h2>{t('med.schedule.h')}</h2>
-            {SCHEDULE.map(s => (
-              <div key={s.pl} style={{ display: 'flex', gap: 12, padding: '11px 0', borderBottom: '1px solid var(--line-soft)' }}>
-                <div style={{ width: 42, flex: 'none', fontWeight: 700, fontSize: 13, color: 'var(--ink)', fontVariantNumeric: 'tabular-nums' }}>{s.time}</div>
-                <div style={{ flex: 1, minWidth: 0, borderLeft: `2px solid ${s.bar}`, paddingLeft: 11 }}>
+            {pre.slice(0, 6).map(w => (
+              <div key={w.id} style={{ display: 'flex', gap: 12, padding: '11px 0', borderBottom: '1px solid var(--line-soft)' }}>
+                <div style={{ width: 42, flex: 'none', fontWeight: 700, fontSize: 13, color: 'var(--ink)', fontVariantNumeric: 'tabular-nums' }}>{hhmm(w.createdAt)}</div>
+                <div style={{ flex: 1, minWidth: 0, borderLeft: '2px solid var(--blue-500)', paddingLeft: 11 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <b style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink)' }}>{s.name}</b>
-                    <span className={`badge ${s.color}`} style={{ marginLeft: 'auto' }}>{t(s.st)}</span>
+                    <b style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink)' }}>{String(w.driverSnapshot?.fullName ?? w.driverRma)}</b>
+                    <span className="badge amber" style={{ marginLeft: 'auto' }}>{t('st.waiting')}</span>
                   </div>
-                  <div style={{ color: 'var(--muted)', fontSize: 12, marginTop: 2 }}>{s.org}</div>
-                  <div className="number" style={{ fontSize: 11.5, marginTop: 2 }}>{s.pl}</div>
+                  <div style={{ color: 'var(--muted)', fontSize: 12, marginTop: 2 }}>{String(w.organizationSnapshot?.name ?? w.organizationRma)}</div>
+                  <div className="number" style={{ fontSize: 11.5, marginTop: 2 }}>{w.number ?? t('common.draft')}</div>
                 </div>
               </div>
             ))}
+            {pre.length === 0 && <div style={{ color: 'var(--muted)', fontSize: 13, padding: '12px 2px' }}>{t('med.empty.queue')}</div>}
             <Link className="link" href="/waybills" style={{ display: 'inline-block', marginTop: 12 }}>{t('med.schedule.full')}</Link>
           </div>
 

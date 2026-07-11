@@ -173,6 +173,7 @@ const DICT: Record<string, { ru: string; tj: string }> = {
   'med.kpi.wait': { ru: 'Ожидают медосмотр', tj: 'Интизори ташхиси тиббӣ' },
   'med.kpi.passed': { ru: 'Допущено сегодня', tj: 'Имрӯз иҷозат дода шуд' },
   'med.kpi.failed': { ru: 'Не допущено сегодня', tj: 'Имрӯз иҷозат дода нашуд' },
+  'med.kpi.examined': { ru: 'Осмотрено сегодня', tj: 'Имрӯз ташхис шуд' },
   'med.kpi.avgtime': { ru: 'Среднее время осмотра', tj: 'Вақти миёнаи муоина' },
   'med.kpi.avgtime.v': { ru: '— мин —', tj: '— дақ —' },
   'med.trend.hour': { ru: '+3 за час', tj: '+3 дар як соат' },
