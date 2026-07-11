@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { wb, Waybill, STATUS_LABELS } from '@/lib/api';
+import { wb, Waybill, STATUS_LABELS, type NeruView } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 import { Icon, P } from '../icons';
 
@@ -38,7 +38,20 @@ export default function InspectorCabinet() {
   const [checked, setChecked] = useState<Waybill | null>(null);
   const [notFound, setNotFound] = useState(false);
   const [error, setError] = useState('');
+  const [neruPlate, setNeruPlate] = useState('');
+  const [neru, setNeru] = useState<NeruView | 'none' | null>(null);
+  const [neruBusy, setNeruBusy] = useState(false);
   const router = useRouter();
+
+  async function neruCheck(e: React.FormEvent) {
+    e.preventDefault();
+    const p = neruPlate.trim();
+    if (!p) return;
+    setNeruBusy(true); setNeru(null);
+    try { const r = await wb.neruByPlate(p); setNeru(r ?? 'none'); }
+    catch { setNeru('none'); }
+    finally { setNeruBusy(false); }
+  }
 
   useEffect(() => {
     wb.list().then(setItems).catch((e: Error) => setError(e.message)).finally(() => setLoading(false));
@@ -136,6 +149,36 @@ export default function InspectorCabinet() {
         {notFound && (
           <div style={{ marginTop: 16, color: 'var(--muted)', fontSize: 13.5 }}>
             {t('insp.notfound.pre')} «{query}» {t('insp.notfound.post')}
+          </div>
+        )}
+      </div>
+
+      {/* Neru: серверная проверка по госномеру (по всем организациям) */}
+      <div className="card">
+        <div className="card-h"><h2>{t('neru.title')}</h2></div>
+        <form onSubmit={neruCheck} style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+          <div style={{ flex: 1, minWidth: 260 }}>
+            <input value={neruPlate} onChange={e => setNeruPlate(e.target.value)} placeholder={t('neru.ph')} style={{ width: '100%' }} />
+          </div>
+          <button className="btn" type="submit" disabled={neruBusy}><Icon d={P.car} cls="" /> {t('neru.check')}</button>
+        </form>
+        {neru === 'none' && (
+          <div style={{ marginTop: 14, padding: '12px 16px', borderRadius: 10, background: 'var(--red-050)', color: 'var(--red)', fontWeight: 600 }}>
+            {t('neru.notfound')}
+          </div>
+        )}
+        {neru && neru !== 'none' && (
+          <div style={{ marginTop: 14 }}>
+            <div style={{ padding: '12px 16px', borderRadius: 10, background: 'var(--green-050)', color: 'var(--green)', fontWeight: 700, marginBottom: 12 }}>
+              <Icon d={P.check} cls="" style={{ width: 16, height: 16 }} /> {t('neru.found')}
+            </div>
+            <dl className="kv">
+              <dt>{t('insp.wbnum')}</dt><dd><span className="number">{neru.number ?? t('common.draft')}</span></dd>
+              <dt>{t('col.status')}</dt><dd><span className={`badge ${STATUS_LABELS[neru.status]?.color ?? 'gray'}`}>{tStatus(neru.status)}</span></dd>
+              <dt>{t('col.transport')}</dt><dd>{neru.vehicleRegNumber}</dd>
+              <dt>{t('col.driver')}</dt><dd>{neru.driverName ?? '—'}</dd>
+              <dt>{t('drv.validity')}</dt><dd>{fmtDateTime(neru.validFrom)} → {fmtDateTime(neru.validTo)}</dd>
+            </dl>
           </div>
         )}
       </div>

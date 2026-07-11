@@ -30,6 +30,7 @@ const MODULES: { key: string; icon: string; cls: string; st: St; href?: string }
   { key: 'print', icon: P.doc, cls: 'ic-cyan', st: 'partial' },
   { key: 'dictionaries', icon: P.book, cls: 'ic-blue', st: 'done', href: '/dictionaries' },
   { key: 'classifiers', icon: P.globe, cls: 'ic-cyan', st: 'done', href: '/settings/classifiers' },
+  { key: 'expiry', icon: P.alert, cls: 'ic-amber', st: 'done', href: '/settings/expiry' },
   { key: 'audit', icon: P.eye, cls: 'ic-amber', st: 'done', href: '/settings/audit' },
   { key: 'backup', icon: P.shield, cls: 'ic-blue', st: 'planned' },
   { key: 'performance', icon: P.chart, cls: 'ic-purple', st: 'planned' },

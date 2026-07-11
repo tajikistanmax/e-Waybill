@@ -107,6 +107,25 @@ export type AuditEntry = {
   newValue: string | null;
 };
 
+export type ExpiryItem = {
+  entityType: 'DRIVER' | 'VEHICLE' | 'ORGANIZATION';
+  key: string;
+  name: string;
+  docType: string;
+  validTo: string;
+  daysLeft: number;
+};
+
+export type NeruView = {
+  number: string | null;
+  status: string;
+  vehicleRegNumber: string;
+  driverName: string | null;
+  organizationRma: string;
+  validFrom: string | null;
+  validTo: string | null;
+};
+
 export type ClassifierItem = {
   id: string;
   category: string;
@@ -179,6 +198,9 @@ export const md = {
   saveClassifier: (body: Record<string, unknown>) => mdPost('classifiers', body) as Promise<ClassifierItem>,
   deleteClassifier: (id: string) => fetch(`/md-api/api/v1/classifiers/${id}`, { method: 'DELETE', headers: authHeaders() })
     .then(r => { if (!r.ok && r.status !== 204) throw new Error(`Ошибка ${r.status}`); }),
+  // Монитор истечения документов (тенант-скоуп).
+  documentExpiry: (days = 30) => fetch(`/md-api/api/v1/document-expiry?days=${days}`, { headers: authHeaders() })
+    .then(r => handle<ExpiryItem[]>(r)),
   // Журнал аудита (только SYSTEM_ADMIN).
   audit: (entityType?: string, limit = 100) => fetch(
     `/md-api/api/v1/audit?limit=${limit}${entityType ? `&entityType=${entityType}` : ''}`,
@@ -218,4 +240,7 @@ export const wb = {
     .then(r => { if (!r.ok && r.status !== 204) throw new Error(`Ошибка ${r.status}`); }),
   markAllNotifRead: () => fetch('/wb-api/api/v1/notifications/read-all', { method: 'POST', headers: authHeaders() })
     .then(r => { if (!r.ok && r.status !== 204) throw new Error(`Ошибка ${r.status}`); }),
+  // Витрина Neru: действующий ПЛ по госномеру (404 → null).
+  neruByPlate: (plate: string) => fetch(`/wb-api/api/v1/neru/active-by-plate?plate=${encodeURIComponent(plate)}`, { headers: authHeaders() })
+    .then(async r => r.ok ? (r.json() as Promise<NeruView>) : null),
 };
