@@ -1,5 +1,6 @@
 package tj.mintrans.epd.waybill.web.error;
 
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -47,6 +48,13 @@ public class ApiErrors {
     @ExceptionHandler(ForbiddenException.class)
     public ProblemDetail forbidden(ForbiddenException e) {
         return problem(HttpStatus.FORBIDDEN, "Доступ запрещён", e.getMessage());
+    }
+
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    public ProblemDetail dataIntegrity(DataIntegrityViolationException e) {
+        // Нарушение уникальности БД (напр. гонка «один действующий ПЛ на ТС/водителя») → 409, не 500.
+        return problem(HttpStatus.CONFLICT, "Конфликт данных",
+                "На это транспортное средство или водителя уже оформлен действующий путевой лист");
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
