@@ -2,7 +2,7 @@
 
 import { Fragment, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { md, wb, TYPE_LABELS } from '@/lib/api';
+import { md, wb, TYPE_LABELS, type FieldDefinition } from '@/lib/api';
 import { Icon, P } from '../../icons';
 import { useT } from '@/lib/i18n';
 
@@ -50,6 +50,8 @@ export default function NewWaybillPage() {
   const [adrClasses, setAdrClasses] = useState<Option[]>([]);
   const [permitTypes, setPermitTypes] = useState<Option[]>([]);
   const [dangerous, setDangerous] = useState({ adrClass: '', unNumber: '' });
+  const [customDefs, setCustomDefs] = useState<FieldDefinition[]>([]);
+  const [customValues, setCustomValues] = useState<Record<string, string>>({});
   const [orgRma, setOrgRma] = useState('');
   const [form, setForm] = useState({
     waybillType: 'WB_BUS',
@@ -103,6 +105,14 @@ export default function NewWaybillPage() {
       .catch(() => {});
   }, []);
 
+  // Доп.поля выбранного типа ПЛ (конструктор полей).
+  useEffect(() => {
+    setCustomValues({});
+    md.fieldDefinitions(form.waybillType)
+      .then(setCustomDefs)
+      .catch(() => setCustomDefs([]));
+  }, [form.waybillType]);
+
   useEffect(() => { window.scrollTo({ top: 0 }); }, [step]);
 
   const t = form.waybillType;
@@ -121,10 +131,13 @@ export default function NewWaybillPage() {
   const intlValid = !!intl.permitNumber && !!intl.visaValidTo && !!intl.visaCountry
     && !!intl.loadCountry && !!intl.unloadCountry && (t !== 'WB_TRUCK_INTL' || !!intl.cargoName);
   const trailersValid = trailers.every(tr => tr.registrationNumber.trim() && tr.brand.trim());
+  const customValid = customDefs.filter(d => d.required)
+    .every(d => (customValues[d.fieldKey] ?? '').toString().trim() !== '');
   const canStep3 = (isIntl ? intlValid : true)
     && (isCar && serviceKind === 'ROUTE' ? !!form.route.trim() : true)
     && (isTruck ? trailersValid : true)
-    && (isDangerous ? !!dangerous.adrClass : true);
+    && (isDangerous ? !!dangerous.adrClass : true)
+    && customValid;
 
   const stepOk = (s: number) => s === 1 ? !!form.waybillType : s === 2 ? canStep2 : s === 3 ? canStep3 : true;
 
@@ -162,12 +175,16 @@ export default function NewWaybillPage() {
     setError('');
     setBusy(true);
     try {
+      const td = buildTypeData() ?? {};
+      const custom = Object.fromEntries(
+        Object.entries(customValues).filter(([, v]) => v !== '' && v != null));
+      if (Object.keys(custom).length) (td as Record<string, unknown>).custom = custom;
       const created = await wb.post('', {
         ...form,
         organizationRma: orgRma,
         communicationType: isIntl ? 'INTERNATIONAL' : form.communicationType,
         ...(isIntl && intl.secondDriverRma ? { secondDriverRma: intl.secondDriverRma } : {}),
-        typeData: buildTypeData(),
+        typeData: Object.keys(td).length ? td : undefined,
       });
       router.push(`/waybills/${created.id}`);
     } catch (err) {
@@ -442,6 +459,34 @@ export default function NewWaybillPage() {
                   )}
                 </>
               )}
+
+              {/* --- Доп.поля типа (конструктор полей) --- */}
+              {customDefs.length > 0 && (
+                <div style={{ gridColumn: '1 / -1', borderTop: '1px solid var(--line)', paddingTop: 10, marginTop: 2, fontSize: 12.5, fontWeight: 700, color: 'var(--muted)' }}>
+                  {tt('fld.section')}
+                </div>
+              )}
+              {customDefs.map(d => (
+                <div key={d.id}>
+                  <label>{d.labelRu}{d.required ? tt('wb.required.suffix') : ''}</label>
+                  {d.dataType === 'BOOLEAN' ? (
+                    <select value={customValues[d.fieldKey] ?? ''} onChange={e => setCustomValues(v => ({ ...v, [d.fieldKey]: e.target.value }))}>
+                      <option value="">—</option>
+                      <option value="true">{tt('fld.yes')}</option>
+                      <option value="false">{tt('fld.no')}</option>
+                    </select>
+                  ) : d.dataType === 'ENUM' ? (
+                    <select required={d.required} value={customValues[d.fieldKey] ?? ''} onChange={e => setCustomValues(v => ({ ...v, [d.fieldKey]: e.target.value }))}>
+                      <option value="">—</option>
+                      {(d.options ?? '').split(',').map(o => o.trim()).filter(Boolean).map(o => <option key={o} value={o}>{o}</option>)}
+                    </select>
+                  ) : (
+                    <input type={d.dataType === 'NUMBER' ? 'number' : d.dataType === 'DATE' ? 'date' : 'text'}
+                      required={d.required} value={customValues[d.fieldKey] ?? ''}
+                      onChange={e => setCustomValues(v => ({ ...v, [d.fieldKey]: e.target.value }))} />
+                  )}
+                </div>
+              ))}
             </div>
           )}
 

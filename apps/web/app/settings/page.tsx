@@ -14,7 +14,7 @@ const MODULES: { key: string; icon: string; cls: string; st: St; href?: string }
   { key: 'general', icon: P.help, cls: 'ic-blue', st: 'planned' },
   { key: 'org', icon: P.building, cls: 'ic-blue', st: 'partial', href: '/company' },
   { key: 'wbtypes', icon: P.doc, cls: 'ic-cyan', st: 'partial', href: '/settings/types' },
-  { key: 'fields', icon: P.book, cls: 'ic-cyan', st: 'planned' },
+  { key: 'fields', icon: P.book, cls: 'ic-cyan', st: 'done', href: '/settings/fields' },
   { key: 'routes', icon: P.route, cls: 'ic-cyan', st: 'partial', href: '/dictionaries' },
   { key: 'drivers', icon: P.user, cls: 'ic-blue', st: 'partial', href: '/registry' },
   { key: 'vehicles', icon: P.car, cls: 'ic-blue', st: 'partial', href: '/registry' },

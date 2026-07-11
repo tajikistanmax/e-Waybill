@@ -126,6 +126,19 @@ export type NeruView = {
   validTo: string | null;
 };
 
+export type FieldDefinition = {
+  id: string;
+  waybillType: string;
+  fieldKey: string;
+  labelRu: string;
+  labelTj: string | null;
+  dataType: 'STRING' | 'NUMBER' | 'DATE' | 'BOOLEAN' | 'ENUM';
+  required: boolean;
+  options: string | null;
+  sortOrder: number;
+  active: boolean;
+};
+
 export type ClassifierItem = {
   id: string;
   category: string;
@@ -197,6 +210,13 @@ export const md = {
     { headers: authHeaders() }).then(r => handle<ClassifierItem[]>(r)),
   saveClassifier: (body: Record<string, unknown>) => mdPost('classifiers', body) as Promise<ClassifierItem>,
   deleteClassifier: (id: string) => fetch(`/md-api/api/v1/classifiers/${id}`, { method: 'DELETE', headers: authHeaders() })
+    .then(r => { if (!r.ok && r.status !== 204) throw new Error(`Ошибка ${r.status}`); }),
+  // Конструктор полей: доп.поля по типу ПЛ.
+  fieldDefinitions: (waybillType: string, all = false) => fetch(
+    `/md-api/api/v1/field-definitions?waybillType=${waybillType}${all ? '&all=true' : ''}`,
+    { headers: authHeaders() }).then(r => handle<FieldDefinition[]>(r)),
+  saveFieldDefinition: (body: Record<string, unknown>) => mdPost('field-definitions', body) as Promise<FieldDefinition>,
+  deleteFieldDefinition: (id: string) => fetch(`/md-api/api/v1/field-definitions/${id}`, { method: 'DELETE', headers: authHeaders() })
     .then(r => { if (!r.ok && r.status !== 204) throw new Error(`Ошибка ${r.status}`); }),
   // Монитор истечения документов (тенант-скоуп).
   documentExpiry: (days = 30) => fetch(`/md-api/api/v1/document-expiry?days=${days}`, { headers: authHeaders() })
