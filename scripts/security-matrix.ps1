@@ -94,6 +94,22 @@ Chk 'Master-data GET vehicles: анонимно — 401' ((Status GET "$md/api/v
 $cr = @{ waybillType = 'WB_BUS'; organizationRma = '025680800'; vehicleRegNumber = '0114TJ01'; driverRma = '461930031' }
 Chk 'Create ПЛ: doctor — 403'            (& $forbidden (Status POST "$wb/api/v1/waybills" (Hdr 'doctor') $cr))
 
+# --- Мультиарендность ПЛ: чужой по id → 404, свой → доступ (нужен dispatcher2, org 990000001) ---
+try {
+    $hdM = Hdr 'dispatcher'
+    $mine = Invoke-RestMethod "$wb/api/v1/waybills" -Headers $hdM
+    $myId = if ($mine.Count -gt 0) { $mine[0].id } else { $null }
+    $t2ok = $false
+    try { Hdr 'dispatcher2' | Out-Null; $t2ok = $true } catch { $t2ok = $false }
+    if ($myId -and $t2ok) {
+        Chk 'Мультиарендность: dispatcher свой ПЛ по id — доступ'    (& $allowed (Status GET "$wb/api/v1/waybills/$myId" $hdM $null))
+        Chk 'Мультиарендность: dispatcher2 чужой ПЛ по id — 404'     ((Status GET "$wb/api/v1/waybills/$myId" (Hdr 'dispatcher2') $null) -eq 404)
+        Chk 'Мультиарендность: dispatcher2 ТС — своя орг (не 401/403)' (& $allowed (Status GET "$md/api/v1/vehicles" (Hdr 'dispatcher2') $null))
+    } else {
+        Write-Output "  [SKIP] Кросс-тенант ПЛ (нет dispatcher2 или ПЛ)"
+    }
+} catch { Write-Output "  [SKIP] Кросс-тенант ПЛ: $($_.Exception.Message)" }
+
 # --- Очистка тестовой конфигурации (идемпотентность) ---
 try {
     $ha = Hdr 'admin'
