@@ -116,6 +116,15 @@ export type ExpiryItem = {
   daysLeft: number;
 };
 
+export type GpsPing = {
+  id: string;
+  vehicleRegNumber: string;
+  lat: number;
+  lon: number;
+  speedKmh: number | null;
+  recordedAt: string;
+};
+
 export type NeruView = {
   number: string | null;
   status: string;
@@ -263,4 +272,7 @@ export const wb = {
   // Витрина Neru: действующий ПЛ по госномеру (404 → null).
   neruByPlate: (plate: string) => fetch(`/wb-api/api/v1/neru/active-by-plate?plate=${encodeURIComponent(plate)}`, { headers: authHeaders() })
     .then(async r => r.ok ? (r.json() as Promise<NeruView>) : null),
+  // Последняя GPS-позиция ТС (404 → null).
+  gpsLast: (vehicleRegNumber: string) => fetch(`/wb-api/api/v1/gps/last?vehicleRegNumber=${encodeURIComponent(vehicleRegNumber)}`, { headers: authHeaders() })
+    .then(async r => r.ok ? (r.json() as Promise<GpsPing>) : null),
 };

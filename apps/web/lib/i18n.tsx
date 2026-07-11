@@ -966,6 +966,8 @@ const DICT: Record<string, { ru: string; tj: string }> = {
   'fld.dt.BOOLEAN': { ru: 'Да/Нет', tj: 'Ҳа/Не' },
   'fld.dt.ENUM': { ru: 'Список', tj: 'Рӯйхат' },
   'fld.section': { ru: 'Дополнительные поля', tj: 'Майдонҳои иловагӣ' },
+  'wb.gps.last': { ru: 'Последняя GPS-позиция', tj: 'Мавқеи охирини GPS' },
+  'wb.gps.kmh': { ru: 'км/ч', tj: 'км/с' },
 };
 
 // Названия типов ПЛ и статусов — двуязычно. RU совпадает с TYPE_LABELS/STATUS_LABELS из lib/api

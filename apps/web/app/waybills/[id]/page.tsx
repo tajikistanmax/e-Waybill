@@ -1,7 +1,7 @@
 'use client';
 
 import { use, useCallback, useEffect, useState } from 'react';
-import { md, wb, Waybill, Title, StatusEvent, Payment, STATUS_LABELS } from '@/lib/api';
+import { md, wb, Waybill, Title, StatusEvent, Payment, STATUS_LABELS, type GpsPing } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 import { useAuth } from '@/lib/auth';
 import QRCode from 'qrcode';
@@ -27,12 +27,14 @@ export default function WaybillCard({ params }: { params: Promise<{ id: string }
   const [blockReason, setBlockReason] = useState('');
   const [payment, setPayment] = useState<Payment | null>(null);
   const [tab, setTab] = useState('main');
+  const [gps, setGps] = useState<GpsPing | null>(null);
   const { t, tType, tStatus } = useT();
   const { roles } = useAuth();
 
   const reload = useCallback(async () => {
     const data = await wb.get(id);
     setW(data);
+    wb.gpsLast(data.vehicleRegNumber).then(setGps).catch(() => setGps(null));
     setTitles(await wb.titles(id));
     setHistory(await wb.history(id));
     if (data.number) {
@@ -349,6 +351,13 @@ export default function WaybillCard({ params }: { params: Promise<{ id: string }
             {trailers.map((tr, i) => (
               <span key={i} style={{ display: 'contents' }}><dt>{t('wb.trailer')} {i + 1}</dt><dd>{tr.registrationNumber} · {tr.brand}</dd></span>
             ))}
+            {gps && (
+              <><dt>{t('wb.gps.last')}</dt><dd>
+                <span style={{ fontFamily: 'var(--mono)' }}>{gps.lat.toFixed(5)}, {gps.lon.toFixed(5)}</span>
+                {gps.speedKmh != null ? ` · ${gps.speedKmh} ${t('wb.gps.kmh')}` : ''}
+                {' · '}{new Date(gps.recordedAt).toLocaleString('ru-RU')}
+              </dd></>
+            )}
           </dl>
         </div>
       )}
