@@ -363,7 +363,14 @@ public class WaybillService {
      * legacy-семантика ЧУРА/НЕРУ, оплата с них не требуется.
      */
     private void maybeReady(Waybill wb, String actor) {
-        if (!wb.isMedPassed() || !wb.isTechPassed()) {
+        // Обязательность предрейсового медосмотра (Т2) и техконтроля (Т3) — из движка политик
+        // (require_med_pre / require_tech_check, уровни NATIONAL/ORGANIZATION/VEHICLE_TYPE).
+        // По умолчанию оба обязательны (законное требование); политика может снять требование
+        // для отдельного типа ПЛ или организации.
+        var policies = masterData.effectivePolicies(wb.getOrganizationRma(), wb.getWaybillType().name());
+        boolean medRequired = !"false".equalsIgnoreCase(policies.get("require_med_pre"));
+        boolean techRequired = !"false".equalsIgnoreCase(policies.get("require_tech_check"));
+        if ((medRequired && !wb.isMedPassed()) || (techRequired && !wb.isTechPassed())) {
             return;
         }
         boolean paymentRequired = paymentEnabled
