@@ -55,13 +55,26 @@ public class QrTokenService {
         }
     }
 
-    /** Офлайн-проверка подписи (то же делает приложение инспектора без сети). */
+    /** Офлайн-проверка подписи + срока (то же делает приложение инспектора без сети). */
     public Map<String, Object> verify(String jws) throws ParseException, JOSEException {
         var jwt = SignedJWT.parse(jws);
         if (!jwt.verify(new ECDSAVerifier(key.toECPublicKey()))) {
             throw new JOSEException("Подпись недействительна");
         }
-        return jwt.getJWTClaimsSet().toJSONObject();
+        var claims = jwt.getJWTClaimsSet();
+        // Проверка временных ограничений (exp/nbf) с допуском 60 с на рассинхрон часов —
+        // просроченный или ещё не действующий QR недействителен даже при верной подписи.
+        long now = System.currentTimeMillis();
+        long skew = 60_000L;
+        var exp = claims.getExpirationTime();
+        var nbf = claims.getNotBeforeTime();
+        if (exp != null && now > exp.getTime() + skew) {
+            throw new JOSEException("Срок действия путевого листа истёк");
+        }
+        if (nbf != null && now < nbf.getTime() - skew) {
+            throw new JOSEException("Путевой лист ещё не действует");
+        }
+        return claims.toJSONObject();
     }
 
     /** Публичные ключи для офлайн-приложений инспекторов. */

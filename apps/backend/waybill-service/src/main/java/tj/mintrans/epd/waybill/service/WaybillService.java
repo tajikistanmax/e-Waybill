@@ -280,6 +280,9 @@ public class WaybillService {
         var dispatcher = requireEmployee(dispatcherRma, 3, "Диспетчер");
         var from = validFrom != null ? validFrom : OffsetDateTime.now();
         int days = validityDays != null ? validityDays : wb.getWaybillType().maxValidityDays();
+        if (days < 1) {
+            throw new UnprocessableException("Срок действия должен быть не менее 1 дня");
+        }
         if (days > wb.getWaybillType().maxValidityDays()) {
             throw new UnprocessableException("Срок действия превышает лимит типа: %d дней".formatted(wb.getWaybillType().maxValidityDays()));
         }
@@ -310,6 +313,7 @@ public class WaybillService {
                 wb.setMedPassed(true);
                 maybeReady(wb, doctorRma);
             } else {
+                wb.setMedPassed(false); // сброс: отклонённый медосмотр не должен пропускать ПЛ к READY
                 transition(wb, WaybillStatus.MED_REJECTED, doctorRma, "Водитель не допущен");
             }
             return waybills.save(wb);
@@ -337,6 +341,7 @@ public class WaybillService {
             wb.setTechPassed(true);
             maybeReady(wb, mechanicRma);
         } else {
+            wb.setTechPassed(false); // сброс: отклонённый техконтроль не должен пропускать ПЛ к READY
             transition(wb, WaybillStatus.TECH_REJECTED, mechanicRma, "ТС неисправно");
         }
         return waybills.save(wb);
@@ -475,6 +480,11 @@ public class WaybillService {
         var wb = get(id);
         if (wb.getStatus().isTerminal()) {
             throw new ConflictException("Аннулирование невозможно в статусе " + wb.getStatus());
+        }
+        // Заблокированный инспектором ПЛ нельзя аннулировать в обход блокировки —
+        // сначала разблокировка (только SYSTEM_ADMIN/Минтранс), затем аннулирование.
+        if (wb.getStatus() == WaybillStatus.BLOCKED) {
+            throw new ConflictException("Заблокированный путевой лист аннулировать нельзя — требуется разблокировка Минтрансом");
         }
         wb.setCancelReason(reason);
         transition(wb, WaybillStatus.CANCELLED, actor, reason);
