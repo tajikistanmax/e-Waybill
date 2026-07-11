@@ -3,6 +3,7 @@
 import { use, useCallback, useEffect, useState } from 'react';
 import { md, wb, Waybill, Title, StatusEvent, Payment, STATUS_LABELS } from '@/lib/api';
 import { useT } from '@/lib/i18n';
+import { useAuth } from '@/lib/auth';
 import QRCode from 'qrcode';
 
 type Employees = { doctors: { rma: string; name: string }[]; mechanics: { rma: string; name: string }[]; dispatchers: { rma: string; name: string }[] };
@@ -27,6 +28,7 @@ export default function WaybillCard({ params }: { params: Promise<{ id: string }
   const [payment, setPayment] = useState<Payment | null>(null);
   const [tab, setTab] = useState('main');
   const { t, tType, tStatus } = useT();
+  const { roles } = useAuth();
 
   const reload = useCallback(async () => {
     const data = await wb.get(id);
@@ -94,6 +96,14 @@ export default function WaybillCard({ params }: { params: Promise<{ id: string }
   const doctor = emp.doctors[0]?.rma;
   const mechanic = emp.mechanics[0]?.rma;
 
+  // Доступ к действиям жизненного цикла по роли (админы — сквозной доступ для контроля).
+  const has = (r: string) => roles.includes(r);
+  const isAdmin = has('SYSTEM_ADMIN') || has('COMPANY_ADMIN');
+  const canDispatch = has('DISPATCHER') || isAdmin;   // Т1, выдача, Т4, Т5, закрытие, замена, аннулирование
+  const canPay = has('ACCOUNTANT') || isAdmin;        // подтверждение оплаты
+  const canBlock = has('INSPECTOR') || has('SYSTEM_ADMIN');   // блокировка инспектором
+  const canUnblock = has('SYSTEM_ADMIN');             // разблокировка — только Минтранс
+
   // Данные типа ПЛ (те же, что уже приходят в w.typeData) — используем только их, ничего не выдумываем
   const td: Record<string, unknown> = w.typeData ?? {};
   const intlKeys = ['loadCountry', 'unloadCountry', 'transitCountries', 'permitNumber', 'visaValidTo', 'cargoName', 'bbaNumber'];
@@ -141,29 +151,16 @@ export default function WaybillCard({ params }: { params: Promise<{ id: string }
         <span className="spacer" />
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
           {w.number && <a className="btn secondary" href={`/waybills/${id}/print`}>{t('wb.printform')}</a>}
-          {w.status === 'DRAFT' && (
+          {w.status === 'DRAFT' && canDispatch && (
             <button className="btn" disabled={!dispatcher}
               onClick={() => act(t('wb.act.t1'), () => wb.post(`/${id}/titles/t1`, { dispatcherRma: dispatcher }))}>
               {t('wb.btn.signt1')} ({t('wb.r.dispatcher')} {emp.dispatchers[0]?.name ?? '—'})
             </button>
           )}
-          {w.status === 'CREATED' && !w.medPassed && (
-            <button className="btn" disabled={!doctor}
-              onClick={() => act(t('wb.act.med'), () => wb.post(`/${id}/confirm-med`, {
-                employeeRma: doctor, passed: true,
-                indicators: { pressure: '120/80', pulse: 72, temperature: 36.6, alcotest: 0 },
-              }))}>
-              {t('wb.btn.t2')} ({t('wb.r.doctor')} {emp.doctors[0]?.name ?? '—'})
-            </button>
-          )}
-          {w.status === 'CREATED' && !w.techPassed && (
-            <button className="btn" disabled={!mechanic}
-              onClick={() => act(t('wb.act.tech'), () => wb.post(`/${id}/confirm-tech`, {
-                employeeRma: mechanic, passed: true,
-                checklist: { brakes: 'OK', steering: 'OK', lights: 'OK' },
-              }))}>
-              {t('wb.btn.t3')} ({t('wb.r.mechanic')} {emp.mechanics[0]?.name ?? '—'})
-            </button>
+          {/* Предрейсовый медосмотр (Т2) и техконтроль (Т3) проводятся ТОЛЬКО в АРМ врача (/med)
+              и АРМ механика (/tech) с реальными показателями — с карточки не подтверждаются. */}
+          {w.status === 'CREATED' && (!w.medPassed || !w.techPassed) && (
+            <span className="hint" style={{ margin: 0, padding: '8px 12px' }}>{t('wb.await.exams')}</span>
           )}
           {w.status === 'AWAITING_PAYMENT' && (
             <span>
@@ -172,24 +169,26 @@ export default function WaybillCard({ params }: { params: Promise<{ id: string }
                   {t('wb.topay')}: {payment.amount} {payment.currency}
                 </span>
               )}
-              <button className="btn"
-                onClick={() => act(t('wb.act.paid'), () => wb.post(`/${id}/confirm-payment`, { method: 'BANK' }))}>
-                {t('wb.btn.confirmpay')} ({t('wb.r.accountant')})
-              </button>
+              {canPay && (
+                <button className="btn"
+                  onClick={() => act(t('wb.act.paid'), () => wb.post(`/${id}/confirm-payment`, { method: 'BANK' }))}>
+                  {t('wb.btn.confirmpay')} ({t('wb.r.accountant')})
+                </button>
+              )}
             </span>
           )}
-          {w.status === 'READY' && (
+          {w.status === 'READY' && canDispatch && (
             <button className="btn" onClick={() => act(t('wb.act.issued'), () => wb.post(`/${id}/issue`, { driverConfirmation: 'PIN' }))}>
               {t('wb.btn.issue')}
             </button>
           )}
-          {w.status === 'ISSUED' && (
+          {w.status === 'ISSUED' && canDispatch && (
             <button className="btn" disabled={!dispatcher}
               onClick={() => act(t('wb.act.activated'), () => wb.post(`/${id}/activate`, { dispatcherRma: dispatcher }))}>
               {t('wb.btn.t4')}
             </button>
           )}
-          {w.status === 'ACTIVE' && (
+          {w.status === 'ACTIVE' && canDispatch && (
             <span>
               <input style={{ width: 180, marginRight: 8, display: 'inline-block' }} placeholder={t('wb.ph.odoentry')}
                 value={odometerEntry} onChange={e => setOdometerEntry(e.target.value)} />
@@ -199,20 +198,12 @@ export default function WaybillCard({ params }: { params: Promise<{ id: string }
               </button>
             </span>
           )}
-          {w.status === 'RETURNED' && (
-            <>
-              <button className="btn secondary" disabled={!doctor}
-                onClick={() => act(t('wb.act.t6'), () => wb.post(`/${id}/confirm-med`, {
-                  employeeRma: doctor, passed: true, indicators: { pressure: '125/82', pulse: 74, alcotest: 0 },
-                }))}>
-                {t('wb.btn.t6')}
-              </button>
-              <button className="btn" onClick={() => act(t('wb.act.closed'), () => wb.post(`/${id}/close`, { actor: dispatcher }))}>
-                {t('wb.btn.close')}
-              </button>
-            </>
+          {w.status === 'RETURNED' && canDispatch && (
+            <button className="btn" onClick={() => act(t('wb.act.closed'), () => wb.post(`/${id}/close`, { actor: dispatcher }))}>
+              {t('wb.btn.close')}
+            </button>
           )}
-          {(w.status === 'MED_REJECTED' || w.status === 'TECH_REJECTED') && (
+          {(w.status === 'MED_REJECTED' || w.status === 'TECH_REJECTED') && canDispatch && (
             <span>
               <select style={{ width: 300, marginRight: 8, display: 'inline-block' }}
                 value={replacement} onChange={e => setReplacement(e.target.value)}>
@@ -230,7 +221,7 @@ export default function WaybillCard({ params }: { params: Promise<{ id: string }
               </button>
             </span>
           )}
-          {w.status === 'ACTIVE' && (
+          {w.status === 'ACTIVE' && canBlock && (
             <span>
               <input style={{ width: 260, marginRight: 8, display: 'inline-block' }} placeholder={t('wb.ph.blockreason')}
                 value={blockReason} onChange={e => setBlockReason(e.target.value)} />
@@ -240,7 +231,7 @@ export default function WaybillCard({ params }: { params: Promise<{ id: string }
               </button>
             </span>
           )}
-          {w.status === 'BLOCKED' && (
+          {w.status === 'BLOCKED' && canUnblock && (
             <span>
               <input style={{ width: 260, marginRight: 8, display: 'inline-block' }} placeholder={t('wb.ph.unblockreason')}
                 value={blockReason} onChange={e => setBlockReason(e.target.value)} />
@@ -250,7 +241,8 @@ export default function WaybillCard({ params }: { params: Promise<{ id: string }
               </button>
             </span>
           )}
-          {!['COMPLETED', 'CANCELLED', 'EXPIRED', 'ARCHIVED'].includes(w.status) && (
+          {/* Аннулирование недоступно из BLOCKED (снять блок может только Минтранс через разблокировку). */}
+          {canDispatch && !['COMPLETED', 'CANCELLED', 'EXPIRED', 'ARCHIVED', 'BLOCKED'].includes(w.status) && (
             <button className="btn danger"
               onClick={() => act(t('wb.act.cancelled'), () => wb.post(`/${id}/cancel`, { reason: 'Отмена диспетчером', actor: dispatcher ?? 'dispatcher' }))}>
               {t('wb.btn.cancel')}
