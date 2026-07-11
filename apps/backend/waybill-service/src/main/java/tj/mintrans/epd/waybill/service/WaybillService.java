@@ -311,6 +311,7 @@ public class WaybillService {
         if (licenseValidTo != null && licenseValidTo.isBefore(today)) {
             throw new UnprocessableException("Срок действия водительского удостоверения истёк");
         }
+        assertLicenseMatchesVehicle(driver, vehicle);
         var medCert = dateOrNull(driver.get("medCertValidTo"));
         if (medCert != null && medCert.isBefore(today)) {
             throw new UnprocessableException("Срок действия медицинской справки водителя истёк");
@@ -336,6 +337,46 @@ public class WaybillService {
         if (!waybills.findByDriverRmaAndStatusIn(str(driver.get("rma")), blocked).isEmpty()) {
             throw new ConflictException("На этого водителя есть путевой лист, заблокированный инспектором, — требуется решение администратора Минтранса");
         }
+    }
+
+    /** Требуемая категория ВУ по типу ТС (справочник ЭПД 1..6): null — не проверяется. */
+    private static String requiredLicenseCategory(Integer transportType) {
+        if (transportType == null) {
+            return null;
+        }
+        return switch (transportType) {
+            case 1, 3 -> "D";   // автобус, микроавтобус (пассажирские перевозки)
+            case 4 -> "B";      // легковой
+            case 5, 6 -> "C";   // грузовой, грузовой международный
+            default -> null;    // 2 = троллейбус (спецдопуск, не категория ВУ), прочее — не сверяем
+        };
+    }
+
+    /**
+     * ВУ↔тип ТС: у водителя должна быть категория, соответствующая типу ТС (безопасность —
+     * неквалифицированный водитель не допускается к рейсу). Тип 2 (троллейбус) — спецдопуск,
+     * не сверяем; при отсутствии данных о категориях проверка мягко пропускается (как срок ВУ),
+     * чтобы пробел в реплике не блокировал легальный рейс.
+     */
+    private static void assertLicenseMatchesVehicle(Map<String, Object> driver, Map<String, Object> vehicle) {
+        if (driver == null || vehicle == null) {
+            return;
+        }
+        String required = requiredLicenseCategory(intOrNull(vehicle.get("transportType")));
+        if (required == null) {
+            return;
+        }
+        String categories = str(driver.get("licenseCategories"));
+        if (categories.isBlank()) {
+            return;
+        }
+        for (String token : categories.split("[,;\\s]+")) {
+            if (token.equalsIgnoreCase(required)) {
+                return;
+            }
+        }
+        throw new UnprocessableException(
+                "Категория водительского удостоверения не соответствует типу ТС: требуется «%s»".formatted(required));
     }
 
     // ------------------------------------------------------------------ титулы
@@ -620,6 +661,8 @@ public class WaybillService {
         if (medCert != null && medCert.isBefore(today)) {
             throw new UnprocessableException("Срок действия медицинской справки нового водителя истёк");
         }
+        // Категория ВУ нового водителя должна подходить типу существующего ТС.
+        assertLicenseMatchesVehicle(driver, wb.getVehicleSnapshot());
         if (!waybills.findByDriverRmaAndStatusIn(newDriverRma, WaybillStatus.OPEN_STATUSES).isEmpty()) {
             throw new ConflictException("На нового водителя уже оформлен действующий путевой лист");
         }
@@ -665,6 +708,8 @@ public class WaybillService {
                 throw new UnprocessableException("Контрольная карточка нового ТС отсутствует или истекла");
             }
         }
+        // Тип нового ТС должен соответствовать категории ВУ существующего водителя.
+        assertLicenseMatchesVehicle(wb.getDriverSnapshot(), vehicle);
         if (!waybills.findByVehicleRegNumberAndStatusIn(newVehicleRegNumber, WaybillStatus.OPEN_STATUSES).isEmpty()) {
             throw new ConflictException("На новое ТС уже оформлен действующий путевой лист");
         }
