@@ -921,6 +921,10 @@ const DICT: Record<string, { ru: string; tj: string }> = {
   'cls.add': { ru: 'Добавить', tj: 'Илова кардан' },
   'cls.empty': { ru: 'Записей нет', tj: 'Сабтҳо нест' },
   'wb.opt.country': { ru: '— выберите страну —', tj: '— кишварро интихоб кунед —' },
+  'wb.f.adrclass': { ru: 'Класс опасного груза (ADR)', tj: 'Синфи бори хатарнок (ADR)' },
+  'wb.opt.adr': { ru: '— выберите класс —', tj: '— синфро интихоб кунед —' },
+  'wb.f.unnumber': { ru: 'Номер ООН (UN)', tj: 'Рақами СММ (UN)' },
+  'wb.f.permittype': { ru: 'Вид дозвола', tj: 'Навъи иҷозат' },
 };
 
 // Названия типов ПЛ и статусов — двуязычно. RU совпадает с TYPE_LABELS/STATUS_LABELS из lib/api

@@ -47,6 +47,9 @@ export default function NewWaybillPage() {
   const [vehicles, setVehicles] = useState<Option[]>([]);
   const [drivers, setDrivers] = useState<Option[]>([]);
   const [countries, setCountries] = useState<Option[]>([]);
+  const [adrClasses, setAdrClasses] = useState<Option[]>([]);
+  const [permitTypes, setPermitTypes] = useState<Option[]>([]);
+  const [dangerous, setDangerous] = useState({ adrClass: '', unNumber: '' });
   const [orgRma, setOrgRma] = useState('');
   const [form, setForm] = useState({
     waybillType: 'WB_BUS',
@@ -63,7 +66,7 @@ export default function NewWaybillPage() {
   const [intl, setIntl] = useState({                                // 5Б-БМ / 4М-БМ
     secondDriverRma: '', visaValidTo: '', visaCountry: '',
     loadCountry: '', unloadCountry: '', transitCountries: '',
-    cargoName: '', permitNumber: '', bbaNumber: '',
+    cargoName: '', permitNumber: '', permitType: '', bbaNumber: '',
   });
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -87,11 +90,17 @@ export default function NewWaybillPage() {
       .catch(e => setError(e.message));
   }, [orgRma]);
 
-  // Страны из классификатора — для полей международного ПЛ (значение = наименование).
+  // Классификаторы для форм международных/опасных ПЛ (значение = наименование/код).
   useEffect(() => {
     md.classifiers('COUNTRY')
       .then(list => setCountries(list.map(c => ({ value: c.nameRu, label: c.nameRu }))))
       .catch(() => { /* классификатор недоступен — поля останутся пустыми */ });
+    md.classifiers('ADR_CLASS')
+      .then(list => setAdrClasses(list.map(c => ({ value: c.code, label: `${c.code} — ${c.nameRu}` }))))
+      .catch(() => {});
+    md.classifiers('PERMIT_TYPE')
+      .then(list => setPermitTypes(list.map(c => ({ value: c.nameRu, label: c.nameRu }))))
+      .catch(() => {});
   }, []);
 
   useEffect(() => { window.scrollTo({ top: 0 }); }, [step]);
@@ -100,6 +109,7 @@ export default function NewWaybillPage() {
   const isCar = t === 'WB_CAR' || t === 'WB_TAXI';
   const isTruck = t === 'WB_TRUCK';
   const isIntl = INTL_TYPES.includes(t);
+  const isDangerous = t === 'WB_DANGEROUS';
 
   const orgLabel = orgs.find(o => o.value === orgRma)?.label ?? '';
   const vehicleLabel = vehicles.find(v => v.value === form.vehicleRegNumber)?.label ?? '';
@@ -113,7 +123,8 @@ export default function NewWaybillPage() {
   const trailersValid = trailers.every(tr => tr.registrationNumber.trim() && tr.brand.trim());
   const canStep3 = (isIntl ? intlValid : true)
     && (isCar && serviceKind === 'ROUTE' ? !!form.route.trim() : true)
-    && (isTruck ? trailersValid : true);
+    && (isTruck ? trailersValid : true)
+    && (isDangerous ? !!dangerous.adrClass : true);
 
   const stepOk = (s: number) => s === 1 ? !!form.waybillType : s === 2 ? canStep2 : s === 3 ? canStep3 : true;
 
@@ -139,9 +150,11 @@ export default function NewWaybillPage() {
         ...(intl.transitCountries ? { transitCountries: intl.transitCountries.split(',').map(s => s.trim()).filter(Boolean) } : {}),
         ...(t === 'WB_TRUCK_INTL' ? { cargoName: intl.cargoName } : {}),
         permitNumber: intl.permitNumber,
+        ...(intl.permitType ? { permitType: intl.permitType } : {}),
         ...(intl.bbaNumber ? { bbaNumber: intl.bbaNumber } : {}),
       };
     }
+    if (isDangerous) return { adrClass: dangerous.adrClass, ...(dangerous.unNumber ? { unNumber: dangerous.unNumber } : {}) };
     return undefined;
   }
 
@@ -343,6 +356,23 @@ export default function NewWaybillPage() {
                 </div>
               )}
 
+              {/* --- Опасные грузы: класс ADR --- */}
+              {isDangerous && (
+                <>
+                  <div>
+                    <label>{tt('wb.f.adrclass')}{tt('wb.required.suffix')}</label>
+                    <select required value={dangerous.adrClass} onChange={e => setDangerous({ ...dangerous, adrClass: e.target.value })}>
+                      <option value="">{tt('wb.opt.adr')}</option>
+                      {adrClasses.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label>{tt('wb.f.unnumber')}</label>
+                    <input placeholder="UN 1203" value={dangerous.unNumber} onChange={e => setDangerous({ ...dangerous, unNumber: e.target.value })} />
+                  </div>
+                </>
+              )}
+
               {/* --- Международные: 5Б-БМ / 4М-БМ --- */}
               {isIntl && (
                 <>
@@ -356,6 +386,13 @@ export default function NewWaybillPage() {
                   <div>
                     <label>{tt('wb.f.permit')}</label>
                     <input required placeholder="EP-2026-..." value={intl.permitNumber} onChange={e => setIntl({ ...intl, permitNumber: e.target.value })} />
+                  </div>
+                  <div>
+                    <label>{tt('wb.f.permittype')}</label>
+                    <select value={intl.permitType} onChange={e => setIntl({ ...intl, permitType: e.target.value })}>
+                      <option value="">{tt('wb.opt.none')}</option>
+                      {permitTypes.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
+                    </select>
                   </div>
                   <div>
                     <label>{tt('wb.f.visato')}</label>

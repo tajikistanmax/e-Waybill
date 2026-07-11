@@ -190,6 +190,15 @@ public class WaybillService {
                     throw new UnprocessableException("Для маршрутной услуги укажите маршрут");
                 }
             }
+            case WB_DANGEROUS -> { // опасные грузы (ADR)
+                String adrClass = str(data.get("adrClass"));
+                if (adrClass.isBlank()) {
+                    throw new UnprocessableException("Укажите класс опасного груза ADR (adrClass): 1–9");
+                }
+                if (!adrClass.matches("[1-9]")) {
+                    throw new UnprocessableException("Недопустимый класс ADR «%s»: ожидается число 1–9".formatted(adrClass));
+                }
+            }
             default -> { /* прочие типы — свободная схема type_data */ }
         }
         wb.setTypeData(data.isEmpty() ? null : data);
