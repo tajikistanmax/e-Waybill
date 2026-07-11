@@ -82,6 +82,15 @@ $w = PostJson "$wb/api/v1/waybills/$($w.id)/issue" @{ driverConfirmation = "PIN"
 $w = PostJson "$wb/api/v1/waybills/$($w.id)/activate" @{ dispatcherRma = "333333333" } $hd
 Check "Выдан и активирован (Т4)" ($w.status -eq 'ACTIVE')
 
+# Витрина Neru: по госномеру находит действующий ПЛ (для камер/постов ГАИ)
+$neru = Invoke-RestMethod "$wb/api/v1/neru/active-by-plate?plate=0114tj01" -Headers $hd
+Check "Neru: действующий ПЛ по госномеру" ($neru.vehicleRegNumber -eq '0114TJ01' -and $neru.status)
+
+# GPS: приём координаты и запрос последней позиции
+$ping = PostJson "$wb/api/v1/gps" @{ vehicleRegNumber = "0114TJ01"; lat = 38.5598; lon = 68.7870; speedKmh = 40; waybillId = $w.id } $hd
+$last = Invoke-RestMethod "$wb/api/v1/gps/last?vehicleRegNumber=0114TJ01" -Headers $hd
+Check "GPS: приём и последняя позиция" ([decimal]$last.lat -eq [decimal]38.5598)
+
 # Негатив: второй ПЛ на то же ТС
 try {
     PostJson "$wb/api/v1/waybills" @{ waybillType = "WB_BUS"; organizationRma = "025680800"; vehicleRegNumber = "0114TJ01"; driverRma = "461930031" } $hd | Out-Null
@@ -130,6 +139,12 @@ $polBus = Invoke-RestMethod "$md/api/v1/policies/effective?waybillType=WB_BUS" -
 Check "Политики: require_med_post=true для автобуса (override типа)" ($polBus.require_med_post -eq 'true')
 $polTruck = Invoke-RestMethod "$md/api/v1/policies/effective?waybillType=WB_TRUCK" -Headers $hd
 Check "Политики: require_med_post=false для грузового (нац. умолчание)" ($polTruck.require_med_post -eq 'false')
+
+# --- 12. Классификаторы и монитор истечения документов ---
+$countries = Invoke-RestMethod "$md/api/v1/classifiers?category=COUNTRY" -Headers $hd
+Check "Классификатор стран (сиды)" ($countries.Count -ge 10)
+$expiry = Invoke-RestMethod "$md/api/v1/document-expiry?days=3650" -Headers $hd
+Check "Монитор истечения документов (сроки из сидов)" ($expiry.Count -gt 0)
 
 Write-Output ""
 Write-Output "=== ИТОГ: PASS=$pass, FAIL=$fail ==="
