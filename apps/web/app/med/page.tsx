@@ -32,7 +32,6 @@ const SCHEDULE = [
   { time: '13:00', name: 'Курбонов Хусейн К.', org: 'ТаджикТранс ООО', pl: 'PL-2025-000128', st: 'st.planned', color: 'gray', bar: 'var(--line)' },
 ];
 
-const MEDIC = 'Иванова Е. А.';
 
 function isToday(iso: string) {
   const d = new Date(iso), n = new Date();
@@ -336,17 +335,6 @@ export default function MedWorkstation() {
           </table>
           <div style={{ display: 'flex', alignItems: 'center', marginTop: 14, fontSize: 12.5, color: 'var(--muted)' }}>
             <span>{t('paging.shown')} 1–{pre.length} {t('paging.of')} {pre.length}</span>
-            <span style={{ flex: 1 }} />
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <select defaultValue="10" style={{ width: 'auto', padding: '6px 10px', fontSize: 12.5 }}>
-                <option value="10">10 {t('paging.perpage')}</option>
-                <option value="20">20 {t('paging.perpage')}</option>
-                <option value="50">50 {t('paging.perpage')}</option>
-              </select>
-              <button className="btn secondary" style={{ padding: '7px 10px' }}><Icon d={P.collapse} cls="" style={{ width: 14, height: 14 }} /></button>
-              <button className="btn" style={{ padding: '7px 13px' }}>1</button>
-              <button className="btn secondary" style={{ padding: '7px 10px' }}><Icon d={P.chevron} cls="" style={{ width: 14, height: 14 }} /></button>
-            </div>
           </div>
         </div>
 
@@ -415,7 +403,7 @@ export default function MedWorkstation() {
         <div className="card-h"><h2>{t('med.recent.h')}</h2></div>
         <table>
           <thead>
-            <tr><th>{t('col.wbnum')}</th><th>{t('col.driver')}</th><th>{t('col.company')}</th><th>{t('col.time')}</th><th>{t('col.result')}</th><th>{t('role.DOCTOR')}</th><th></th></tr>
+            <tr><th>{t('col.wbnum')}</th><th>{t('col.driver')}</th><th>{t('col.company')}</th><th>{t('col.time')}</th><th>{t('col.result')}</th><th></th></tr>
           </thead>
           <tbody>
             {done.map(w => (
@@ -429,7 +417,6 @@ export default function MedWorkstation() {
                     ? <span className="badge green">{t('st.passed')}</span>
                     : <span className="badge red">{t('st.failed')}</span>}
                 </td>
-                <td>{MEDIC}</td>
                 <td style={{ textAlign: 'right' }}>
                   <Link href={`/waybills/${w.id}`} style={{ color: 'var(--faint)', display: 'inline-flex' }} aria-label={t('btn.view')}>
                     <Icon d={P.eye} cls="" style={{ width: 18, height: 18 }} />
@@ -438,7 +425,7 @@ export default function MedWorkstation() {
               </tr>
             ))}
             {done.length === 0 && (
-              <tr><td colSpan={7} style={{ color: 'var(--muted)', textAlign: 'center', padding: 28 }}>{t('med.empty.recent')}</td></tr>
+              <tr><td colSpan={6} style={{ color: 'var(--muted)', textAlign: 'center', padding: 28 }}>{t('med.empty.recent')}</td></tr>
             )}
           </tbody>
         </table>

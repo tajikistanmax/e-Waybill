@@ -42,6 +42,7 @@ const fmt = (s: string | null | undefined) =>
 export default function TechWorkstation() {
   const { t, tType } = useT();
   const [queue, setQueue] = useState<Waybill[]>([]);
+  const [all, setAll] = useState<Waybill[]>([]);
   const [mechanics, setMechanics] = useState<Record<string, { rma: string; name: string }[]>>({});
   const [selected, setSelected] = useState<Waybill | null>(null);
   const [checks, setChecks] = useState<Record<string, boolean>>({});
@@ -50,8 +51,9 @@ export default function TechWorkstation() {
   const [ok, setOk] = useState('');
 
   const reload = useCallback(async () => {
-    const all = await wb.list();
-    setQueue(all.filter(w => w.status === 'CREATED' && !w.techPassed));
+    const list = await wb.list();
+    setAll(list);
+    setQueue(list.filter(w => w.status === 'CREATED' && !w.techPassed));
   }, []);
 
   useEffect(() => { reload().catch(e => setError(e.message)); }, [reload]);
@@ -164,8 +166,7 @@ export default function TechWorkstation() {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 22 }}>
             <Field label={t('tech.f.examstatus')}><span className="badge blue">{t('st.inprocess')}</span></Field>
             <Field label={t('tech.f.prevexam')}>
-              <span className="badge green">{t('st.passeddone')}</span>
-              <span style={{ color: 'var(--muted)', fontSize: 12, marginLeft: 8 }}>19.05.2025 07:10</span>
+              <span style={{ color: 'var(--muted)' }}>—</span>
             </Field>
             <Field label={t('tech.f.techstate')}><span className="badge green">{t('st.serviceable')}</span></Field>
             <Field label={t('tech.f.admission')}><span className="badge gray">{t('st.notissued')}</span></Field>
@@ -225,7 +226,6 @@ export default function TechWorkstation() {
               <div className="card">
                 <div className="card-h">
                   <h2>{t('tech.faults.h')}</h2>
-                  <a className="link" style={{ marginLeft: 'auto', cursor: 'pointer' }}>{t('tech.faults.add')}</a>
                 </div>
                 <table>
                   <thead>
@@ -260,86 +260,11 @@ export default function TechWorkstation() {
             </div>
           </div>
 
-          {/* Правая колонка — виджеты */}
+          {/* Правая колонка — история техосмотров этого ТС (по реальным данным; появится по мере накопления) */}
           <div>
             <div className="card">
-              <div className="card-h">
-                <h2>{t('tech.hist.h')}</h2>
-                <a className="link" style={{ marginLeft: 'auto', cursor: 'pointer' }}>{t('link.all')}</a>
-              </div>
-              <ul className="timeline">
-                <li>
-                  <div className="when">19.05.2025 07:10</div>
-                  <b style={{ color: 'var(--green)' }}>{t('st.serviceable')}</b>
-                  <div style={{ color: 'var(--muted)', fontSize: 12 }}>{t('role.MECHANIC')}: Петров А. С.</div>
-                </li>
-                <li>
-                  <div className="when">18.05.2025 07:08</div>
-                  <b style={{ color: 'var(--green)' }}>{t('st.serviceable')}</b>
-                  <div style={{ color: 'var(--muted)', fontSize: 12 }}>{t('role.MECHANIC')}: Петров А. С.</div>
-                </li>
-                <li>
-                  <div className="when">17.05.2025 07:12</div>
-                  <b style={{ color: 'var(--amber)' }}>{t('st.okwithnotes')}</b>
-                  <div style={{ color: 'var(--muted)', fontSize: 12 }}>{t('role.MECHANIC')}: Петров А. С.</div>
-                </li>
-                <li>
-                  <div className="when">16.05.2025 07:05</div>
-                  <b style={{ color: 'var(--green)' }}>{t('st.serviceable')}</b>
-                  <div style={{ color: 'var(--muted)', fontSize: 12 }}>{t('role.MECHANIC')}: Петров А. С.</div>
-                </li>
-                <li>
-                  <div className="when">15.05.2025 07:07</div>
-                  <b style={{ color: 'var(--green)' }}>{t('st.serviceable')}</b>
-                  <div style={{ color: 'var(--muted)', fontSize: 12 }}>{t('role.MECHANIC')}: Петров А. С.</div>
-                </li>
-              </ul>
-              <a className="link" style={{ cursor: 'pointer' }}>{t('tech.showmore')} (12)</a>
-            </div>
-
-            <div className="card">
-              <div className="card-h">
-                <h2>{t('tech.recentfaults.h')}</h2>
-                <a className="link" style={{ marginLeft: 'auto', cursor: 'pointer' }}>{t('link.all')}</a>
-              </div>
-              <div className="feed">
-                <div className="fi">
-                  <div className="fic ic-red"><Icon d={P.alert} /></div>
-                  <div className="ft">
-                    <b>{t('tech.fault.brakepads')}</b>
-                    <span>{t('tech.fixed')} 17.05.2025</span>
-                  </div>
-                </div>
-                <div className="fi">
-                  <div className="fic ic-red"><Icon d={P.alert} /></div>
-                  <div className="ft">
-                    <b>{t('tech.fault.coolant')}</b>
-                    <span>{t('tech.fixed')} 10.05.2025</span>
-                  </div>
-                </div>
-                <div className="fi">
-                  <div className="fic ic-red"><Icon d={P.alert} /></div>
-                  <div className="ft">
-                    <b>{t('tech.fault.taillight')}</b>
-                    <span>{t('tech.fixed')} 02.05.2025</span>
-                  </div>
-                </div>
-              </div>
-              <a className="link" style={{ cursor: 'pointer' }}>{t('tech.showmore')} (5)</a>
-            </div>
-
-            <div className="card">
-              <div className="card-h">
-                <h2 style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}><Icon d={P.wrench} style={{ width: 16, height: 16, color: 'var(--blue-600)' }} /> {t('tech.maint.h')}</h2>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', paddingBottom: 12, borderBottom: '1px solid var(--line-soft)' }}>
-                <span style={{ fontWeight: 600, color: 'var(--ink)' }}>{t('tech.maint.next')}</span>
-                <span style={{ textAlign: 'right' }}>
-                  <div style={{ fontWeight: 700, color: 'var(--ink)' }}>{t('tech.maint.dist')}</div>
-                  <div style={{ color: 'var(--muted)', fontSize: 12 }}>{t('login.or')} 15.06.2025</div>
-                </span>
-              </div>
-              <a className="link" style={{ cursor: 'pointer', display: 'inline-block', marginTop: 12 }}>{t('tech.maint.open')}</a>
+              <div className="card-h"><h2>{t('tech.hist.h')}</h2></div>
+              <div style={{ color: 'var(--muted)', fontSize: 13, padding: '10px 2px' }}>{t('tech.hist.empty')}</div>
             </div>
           </div>
         </div>
@@ -363,17 +288,17 @@ export default function TechWorkstation() {
         <div className="kpi">
           <div className="k-top"><div className="k-ic ic-green"><Icon d={P.check} /></div></div>
           <div className="k-label">{t('tech.kpi.ok')}</div>
-          <div className="k-value">23</div>
+          <div className="k-value">{all.filter(w => w.techPassed).length}</div>
         </div>
         <div className="kpi">
           <div className="k-top"><div className="k-ic ic-red"><Icon d={P.alert} /></div></div>
           <div className="k-label">{t('tech.kpi.faulty')}</div>
-          <div className="k-value">2</div>
+          <div className="k-value">{all.filter(w => w.status === 'TECH_REJECTED').length}</div>
         </div>
         <div className="kpi">
           <div className="k-top"><div className="k-ic ic-blue"><Icon d={P.chart} /></div></div>
-          <div className="k-label">{t('tech.kpi.avgtime')}</div>
-          <div className="k-value" style={{ fontSize: 22 }}>{t('tech.kpi.avgtime.v')}</div>
+          <div className="k-label">{t('kpi.total')}</div>
+          <div className="k-value">{all.length}</div>
         </div>
       </div>
 
