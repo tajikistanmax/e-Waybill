@@ -11,6 +11,9 @@ import com.nimbusds.jose.jwk.JWKSet;
 import com.nimbusds.jose.jwk.gen.ECKeyGenerator;
 import com.nimbusds.jwt.JWTClaimsSet;
 import com.nimbusds.jwt.SignedJWT;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import tj.mintrans.epd.waybill.domain.Waybill;
 
@@ -21,15 +24,48 @@ import java.util.Map;
 /**
  * Подписанная полезная нагрузка QR-кода (модель ISO 18013-5 / раздел 8.9 ТЗ):
  * JWS ES256; инспектор проверяет подпись офлайн по публичному ключу (JWKS).
- * Dev-режим: ключ генерируется при старте. Prod: ключи в Crypto Service/HSM с ротацией.
+ *
+ * Ключ подписи — единственный якорь доверия всей дорожной проверки. В проде он ДОЛЖЕН быть
+ * стабильным (одинаковым между рестартами и репликами), иначе ранее выданные QR и закешированный
+ * инспекторами JWKS перестают проверяться, а разные реплики подписывают разными ключами.
+ * Поэтому: если задан epd.qr.signing-key (стабильный EC JWK из Vault/HSM) — используется он;
+ * иначе генерируется эфемерный dev-ключ, но при прод-режиме подписи (epd.signing.mode!=stub)
+ * это запрещено (fail-fast на старте) — по аналогии с TitleSigner.
  */
 @Service
 public class QrTokenService {
 
+    private static final Logger log = LoggerFactory.getLogger(QrTokenService.class);
+
     private final ECKey key;
 
-    public QrTokenService() throws JOSEException {
-        this.key = new ECKeyGenerator(Curve.P_256).keyID("epd-dev-1").generate();
+    public QrTokenService(@Value("${epd.qr.signing-key:}") String signingKeyJwk,
+                          @Value("${epd.signing.mode:stub}") String signingMode) throws JOSEException {
+        if (signingKeyJwk != null && !signingKeyJwk.isBlank()) {
+            ECKey parsed;
+            try {
+                parsed = ECKey.parse(signingKeyJwk);
+            } catch (ParseException e) {
+                throw new IllegalStateException("epd.qr.signing-key не является корректным EC JWK", e);
+            }
+            if (!parsed.isPrivate()) {
+                throw new IllegalStateException(
+                        "epd.qr.signing-key должен быть приватным EC JWK (с параметром d) для подписи QR");
+            }
+            this.key = parsed;
+            log.info("QR: используется сконфигурированный стабильный ключ подписи (keyID={})", key.getKeyID());
+        } else {
+            // Fail-fast: в прод-режиме подписи эфемерный ключ недопустим (см. javadoc класса).
+            if (!"stub".equalsIgnoreCase(signingMode)) {
+                throw new IllegalStateException(
+                        "epd.qr.signing-key не задан при epd.signing.mode=" + signingMode
+                        + ": в проде ключ подписи QR должен быть стабильным (Vault/HSM), иначе рестарт или "
+                        + "масштабирование ломают офлайн-проверку инспектором (ранее выданные QR и JWKS).");
+            }
+            this.key = new ECKeyGenerator(Curve.P_256).keyID("epd-dev-1").generate();
+            log.warn("QR: DEV — эфемерный ключ подписи (меняется при каждом старте). "
+                    + "Для прода задайте epd.qr.signing-key (стабильный EC JWK из Vault/HSM).");
+        }
     }
 
     public String sign(Waybill wb) {
