@@ -1,5 +1,6 @@
 package tj.mintrans.epd.waybill.web;
 
+import jakarta.annotation.PostConstruct;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
 import org.springframework.beans.factory.annotation.Value;
@@ -27,13 +28,28 @@ import java.util.UUID;
 @RequestMapping("/api/v1/payments")
 public class PaymentWebhookController {
 
+    private static final String DEV_SECRET = "dev_webhook_secret";
+
     private final WaybillService service;
     private final String webhookSecret;
+    private final boolean paymentEnabled;
 
     public PaymentWebhookController(WaybillService service,
+                                    @Value("${epd.payment.enabled:false}") boolean paymentEnabled,
                                     @Value("${epd.payment.webhook-secret:dev_webhook_secret}") String webhookSecret) {
         this.service = service;
+        this.paymentEnabled = paymentEnabled;
         this.webhookSecret = webhookSecret;
+    }
+
+    /** Прод-защита: при включённой оплате дефолтный/пустой секрет вебхука недопустим — иначе
+     *  любой мог бы пометить ПЛ оплаченным. В dev (payment.enabled=false) — пропускается. */
+    @PostConstruct
+    void validateSecret() {
+        if (paymentEnabled && (webhookSecret == null || webhookSecret.isBlank() || DEV_SECRET.equals(webhookSecret))) {
+            throw new IllegalStateException(
+                    "PAYMENT_WEBHOOK_SECRET не задан или дефолтный при включённой оплате — задайте сильный секрет.");
+        }
     }
 
     public record WebhookRequest(

@@ -14,9 +14,11 @@ import tj.mintrans.epd.waybill.web.error.ApiErrors.NotFoundException;
 import tj.mintrans.epd.waybill.web.error.ApiErrors.UnprocessableException;
 
 import java.time.OffsetDateTime;
+import java.util.EnumSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -30,6 +32,10 @@ public class AggregatorService {
 
     /** Правило legacy: рейс агрегатора не длиннее 7 дней от даты выезда. */
     private static final int MAX_TRIP_DAYS = 7;
+
+    /** «Действующие» статусы, при которых ПЛ пригоден к использованию (для legacy GET агрегатора). */
+    private static final Set<WaybillStatus> USABLE =
+            EnumSet.of(WaybillStatus.READY, WaybillStatus.ISSUED, WaybillStatus.ACTIVE);
 
     static final String ACTOR = "aggregator";
 
@@ -56,6 +62,11 @@ public class AggregatorService {
     @Transactional
     public Waybill create(String organizationRma, String transportRegistrationNumber, String driverRma,
                           String employeeRma, OffsetDateTime exitDate, OffsetDateTime entryDate, int distance) {
+        // Дата выезда в разумном окне (защита от backdating/датирования далёким будущим).
+        var now = OffsetDateTime.now();
+        if (exitDate == null || exitDate.isBefore(now.minusDays(1)) || exitDate.isAfter(now.plusDays(MAX_TRIP_DAYS))) {
+            throw new UnprocessableException("Дата выезда вне допустимого окна (не в далёком прошлом/будущем)");
+        }
         if (entryDate != null) {
             if (!entryDate.isAfter(exitDate)) {
                 throw new UnprocessableException("Дата въезда должна быть больше даты выезда");
@@ -126,6 +137,12 @@ public class AggregatorService {
         if (!wb.isTechPassed()) {
             throw new ConflictException("Механик не подтвердил путёвку");
         }
+        // Статус-гейт: заблокированный/аннулированный/просроченный/закрытый ПЛ НЕ отдаём как
+        // действующий (флаги med/tech защёлкиваются и не сбрасываются при block/cancel/close —
+        // иначе агрегатор считал бы «Активный» даже для ПЛ, снятого инспектором).
+        if (!USABLE.contains(wb.getStatus())) {
+            throw new ConflictException("Путевой лист не в действующем статусе (%s)".formatted(wb.getStatus()));
+        }
         return wb;
     }
 
@@ -134,7 +151,11 @@ public class AggregatorService {
         open.addAll(waybills.findByVehicleRegNumberAndStatusIn(vehicleRegNumber, WaybillStatus.OPEN_STATUSES));
         open.addAll(waybills.findByDriverRmaAndStatusIn(driverRma, WaybillStatus.OPEN_STATUSES));
         for (var wb : open) {
-            waybillService.cancel(wb.getId(), "Закрыт по новому запросу агрегатора", ACTOR);
+            // Только СВОИ (агрегаторские) ПЛ: агрегатор не вправе молча аннулировать портальный
+            // госдокумент — активный портальный ПЛ заблокирует создание (runBlockingChecks).
+            if ("AGGREGATOR".equals(wb.getSource())) {
+                waybillService.cancel(wb.getId(), "Закрыт по новому запросу агрегатора", ACTOR);
+            }
         }
     }
 

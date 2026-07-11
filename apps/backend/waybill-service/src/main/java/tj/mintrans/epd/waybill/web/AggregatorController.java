@@ -118,7 +118,17 @@ public class AggregatorController {
                 new CompanyDto(str(org, "id"), str(org, "rma"), str(org, "name"), str(org, "kpp")),
                 new ParkingDto(str(vehicle, "id"), str(vehicle, "registrationNumber"), str(vehicle, "vincode")),
                 new TimesheetDto(str(driver, "id"), str(driver, "fullName"), str(driver, "rma")),
-                "Активный");
+                statusLabel(wb));
+    }
+
+    /** Реальный статус ПЛ (не захардкоженный): getConfirmed уже отсекает не-действующие. */
+    private static String statusLabel(Waybill wb) {
+        return switch (wb.getStatus()) {
+            case READY -> "Готов к выдаче";
+            case ISSUED -> "Выдан";
+            case ACTIVE -> "Активный";
+            default -> wb.getStatus().name();
+        };
     }
 
     private static String str(Map<String, Object> snapshot, String key) {

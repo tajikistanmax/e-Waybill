@@ -83,8 +83,9 @@ public class FuelCalculationService {
         }
         BigDecimal baseNorm = decimal(norm.get("baseNorm"));
 
-        // Коэффициенты нормирования.
-        int month = LocalDate.now().getMonthValue();
+        // Коэффициенты нормирования. Сезонный (WINTER) — по дате РЕЙСА (validFrom), а не по дате
+        // расчёта: иначе норму можно исказить, посчитав рейс в другой сезон.
+        int month = (wb.getValidFrom() != null ? wb.getValidFrom() : java.time.OffsetDateTime.now()).getMonthValue();
         Map<String, Object> org = wb.getOrganizationSnapshot();
         Integer orgRegionId = org == null ? null : intOrNull(org.get("regionId"));
         boolean urban = "URBAN".equals(wb.getCommunicationType());

@@ -1,5 +1,8 @@
 package tj.mintrans.epd.waybill.config;
 
+import jakarta.annotation.PostConstruct;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
@@ -32,8 +35,19 @@ public class SecurityConfig {
      */
     private final boolean aggregatorOpen;
 
+    private static final Logger log = LoggerFactory.getLogger(SecurityConfig.class);
+
     public SecurityConfig(@org.springframework.beans.factory.annotation.Value("${epd.security.aggregator-open:true}") boolean aggregatorOpen) {
         this.aggregatorOpen = aggregatorOpen;
+    }
+
+    /** Прод-предупреждение: открытый агрегатор без токена — только для dev. */
+    @PostConstruct
+    void warnAggregatorOpen() {
+        if (aggregatorOpen) {
+            log.warn("AGGREGATOR_OPEN=true: /api/v1/aggregator/** ОТКРЫТ без токена (dev-режим). "
+                    + "Для прода задайте AGGREGATOR_OPEN=false — обязателен client-credentials токен epd-aggregator.");
+        }
     }
 
     @Bean
