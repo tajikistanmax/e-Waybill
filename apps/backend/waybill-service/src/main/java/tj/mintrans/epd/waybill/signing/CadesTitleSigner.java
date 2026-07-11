@@ -4,6 +4,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.MediaType;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
@@ -27,7 +28,13 @@ public class CadesTitleSigner implements TitleSigner {
     private final RestClient crypto;
 
     public CadesTitleSigner(@Value("${epd.signing.crypto-url}") String cryptoUrl) {
-        this.crypto = RestClient.create(cryptoUrl);
+        // Явные таймауты: подпись титула — на критическом пути осмотров/выдачи ПЛ. Без них
+        // зависший Crypto Service УЦ удерживал бы поток Tomcat бесконечно и параллельные
+        // подписания исчерпали бы пул. Read=10s — HSM+метка времени TSP медленнее обычного вызова.
+        var factory = new SimpleClientHttpRequestFactory();
+        factory.setConnectTimeout(3000);
+        factory.setReadTimeout(10000);
+        this.crypto = RestClient.builder().baseUrl(cryptoUrl).requestFactory(factory).build();
     }
 
     @Override

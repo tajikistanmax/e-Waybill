@@ -25,6 +25,12 @@ epd:
     # stub — dev-имитация налоговой/ГАИ; http — реальная единая платформа Минтранса
     mode: ${UNIFIED_PLATFORM_MODE:stub}
     base-url: ${UNIFIED_PLATFORM_URL:http://localhost:8090}
+  security:
+    # OpenAPI/Swagger UI: dev открыт, прод (DOCS_OPEN=false) — под аутентификацией.
+    docs-open: ${DOCS_OPEN:true}
+    # Проверка audience JWT: пусто (dev) — только issuer+exp; задан (напр. epd-master-data) —
+    # токен обязан нести этот aud (нужен audience-mapper в Keycloak).
+    required-audience: ${REQUIRED_AUDIENCE:}
 
 springdoc:
   swagger-ui:

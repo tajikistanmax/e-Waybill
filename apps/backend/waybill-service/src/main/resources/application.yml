@@ -46,12 +46,24 @@ epd:
     # Legacy-агрегаторы (ЧУРА/НЕРУ) в dev ходят без токена. В проде — false:
     # требуется client-credentials токен клиента epd-aggregator (роль API_INTEGRATOR).
     aggregator-open: ${AGGREGATOR_OPEN:true}
+    # OpenAPI/Swagger UI: dev открыт, прод (DOCS_OPEN=false) — под аутентификацией.
+    docs-open: ${DOCS_OPEN:true}
+    # Проверка audience JWT: пусто (dev) — только issuer+exp; задан (напр. epd-waybill) —
+    # токен обязан нести этот aud (нужен audience-mapper в Keycloak). Защита от приёма
+    # токена, выпущенного для другого клиента/цели того же realm.
+    required-audience: ${REQUIRED_AUDIENCE:}
   signing:
     # Подпись титулов ПЛ. stub (dev) — SHA-256 хеш содержимого (НЕ юридически значима);
     # cades (prod) — квалифицированная ЭП через Crypto Service УЦ РТ (Закон РТ № 1965) +
     # метка доверенного времени TSP. Переключается без изменения кода (TitleSigner).
     mode: ${SIGNING_MODE:stub}
     crypto-url: ${SIGNING_CRYPTO_URL:http://localhost:9099}
+  qr:
+    # Ключ подписи QR (JWS ES256, якорь офлайн-проверки инспектором). Пусто в dev —
+    # эфемерный ключ при старте. В проде задать СТАБИЛЬНЫЙ приватный EC JWK (Vault/HSM),
+    # общий для всех реплик, иначе рестарт/масштабирование ломают проверку. При
+    # epd.signing.mode!=stub пустой ключ запрещён (fail-fast на старте).
+    signing-key: ${QR_SIGNING_KEY:}
 
 springdoc:
   swagger-ui:

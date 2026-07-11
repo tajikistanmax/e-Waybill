@@ -11,10 +11,17 @@ import org.springframework.security.config.annotation.web.configuration.EnableWe
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.oauth2.core.DelegatingOAuth2TokenValidator;
+import org.springframework.security.oauth2.core.OAuth2TokenValidator;
 import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.security.oauth2.jwt.JwtClaimValidator;
+import org.springframework.security.oauth2.jwt.JwtDecoder;
+import org.springframework.security.oauth2.jwt.JwtValidators;
+import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
 import org.springframework.security.web.SecurityFilterChain;
 
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
@@ -35,10 +42,19 @@ public class SecurityConfig {
      */
     private final boolean aggregatorOpen;
 
+    /**
+     * OpenAPI-спека и Swagger UI: в dev открыты (true), в проде DOCS_OPEN=false —
+     * схема API закрывается аутентификацией (не раскрываем поверхность атаки анониму).
+     */
+    private final boolean docsOpen;
+
     private static final Logger log = LoggerFactory.getLogger(SecurityConfig.class);
 
-    public SecurityConfig(@org.springframework.beans.factory.annotation.Value("${epd.security.aggregator-open:true}") boolean aggregatorOpen) {
+    public SecurityConfig(
+            @org.springframework.beans.factory.annotation.Value("${epd.security.aggregator-open:true}") boolean aggregatorOpen,
+            @org.springframework.beans.factory.annotation.Value("${epd.security.docs-open:true}") boolean docsOpen) {
         this.aggregatorOpen = aggregatorOpen;
+        this.docsOpen = docsOpen;
     }
 
     /** Прод-предупреждение: открытый агрегатор без токена — только для dev. */
@@ -58,8 +74,13 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> {
                     auth
                         .requestMatchers("/actuator/health", "/actuator/info").permitAll()
-                        .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
-                        .requestMatchers("/.well-known/**").permitAll()
+                        .requestMatchers("/.well-known/**").permitAll();
+                    if (docsOpen) {
+                        auth.requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll();
+                    } else {
+                        auth.requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").authenticated();
+                    }
+                    auth
                         // Публичная проверка QR (инспектор без логина)
                         .requestMatchers("/api/v1/verify/**").permitAll()
                         // Webhook платёжного шлюза — аутентификация общим секретом
@@ -77,6 +98,27 @@ public class SecurityConfig {
                 .oauth2ResourceServer(oauth2 -> oauth2
                         .jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter())));
         return http.build();
+    }
+
+    /**
+     * JWT-декодер: подпись + issuer (Keycloak realm epd) всегда; audience — опционально.
+     * epd.security.required-audience задан (прод) → токен обязан нести этот aud (защита от
+     * приёма токена, выпущенного для другого клиента/цели того же realm). Пусто (dev) →
+     * поведение как у автоконфигурации (issuer+exp), регресс не меняется.
+     */
+    @Bean
+    public JwtDecoder jwtDecoder(
+            @org.springframework.beans.factory.annotation.Value("${spring.security.oauth2.resourceserver.jwt.issuer-uri}") String issuer,
+            @org.springframework.beans.factory.annotation.Value("${epd.security.required-audience:}") String requiredAudience) {
+        NimbusJwtDecoder decoder = NimbusJwtDecoder.withIssuerLocation(issuer).build();
+        var validators = new ArrayList<OAuth2TokenValidator<Jwt>>();
+        validators.add(JwtValidators.createDefaultWithIssuer(issuer));
+        if (requiredAudience != null && !requiredAudience.isBlank()) {
+            validators.add(new JwtClaimValidator<List<String>>("aud",
+                    aud -> aud != null && aud.contains(requiredAudience)));
+        }
+        decoder.setJwtValidator(new DelegatingOAuth2TokenValidator<>(validators));
+        return decoder;
     }
 
     private JwtAuthenticationConverter jwtAuthenticationConverter() {
