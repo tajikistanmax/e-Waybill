@@ -45,7 +45,7 @@ export function Topbar() {
     ?? (pathname.startsWith('/waybills/') ? { t: 'nav.waybills', c: 'nav.waybills' }
       : pathname.startsWith('/settings/') ? { t: 'nav.settings', c: 'nav.group.management' }
       : { t: 'app.title', c: '' });
-  const roleKey = roles.find(r => ['SYSTEM_ADMIN', 'COMPANY_ADMIN', 'DISPATCHER', 'DOCTOR', 'MECHANIC', 'ACCOUNTANT', 'INSPECTOR', 'DRIVER', 'API_INTEGRATOR'].includes(r));
+  const roleKey = roles.find(r => ['SYSTEM_ADMIN', 'COMPANY_ADMIN', 'MINTRANS_ANALYST', 'DISPATCHER', 'DOCTOR', 'MECHANIC', 'ACCOUNTANT', 'INSPECTOR', 'DRIVER', 'API_INTEGRATOR'].includes(r));
   const roleLabel = roleKey ? t('role.' + roleKey) : '';
   const initials = (username || 'ЭП').slice(0, 2).toUpperCase();
   const now = new Date().toLocaleDateString(lang === 'tj' ? 'tg-TJ' : 'ru-RU', { day: 'numeric', month: 'long', year: 'numeric' });

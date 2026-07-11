@@ -5,6 +5,7 @@ export type NavKey = 'dashboard' | 'waybills' | 'dispatcher' | 'med' | 'tech' | 
 /** Куда попадает пользователь после входа — в свой кабинет. */
 export function roleHome(roles: string[]): string {
   if (roles.includes('SYSTEM_ADMIN') || roles.includes('COMPANY_ADMIN')) return '/dashboard';
+  if (roles.includes('MINTRANS_ANALYST')) return '/dashboard';
   if (roles.includes('DOCTOR')) return '/med';
   if (roles.includes('MECHANIC')) return '/tech';
   if (roles.includes('DRIVER')) return '/driver';
@@ -27,6 +28,8 @@ export function visibleNav(roles: string[]): Set<NavKey> {
   if (roles.includes('DRIVER')) add('driver');
   if (roles.includes('ACCOUNTANT')) add('dashboard', 'reports', 'waybills');
   if (roles.includes('INSPECTOR')) add('inspector', 'dashboard', 'violations');
+  // Аналитик Минтранса — надзор/аналитика по всем организациям (только чтение).
+  if (roles.includes('MINTRANS_ANALYST')) add('dashboard', 'reports', 'registry', 'violations');
 
   if (s.size === 0) s.add('dashboard');
   return s;

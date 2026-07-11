@@ -41,6 +41,7 @@ const DICT: Record<string, { ru: string; tj: string }> = {
   'role.INSPECTOR': { ru: 'Инспектор', tj: 'Нозир' },
   'role.DRIVER': { ru: 'Водитель', tj: 'Ронанда' },
   'role.API_INTEGRATOR': { ru: 'Интегратор', tj: 'Ҳамгирокунанда' },
+  'role.MINTRANS_ANALYST': { ru: 'Аналитик Минтранса', tj: 'Таҳлилгари Вазорат' },
 
   // Вход
   'login.h': { ru: 'Электронный путевой лист', tj: 'Роҳхати электронӣ' },
