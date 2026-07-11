@@ -87,6 +87,7 @@ export default function MedWorkstation() {
   const [driverHist, setDriverHist] = useState<MedRecord[] | null>(null);
   const [allExams, setAllExams] = useState<MedRecord[] | null>(null);
   const [examSearch, setExamSearch] = useState('');
+  const [queueSearch, setQueueSearch] = useState('');
 
   const reload = useCallback(async () => {
     setItems(await wb.list());
@@ -101,6 +102,12 @@ export default function MedWorkstation() {
   }, []);
 
   const pre = useMemo(() => items.filter(w => w.status === 'CREATED' && !w.medPassed), [items]);
+  const shownPre = useMemo(() => {
+    const s = queueSearch.trim().toLowerCase();
+    if (!s) return pre;
+    return pre.filter(w => [w.number, w.driverRma, w.driverSnapshot?.fullName, w.organizationSnapshot?.name, w.vehicleRegNumber]
+      .map(x => String(x ?? '').toLowerCase()).join(' ').includes(s));
+  }, [pre, queueSearch]);
   const done = useMemo(
     () => items.filter(w => w.status !== 'CREATED' && (w.medPassed || w.status === 'MED_REJECTED')).slice(0, 5),
     [items],
@@ -311,12 +318,14 @@ export default function MedWorkstation() {
               </button>
             </div>
           </div>
+          <input value={queueSearch} onChange={e => setQueueSearch(e.target.value)} placeholder={t('exam.search')}
+            style={{ marginBottom: 12 }} />
           <table>
             <thead>
               <tr><th>{t('col.wbnum')}</th><th>{t('col.driver')}</th><th>{t('col.company')}</th><th>{t('col.time')}</th><th>{t('col.status')}</th><th></th></tr>
             </thead>
             <tbody>
-              {pre.map(w => (
+              {shownPre.map(w => (
                 <tr key={w.id}>
                   <td><span className="number">{w.number ?? t('common.draft')}</span></td>
                   <td>{String(w.driverSnapshot?.fullName ?? w.driverRma)}</td>
@@ -328,8 +337,8 @@ export default function MedWorkstation() {
                   </td>
                 </tr>
               ))}
-              {pre.length === 0 && (
-                <tr><td colSpan={6} style={{ color: 'var(--muted)', textAlign: 'center', padding: 28 }}>{t('med.empty.queue')}</td></tr>
+              {shownPre.length === 0 && (
+                <tr><td colSpan={6} style={{ color: 'var(--muted)', textAlign: 'center', padding: 28 }}>{queueSearch.trim() ? t('exam.search.empty') : t('med.empty.queue')}</td></tr>
               )}
             </tbody>
           </table>

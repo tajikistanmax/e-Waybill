@@ -49,6 +49,14 @@ export default function TechWorkstation() {
   const [defects, setDefects] = useState('');
   const [error, setError] = useState('');
   const [ok, setOk] = useState('');
+  const [search, setSearch] = useState('');
+
+  const shownQueue = queue.filter(w => {
+    const s = search.trim().toLowerCase();
+    if (!s) return true;
+    return [w.number, w.vehicleRegNumber, w.driverRma, w.vehicleSnapshot?.brand, w.driverSnapshot?.fullName, w.organizationSnapshot?.name]
+      .map(x => String(x ?? '').toLowerCase()).join(' ').includes(s);
+  });
 
   const reload = useCallback(async () => {
     const list = await wb.list();
@@ -113,7 +121,10 @@ export default function TechWorkstation() {
 
     return (
       <>
-        <div style={{ display: 'flex', alignItems: 'flex-start', marginBottom: 4 }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', marginBottom: 4, gap: 14 }}>
+          <button className="btn secondary" onClick={() => setSelected(null)} style={{ flex: 'none' }}>
+            <Icon d={P.chevron} cls="" style={{ width: 15, height: 15, transform: 'rotate(180deg)' }} /> {t('act.back')}
+          </button>
           <div>
             <h1>{t('tech.exam.h')}</h1>
             <div className="tb-crumb" style={{ fontSize: 12.5, color: 'var(--muted)' }}>
@@ -306,13 +317,15 @@ export default function TechWorkstation() {
         <div className="card-h">
           <h2>{t('tech.queue.h')}</h2>
           <span className="badge blue" style={{ marginLeft: 12 }}>{queue.length}</span>
+          <input value={search} onChange={e => setSearch(e.target.value)} placeholder={t('exam.search')}
+            style={{ marginLeft: 'auto', maxWidth: 320 }} />
         </div>
         <table>
           <thead>
             <tr><th>{t('col.vehiclenum')}</th><th>{t('col.brand')}</th><th>{t('col.wbtype')}</th><th>{t('col.org')}</th><th></th></tr>
           </thead>
           <tbody>
-            {queue.map(w => (
+            {shownQueue.map(w => (
               <tr key={w.id}>
                 <td><span className="plate" style={{ transform: 'scale(.9)', transformOrigin: 'left center' }}><span className="p-main">{w.vehicleRegNumber}</span><span className="p-reg">01</span></span></td>
                 <td>{String(w.vehicleSnapshot?.brand ?? '—')}</td>
@@ -321,8 +334,8 @@ export default function TechWorkstation() {
                 <td style={{ textAlign: 'right' }}><button className="btn" onClick={() => open(w)}>{t('tech.btn.check')}</button></td>
               </tr>
             ))}
-            {queue.length === 0 && (
-              <tr><td colSpan={5} style={{ color: 'var(--muted)', textAlign: 'center', padding: 20 }}>{t('tech.queue.empty')}</td></tr>
+            {shownQueue.length === 0 && (
+              <tr><td colSpan={5} style={{ color: 'var(--muted)', textAlign: 'center', padding: 20 }}>{search.trim() ? t('exam.search.empty') : t('tech.queue.empty')}</td></tr>
             )}
           </tbody>
         </table>
