@@ -82,6 +82,7 @@ public class VehicleController {
         // и "0114tj01 " создали бы два физически одинаковых ТС и раздвоили бы поиск при выдаче ПЛ.
         var canonicalNumber = canonical(req.registrationNumber());
         var existing = vehicles.findByRegistrationNumber(canonicalNumber);
+        String oldBrand = existing.map(Vehicle::getBrand).orElse(null); // до мутации (existing и vehicle — один объект)
         var vehicle = existing.orElseGet(Vehicle::new);
         vehicle.setRegistrationNumber(canonicalNumber);
         vehicle.setOrganizationId(org.getId());
@@ -97,7 +98,7 @@ public class VehicleController {
         vehicle.setControlCardValidTo(req.controlCardValidTo());
         var saved = vehicles.save(vehicle);
         audit.record(existing.isPresent() ? AuditService.UPDATE : AuditService.CREATE,
-                "VEHICLE", canonicalNumber, existing.map(Vehicle::getBrand).orElse(null), saved.getBrand());
+                "VEHICLE", canonicalNumber, oldBrand, saved.getBrand());
         return ResponseEntity.status(existing.isPresent() ? HttpStatus.OK : HttpStatus.CREATED).body(saved);
     }
 

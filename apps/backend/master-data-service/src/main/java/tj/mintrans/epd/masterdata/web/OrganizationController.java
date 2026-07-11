@@ -67,6 +67,7 @@ public class OrganizationController {
     @PreAuthorize("hasAnyRole('API_INTEGRATOR','SYSTEM_ADMIN')")
     public ResponseEntity<Organization> upsert(@Valid @RequestBody OrganizationRequest req) {
         var existing = repository.findByRma(req.rma());
+        String oldName = existing.map(Organization::getName).orElse(null); // до мутации (existing и org — один объект)
         var org = existing.orElseGet(Organization::new);
         org.setRma(req.rma());
         org.setKpp(req.kpp());
@@ -83,7 +84,7 @@ public class OrganizationController {
         org.setLicenseTo(req.licenseTo());
         var saved = repository.save(org);
         audit.record(existing.isPresent() ? AuditService.UPDATE : AuditService.CREATE,
-                "ORGANIZATION", req.rma(), existing.map(Organization::getName).orElse(null), saved.getName());
+                "ORGANIZATION", req.rma(), oldName, saved.getName());
         return ResponseEntity.status(existing.isPresent() ? HttpStatus.OK : HttpStatus.CREATED).body(saved);
     }
 

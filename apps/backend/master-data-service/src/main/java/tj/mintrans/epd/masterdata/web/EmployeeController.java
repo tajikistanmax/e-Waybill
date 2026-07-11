@@ -65,6 +65,7 @@ public class EmployeeController {
         var org = organizations.findByRma(req.organizationRma())
                 .orElseThrow(() -> new NotFoundException("Организация не найдена"));
         var existing = employees.findByRma(req.rma());
+        String oldName = existing.map(Employee::getName).orElse(null); // до мутации (existing и employee — один объект)
         var employee = existing.orElseGet(Employee::new);
         employee.setRma(req.rma());
         employee.setOrganizationId(org.getId());
@@ -74,7 +75,7 @@ public class EmployeeController {
         employee.setPhone(req.phone());
         var saved = employees.save(employee);
         audit.record(existing.isPresent() ? AuditService.UPDATE : AuditService.CREATE,
-                "EMPLOYEE", req.rma(), existing.map(Employee::getName).orElse(null), saved.getName());
+                "EMPLOYEE", req.rma(), oldName, saved.getName());
         return ResponseEntity.status(existing.isPresent() ? HttpStatus.OK : HttpStatus.CREATED).body(saved);
     }
 

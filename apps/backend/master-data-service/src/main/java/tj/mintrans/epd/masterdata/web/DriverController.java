@@ -70,6 +70,7 @@ public class DriverController {
         var org = organizations.findByRma(req.organizationRma())
                 .orElseThrow(() -> new NotFoundException("Организация не найдена"));
         var existing = drivers.findByRma(req.rma());
+        String oldName = existing.map(Driver::getFullName).orElse(null); // до мутации (existing и driver — один объект)
         var driver = existing.orElseGet(Driver::new);
         driver.setRma(req.rma());
         driver.setOrganizationId(org.getId());
@@ -85,7 +86,7 @@ public class DriverController {
         driver.setPhone(req.phone());
         var saved = drivers.save(driver);
         audit.record(existing.isPresent() ? AuditService.UPDATE : AuditService.CREATE,
-                "DRIVER", req.rma(), existing.map(Driver::getFullName).orElse(null), saved.getFullName());
+                "DRIVER", req.rma(), oldName, saved.getFullName());
         return ResponseEntity.status(existing.isPresent() ? HttpStatus.OK : HttpStatus.CREATED).body(saved);
     }
 
