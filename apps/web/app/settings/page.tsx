@@ -10,6 +10,7 @@ type St = 'done' | 'partial' | 'planned';
  *  st: done — доступно, partial — частично (есть основа), planned — планируется.
  *  href — куда ведёт уже существующая настройка. */
 const MODULES: { key: string; icon: string; cls: string; st: St; href?: string }[] = [
+  { key: 'rules', icon: P.settings, cls: 'ic-green', st: 'done', href: '/settings/policies' },
   { key: 'general', icon: P.help, cls: 'ic-blue', st: 'planned' },
   { key: 'org', icon: P.building, cls: 'ic-blue', st: 'partial', href: '/company' },
   { key: 'wbtypes', icon: P.doc, cls: 'ic-cyan', st: 'partial', href: '/settings/types' },

@@ -84,6 +84,17 @@ export const TYPE_LABELS: Record<string, string> = {
   WB_DANGEROUS: 'Опасные грузы',
 };
 
+export type Policy = {
+  id: string;
+  scopeLevel: 'NATIONAL' | 'ORGANIZATION' | 'VEHICLE_TYPE';
+  scopeKey: string;
+  ruleKey: string;
+  ruleValue: string;
+  enabled: boolean;
+  updatedBy?: string | null;
+  updatedAt?: string | null;
+};
+
 async function handle<T>(res: Response): Promise<T> {
   if (!res.ok) {
     let detail = `Ошибка ${res.status}`;
@@ -123,6 +134,11 @@ export const md = {
   createDriver: (body: Record<string, unknown>) => mdPost('drivers', body),
   createVehicle: (body: Record<string, unknown>) => mdPost('vehicles', body),
   createEmployee: (body: Record<string, unknown>) => mdPost('employees', body),
+  // Движок бизнес-правил (политик) — административная подсистема «Настройки».
+  policies: () => fetch('/md-api/api/v1/policies', { headers: authHeaders() }).then(r => handle<Policy[]>(r)),
+  savePolicy: (body: Record<string, unknown>) => mdPost('policies', body) as Promise<Policy>,
+  deletePolicy: (id: string) => fetch(`/md-api/api/v1/policies/${id}`, { method: 'DELETE', headers: authHeaders() })
+    .then(r => { if (!r.ok && r.status !== 204) throw new Error(`Ошибка ${r.status}`); }),
 };
 
 export type Payment = {
