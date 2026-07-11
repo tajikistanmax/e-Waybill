@@ -22,7 +22,7 @@ const MODULES: { key: string; icon: string; cls: string; st: St; href?: string }
   { key: 'payment', icon: P.chart, cls: 'ic-green', st: 'partial', href: '/dictionaries' },
   { key: 'numbering', icon: P.docActive, cls: 'ic-cyan', st: 'planned' },
   { key: 'statuses', icon: P.route, cls: 'ic-cyan', st: 'planned' },
-  { key: 'roles', icon: P.users, cls: 'ic-blue', st: 'partial' },
+  { key: 'roles', icon: P.users, cls: 'ic-blue', st: 'partial', href: '/settings/roles' },
   { key: 'notify', icon: P.bell, cls: 'ic-amber', st: 'planned' },
   { key: 'integrations', icon: P.globe, cls: 'ic-blue', st: 'partial' },
   { key: 'security', icon: P.shield, cls: 'ic-red', st: 'planned' },
