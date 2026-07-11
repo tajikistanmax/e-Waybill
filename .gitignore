@@ -28,3 +28,5 @@ infra/.data/
 # Временные
 *.log
 *.tmp
+
+apps/backend/crypto-service-mock/*.class
