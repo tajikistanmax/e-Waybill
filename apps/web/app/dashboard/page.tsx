@@ -13,6 +13,8 @@ import { useT } from '@/lib/i18n';
 
 const TYPE_COLORS = ['#2563eb', '#16a34a', '#ea9615', '#f97316', '#ef4444', '#7c5cdb', '#0ea5c4', '#64748b', '#db2777', '#0891b2'];
 
+type Svc = 'up' | 'down' | 'checking';
+
 function isToday(iso: string) {
   const d = new Date(iso), n = new Date();
   return d.toDateString() === n.toDateString();
@@ -66,14 +68,28 @@ export default function DashboardPage() {
   const recent = useMemo(() => [...items].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 6), [items]);
 
   const KPIS = [
-    { label: t('kpi.total'), value: stats.total, icon: P.doc, cls: 'ic-blue', trend: '+8.5%', up: true, spark: stats.sparkTotal, color: '#2563eb' },
-    { label: t('kpi.today'), value: stats.today, icon: P.check, cls: 'ic-green', trend: '+12.3%', up: true, spark: stats.sparkTotal, color: '#16a34a' },
-    { label: t('kpi.online'), value: stats.onLine, icon: P.car, cls: 'ic-cyan', trend: '•', up: true, spark: stats.sparkActive, color: '#0ea5c4' },
-    { label: t('kpi.done'), value: stats.completed, icon: P.route, cls: 'ic-purple', trend: '', up: true, spark: stats.sparkDone, color: '#7c5cdb' },
-    { label: t('kpi.cancel'), value: stats.cancelled, icon: P.alert, cls: 'ic-red', trend: '−5.2%', up: false, spark: stats.sparkCancel, color: '#dc2626' },
+    { label: t('kpi.total'), value: stats.total, icon: P.doc, cls: 'ic-blue', spark: stats.sparkTotal, color: '#2563eb' },
+    { label: t('kpi.today'), value: stats.today, icon: P.check, cls: 'ic-green', spark: stats.sparkTotal, color: '#16a34a' },
+    { label: t('kpi.online'), value: stats.onLine, icon: P.car, cls: 'ic-cyan', spark: stats.sparkActive, color: '#0ea5c4' },
+    { label: t('kpi.done'), value: stats.completed, icon: P.route, cls: 'ic-purple', spark: stats.sparkDone, color: '#7c5cdb' },
+    { label: t('kpi.cancel'), value: stats.cancelled, icon: P.alert, cls: 'ic-red', spark: stats.sparkCancel, color: '#dc2626' },
   ];
 
-  const SYS = ['sys.app', 'sys.db', 'sys.auth', 'sys.qr', 'sys.bus', 'sys.storage'];
+  // Состояние систем — реальная проверка здоровья бэкенд-служб (actuator/health), не заглушка.
+  const [health, setHealth] = useState<Record<string, Svc>>({ wb: 'checking', md: 'checking' });
+  useEffect(() => {
+    const set = (k: string, s: Svc) => setHealth(h => ({ ...h, [k]: s }));
+    const check = (k: string, url: string) => fetch(url)
+      .then(r => set(k, r.ok ? 'up' : 'down')).catch(() => set(k, 'down'));
+    check('wb', '/wb-api/actuator/health');
+    check('md', '/md-api/actuator/health');
+  }, []);
+  const services: { key: string; status: Svc }[] = [
+    { key: 'sys.svc.app', status: 'up' },
+    { key: 'sys.svc.waybill', status: health.wb },
+    { key: 'sys.svc.masterdata', status: health.md },
+  ];
+  const allUp = services.every(s => s.status === 'up');
 
   return (
     <>
@@ -104,7 +120,6 @@ export default function DashboardPage() {
             </div>
             <div className="k-label">{k.label}</div>
             <div className="k-value">{loading ? '—' : k.value.toLocaleString('ru-RU')}</div>
-            <div className={`k-trend ${k.up ? 'up' : 'down'}`}>{k.trend}</div>
           </div>
         ))}
       </div>
@@ -162,9 +177,18 @@ export default function DashboardPage() {
         <div className="card">
           <h2>{t('dash.sysstate')}</h2>
           <div className="sys-list">
-            {SYS.map(s => <div className="row" key={s}>{t(s)}<span className="st">{t('sys.online')}</span></div>)}
+            {services.map(s => (
+              <div className="row" key={s.key}>
+                {t(s.key)}
+                <span className="st" style={s.status === 'down' ? { color: 'var(--red)' } : s.status === 'checking' ? { color: 'var(--muted)' } : undefined}>
+                  {s.status === 'up' ? t('sys.online') : s.status === 'down' ? t('sys.offline') : t('sys.checking')}
+                </span>
+              </div>
+            ))}
           </div>
-          <div className="sys-ok"><Icon d={P.check} cls="" style={{ width: 16, height: 16 }} /> {t('dash.sysok')}</div>
+          {allUp
+            ? <div className="sys-ok"><Icon d={P.check} cls="" style={{ width: 16, height: 16 }} /> {t('dash.sysok')}</div>
+            : <div className="sys-ok" style={{ color: 'var(--red)' }}><Icon d={P.alert} cls="" style={{ width: 16, height: 16 }} /> {t('dash.sysdown')}</div>}
         </div>
       </div>
 
