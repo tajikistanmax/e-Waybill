@@ -287,4 +287,11 @@ export const wb = {
   // Последняя GPS-позиция ТС (404 → null).
   gpsLast: (vehicleRegNumber: string) => fetch(`/wb-api/api/v1/gps/last?vehicleRegNumber=${encodeURIComponent(vehicleRegNumber)}`, { headers: authHeaders() })
     .then(async r => r.ok ? (r.json() as Promise<GpsPing>) : null),
+  // Живой мониторинг: ТС на линии (выданные/активные ПЛ) с последней GPS-координатой (org-скоуп на бэкенде).
+  gpsLive: () => fetch('/wb-api/api/v1/gps/live', { headers: authHeaders() }).then(r => handle<LivePosition[]>(r)),
+};
+
+export type LivePosition = {
+  vehicleRegNumber: string; number: string | null; driver: string; status: string;
+  lat: number | null; lon: number | null; speedKmh: number | null; recordedAt: string | null;
 };

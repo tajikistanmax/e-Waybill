@@ -15,13 +15,17 @@ import org.springframework.web.bind.annotation.RestController;
 import tj.mintrans.epd.waybill.client.MasterDataClient;
 import tj.mintrans.epd.waybill.config.CurrentUser;
 import tj.mintrans.epd.waybill.domain.GpsPing;
+import tj.mintrans.epd.waybill.domain.Waybill;
+import tj.mintrans.epd.waybill.domain.WaybillStatus;
 import tj.mintrans.epd.waybill.repository.GpsPingRepository;
 import tj.mintrans.epd.waybill.repository.WaybillRepository;
 import tj.mintrans.epd.waybill.web.error.ApiErrors.NotFoundException;
 
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
+import java.util.EnumSet;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -78,6 +82,44 @@ public class GpsController {
         assertVehicleVisible(reg);
         return repository.findTop1ByVehicleRegNumberOrderByRecordedAtDesc(reg)
                 .orElseThrow(() -> new NotFoundException("Позиция для ТС %s не найдена".formatted(reg)));
+    }
+
+    /** Позиция ТС на линии для монитора диспетчера: ПЛ + последняя координата. */
+    public record LivePosition(String vehicleRegNumber, String number, String driver, String status,
+                               BigDecimal lat, BigDecimal lon, Short speedKmh, OffsetDateTime recordedAt) {
+    }
+
+    /**
+     * Живой мониторинг: все ТС «на линии» (выданные/активные ПЛ) с последней GPS-координатой.
+     * Тенант — только своя организация; платформенные роли (инспектор/аналитик/админ) — все.
+     * Позиция может быть null, если от трекера ТС ещё не поступало пингов.
+     */
+    @GetMapping("/live")
+    @PreAuthorize("hasAnyRole('DISPATCHER','COMPANY_ADMIN','SYSTEM_ADMIN','INSPECTOR','MINTRANS_ANALYST')")
+    public List<LivePosition> live() {
+        var onLine = EnumSet.of(WaybillStatus.ISSUED, WaybillStatus.ACTIVE);
+        List<Waybill> active;
+        if (currentUser.isTenantScoped()) {
+            String org = currentUser.organizationRma().orElse(null);
+            if (org == null) {
+                return List.of();
+            }
+            active = waybills.findByOrganizationRmaOrderByCreatedAtDesc(org).stream()
+                    .filter(w -> onLine.contains(w.getStatus())).toList();
+        } else {
+            active = waybills.findByStatusInOrderByCreatedAtDesc(onLine);
+        }
+        return active.stream().map(w -> {
+            var ping = repository.findTop1ByVehicleRegNumberOrderByRecordedAtDesc(w.getVehicleRegNumber()).orElse(null);
+            Map<String, Object> ds = w.getDriverSnapshot();
+            String driver = ds != null && ds.get("fullName") != null ? String.valueOf(ds.get("fullName")) : w.getDriverRma();
+            return new LivePosition(
+                    w.getVehicleRegNumber(), w.getNumber(), driver, w.getStatus().name(),
+                    ping != null ? ping.getLat() : null,
+                    ping != null ? ping.getLon() : null,
+                    ping != null ? ping.getSpeedKmh() : null,
+                    ping != null ? ping.getRecordedAt() : null);
+        }).toList();
     }
 
     /** Трек по путевому листу (только своя организация для тенанта). */

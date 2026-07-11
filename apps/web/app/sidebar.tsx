@@ -69,6 +69,7 @@ export function Sidebar() {
         {nav.has('driver') && <Link href="/driver" className={`snav ${active('/driver') ? 'active' : ''}`}><Icon d={P.car} /> {t('nav.driver')}</Link>}
         {nav.has('inspector') && <Link href="/inspector" className={`snav ${active('/inspector') ? 'active' : ''}`}><Icon d={P.shield} /> {t('nav.inspector')}</Link>}
         {nav.has('fleet') && <Link href="/fleet" className={`snav ${active('/fleet') ? 'active' : ''}`}><Icon d={fleetIcon} /> {fleetLabel}</Link>}
+        {nav.has('monitoring') && <Link href="/monitoring" className={`snav ${active('/monitoring') ? 'active' : ''}`}><Icon d={P.route} /> {t('nav.monitoring')}</Link>}
 
         {showManagement && <div className="group-label">{t('nav.group.management')}</div>}
         {nav.has('company') && <Link href="/company" className={`snav ${active('/company') ? 'active' : ''}`}><Icon d={P.building} /> {t('nav.company')}</Link>}

@@ -1,6 +1,6 @@
 // Персональные кабинеты по ролям: стартовая страница и доступные пункты меню.
 
-export type NavKey = 'dashboard' | 'waybills' | 'dispatcher' | 'med' | 'tech' | 'driver' | 'inspector' | 'company' | 'fleet' | 'registry' | 'violations' | 'reports' | 'dictionaries' | 'settings';
+export type NavKey = 'dashboard' | 'waybills' | 'dispatcher' | 'med' | 'tech' | 'driver' | 'inspector' | 'company' | 'fleet' | 'monitoring' | 'registry' | 'violations' | 'reports' | 'dictionaries' | 'settings';
 
 /** Куда попадает пользователь после входа — в свой кабинет. */
 export function roleHome(roles: string[]): string {
@@ -20,16 +20,16 @@ export function visibleNav(roles: string[]): Set<NavKey> {
   const s = new Set<NavKey>();
   const add = (...keys: NavKey[]) => keys.forEach(k => s.add(k));
 
-  if (roles.includes('SYSTEM_ADMIN')) add('dashboard', 'waybills', 'med', 'tech', 'company', 'registry', 'violations', 'reports', 'dictionaries', 'settings');
-  if (roles.includes('COMPANY_ADMIN')) add('dashboard', 'waybills', 'med', 'tech', 'company', 'fleet', 'registry', 'violations', 'reports', 'dictionaries', 'settings');
-  if (roles.includes('DISPATCHER')) add('dispatcher', 'dashboard', 'waybills', 'fleet');
+  if (roles.includes('SYSTEM_ADMIN')) add('dashboard', 'waybills', 'med', 'tech', 'company', 'monitoring', 'registry', 'violations', 'reports', 'dictionaries', 'settings');
+  if (roles.includes('COMPANY_ADMIN')) add('dashboard', 'waybills', 'med', 'tech', 'company', 'fleet', 'monitoring', 'registry', 'violations', 'reports', 'dictionaries', 'settings');
+  if (roles.includes('DISPATCHER')) add('dispatcher', 'dashboard', 'waybills', 'fleet', 'monitoring');
   if (roles.includes('DOCTOR')) add('med', 'fleet');
   if (roles.includes('MECHANIC')) add('tech', 'fleet');
   if (roles.includes('DRIVER')) add('driver');
   if (roles.includes('ACCOUNTANT')) add('dashboard', 'reports', 'waybills');
-  if (roles.includes('INSPECTOR')) add('inspector', 'dashboard', 'violations');
+  if (roles.includes('INSPECTOR')) add('inspector', 'dashboard', 'violations', 'monitoring');
   // Аналитик Минтранса — надзор/аналитика по всем организациям (только чтение).
-  if (roles.includes('MINTRANS_ANALYST')) add('dashboard', 'reports', 'registry', 'violations');
+  if (roles.includes('MINTRANS_ANALYST')) add('dashboard', 'reports', 'registry', 'violations', 'monitoring');
 
   if (s.size === 0) s.add('dashboard');
   return s;

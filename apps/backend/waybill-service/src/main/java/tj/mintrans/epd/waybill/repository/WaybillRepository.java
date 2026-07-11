@@ -22,6 +22,9 @@ public interface WaybillRepository extends JpaRepository<Waybill, UUID> {
 
     List<Waybill> findByStatusOrderByCreatedAtDesc(WaybillStatus status);
 
+    /** Активные ПЛ по набору статусов (GPS-мониторинг «на линии» для платформенных ролей). */
+    List<Waybill> findByStatusInOrderByCreatedAtDesc(Collection<WaybillStatus> statuses);
+
     /** Просроченные документы для автоперехода в EXPIRED (LifecycleScheduler). */
     List<Waybill> findByStatusInAndValidToBefore(Collection<WaybillStatus> statuses, OffsetDateTime validTo);
 
