@@ -125,6 +125,12 @@ Check "Отчёт-сводка (ПЛ > 0)" ($sum.totals.waybills -gt 0)
 $norms = Invoke-RestMethod "$md/api/v1/dictionaries/fuel-norms" -Headers $hd
 Check "Справочник норм расхода (сиды)" ($norms.Count -ge 5)
 
+# --- 11. Движок бизнес-правил (политик) ---
+$polBus = Invoke-RestMethod "$md/api/v1/policies/effective?waybillType=WB_BUS" -Headers $hd
+Check "Политики: require_med_post=true для автобуса (override типа)" ($polBus.require_med_post -eq 'true')
+$polTruck = Invoke-RestMethod "$md/api/v1/policies/effective?waybillType=WB_TRUCK" -Headers $hd
+Check "Политики: require_med_post=false для грузового (нац. умолчание)" ($polTruck.require_med_post -eq 'false')
+
 Write-Output ""
 Write-Output "=== ИТОГ: PASS=$pass, FAIL=$fail ==="
 if ($fail -gt 0) { exit 1 } else { Write-Output "ВСЕ ПРОВЕРКИ ПРОЙДЕНЫ ✓"; exit 0 }

@@ -39,6 +39,16 @@ public class CurrentUser {
                         || "ROLE_API_INTEGRATOR".equals(a.getAuthority()));
     }
 
+    /** true, если у текущего субъекта есть realm-роль role (без префикса ROLE_). */
+    public boolean hasRole(String role) {
+        Authentication auth = authentication();
+        if (auth == null) {
+            return false;
+        }
+        String target = "ROLE_" + role;
+        return auth.getAuthorities().stream().anyMatch(a -> target.equals(a.getAuthority()));
+    }
+
     /** РМА организации пользователя из claim "organization_rma" (если есть). */
     public Optional<String> organizationRma() {
         if (authentication() instanceof JwtAuthenticationToken jwt

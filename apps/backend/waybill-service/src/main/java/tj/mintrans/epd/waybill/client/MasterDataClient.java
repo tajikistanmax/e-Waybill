@@ -96,6 +96,28 @@ public class MasterDataClient {
                 .toBodilessEntity();
     }
 
+    // ------------------------------------------------------- движок политик
+
+    private static final ParameterizedTypeReference<Map<String, String>> STRING_MAP =
+            new ParameterizedTypeReference<>() {};
+
+    /**
+     * Эффективные правила (движок политик master-data) для (организация, тип ПЛ).
+     * При недоступности движка возвращает пустую карту — вызывающий код применяет безопасный фолбэк.
+     */
+    public Map<String, String> effectivePolicies(String organizationRma, String waybillType) {
+        try {
+            Map<String, String> map = client.get()
+                    .uri("/api/v1/policies/effective?organizationRma={o}&waybillType={t}",
+                            organizationRma, waybillType)
+                    .retrieve()
+                    .body(STRING_MAP);
+            return map == null ? Map.of() : map;
+        } catch (RuntimeException e) {
+            return Map.of();
+        }
+    }
+
     // ------------------------------------------------------- справочники нормирования
 
     public List<Map<String, Object>> listFuelNorms() {

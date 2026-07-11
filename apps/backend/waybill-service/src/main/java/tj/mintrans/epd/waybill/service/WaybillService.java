@@ -469,13 +469,21 @@ public class WaybillService {
         return waybills.save(wb);
     }
 
-    /** Закрытие: для пассажирских перевозок требуется послерейсовый медосмотр (Т6). */
+    /**
+     * Закрытие: требование послерейсового медосмотра (Т6) определяется движком политик
+     * (правило require_med_post, уровни NATIONAL/ORGANIZATION/VEHICLE_TYPE). Если движок
+     * недоступен — безопасный фолбэк на прежнее правило «обязателен для пассажирских перевозок».
+     */
     @Transactional
     public Waybill close(UUID id, String actor) {
         var wb = get(id);
         requireStatus(wb, WaybillStatus.RETURNED);
-        if (wb.getWaybillType().isPassenger() && titles.findByWaybillIdAndTitleType(id, "T6").isEmpty()) {
-            throw new ConflictException("Для пассажирской перевозки обязателен послерейсовый медосмотр (Т6)");
+        var policies = masterData.effectivePolicies(wb.getOrganizationRma(), wb.getWaybillType().name());
+        boolean requireMedPost = policies.containsKey("require_med_post")
+                ? Boolean.parseBoolean(policies.get("require_med_post"))
+                : wb.getWaybillType().isPassenger();
+        if (requireMedPost && titles.findByWaybillIdAndTitleType(id, "T6").isEmpty()) {
+            throw new ConflictException("Требуется послерейсовый медосмотр (Т6) перед закрытием путевого листа");
         }
         // Перенос одометра в мастер-данные для следующего ПЛ
         if (wb.getOdometerEntry() != null && wb.getVehicleSnapshot() != null) {
