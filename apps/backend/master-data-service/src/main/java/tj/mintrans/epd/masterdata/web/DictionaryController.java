@@ -12,6 +12,8 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.server.ResponseStatusException;
+import tj.mintrans.epd.masterdata.config.CurrentUser;
 import tj.mintrans.epd.masterdata.domain.Client;
 import tj.mintrans.epd.masterdata.domain.Coefficient;
 import tj.mintrans.epd.masterdata.domain.FuelNorm;
@@ -42,15 +44,34 @@ public class DictionaryController {
     private final FuelNormRepository fuelNorms;
     private final CoefficientRepository coefficients;
     private final TariffRepository tariffs;
+    private final CurrentUser currentUser;
 
     public DictionaryController(RouteRepository routes, ClientRepository clients,
                                 FuelNormRepository fuelNorms, CoefficientRepository coefficients,
-                                TariffRepository tariffs) {
+                                TariffRepository tariffs, CurrentUser currentUser) {
         this.routes = routes;
         this.clients = clients;
         this.fuelNorms = fuelNorms;
         this.coefficients = coefficients;
         this.tariffs = tariffs;
+        this.currentUser = currentUser;
+    }
+
+    /**
+     * Организация, к которой привязывается запись справочника при upsert.
+     * COMPANY_ADMIN (tenant-scoped) — только своя организация (параметр запроса игнорируется).
+     * SYSTEM_ADMIN — обязан указать организацию явно (organizationRma в теле).
+     */
+    private String resolveWriteOrg(String requestedOrg) {
+        if (currentUser.isTenantScoped()) {
+            return currentUser.organizationRma().orElseThrow(() -> new ResponseStatusException(
+                    HttpStatus.FORBIDDEN, "Организация не определена в токене"));
+        }
+        if (requestedOrg == null || requestedOrg.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "SYSTEM_ADMIN должен указать organizationRma владельца записи");
+        }
+        return requestedOrg.trim();
     }
 
     // ------------------------------------------------------------------ маршруты
@@ -59,19 +80,26 @@ public class DictionaryController {
             @NotBlank @Size(max = 10) String number,
             @NotBlank String name,
             Short transportType,
-            Short regionId) {
+            Short regionId,
+            String organizationRma) {
     }
 
     @GetMapping("/routes")
     public List<Route> listRoutes() {
+        // Тенант видит маршруты только своей организации; платформа и внутренние вызовы — все.
+        if (currentUser.isTenantScoped()) {
+            return routes.findByOrganizationRma(currentUser.organizationRma().orElse(null));
+        }
         return routes.findAll();
     }
 
     @PostMapping("/routes")
     @PreAuthorize("hasAnyRole('COMPANY_ADMIN','SYSTEM_ADMIN')")
     public ResponseEntity<Route> upsertRoute(@Valid @RequestBody RouteRequest req) {
-        var existing = routes.findByNumber(req.number());
+        String org = resolveWriteOrg(req.organizationRma());
+        var existing = routes.findByOrganizationRmaAndNumber(org, req.number());
         var route = existing.orElseGet(Route::new);
+        route.setOrganizationRma(org);
         route.setNumber(req.number());
         route.setName(req.name());
         route.setTransportType(req.transportType());
@@ -85,19 +113,26 @@ public class DictionaryController {
             @NotBlank @Size(max = 10) String number,
             @NotBlank String name,
             String address,
-            String phone) {
+            String phone,
+            String organizationRma) {
     }
 
     @GetMapping("/clients")
     public List<Client> listClients() {
+        // Тенант видит клиентов только своей организации; платформа и внутренние вызовы — все.
+        if (currentUser.isTenantScoped()) {
+            return clients.findByOrganizationRma(currentUser.organizationRma().orElse(null));
+        }
         return clients.findAll();
     }
 
     @PostMapping("/clients")
     @PreAuthorize("hasAnyRole('COMPANY_ADMIN','SYSTEM_ADMIN')")
     public ResponseEntity<Client> upsertClient(@Valid @RequestBody ClientRequest req) {
-        var existing = clients.findByNumber(req.number());
+        String org = resolveWriteOrg(req.organizationRma());
+        var existing = clients.findByOrganizationRmaAndNumber(org, req.number());
         var client = existing.orElseGet(Client::new);
+        client.setOrganizationRma(org);
         client.setNumber(req.number());
         client.setName(req.name());
         client.setAddress(req.address());

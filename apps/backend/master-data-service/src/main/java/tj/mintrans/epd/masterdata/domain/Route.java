@@ -16,7 +16,11 @@ public class Route {
     @Id
     private UUID id;
 
-    @Column(nullable = false, unique = true)
+    /** РМА организации-владельца: маршруты ведутся по каждому перевозчику отдельно. */
+    @Column(name = "organization_rma", nullable = false)
+    private String organizationRma;
+
+    @Column(nullable = false)
     private String number;
 
     @Column(nullable = false)
@@ -34,6 +38,8 @@ public class Route {
     }
 
     public UUID getId() { return id; }
+    public String getOrganizationRma() { return organizationRma; }
+    public void setOrganizationRma(String organizationRma) { this.organizationRma = organizationRma; }
     public String getNumber() { return number; }
     public void setNumber(String number) { this.number = number; }
     public String getName() { return name; }

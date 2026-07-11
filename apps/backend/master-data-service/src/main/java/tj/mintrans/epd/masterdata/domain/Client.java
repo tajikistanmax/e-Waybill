@@ -16,7 +16,10 @@ public class Client {
     @Id
     private UUID id;
 
-    @Column(unique = true)
+    /** РМА организации-владельца: клиенты ведутся по каждому перевозчику отдельно. */
+    @Column(name = "organization_rma", nullable = false)
+    private String organizationRma;
+
     private String number;
 
     @Column(nullable = false)
@@ -32,6 +35,8 @@ public class Client {
     }
 
     public UUID getId() { return id; }
+    public String getOrganizationRma() { return organizationRma; }
+    public void setOrganizationRma(String organizationRma) { this.organizationRma = organizationRma; }
     public String getNumber() { return number; }
     public void setNumber(String number) { this.number = number; }
     public String getName() { return name; }

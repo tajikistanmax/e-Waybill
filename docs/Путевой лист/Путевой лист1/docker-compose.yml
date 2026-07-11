@@ -1,0 +1,91 @@
+version: '3.8'
+
+services:
+  # --- Infrastructure ---
+  db:
+    image: postgres:16
+    container_name: waybill-db
+    environment:
+      POSTGRES_DB: waybill_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:alpine
+    container_name: dts-redis
+    ports:
+      - "6379:6379"
+
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: dts-mq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+
+  # --- Centralized Identity (SSO) ---
+  keycloak:
+    image: quay.io/keycloak/keycloak:latest
+    container_name: dts-sso
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
+    command: start-dev
+    ports:
+      - "8081:8080"
+    depends_on:
+      - db
+
+  # --- Service Mesh (DTS Architecture) ---
+  discovery-service:
+    build:
+      context: .
+      dockerfile: infrastructure/discovery/Dockerfile
+    container_name: dts-discovery
+    ports:
+      - "8761:8761"
+
+  api-gateway:
+    build:
+      context: .
+      dockerfile: infrastructure/gateway/Dockerfile
+    container_name: dts-gateway
+    ports:
+      - "80:8080"
+    depends_on:
+      - discovery-service
+
+  # --- Domain Services ---
+  core-service:
+    build: ./services/core-service
+    container_name: dts-core
+    ports:
+      - "8085:8080"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/waybill_db
+      SPRING_RABBITMQ_HOST: rabbitmq
+      SPRING_REDIS_HOST: redis
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://discovery-service:8761/eureka/
+    depends_on:
+      - db
+      - rabbitmq
+      - redis
+      - discovery-service
+
+  # --- Specialized Modules ---
+  telemetry-service:
+    build:
+      context: .
+      dockerfile: services/telemetry-service/Dockerfile
+    container_name: dts-telemetry
+    environment:
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://discovery-service:8761/eureka/
+    depends_on:
+      - discovery-service
+
+volumes:
+  postgres_data:

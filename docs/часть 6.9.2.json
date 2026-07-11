@@ -1,0 +1,8 @@
+POST /api/v1/epl/12345678-1234-1234-1234-123456789012/send
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{
+  "операторЭДО": "СКБ_КОНТУР",
+  "xmlПакет": "<?xml version='1.0' encoding='UTF-8'?><EPD_PL>...</EPD_PL>"
+}
