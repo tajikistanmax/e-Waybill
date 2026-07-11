@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.server.ResponseStatusException;
 import tj.mintrans.epd.masterdata.config.CurrentUser;
 import tj.mintrans.epd.masterdata.domain.Vehicle;
 import tj.mintrans.epd.masterdata.repository.OrganizationRepository;
@@ -95,6 +96,14 @@ public class VehicleController {
     @PatchMapping("/{id}/odometer")
     public Vehicle updateOdometer(@PathVariable UUID id, @Valid @RequestBody OdometerUpdate req) {
         var vehicle = vehicles.findById(id).orElseThrow(() -> new NotFoundException("Транспорт не найден"));
+        if (req.odometer() < 0) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Одометр не может быть отрицательным");
+        }
+        // Непрерывность пробега: одометр не должен уменьшаться относительно последнего значения.
+        if (req.odometer() < vehicle.getOdometer()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Одометр не может уменьшаться (текущий: " + vehicle.getOdometer() + ")");
+        }
         vehicle.setOdometer(req.odometer());
         return vehicles.save(vehicle);
     }

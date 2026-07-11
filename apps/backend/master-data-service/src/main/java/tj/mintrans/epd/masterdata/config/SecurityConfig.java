@@ -37,9 +37,11 @@ public class SecurityConfig {
                         .requestMatchers("/.well-known/**").permitAll()
                         // Публичная проверка QR (инспектор без логина)
                         .requestMatchers("/api/v1/verify/**").permitAll()
-                        // TODO(prod): межсервисные вызовы waybill-service → закрыть
-                        // client-credentials токеном сервисного аккаунта. Пока dev-режим:
-                        // чтение справочных данных и обновление одометра при закрытии ПЛ.
+                        // TODO(prod, ВАЖНО — аудит): GET и межсервисный PATCH одометра сейчас permitAll,
+                        // т.к. поток агрегатора (ЧУРА/НЕРУ) и часть вызовов waybill-service идут БЕЗ
+                        // пользовательского токена. Закрыть client-credentials токеном сервисного
+                        // аккаунта (waybill-service, aggregator) и требовать authenticated() —
+                        // иначе анонимное чтение ПДн. Требует инфраструктуры сервисной аутентификации.
                         .requestMatchers(HttpMethod.GET, "/api/v1/**").permitAll()
                         .requestMatchers(HttpMethod.PATCH, "/api/v1/vehicles/*/odometer").permitAll()
                         // TODO: ВРЕМЕННО открыто. Следующий этап — scoped-токены
