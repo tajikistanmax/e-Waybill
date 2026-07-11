@@ -9,11 +9,11 @@ import { visibleNav, roleHome, type NavKey } from '@/lib/roles';
 const ROLES = ['SYSTEM_ADMIN', 'COMPANY_ADMIN', 'DISPATCHER', 'DOCTOR', 'MECHANIC', 'DRIVER', 'INSPECTOR', 'ACCOUNTANT', 'API_INTEGRATOR'];
 
 /** Порядок разделов для отображения доступа. */
-const SECTIONS: NavKey[] = ['dashboard', 'dispatcher', 'waybills', 'med', 'tech', 'driver', 'inspector', 'company', 'registry', 'violations', 'reports', 'dictionaries', 'settings'];
+const SECTIONS: NavKey[] = ['dashboard', 'dispatcher', 'waybills', 'med', 'tech', 'driver', 'inspector', 'fleet', 'company', 'registry', 'violations', 'reports', 'dictionaries', 'settings'];
 
 const NAV_KEY: Record<NavKey, string> = {
   dashboard: 'nav.dashboard', dispatcher: 'nav.dispatcher', waybills: 'nav.waybills', med: 'nav.med',
-  tech: 'nav.tech', driver: 'nav.driver', inspector: 'nav.inspector', company: 'nav.company',
+  tech: 'nav.tech', driver: 'nav.driver', inspector: 'nav.inspector', fleet: 'nav.fleet', company: 'nav.company',
   registry: 'nav.registry', violations: 'nav.violations', reports: 'nav.reports',
   dictionaries: 'nav.dictionaries', settings: 'nav.settings',
 };
