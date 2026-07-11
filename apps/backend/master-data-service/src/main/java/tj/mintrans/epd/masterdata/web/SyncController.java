@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.server.ResponseStatusException;
 import tj.mintrans.epd.masterdata.client.UnifiedPlatformClient;
 import tj.mintrans.epd.masterdata.config.CurrentUser;
 import tj.mintrans.epd.masterdata.domain.Driver;
@@ -129,6 +130,7 @@ public class SyncController {
         var license = unifiedPlatform.findDriverLicense(req.inn())
                 .orElseThrow(() -> new NotFoundException("Водительское удостоверение для ИНН %s не найдено в базе ГАИ".formatted(req.inn())));
         var existing = drivers.findByRma(subject.inn());
+        existing.ifPresent(d -> assertNotForeign(d.getOrganizationId(), org.getId(), "Водитель"));
         var driver = existing.orElseGet(Driver::new);
         driver.setRma(subject.inn());
         driver.setOrganizationId(org.getId());
@@ -154,6 +156,7 @@ public class SyncController {
         var subject = unifiedPlatform.findSubject(req.inn())
                 .orElseThrow(() -> new NotFoundException("Субъект с ИНН %s не найден в единой платформе (налоговая)".formatted(req.inn())));
         var existing = employees.findByRma(subject.inn());
+        existing.ifPresent(e -> assertNotForeign(e.getOrganizationId(), org.getId(), "Сотрудник"));
         var employee = existing.orElseGet(Employee::new);
         employee.setRma(subject.inn());
         employee.setOrganizationId(org.getId());
@@ -177,6 +180,7 @@ public class SyncController {
         var info = unifiedPlatform.findVehicle(req.registrationNumber())
                 .orElseThrow(() -> new NotFoundException("ТС %s не найдено в базе ГАИ".formatted(req.registrationNumber())));
         var existing = vehicles.findByRegistrationNumber(info.registrationNumber());
+        existing.ifPresent(v -> assertNotForeign(v.getOrganizationId(), org.getId(), "Транспорт"));
         var vehicle = existing.orElseGet(Vehicle::new);
         vehicle.setRegistrationNumber(info.registrationNumber());
         vehicle.setOrganizationId(org.getId());
@@ -204,6 +208,18 @@ public class SyncController {
     }
 
     // ------------------------------------------------------------ вспомогательное
+
+    /**
+     * Защита от межтенантного «захвата»: если сущность с этим ИНН/госномером уже закреплена
+     * за другой организацией — 409 (перевод между организациями должен быть отдельной операцией).
+     * Для platform-admin (не tenant-scoped) разрешено.
+     */
+    private void assertNotForeign(java.util.UUID existingOrgId, java.util.UUID targetOrgId, String what) {
+        if (currentUser.isTenantScoped() && existingOrgId != null && !existingOrgId.equals(targetOrgId)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    what + " уже закреплён(а) за другой организацией");
+        }
+    }
 
     /** Мультиарендность: администратор компании синхронизирует только свою организацию. */
     private void requireOwnOrganization(String organizationRma) {
