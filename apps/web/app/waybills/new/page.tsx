@@ -105,12 +105,15 @@ export default function NewWaybillPage() {
       .catch(() => {});
   }, []);
 
-  // Доп.поля выбранного типа ПЛ (конструктор полей).
+  // Доп.поля выбранного типа ПЛ (конструктор полей). Флаг отмены — против гонки:
+  // запоздавший ответ по прежнему типу не должен перезаписать поля текущего.
   useEffect(() => {
     setCustomValues({});
+    let ignore = false;
     md.fieldDefinitions(form.waybillType)
-      .then(setCustomDefs)
-      .catch(() => setCustomDefs([]));
+      .then(defs => { if (!ignore) setCustomDefs(defs); })
+      .catch(() => { if (!ignore) setCustomDefs([]); });
+    return () => { ignore = true; };
   }, [form.waybillType]);
 
   // Второй водитель не должен совпасть с основным: при смене основного сбрасываем коллизию

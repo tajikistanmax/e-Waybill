@@ -192,9 +192,9 @@ export default function WaybillCard({ params }: { params: Promise<{ id: string }
           )}
           {w.status === 'ACTIVE' && canDispatch && (
             <span>
-              <input style={{ width: 180, marginRight: 8, display: 'inline-block' }} placeholder={t('wb.ph.odoentry')}
+              <input type="number" inputMode="numeric" min={0} style={{ width: 180, marginRight: 8, display: 'inline-block' }} placeholder={t('wb.ph.odoentry')}
                 value={odometerEntry} onChange={e => setOdometerEntry(e.target.value)} />
-              <button className="btn" disabled={!dispatcher || !odometerEntry}
+              <button className="btn" disabled={!dispatcher || !Number.isFinite(Number(odometerEntry)) || odometerEntry.trim() === ''}
                 onClick={() => act(t('wb.act.returned'), () => wb.post(`/${id}/return`, { dispatcherRma: dispatcher, odometerEntry: Number(odometerEntry) }))}>
                 {t('wb.btn.t5')}
               </button>

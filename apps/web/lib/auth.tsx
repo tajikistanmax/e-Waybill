@@ -5,6 +5,7 @@ import { setAuthToken } from '@/lib/api';
 
 const KC = process.env.NEXT_PUBLIC_KEYCLOAK_URL || 'http://localhost:8180';
 const TOKEN_URL = `${KC}/realms/epd/protocol/openid-connect/token`;
+const LOGOUT_URL = `${KC}/realms/epd/protocol/openid-connect/logout`;
 const RT_KEY = 'dts_rt';
 
 type AuthState = {
@@ -84,6 +85,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const logout = useCallback(() => {
     window.clearTimeout(timer.current);
+    let rt: string | null = null;
+    try { rt = localStorage.getItem(RT_KEY); } catch { /* ignore */ }
+    // Серверный отзыв сессии/refresh-token (RP-initiated logout) — иначе украденный RT
+    // оставался бы действительным до истечения. Best-effort, редирект не блокируем.
+    if (rt) {
+      try {
+        fetch(LOGOUT_URL, {
+          method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: new URLSearchParams({ client_id: 'epd-web', refresh_token: rt }), keepalive: true,
+        }).catch(() => { /* ignore */ });
+      } catch { /* ignore */ }
+    }
     try { localStorage.removeItem(RT_KEY); } catch { /* ignore */ }
     setAuthToken('');
     setState({ ready: true, authenticated: false, username: '', roles: [] });
