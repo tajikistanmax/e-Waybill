@@ -116,7 +116,7 @@ export default function DispatcherCabinet() {
               const s = STATUS_LABELS[w.status] ?? { label: w.status, color: 'gray' };
               return (
                 <tr key={w.id} className="clickable" onClick={() => router.push(`/waybills/${w.id}`)}>
-                  <td><span className="number">{w.number ?? '— черновик —'}</span></td>
+                  <td><span className="number">{w.number ?? t('common.draft')}</span></td>
                   <td>{tType(w.waybillType).replace(/\s*\(.*\)/, '')}</td>
                   <td>{w.vehicleRegNumber || '—'}</td>
                   <td>{String(w.driverSnapshot?.fullName ?? w.driverRma ?? '—')}</td>
@@ -151,7 +151,7 @@ export default function DispatcherCabinet() {
               const s = STATUS_LABELS[w.status] ?? { label: w.status, color: 'gray' };
               return (
                 <tr key={w.id} className="clickable" onClick={() => router.push(`/waybills/${w.id}`)}>
-                  <td><span className="number">{w.number ?? '— черновик —'}</span></td>
+                  <td><span className="number">{w.number ?? t('common.draft')}</span></td>
                   <td>{tType(w.waybillType).replace(/\s*\(.*\)/, '')}</td>
                   <td>{w.vehicleRegNumber || '—'}</td>
                   <td>{fmtDateTime(w.createdAt)}</td>

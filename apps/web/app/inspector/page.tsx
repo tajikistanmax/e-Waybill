@@ -117,7 +117,7 @@ export default function InspectorCabinet() {
               <span style={{ fontWeight: 500, fontSize: 13, color: 'var(--ink-soft)', marginLeft: 6 }}>{t(v.note)}</span>
             </div>
             <dl className="kv">
-              <dt>{t('insp.wbnum')}</dt><dd><span className="number">{checked.number ?? '— черновик —'}</span></dd>
+              <dt>{t('insp.wbnum')}</dt><dd><span className="number">{checked.number ?? t('common.draft')}</span></dd>
               <dt>{t('col.type')}</dt><dd>{tType(checked.waybillType)}</dd>
               <dt>{t('col.transport')}</dt><dd>{String(checked.vehicleSnapshot?.brand ?? '')} {checked.vehicleRegNumber}</dd>
               <dt>{t('col.driver')}</dt><dd>{String(checked.driverSnapshot?.fullName ?? checked.driverRma ?? '—')}</dd>
@@ -159,7 +159,7 @@ export default function InspectorCabinet() {
               const s = STATUS_LABELS[w.status] ?? { label: w.status, color: 'gray' };
               return (
                 <tr key={w.id} className="clickable" onClick={() => router.push(`/waybills/${w.id}`)}>
-                  <td><span className="number">{w.number ?? '— черновик —'}</span></td>
+                  <td><span className="number">{w.number ?? t('common.draft')}</span></td>
                   <td>{tType(w.waybillType).replace(/\s*\(.*\)/, '')}</td>
                   <td>{w.vehicleRegNumber || '—'}</td>
                   <td>{String(w.driverSnapshot?.fullName ?? w.driverRma ?? '—')}</td>

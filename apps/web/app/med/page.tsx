@@ -319,7 +319,7 @@ export default function MedWorkstation() {
             <tbody>
               {pre.map(w => (
                 <tr key={w.id}>
-                  <td><span className="number">{w.number ?? '— черновик —'}</span></td>
+                  <td><span className="number">{w.number ?? t('common.draft')}</span></td>
                   <td>{String(w.driverSnapshot?.fullName ?? w.driverRma)}</td>
                   <td>{String(w.organizationSnapshot?.name ?? w.organizationRma)}</td>
                   <td>{hhmm(w.createdAt)}</td>
@@ -420,7 +420,7 @@ export default function MedWorkstation() {
           <tbody>
             {done.map(w => (
               <tr key={w.id}>
-                <td><span className="number">{w.number ?? '— черновик —'}</span></td>
+                <td><span className="number">{w.number ?? t('common.draft')}</span></td>
                 <td>{String(w.driverSnapshot?.fullName ?? w.driverRma)}</td>
                 <td>{String(w.organizationSnapshot?.name ?? w.organizationRma)}</td>
                 <td>{hhmm(w.createdAt)}</td>
@@ -465,7 +465,7 @@ export default function MedWorkstation() {
               </button>
             </div>
             <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'center', marginBottom: 16, fontSize: 13, color: 'var(--ink-soft)' }}>
-              <span className="number">{selected.number ?? '— черновик —'}</span>
+              <span className="number">{selected.number ?? t('common.draft')}</span>
               <b style={{ color: 'var(--ink)' }}>{String(selected.driverSnapshot?.fullName ?? selected.driverRma)}</b>
               <span>{String(selected.organizationSnapshot?.name ?? selected.organizationRma)}</span>
             </div>

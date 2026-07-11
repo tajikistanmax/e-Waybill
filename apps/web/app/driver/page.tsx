@@ -120,7 +120,7 @@ export default function DriverCabinet() {
                     color: 'var(--blue-700)', background: 'var(--blue-050)', padding: '6px 16px', borderRadius: 10,
                   }}
                 >
-                  {current.number ?? '— черновик —'}
+                  {current.number ?? t('common.draft')}
                 </span>
                 <span className={`badge ${current.medPassed ? 'green' : 'gray'}`}>{t('drv.t2')} {current.medPassed ? '✓' : '…'}</span>
                 <span className={`badge ${current.techPassed ? 'green' : 'gray'}`}>{t('drv.t3')} {current.techPassed ? '✓' : '…'}</span>
@@ -205,7 +205,7 @@ export default function DriverCabinet() {
               const km = mileage(w);
               return (
                 <tr key={w.id} className="clickable" onClick={() => router.push(`/waybills/${w.id}`)}>
-                  <td><span className="number">{w.number ?? '— черновик —'}</span></td>
+                  <td><span className="number">{w.number ?? t('common.draft')}</span></td>
                   <td>{tType(w.waybillType).replace(/\s*\(.*\)/, '')}</td>
                   <td>{w.route ?? '—'}</td>
                   <td>{fmtDate(w.createdAt)}</td>
