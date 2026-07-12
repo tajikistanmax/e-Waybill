@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { authHeaders, md } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 import { Icon, P } from '../icons';
+import { ExpiryAlert } from '../ExpiryAlert';
 
 type Row = Record<string, unknown>;
 type Tab = 'drivers' | 'vehicles' | 'employees';
@@ -275,6 +276,8 @@ export default function CompanyPage() {
 
       {error && <div className="error">{error}</div>}
       {ok && <div className="success">{ok}</div>}
+
+      <div style={{ marginBottom: 16 }}><ExpiryAlert days={30} /></div>
 
       {/* KPI */}
       <div className="kpi-row" style={{ gridTemplateColumns: 'repeat(4, 1fr)' }}>

@@ -103,12 +103,14 @@ public class DocumentExpiryController {
                     d.getSafetyCourseValidTo(), today, threshold);
         }
 
-        // ТС: техосмотр, контрольная карта.
+        // ТС: техосмотр, контрольная карта, страховой полис (§13).
         for (Vehicle v : vehicleList) {
             addItem(result, "VEHICLE", v.getRegistrationNumber(), v.getRegistrationNumber(), "TECH_INSPECTION",
                     v.getTechInspectionValidTo(), today, threshold);
             addItem(result, "VEHICLE", v.getRegistrationNumber(), v.getRegistrationNumber(), "CONTROL_CARD",
                     v.getControlCardValidTo(), today, threshold);
+            addItem(result, "VEHICLE", v.getRegistrationNumber(), v.getRegistrationNumber(), "INSURANCE",
+                    v.getInsuranceValidTo(), today, threshold);
         }
 
         // Организации: лицензия.

@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { wb, Waybill, STATUS_LABELS } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 import { Icon, P } from '../icons';
+import { ExpiryAlert } from '../ExpiryAlert';
 
 function fmtDateTime(iso: string | null) {
   return iso
@@ -89,6 +90,8 @@ export default function DispatcherCabinet() {
       </div>
 
       {error && <div className="error">{error}</div>}
+
+      <div style={{ marginBottom: 16 }}><ExpiryAlert days={30} /></div>
 
       {/* KPI */}
       <div className="kpi-row" style={{ gridTemplateColumns: 'repeat(4, 1fr)' }}>
