@@ -43,6 +43,7 @@ export default function WaybillsPage() {
         <h1>{t('nav.waybill.registry')}</h1>
         <span className="spacer" />
         <Link className="btn" href="/waybills/new"><Icon d={P.doc} cls="" style={{ width: 16, height: 16 }} /> {t('nav.waybill.new')}</Link>
+        <Link className="btn secondary" href="/waybills/journal" style={{ textDecoration: 'none' }}><Icon d={P.book} cls="" style={{ width: 16, height: 16 }} /> {t('jrn.btn')}</Link>
         <button className="btn secondary" onClick={() => window.print()}><Icon d={P.mail} cls="" style={{ width: 16, height: 16 }} /> {t('wb.print')}</button>
       </div>
 
