@@ -5,7 +5,7 @@ import { LangProvider } from '@/lib/i18n';
 import { Shell } from './shell';
 
 export const metadata: Metadata = {
-  title: 'DTS · Электронный путевой лист',
+  title: 'е-Роҳхат · Электронный путевой лист',
   description: 'Единая цифровая транспортная система · Министерство транспорта Республики Таджикистан',
 };
 

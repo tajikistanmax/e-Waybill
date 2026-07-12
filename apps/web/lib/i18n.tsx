@@ -2,10 +2,10 @@
 
 import { createContext, useContext, useEffect, useState } from 'react';
 
-export type Lang = 'ru' | 'tj';
+export type Lang = 'ru' | 'tj' | 'en';
 
-/** Словарь интерфейса: русский · тоҷикӣ. Ключи — по смыслу. */
-const DICT: Record<string, { ru: string; tj: string }> = {
+/** Словарь интерфейса: русский · тоҷикӣ · english (en — опционально; фолбэк на ru). */
+const DICT: Record<string, { ru: string; tj: string; en?: string }> = {
   // Бренд / общее
   'app.title': { ru: 'Электронный путевой лист', tj: 'Роҳхати электронӣ' },
   'app.subtitle': { ru: 'Цифровое управление транспортом и путевыми листами', tj: 'Идоракунии рақамии нақлиёт ва роҳхатҳо' },
@@ -55,12 +55,15 @@ const DICT: Record<string, { ru: string; tj: string }> = {
   'login.submit': { ru: 'Войти', tj: 'Ворид шудан' },
   'login.busy': { ru: 'Вход…', tj: 'Воридшавӣ…' },
   'login.or': { ru: 'или', tj: 'ё' },
-  'login.sso': { ru: 'Войти через DTS SSO', tj: 'Ворид тавассути DTS SSO' },
+  'login.sso': { ru: 'Войти через е-Роҳхат SSO', tj: 'Ворид тавассути е-Роҳхат SSO' },
+  'login.sso.note': { ru: 'Единый вход через единую платформу Минтранса — на этапе интеграции.', tj: 'Вуруди ягона тавассути платформаи ягонаи Вазорати нақлиёт — дар марҳилаи ҳамгироӣ.' },
   'login.secure': { ru: 'Ваши данные защищены в соответствии с требованиями безопасности Республики Таджикистан', tj: 'Маълумоти шумо мутобиқи талаботи амнияти Ҷумҳурии Тоҷикистон ҳифз мешавад' },
   'login.err': { ru: 'Неверный логин или пароль', tj: 'Логин ё рамз нодуруст аст' },
   'login.support': { ru: 'Поддержка', tj: 'Дастгирӣ' },
   'login.caption': { ru: 'Цифровая платформа для эффективного и безопасного управления транспортом', tj: 'Платформаи рақамӣ барои идоракунии самаранок ва бехатари нақлиёт' },
   'login.p.h': { ru: 'Панель управления', tj: 'Лавҳаи идоракунӣ' },
+  'login.p.dynamics': { ru: 'Динамика рейсов', tj: 'Динамикаи рейсҳо' },
+  'login.today': { ru: 'Сегодня', tj: 'Имрӯз' },
   'login.p.activetrips': { ru: 'Активные рейсы', tj: 'Рейсҳои фаъол' },
   'login.p.vehstatus': { ru: 'Статус транспорта', tj: 'Ҳолати нақлиёт' },
   'login.p.intrip': { ru: 'В рейсе', tj: 'Дар рейс' },
@@ -991,7 +994,7 @@ const DICT: Record<string, { ru: string; tj: string }> = {
   'setprint.wm.d': { ru: 'Водяной знак, изображение ЭЦП, метка времени на бланке', tj: 'Аломати обӣ, тасвири имзои рақамӣ, нишонаи вақт дар бланк' },
   'setprint.open': { ru: 'Открыть реестр ПЛ', tj: 'Кушодани фењристи варақаҳои роҳ' },
   'setui.lead': { ru: 'Язык, оформление и персонализация интерфейса', tj: 'Забон, тарроҳӣ ва фардикунонии интерфейс' },
-  'setui.note': { ru: 'Двуязычие RU/TJ и госбренд DTS активны. Персонализация интерфейса — по дорожной карте.', tj: 'Дузабонагии RU/TJ ва бренди давлатии DTS фаъол мебошанд. Фардикунонии интерфейс — тибқи харитаи роҳ.' },
+  'setui.note': { ru: 'Двуязычие RU/TJ и госбренд е-Роҳхат активны. Персонализация интерфейса — по дорожной карте.', tj: 'Дузабонагии RU/TJ ва бренди давлатии е-Роҳхат фаъол мебошанд. Фардикунонии интерфейс — тибқи харитаи роҳ.' },
   'setui.defaults.h': { ru: 'Параметры по умолчанию', tj: 'Параметрҳои пешфарз' },
   'setui.defaults.lead': { ru: 'Язык по умолчанию применяется при первом входе (пока пользователь не выбрал свой)', tj: 'Забони пешфарз ҳангоми вуруди аввал татбиқ мешавад (то интихоби корбар)' },
   'setui.about.h': { ru: 'Возможности интерфейса', tj: 'Имконоти интерфейс' },
@@ -1000,7 +1003,7 @@ const DICT: Record<string, { ru: string; tj: string }> = {
   'setui.lang.t': { ru: 'Язык', tj: 'Забон' },
   'setui.lang.d': { ru: 'Русский и таджикский; переключатель RU/TJ в шапке приложения.', tj: 'Русӣ ва тоҷикӣ; гузаришдиҳандаи RU/TJ дар сарлавҳаи барнома.' },
   'setui.theme.t': { ru: 'Оформление', tj: 'Тарроҳӣ' },
-  'setui.theme.d': { ru: 'Светлая тема госбренда DTS (синий #2563eb, Inter).', tj: 'Мавзуи равшани бренди давлатии DTS (кабуди #2563eb, Inter).' },
+  'setui.theme.d': { ru: 'Светлая тема госбренда е-Роҳхат (синий #2563eb, Inter).', tj: 'Мавзуи равшани бренди давлатии е-Роҳхат (кабуди #2563eb, Inter).' },
   'setui.density.t': { ru: 'Плотность таблиц', tj: 'Зичии ҷадвалҳо' },
   'setui.density.d': { ru: 'Компактный/просторный режим отображения списков.', tj: 'Ҳолати ихчам/васеи намоиши рӯйхатҳо.' },
   'setui.menu.t': { ru: 'Порядок меню', tj: 'Тартиби меню' },
@@ -1086,7 +1089,7 @@ const DICT: Record<string, { ru: string; tj: string }> = {
   'setgen.contacts.h': { ru: 'Контакты поддержки', tj: 'Тамосҳои дастгирӣ' },
   'setgen.contacts.lead': { ru: 'Отображаются на странице входа. Изменяются администратором Минтранса.', tj: 'Дар саҳифаи вуруд намоиш дода мешаванд. Аз ҷониби маъмури Вазорати нақлиёт тағйир дода мешаванд.' },
   'setgen.platform.t': { ru: 'Платформа', tj: 'Платформа' },
-  'setgen.platform.d': { ru: 'DTS — Единая цифровая транспортная система', tj: 'DTS — Системаи ягонаи рақамии нақлиётӣ' },
+  'setgen.platform.d': { ru: 'е-Роҳхат — единая государственная система электронных путевых листов', tj: 'е-Роҳхат — системаи ягонаи давлатии роҳхатҳои электронӣ' },
   'setgen.subsystem.d': { ru: 'Подсистема: Электронный путевой лист (роҳхат)', tj: 'Зерсистема: Роҳхати электронӣ' },
   'setgen.customer.t': { ru: 'Заказчик', tj: 'Фармоишгар' },
   'setgen.customer.d': { ru: 'Министерство транспорта Республики Таджикистан', tj: 'Вазорати нақлиёти Ҷумҳурии Тоҷикистон' },
@@ -1145,6 +1148,8 @@ const DICT: Record<string, { ru: string; tj: string }> = {
   'aud.ent.EMPLOYEE': { ru: 'Сотрудник', tj: 'Корманд' },
   // ═══ Уведомления ═══
   'notif.title': { ru: 'Уведомления', tj: 'Огоҳиномаҳо' },
+  'help.title': { ru: 'Служба поддержки', tj: 'Хадамоти дастгирӣ' },
+  'help.lead': { ru: 'Техническая поддержка платформы е-Роҳхат', tj: 'Дастгирии техникии платформаи е-Роҳхат' },
   'notif.lead': { ru: 'События по вашим путевым листам', tj: 'Рӯйдодҳо аз рӯи роҳхатҳои шумо' },
   'notif.empty': { ru: 'Уведомлений нет', tj: 'Огоҳинома нест' },
   'notif.markall': { ru: 'Отметить все прочитанными', tj: 'Ҳамаро хондашуда қайд кардан' },
@@ -1275,7 +1280,7 @@ export function LangProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     // Личный выбор пользователя имеет приоритет; иначе — язык платформы по умолчанию
     // (настройка interface/default_language, публичная — работает и до входа).
-    try { const s = localStorage.getItem('dts_lang'); if (s === 'ru' || s === 'tj') { setLangState(s); return; } } catch { /* ignore */ }
+    try { const s = localStorage.getItem('dts_lang'); if (s === 'ru' || s === 'tj' || s === 'en') { setLangState(s); return; } } catch { /* ignore */ }
     fetch('/md-api/api/v1/settings/public')
       .then(r => (r.ok ? r.json() : []))
       .then((rows: { category: string; settingKey: string; settingValue: string }[]) => {
@@ -1287,8 +1292,10 @@ export function LangProvider({ children }: { children: React.ReactNode }) {
       .catch(() => { /* нет связи — остаётся ru */ });
   }, []);
   const setLang = (l: Lang) => { setLangState(l); try { localStorage.setItem('dts_lang', l); } catch { /* ignore */ } };
-  const t = (k: string) => DICT[k]?.[lang] ?? k;
-  const tType = (x: string) => WTYPE[x]?.[lang] ?? x;
-  const tStatus = (x: string) => WSTATUS[x]?.[lang] ?? x;
+  // EN — опциональный: где нет перевода, фолбэк на русский (без «сырых» ключей).
+  const base: 'ru' | 'tj' = lang === 'en' ? 'ru' : lang;
+  const t = (k: string) => DICT[k]?.[lang] ?? DICT[k]?.ru ?? k;
+  const tType = (x: string) => WTYPE[x]?.[base] ?? x;
+  const tStatus = (x: string) => WSTATUS[x]?.[base] ?? x;
   return <LangContext.Provider value={{ lang, setLang, t, tType, tStatus }}>{children}</LangContext.Provider>;
 }

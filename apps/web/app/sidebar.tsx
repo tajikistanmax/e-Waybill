@@ -30,7 +30,7 @@ export function Sidebar() {
       <div className="side-brand">
         <span className="mark"><Icon d={P.docActive} cls="" /></span>
         <div>
-          <div className="bt">DTS</div>
+          <div className="bt">е-Роҳхат</div>
           <div className="bs">{t('brand.sub')}</div>
         </div>
       </div>

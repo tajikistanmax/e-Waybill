@@ -6,7 +6,7 @@ import { usePathname } from 'next/navigation';
 import { Icon, P } from './icons';
 import { useAuth } from '@/lib/auth';
 import { useT } from '@/lib/i18n';
-import { wb } from '@/lib/api';
+import { wb, md, type PlatformSetting } from '@/lib/api';
 
 const TITLES: Record<string, { t: string; c: string }> = {
   '/dashboard': { t: 'nav.dashboard', c: 'dash.lead' },
@@ -30,6 +30,16 @@ export function Topbar() {
   const { username, roles, logout, authenticated } = useAuth();
   const { t, lang, setLang } = useT();
   const [unread, setUnread] = useState(0);
+  const [helpOpen, setHelpOpen] = useState(false);
+  const [contacts, setContacts] = useState<Record<string, string>>({});
+
+  // Контакты поддержки — из публичных настроек платформы (§29), для попапа «Помощь».
+  useEffect(() => {
+    md.publicSettings()
+      .then((rows: PlatformSetting[]) => setContacts(Object.fromEntries(
+        rows.filter(r => r.category === 'general').map(r => [r.settingKey, r.settingValue ?? '']))))
+      .catch(() => { /* нет связи — попап покажет только заголовок */ });
+  }, []);
 
   // Счётчик непрочитанных: при входе, при смене страницы и по событию notif-changed
   // (страница уведомлений шлёт его после прочтения — счётчик обновляется сразу).
@@ -66,8 +76,36 @@ export function Topbar() {
         <Icon d={P.bell} />
         {unread > 0 && <span className="tb-badge">{unread > 99 ? '99+' : unread}</span>}
       </Link>
-      <span className="tb-icon"><Icon d={P.mail} /></span>
-      <span className="tb-icon"><Icon d={P.help} /></span>
+      <div style={{ position: 'relative', display: 'inline-flex' }}>
+        <button type="button" className="tb-icon" aria-label={t('help.title')} onClick={() => setHelpOpen(o => !o)}>
+          <Icon d={P.help} />
+        </button>
+        {helpOpen && (
+          <>
+            <div onClick={() => setHelpOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 40 }} />
+            <div style={{ position: 'absolute', right: 0, top: 'calc(100% + 8px)', width: 268, background: '#fff', border: '1px solid var(--line)', borderRadius: 12, boxShadow: '0 12px 34px rgba(15,32,60,.16)', padding: 14, zIndex: 41 }}>
+              <div style={{ fontWeight: 700, fontSize: 13.5 }}>{t('help.title')}</div>
+              <div style={{ fontSize: 12, color: 'var(--muted)', margin: '4px 0 10px' }}>{t('help.lead')}</div>
+              {contacts.support_phone && (
+                <a href={`tel:${contacts.support_phone.replace(/[^\d+]/g, '')}`} style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '5px 0', fontSize: 13, color: 'var(--ink)', textDecoration: 'none' }}>
+                  <Icon d={P.route} cls="" style={{ width: 15, height: 15, color: 'var(--blue-600)' }} /> {contacts.support_phone}
+                </a>
+              )}
+              {contacts.support_email && (
+                <a href={`mailto:${contacts.support_email}`} style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '5px 0', fontSize: 13, color: 'var(--ink)', textDecoration: 'none' }}>
+                  <Icon d={P.mail} cls="" style={{ width: 15, height: 15, color: 'var(--blue-600)' }} /> {contacts.support_email}
+                </a>
+              )}
+              {contacts.support_website && (
+                <a href={contacts.support_website} target="_blank" rel="noreferrer" style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '5px 0', fontSize: 13, color: 'var(--blue-600)', textDecoration: 'none' }}>
+                  <Icon d={P.globe} cls="" style={{ width: 15, height: 15 }} /> {contacts.support_website}
+                </a>
+              )}
+              {contacts.support_hours && <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 8 }}>{contacts.support_hours}</div>}
+            </div>
+          </>
+        )}
+      </div>
       <div className="tb-user">
         <span className="av">{initials}</span>
         <div>
