@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { md, type ExpiryItem } from '@/lib/api';
 import { useT } from '@/lib/i18n';
+import { downloadCsv } from '@/lib/csv';
 import { Icon, P } from '../../icons';
 
 const WINDOWS = [30, 90, 365];
@@ -34,6 +35,16 @@ export default function ExpirySettingsPage() {
     return isNaN(d.getTime()) ? iso : d.toLocaleDateString('ru-RU');
   };
 
+  /** Выгрузка истекающих документов в CSV (открывается в Excel) — для планирования замен. */
+  function exportCsv() {
+    const head = [t('aud.col.entity'), 'Ключ', t('cls.name.ru'), t('exp.col.doc'), t('exp.col.validto'), t('exp.col.left')];
+    const data = rows.map(r => [
+      label('aud.ent', r.entityType, r.entityType), r.key, r.name,
+      label('exp.doc', r.docType, r.docType), fmt(r.validTo), r.daysLeft,
+    ]);
+    downloadCsv(`сроки-документов-${days}дн.csv`, [head, ...data]);
+  }
+
   return (
     <>
       <div className="toolbar">
@@ -56,6 +67,9 @@ export default function ExpirySettingsPage() {
             className={`badge ${w === days ? 'blue' : 'gray'}`}
             style={{ cursor: 'pointer', border: 'none', padding: '6px 12px' }}>{w}</button>
         ))}
+        <button className="btn secondary" onClick={exportCsv} disabled={rows.length === 0} style={{ marginLeft: 'auto' }}>
+          <Icon d={P.chart} cls="" style={{ width: 15, height: 15 }} /> {t('rep.export')}
+        </button>
       </div>
 
       <div className="card">

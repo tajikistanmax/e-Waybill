@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { authHeaders, STATUS_LABELS } from '@/lib/api';
 import { useT } from '@/lib/i18n';
+import { downloadCsv } from '@/lib/csv';
 import { Icon, P } from '../icons';
 
 type Summary = {
@@ -40,22 +41,6 @@ async function getJson<T>(url: string): Promise<T> {
     throw new Error(p?.detail ?? p?.title ?? `Ошибка ${r.status}`);
   }
   return r.json();
-}
-
-/** Экранирование ячейки CSV (разделитель «;» — как ждёт Excel в RU-локали). */
-function csvCell(v: unknown): string {
-  const s = v == null ? '' : String(v);
-  return /[";\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
-}
-
-/** Скачать CSV с UTF-8 BOM — Excel открывает напрямую и корректно показывает кириллицу. */
-function downloadCsv(filename: string, rows: unknown[][]) {
-  const text = rows.map(r => r.map(csvCell).join(';')).join('\r\n');
-  const blob = new Blob(['﻿' + text], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url; a.download = filename; a.click();
-  URL.revokeObjectURL(url);
 }
 
 function today(offsetDays = 0) {
