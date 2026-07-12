@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useT } from '@/lib/i18n';
 import { Icon, P } from '../../icons';
+import { SettingsEditor } from '../SettingsEditor';
 
 /** Печатные формы путевого листа (справочно). */
 const FORMS: { key: string; icon: keyof typeof P; ic: string; status: 'on' | 'planned' }[] = [
@@ -29,6 +30,11 @@ export default function PrintSettingsPage() {
 
       <div className="hint" style={{ marginBottom: 18 }}>{t('setprint.note')}</div>
 
+      <h2 style={{ margin: '0 0 6px' }}>{t('setprint.options.h')}</h2>
+      <div className="page-lead" style={{ marginTop: 0, marginBottom: 14 }}>{t('setprint.options.lead')}</div>
+      <SettingsEditor category="print" />
+
+      <h2 style={{ margin: '26px 0 12px' }}>{t('setprint.forms.h')}</h2>
       <div className="kpi-row" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 14 }}>
         {FORMS.map(f => (
           <div key={f.key} className="card" style={{ padding: 16 }}>

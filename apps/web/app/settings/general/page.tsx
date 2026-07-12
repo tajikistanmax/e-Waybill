@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useT } from '@/lib/i18n';
 import { Icon, P } from '../../icons';
+import { SettingsEditor } from '../SettingsEditor';
 
 /** Базовые справочные сведения о платформе (параметр → значение). */
 const PARAMS: { key: string; icon: keyof typeof P; ic: string }[] = [
@@ -47,6 +48,10 @@ export default function GeneralSettingsPage() {
           </div>
         ))}
       </div>
+
+      <h2 style={{ margin: '26px 0 6px' }}>{t('setgen.contacts.h')}</h2>
+      <div className="page-lead" style={{ marginTop: 0, marginBottom: 14 }}>{t('setgen.contacts.lead')}</div>
+      <SettingsEditor category="general" />
     </>
   );
 }

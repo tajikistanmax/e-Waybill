@@ -1,7 +1,7 @@
 'use client';
 
 import { use, useEffect, useState } from 'react';
-import { wb, Waybill, Title } from '@/lib/api';
+import { wb, md, Waybill, Title } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 import QRCode from 'qrcode';
 
@@ -15,6 +15,8 @@ export default function PrintWaybill({ params }: { params: Promise<{ id: string 
   const [titles, setTitles] = useState<Title[]>([]);
   const [qrUrl, setQrUrl] = useState('');
   const [error, setError] = useState('');
+  // Опции бланка из настроек платформы (§29, /settings/print). Дефолт — полный бланк A4.
+  const [opt, setOpt] = useState({ showQr: true, showStamp: true, paperSize: 'A4' });
   const { tType } = useT();
 
   useEffect(() => {
@@ -28,6 +30,15 @@ export default function PrintWaybill({ params }: { params: Promise<{ id: string 
       }
     })().catch(e => setError(e.message));
   }, [id]);
+
+  useEffect(() => {
+    md.settings('print')
+      .then(rows => {
+        const v = (k: string) => rows.find(r => r.settingKey === k)?.settingValue;
+        setOpt({ showQr: v('show_qr') !== 'false', showStamp: v('show_stamp') !== 'false', paperSize: v('paper_size') ?? 'A4' });
+      })
+      .catch(() => { /* нет настроек — остаётся полный бланк A4 */ });
+  }, []);
 
   if (error) return <div className="error">{error}</div>;
   if (!w) return <p>Загрузка…</p>;
@@ -44,6 +55,7 @@ export default function PrintWaybill({ params }: { params: Promise<{ id: string 
   return (
     <>
       <style>{`
+        @page { size: ${opt.paperSize} portrait; margin: 12mm; }
         @media print {
           header.top, .no-print { display: none !important; }
           main { max-width: none; margin: 0; padding: 0; }
@@ -52,7 +64,7 @@ export default function PrintWaybill({ params }: { params: Promise<{ id: string 
         }
         .sheet {
           background: #fff; border: 1px solid #94a3b8; padding: 22px 26px;
-          max-width: 760px; margin: 0 auto; font-size: 12.5px; color: #111;
+          max-width: ${opt.paperSize === 'A5' ? 540 : 760}px; margin: 0 auto; font-size: 12.5px; color: #111;
         }
         .sheet table { font-size: 12.5px; }
         .sheet th, .sheet td { border: 1px solid #cbd5e1; padding: 4px 8px; }
@@ -79,10 +91,10 @@ export default function PrintWaybill({ params }: { params: Promise<{ id: string 
             Ташкилот (КУҶТ): {String(org.name ?? '')}<br />
             РМА: {String(org.rma ?? '')} · Минтақа: {String(org.regionId ?? '—')}
           </div>
-          {qrUrl ? (
+          {opt.showQr && (qrUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={qrUrl} alt="QR" width={120} height={120} />
-          ) : <div style={{ width: 120, height: 120, border: '1px dashed #94a3b8' }} />}
+          ) : <div style={{ width: 120, height: 120, border: '1px dashed #94a3b8' }} />)}
         </div>
 
         <h2>ПУТЕВОЙ ЛИСТ · ВАРАҚАИ РОҲХАТ</h2>
@@ -133,6 +145,13 @@ export default function PrintWaybill({ params }: { params: Promise<{ id: string 
           <div>Механик — выпуск разрешён</div>
           <div>ТС сдал (супоридам) — подпись водителя</div>
         </div>
+
+        {opt.showStamp && (
+          <div style={{ marginTop: 16, width: 150, height: 78, border: '1px dashed #94a3b8', borderRadius: '50%',
+            display: 'grid', placeItems: 'center', fontSize: 10, color: '#64748b', textAlign: 'center' }}>
+            М.П.<br />(ҷои мӯҳр)
+          </div>
+        )}
 
         <p style={{ marginTop: 12, fontSize: 10, color: '#475569' }}>
           Барои тафтиши роҳхат аз QR-код истифода баред · Для проверки подлинности отсканируйте QR-код

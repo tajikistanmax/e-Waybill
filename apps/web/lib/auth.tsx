@@ -8,12 +8,34 @@ const TOKEN_URL = `${KC}/realms/epd/protocol/openid-connect/token`;
 const LOGOUT_URL = `${KC}/realms/epd/protocol/openid-connect/logout`;
 const RT_KEY = 'dts_rt';
 
+// «Запомнить меня»: при отметке refresh-token живёт в localStorage (переживает закрытие
+// браузера), иначе — в sessionStorage (стирается при закрытии вкладки). Чтение — из обоих.
+function readRt(): string | null {
+  try { return localStorage.getItem(RT_KEY) ?? sessionStorage.getItem(RT_KEY); } catch { return null; }
+}
+function chooseRt(token: string, remember: boolean) {
+  try {
+    if (remember) { localStorage.setItem(RT_KEY, token); sessionStorage.removeItem(RT_KEY); }
+    else { sessionStorage.setItem(RT_KEY, token); localStorage.removeItem(RT_KEY); }
+  } catch { /* ignore */ }
+}
+/** Сохранить обновлённый (ротированный) RT в то же хранилище, где уже живёт сессия. */
+function persistRt(token: string) {
+  try {
+    if (localStorage.getItem(RT_KEY) != null) localStorage.setItem(RT_KEY, token);
+    else sessionStorage.setItem(RT_KEY, token);
+  } catch { /* ignore */ }
+}
+function clearRt() {
+  try { localStorage.removeItem(RT_KEY); sessionStorage.removeItem(RT_KEY); } catch { /* ignore */ }
+}
+
 type AuthState = {
   ready: boolean;
   authenticated: boolean;
   username: string;
   roles: string[];
-  login: (username: string, password: string) => Promise<void>;
+  login: (username: string, password: string, remember?: boolean) => Promise<void>;
   logout: () => void;
 };
 
@@ -44,7 +66,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const applyToken = useCallback((data: { access_token: string; refresh_token: string; expires_in: number }) => {
     setAuthToken(data.access_token);
-    try { localStorage.setItem(RT_KEY, data.refresh_token); } catch { /* ignore */ }
+    persistRt(data.refresh_token);
     const claims = decode(data.access_token);
     setState({
       ready: true, authenticated: true,
@@ -57,8 +79,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const refresh = useCallback(async () => {
-    let rt: string | null = null;
-    try { rt = localStorage.getItem(RT_KEY); } catch { /* ignore */ }
+    const rt = readRt();
     if (!rt) { setState(s => ({ ...s, ready: true, authenticated: false })); return; }
     try {
       const res = await fetch(TOKEN_URL, {
@@ -68,25 +89,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (!res.ok) throw new Error('expired');
       applyToken(await res.json());
     } catch {
-      try { localStorage.removeItem(RT_KEY); } catch { /* ignore */ }
+      clearRt();
       setAuthToken('');
       setState(s => ({ ...s, ready: true, authenticated: false }));
     }
   }, [applyToken]);
 
-  const login = useCallback(async (username: string, password: string) => {
+  const login = useCallback(async (username: string, password: string, remember = true) => {
     const res = await fetch(TOKEN_URL, {
       method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({ client_id: 'epd-web', grant_type: 'password', scope: 'openid', username, password }),
     });
     if (!res.ok) throw new Error('Неверный логин или пароль');
-    applyToken(await res.json());
+    const data = await res.json();
+    chooseRt(data.refresh_token, remember); // разместить RT по выбору «Запомнить меня»
+    applyToken(data);
   }, [applyToken]);
 
   const logout = useCallback(() => {
     window.clearTimeout(timer.current);
-    let rt: string | null = null;
-    try { rt = localStorage.getItem(RT_KEY); } catch { /* ignore */ }
+    const rt = readRt();
     // Серверный отзыв сессии/refresh-token (RP-initiated logout) — иначе украденный RT
     // оставался бы действительным до истечения. Best-effort, редирект не блокируем.
     if (rt) {
@@ -97,7 +119,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }).catch(() => { /* ignore */ });
       } catch { /* ignore */ }
     }
-    try { localStorage.removeItem(RT_KEY); } catch { /* ignore */ }
+    clearRt();
     setAuthToken('');
     setState({ ready: true, authenticated: false, username: '', roles: [] });
     window.location.href = '/login';

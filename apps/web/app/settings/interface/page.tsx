@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useT } from '@/lib/i18n';
 import { Icon, P } from '../../icons';
+import { SettingsEditor } from '../SettingsEditor';
 
 /** Настройки интерфейса приложения (справочно, read-only). */
 const CARDS: { key: string; icon: string; ic: string; status: 'on' | 'planned' }[] = [
@@ -29,6 +30,11 @@ export default function InterfaceSettingsPage() {
 
       <div className="hint" style={{ marginBottom: 18 }}>{t('setui.note')}</div>
 
+      <h2 style={{ margin: '0 0 6px' }}>{t('setui.defaults.h')}</h2>
+      <div className="page-lead" style={{ marginTop: 0, marginBottom: 14 }}>{t('setui.defaults.lead')}</div>
+      <SettingsEditor category="interface" />
+
+      <h2 style={{ margin: '26px 0 12px' }}>{t('setui.about.h')}</h2>
       <div className="kpi-row" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 14 }}>
         {CARDS.map(c => (
           <div key={c.key} className="card" style={{ padding: 16 }}>

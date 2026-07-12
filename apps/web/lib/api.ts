@@ -246,6 +246,27 @@ export const md = {
   audit: (entityType?: string, limit = 100) => fetch(
     `/md-api/api/v1/audit?limit=${limit}${entityType ? `&entityType=${entityType}` : ''}`,
     { headers: authHeaders() }).then(r => handle<AuditEntry[]>(r)),
+  // Настройки платформы (§29): чтение по категории; изменение — SYSTEM_ADMIN.
+  settings: (category: string) => fetch(`/md-api/api/v1/settings?category=${category}`, { headers: authHeaders() })
+    .then(r => handle<PlatformSetting[]>(r)),
+  // Публичные настройки (контакты поддержки) — без токена, для страницы входа.
+  publicSettings: () => fetch('/md-api/api/v1/settings/public').then(r => handle<PlatformSetting[]>(r)),
+  saveSetting: (category: string, settingKey: string, value: string) =>
+    mdPost('settings', { category, settingKey, value }) as Promise<PlatformSetting>,
+};
+
+export type PlatformSetting = {
+  id: string;
+  category: string;
+  settingKey: string;
+  valueType: 'STRING' | 'NUMBER' | 'BOOLEAN' | 'ENUM';
+  settingValue: string | null;
+  options: string | null;
+  nameRu: string;
+  nameTj: string | null;
+  sortOrder: number;
+  updatedBy: string | null;
+  updatedAt: string;
 };
 
 export type Payment = {

@@ -6,6 +6,7 @@ import { Icon, P } from '../icons';
 import { useAuth } from '@/lib/auth';
 import { useT } from '@/lib/i18n';
 import { roleHome } from '@/lib/roles';
+import { md, type PlatformSetting } from '@/lib/api';
 
 export default function LoginPage() {
   const { login, authenticated, ready, roles } = useAuth();
@@ -14,16 +15,27 @@ export default function LoginPage() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [show, setShow] = useState(false);
+  const [remember, setRemember] = useState(true);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [showSupport, setShowSupport] = useState(false);
+  const [contacts, setContacts] = useState<Record<string, string>>({});
 
   useEffect(() => { if (ready && authenticated) router.replace(roleHome(roles)); }, [ready, authenticated, roles, router]);
+
+  // Контакты поддержки — из публичных настроек платформы (§29), не захардкожены.
+  useEffect(() => {
+    md.publicSettings()
+      .then((rows: PlatformSetting[]) => setContacts(Object.fromEntries(
+        rows.filter(r => r.category === 'general').map(r => [r.settingKey, r.settingValue ?? '']))))
+      .catch(() => { /* нет связи — блок поддержки просто не покажем */ });
+  }, []);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setError(''); setBusy(true);
     try {
-      await login(username.trim(), password);
+      await login(username.trim(), password, remember);
     } catch {
       setError(t('login.err'));
       setBusy(false);
@@ -61,9 +73,25 @@ export default function LoginPage() {
           </div>
 
           <div className="login-row">
-            <label><input type="checkbox" defaultChecked /> {t('login.remember')}</label>
-            <a href="#">{t('login.forgot')}</a>
+            <label><input type="checkbox" checked={remember} onChange={e => setRemember(e.target.checked)} /> {t('login.remember')}</label>
+            <button type="button" onClick={() => setShowSupport(s => !s)}
+              style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--blue-600)', font: 'inherit' }}>
+              {t('login.forgot')}
+            </button>
           </div>
+
+          {showSupport && (
+            <div className="hint" style={{ marginTop: -4, marginBottom: 4, lineHeight: 1.6 }}>
+              {t('login.forgot.help')}
+              {(contacts.support_phone || contacts.support_email) && (
+                <div style={{ marginTop: 6, fontWeight: 600, color: 'var(--ink)' }}>
+                  {contacts.support_phone && <div><Icon d={P.route} cls="" style={{ width: 13, height: 13, verticalAlign: '-2px', marginRight: 6 }} />{contacts.support_phone}</div>}
+                  {contacts.support_email && <div><Icon d={P.mail} cls="" style={{ width: 13, height: 13, verticalAlign: '-2px', marginRight: 6 }} />{contacts.support_email}</div>}
+                  {contacts.support_hours && <div style={{ fontWeight: 400, color: 'var(--muted)', fontSize: 12 }}>{contacts.support_hours}</div>}
+                </div>
+              )}
+            </div>
+          )}
 
           <button className="btn btn-login" type="submit" disabled={busy}>
             <Icon d={P.login} cls="" /> {busy ? t('login.busy') : t('login.submit')}

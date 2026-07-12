@@ -53,6 +53,8 @@ public class SecurityConfig {
                     auth
                         // Публичная проверка QR (инспектор без логина)
                         .requestMatchers("/api/v1/verify/**").permitAll()
+                        // Публичные контакты поддержки для страницы входа (пре-аутентификация)
+                        .requestMatchers(HttpMethod.GET, "/api/v1/settings/public").permitAll()
                         // GET и межсервисный PATCH одометра требуют токена (закрыт анонимный доступ
                         // к ПДн — аудит). Пользователь ходит со своим JWT (тенант-фильтр по организации),
                         // а межсервисные вызовы waybill-service без пользователя (агрегатор ЧУРА/НЕРУ,
