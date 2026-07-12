@@ -87,6 +87,7 @@ public class WaybillService {
                 .orElseThrow(() -> new NotFoundException("Транспорт не найден"));
 
         runBlockingChecks(org, driver, vehicle);
+        assertDriverRested(driverRma, organizationRma, type);
 
         var wb = new Waybill();
         wb.setWaybillType(type);
@@ -342,6 +343,37 @@ public class WaybillService {
         }
         if (!waybills.findByDriverRmaAndStatusIn(str(driver.get("rma")), blocked).isEmpty()) {
             throw new ConflictException("На этого водителя есть путевой лист, заблокированный инспектором, — требуется решение администратора Минтранса");
+        }
+    }
+
+    /**
+     * Минимальный отдых водителя между рейсами (§5): новый ПЛ нельзя оформить, пока не прошёл
+     * min_rest_hours после планового окончания последнего состоявшегося рейса (RETURNED/COMPLETED).
+     * Правило из движка политик; 0/отсутствует — выключено (пробел не блокирует легальный рейс).
+     */
+    private void assertDriverRested(String driverRma, String organizationRma, WaybillType type) {
+        int minRest;
+        try {
+            minRest = Integer.parseInt(String.valueOf(
+                    masterData.effectivePolicies(organizationRma, type.name()).getOrDefault("min_rest_hours", "0")).trim());
+        } catch (NumberFormatException e) {
+            minRest = 0;
+        }
+        if (minRest <= 0) {
+            return;
+        }
+        var ended = java.util.EnumSet.of(WaybillStatus.RETURNED, WaybillStatus.COMPLETED);
+        var lastEnd = waybills.findByDriverRmaAndStatusIn(driverRma, ended).stream()
+                .map(Waybill::getValidTo).filter(java.util.Objects::nonNull)
+                .max(java.util.Comparator.naturalOrder()).orElse(null);
+        if (lastEnd == null) {
+            return;
+        }
+        var restUntil = lastEnd.plusHours(minRest);
+        if (java.time.OffsetDateTime.now().isBefore(restUntil)) {
+            throw new UnprocessableException(
+                    "Не соблюдён минимальный отдых водителя (%d ч): следующий рейс не ранее %s"
+                            .formatted(minRest, restUntil.toLocalDateTime()));
         }
     }
 

@@ -14,6 +14,7 @@ const RULE_TYPES: Record<string, 'bool' | 'int'> = {
   require_med_post: 'bool',
   require_gps: 'bool',
   max_validity_days: 'int',
+  min_rest_hours: 'int',
 };
 const ALL_RULES = Object.keys(RULE_TYPES);
 
