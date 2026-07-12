@@ -1,8 +1,11 @@
 package tj.mintrans.epd.masterdata.service;
 
+import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
 import tj.mintrans.epd.masterdata.config.CurrentUser;
 import tj.mintrans.epd.masterdata.domain.AuditLog;
 import tj.mintrans.epd.masterdata.repository.AuditLogRepository;
@@ -39,6 +42,11 @@ public class AuditService {
             entry.setEntityKey(entityKey);
             entry.setOldValue(oldValue);
             entry.setNewValue(newValue);
+            HttpServletRequest request = currentRequest();
+            if (request != null) {
+                entry.setClientIp(trim(clientIp(request), 64));
+                entry.setUserAgent(trim(request.getHeader("User-Agent"), 512));
+            }
             repository.save(entry);
         } catch (RuntimeException e) {
             // Аудит не должен ломать бизнес-операцию, но потеря записи ДОЛЖНА быть заметна
@@ -46,5 +54,29 @@ public class AuditService {
             log.error("Не удалось записать аудит: action={} entityType={} entityKey={} — запись потеряна: {}",
                     action, entityType, entityKey, e.toString());
         }
+    }
+
+    /** HTTP-запрос текущего потока или null (внутренний межсервисный вызов без веб-контекста). */
+    private static HttpServletRequest currentRequest() {
+        return RequestContextHolder.getRequestAttributes() instanceof ServletRequestAttributes attrs
+                ? attrs.getRequest() : null;
+    }
+
+    /**
+     * IP клиента: за обратным прокси госЦОД реальный адрес в X-Forwarded-For
+     * (берём первый — исходный клиент), иначе X-Real-IP, иначе remoteAddr.
+     */
+    private static String clientIp(HttpServletRequest request) {
+        String forwarded = request.getHeader("X-Forwarded-For");
+        if (forwarded != null && !forwarded.isBlank()) {
+            return forwarded.split(",")[0].trim();
+        }
+        String realIp = request.getHeader("X-Real-IP");
+        return (realIp != null && !realIp.isBlank()) ? realIp.trim() : request.getRemoteAddr();
+    }
+
+    private static String trim(String value, int max) {
+        if (value == null) return null;
+        return value.length() <= max ? value : value.substring(0, max);
     }
 }

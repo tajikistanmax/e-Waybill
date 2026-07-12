@@ -32,6 +32,21 @@ export default function AuditSettingsPage() {
     const tr = t(k);
     return tr === k ? type : tr;
   };
+  // Краткая метка устройства из User-Agent: браузер + ОС (для читаемости журнала).
+  const deviceLabel = (ua: string | null): string => {
+    if (!ua) return '';
+    const browser = /Edg\//.test(ua) ? 'Edge'
+      : /OPR\/|Opera/.test(ua) ? 'Opera'
+      : /Firefox\//.test(ua) ? 'Firefox'
+      : /Chrome\//.test(ua) ? 'Chrome'
+      : /Safari\//.test(ua) ? 'Safari' : '';
+    const os = /Windows/.test(ua) ? 'Windows'
+      : /Android/.test(ua) ? 'Android'
+      : /iPhone|iPad|iOS/.test(ua) ? 'iOS'
+      : /Mac OS X|Macintosh/.test(ua) ? 'macOS'
+      : /Linux/.test(ua) ? 'Linux' : '';
+    return [browser, os].filter(Boolean).join(' · ');
+  };
 
   return (
     <>
@@ -62,11 +77,12 @@ export default function AuditSettingsPage() {
               <th style={{ width: 120 }}>{t('aud.col.action')}</th>
               <th>{t('aud.col.entity')}</th>
               <th>{t('aud.col.change')}</th>
+              <th style={{ width: 160 }}>{t('aud.col.source')}</th>
             </tr>
           </thead>
           <tbody>
             {rows.length === 0 && !loading && (
-              <tr><td colSpan={5} style={{ color: 'var(--muted)' }}>{t('aud.empty')}</td></tr>
+              <tr><td colSpan={6} style={{ color: 'var(--muted)' }}>{t('aud.empty')}</td></tr>
             )}
             {rows.map(r => (
               <tr key={r.id}>
@@ -83,6 +99,16 @@ export default function AuditSettingsPage() {
                   </span>
                   {' → '}
                   <span style={{ fontWeight: 600 }}>{r.newValue ?? '∅'}</span>
+                </td>
+                <td style={{ fontSize: 12 }}>
+                  {r.clientIp || r.userAgent ? (
+                    <>
+                      <div style={{ fontFamily: 'var(--mono)' }}>{r.clientIp ?? '—'}</div>
+                      {r.userAgent && (
+                        <div style={{ color: 'var(--muted)' }} title={r.userAgent}>{deviceLabel(r.userAgent) || '—'}</div>
+                      )}
+                    </>
+                  ) : <span style={{ color: 'var(--muted)' }}>—</span>}
                 </td>
               </tr>
             ))}

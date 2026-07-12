@@ -44,6 +44,12 @@ public class AuditLog {
     @Column(name = "new_value")
     private String newValue;
 
+    @Column(name = "client_ip")
+    private String clientIp;
+
+    @Column(name = "user_agent")
+    private String userAgent;
+
     @PrePersist
     void prePersist() {
         if (id == null) id = UUID.randomUUID();
@@ -66,4 +72,8 @@ public class AuditLog {
     public void setOldValue(String oldValue) { this.oldValue = oldValue; }
     public String getNewValue() { return newValue; }
     public void setNewValue(String newValue) { this.newValue = newValue; }
+    public String getClientIp() { return clientIp; }
+    public void setClientIp(String clientIp) { this.clientIp = clientIp; }
+    public String getUserAgent() { return userAgent; }
+    public void setUserAgent(String userAgent) { this.userAgent = userAgent; }
 }

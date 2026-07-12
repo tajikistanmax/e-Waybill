@@ -105,6 +105,8 @@ export type AuditEntry = {
   entityKey: string | null;
   oldValue: string | null;
   newValue: string | null;
+  clientIp: string | null;
+  userAgent: string | null;
 };
 
 export type ExpiryItem = {

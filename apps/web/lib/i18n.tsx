@@ -1195,6 +1195,7 @@ const DICT: Record<string, { ru: string; tj: string; en?: string }> = {
   'aud.col.action': { ru: 'Действие', tj: 'Амал' },
   'aud.col.entity': { ru: 'Объект', tj: 'Объект' },
   'aud.col.change': { ru: 'Изменение', tj: 'Тағйирот' },
+  'aud.col.source': { ru: 'Источник', tj: 'Манбаъ' },
   'aud.act.CREATE': { ru: 'Создание', tj: 'Эҷод' },
   'aud.act.UPDATE': { ru: 'Изменение', tj: 'Тағйир' },
   'aud.act.DELETE': { ru: 'Удаление', tj: 'Нестшавӣ' },
