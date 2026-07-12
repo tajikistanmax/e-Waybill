@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useT } from '@/lib/i18n';
 import { Icon, P } from '../../icons';
+import { SettingsEditor } from '../SettingsEditor';
 
 /** Домены модели безопасности платформы (справочно, read-only). */
 const DOMAINS: { key: string; icon: string; ic: string; on?: boolean }[] = [
@@ -33,6 +34,11 @@ export default function SecuritySettingsPage() {
 
       <div className="hint" style={{ marginBottom: 18 }}>{t('setsec.note')}</div>
 
+      <h2 style={{ margin: '4px 0 6px' }}>{t('setsec.params.h')}</h2>
+      <div className="page-lead" style={{ marginTop: 0, marginBottom: 14 }}>{t('setsec.params.lead')}</div>
+      <SettingsEditor category="security" />
+
+      <h2 style={{ margin: '28px 0 6px' }}>{t('setsec.domains.h')}</h2>
       <div className="kpi-row" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 14 }}>
         {DOMAINS.map(d => (
           <div key={d.key} className="card" style={{ padding: 16 }}>

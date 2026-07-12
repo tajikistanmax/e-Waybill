@@ -1,7 +1,7 @@
 'use client';
 
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
-import { setAuthToken } from '@/lib/api';
+import { setAuthToken, md } from '@/lib/api';
 
 const KC = process.env.NEXT_PUBLIC_KEYCLOAK_URL || 'http://localhost:8180';
 const TOKEN_URL = `${KC}/realms/epd/protocol/openid-connect/token`;
@@ -126,6 +126,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => { void refresh(); return () => window.clearTimeout(timer.current); }, [refresh]);
+
+  // Авто-выход по бездействию (§29, настройка security/idle_logout_minutes). 0 — выключено.
+  // Таймер сбрасывается активностью пользователя; по истечении — logout (защита оставленной сессии).
+  useEffect(() => {
+    if (!state.authenticated) return;
+    let idleMs = 0;
+    let idleTimer: number | undefined;
+    const events = ['mousemove', 'keydown', 'click', 'scroll', 'touchstart'];
+    const reset = () => {
+      if (!idleMs) return;
+      window.clearTimeout(idleTimer);
+      idleTimer = window.setTimeout(() => logout(), idleMs);
+    };
+    md.settings('security')
+      .then(rows => {
+        const m = Number(rows.find(r => r.settingKey === 'idle_logout_minutes')?.settingValue ?? '0');
+        idleMs = Number.isFinite(m) && m > 0 ? m * 60_000 : 0;
+        if (idleMs) { events.forEach(e => window.addEventListener(e, reset, { passive: true })); reset(); }
+      })
+      .catch(() => { /* нет доступа/связи — авто-выход просто не активируется */ });
+    return () => { window.clearTimeout(idleTimer); events.forEach(e => window.removeEventListener(e, reset)); };
+  }, [state.authenticated, logout]);
 
   return <AuthContext.Provider value={{ ...state, login, logout }}>{children}</AuthContext.Provider>;
 }

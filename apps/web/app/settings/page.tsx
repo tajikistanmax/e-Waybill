@@ -5,7 +5,7 @@ import { useT } from '@/lib/i18n';
 import { useAuth } from '@/lib/auth';
 import { Icon, P } from '../icons';
 
-type St = 'done' | 'partial' | 'planned';
+type St = 'done' | 'partial' | 'planned' | 'info';
 
 /** Разделы административной подсистемы «Настройки» (по ТЗ spec/ТЗ-ЕДИНОЕ-DTS.md §29).
  *  st: done — доступно, partial — частично (есть основа), planned — планируется.
@@ -15,7 +15,7 @@ const MODULES: { key: string; icon: string; cls: string; st: St; href?: string; 
   { key: 'general', icon: P.help, cls: 'ic-blue', st: 'done', href: '/settings/general' },
   { key: 'branding', icon: P.building, cls: 'ic-purple', st: 'done', href: '/settings/branding', admin: true },
   { key: 'org', icon: P.building, cls: 'ic-blue', st: 'partial', href: '/company' },
-  { key: 'wbtypes', icon: P.doc, cls: 'ic-cyan', st: 'partial', href: '/settings/types' },
+  { key: 'wbtypes', icon: P.doc, cls: 'ic-cyan', st: 'info', href: '/settings/types' },
   { key: 'fields', icon: P.book, cls: 'ic-cyan', st: 'done', href: '/settings/fields' },
   { key: 'routes', icon: P.route, cls: 'ic-cyan', st: 'partial', href: '/dictionaries' },
   { key: 'drivers', icon: P.user, cls: 'ic-blue', st: 'partial', href: '/registry' },
@@ -23,19 +23,19 @@ const MODULES: { key: string; icon: string; cls: string; st: St; href?: string; 
   { key: 'med', icon: P.med, cls: 'ic-green', st: 'partial', href: '/med' },
   { key: 'tech', icon: P.wrench, cls: 'ic-amber', st: 'partial', href: '/tech' },
   { key: 'payment', icon: P.chart, cls: 'ic-green', st: 'partial', href: '/dictionaries' },
-  { key: 'numbering', icon: P.docActive, cls: 'ic-cyan', st: 'done', href: '/settings/numbering' },
-  { key: 'statuses', icon: P.route, cls: 'ic-cyan', st: 'done', href: '/settings/statuses' },
+  { key: 'numbering', icon: P.docActive, cls: 'ic-cyan', st: 'info', href: '/settings/numbering' },
+  { key: 'statuses', icon: P.route, cls: 'ic-cyan', st: 'info', href: '/settings/statuses' },
   { key: 'roles', icon: P.users, cls: 'ic-blue', st: 'done', href: '/settings/roles', admin: true },
-  { key: 'notify', icon: P.bell, cls: 'ic-amber', st: 'done', href: '/settings/notifications' },
-  { key: 'integrations', icon: P.globe, cls: 'ic-blue', st: 'done', href: '/settings/integrations' },
+  { key: 'notify', icon: P.bell, cls: 'ic-amber', st: 'info', href: '/settings/notifications' },
+  { key: 'integrations', icon: P.globe, cls: 'ic-blue', st: 'info', href: '/settings/integrations' },
   { key: 'security', icon: P.shield, cls: 'ic-red', st: 'done', href: '/settings/security' },
   { key: 'print', icon: P.doc, cls: 'ic-cyan', st: 'partial', href: '/settings/print' },
   { key: 'dictionaries', icon: P.book, cls: 'ic-blue', st: 'done', href: '/dictionaries' },
   { key: 'classifiers', icon: P.globe, cls: 'ic-cyan', st: 'done', href: '/settings/classifiers' },
   { key: 'expiry', icon: P.alert, cls: 'ic-amber', st: 'done', href: '/settings/expiry' },
   { key: 'audit', icon: P.eye, cls: 'ic-amber', st: 'done', href: '/settings/audit', admin: true },
-  { key: 'backup', icon: P.shield, cls: 'ic-blue', st: 'partial', href: '/settings/backup' },
-  { key: 'performance', icon: P.chart, cls: 'ic-purple', st: 'partial', href: '/settings/performance' },
+  { key: 'backup', icon: P.shield, cls: 'ic-blue', st: 'info', href: '/settings/backup' },
+  { key: 'performance', icon: P.chart, cls: 'ic-purple', st: 'info', href: '/settings/performance' },
   { key: 'interface', icon: P.globe, cls: 'ic-cyan', st: 'partial', href: '/settings/interface' },
 ];
 
@@ -50,6 +50,7 @@ export default function SettingsPage() {
   const stBadge = (st: St) =>
     st === 'done' ? <span className="badge green">{t('set.st.done')}</span>
     : st === 'partial' ? <span className="badge amber">{t('set.st.partial')}</span>
+    : st === 'info' ? <span className="badge blue">{t('set.st.info')}</span>
     : <span className="badge gray">{t('set.st.planned')}</span>;
 
   return (
