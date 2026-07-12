@@ -13,7 +13,7 @@ const STATUS_BADGE: Record<Status, string> = {
   planned: 'gray',
 };
 
-/** Статусный борд интеграций платформы ЭПД/DTS, сгруппированный по категориям (справочно). */
+/** Статусный борд интеграций платформы е-Роҳхат, сгруппированный по категориям (справочно). */
 const GROUPS: { key: string; icon: string; ic: string; items: { key: string; status: Status }[] }[] = [
   {
     key: 'core',
