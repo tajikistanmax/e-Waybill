@@ -67,6 +67,7 @@ public class VehicleController {
             LocalDate techInspectionValidTo,
             LocalDate controlCardValidTo,
             LocalDate insuranceValidTo,
+            LocalDate adrApprovalValidTo,
             Boolean blocked) {
     }
 
@@ -104,6 +105,7 @@ public class VehicleController {
         vehicle.setTechInspectionValidTo(req.techInspectionValidTo());
         vehicle.setControlCardValidTo(req.controlCardValidTo());
         vehicle.setInsuranceValidTo(req.insuranceValidTo());
+        vehicle.setAdrApprovalValidTo(req.adrApprovalValidTo());
         // Блокировку ТС ставит/снимает только платформенный админ (Минтранс); перевозчик — нет.
         if (currentUser.isPlatformAdmin() && req.blocked() != null) vehicle.setBlocked(req.blocked());
         var saved = vehicles.save(vehicle);

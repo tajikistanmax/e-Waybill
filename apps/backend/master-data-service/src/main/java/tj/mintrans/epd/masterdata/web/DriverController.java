@@ -60,6 +60,7 @@ public class DriverController {
             String medCertNumber,
             LocalDate medCertValidTo,
             LocalDate safetyCourseValidTo,
+            LocalDate adrCertValidTo,
             String phone) {
     }
 
@@ -90,6 +91,7 @@ public class DriverController {
         driver.setMedCertNumber(req.medCertNumber());
         driver.setMedCertValidTo(req.medCertValidTo());
         driver.setSafetyCourseValidTo(req.safetyCourseValidTo());
+        driver.setAdrCertValidTo(req.adrCertValidTo());
         driver.setPhone(req.phone());
         var saved = drivers.save(driver);
         audit.record(existing.isPresent() ? AuditService.UPDATE : AuditService.CREATE,

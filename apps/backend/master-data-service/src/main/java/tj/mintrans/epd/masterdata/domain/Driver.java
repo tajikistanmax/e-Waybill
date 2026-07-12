@@ -50,6 +50,10 @@ public class Driver {
     @Column(name = "safety_course_valid_to")
     private LocalDate safetyCourseValidTo;
 
+    /** ДОПОГ (ADR): свидетельство о подготовке водителя к перевозке опасных грузов. */
+    @Column(name = "adr_cert_valid_to")
+    private LocalDate adrCertValidTo;
+
     private String phone;
 
     @Column(nullable = false)
@@ -103,6 +107,8 @@ public class Driver {
     public void setMedCertValidTo(LocalDate medCertValidTo) { this.medCertValidTo = medCertValidTo; }
     public LocalDate getSafetyCourseValidTo() { return safetyCourseValidTo; }
     public void setSafetyCourseValidTo(LocalDate safetyCourseValidTo) { this.safetyCourseValidTo = safetyCourseValidTo; }
+    public LocalDate getAdrCertValidTo() { return adrCertValidTo; }
+    public void setAdrCertValidTo(LocalDate adrCertValidTo) { this.adrCertValidTo = adrCertValidTo; }
     public String getPhone() { return phone; }
     public void setPhone(String phone) { this.phone = phone; }
     public boolean isSuspended() { return suspended; }

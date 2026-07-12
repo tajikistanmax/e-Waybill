@@ -597,10 +597,22 @@ public class WaybillService {
                 }
             }
         }
-        // Опасные грузы — свидетельство ADR (предупреждение; поле ADR появится в следующей итерации).
-        if (type == WaybillType.WB_DANGEROUS && (driver != null || vehicle != null)) {
-            out.add(new CheckResult("ADR_REQUIRED", "WARN",
-                    "Опасные грузы: требуется свидетельство ADR у водителя и допуск ТС"));
+        // Опасные грузы (ADR/ДОПОГ): свидетельство водителя и допуск ТС — предупреждение при отсутствии/истечении.
+        if (type == WaybillType.WB_DANGEROUS) {
+            if (driver != null) {
+                var adr = dateOrNull(driver.get("adrCertValidTo"));
+                if (adr == null || adr.isBefore(today)) {
+                    out.add(new CheckResult("ADR_DRIVER", "WARN",
+                            "Опасные грузы: у водителя нет действующего свидетельства ADR (ДОПОГ)"));
+                }
+            }
+            if (vehicle != null) {
+                var adr = dateOrNull(vehicle.get("adrApprovalValidTo"));
+                if (adr == null || adr.isBefore(today)) {
+                    out.add(new CheckResult("ADR_VEHICLE", "WARN",
+                            "Опасные грузы: у ТС нет действующего допуска ADR"));
+                }
+            }
         }
         return out;
     }

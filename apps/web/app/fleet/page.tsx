@@ -55,6 +55,7 @@ export default function FleetPage() {
     { key: 'techInspectionValidTo', label: t('fleet.f.tech'), type: 'date' },
     { key: 'controlCardValidTo', label: t('fleet.f.card'), type: 'date' },
     { key: 'insuranceValidTo', label: t('fleet.f.insurance'), type: 'date' },
+    { key: 'adrApprovalValidTo', label: t('fleet.f.adrappr'), type: 'date' },
   ];
   const driverFields: Field[] = [
     { key: 'rma', label: t('fleet.f.inn'), req: true, keyField: true },
@@ -64,6 +65,8 @@ export default function FleetPage() {
     { key: 'licenseValidTo', label: t('fleet.f.licenseto'), type: 'date' },
     { key: 'medCertNumber', label: t('fleet.f.medcert') },
     { key: 'medCertValidTo', label: t('fleet.f.medcertto'), type: 'date' },
+    { key: 'safetyCourseValidTo', label: t('fleet.f.safety'), type: 'date' },
+    { key: 'adrCertValidTo', label: t('fleet.f.adrcert'), type: 'date' },
     { key: 'phone', label: t('fleet.f.phone') },
   ];
   const fields = tab === 'vehicles' ? vehicleFields : driverFields;

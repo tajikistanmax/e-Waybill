@@ -54,6 +54,10 @@ public class Vehicle {
     @Column(name = "insurance_valid_to")
     private LocalDate insuranceValidTo;
 
+    /** ADR (ДОПОГ): свидетельство о допуске ТС к перевозке опасных грузов. */
+    @Column(name = "adr_approval_valid_to")
+    private LocalDate adrApprovalValidTo;
+
     @Column(nullable = false)
     private boolean blocked;
 
@@ -109,6 +113,8 @@ public class Vehicle {
     public void setControlCardValidTo(LocalDate controlCardValidTo) { this.controlCardValidTo = controlCardValidTo; }
     public LocalDate getInsuranceValidTo() { return insuranceValidTo; }
     public void setInsuranceValidTo(LocalDate insuranceValidTo) { this.insuranceValidTo = insuranceValidTo; }
+    public LocalDate getAdrApprovalValidTo() { return adrApprovalValidTo; }
+    public void setAdrApprovalValidTo(LocalDate adrApprovalValidTo) { this.adrApprovalValidTo = adrApprovalValidTo; }
     public boolean isBlocked() { return blocked; }
     public void setBlocked(boolean blocked) { this.blocked = blocked; }
     public String getSource() { return source; }
