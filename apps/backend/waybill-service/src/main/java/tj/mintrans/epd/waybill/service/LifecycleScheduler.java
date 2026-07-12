@@ -55,16 +55,23 @@ public class LifecycleScheduler {
 
     void expireOverdue() {
         var now = OffsetDateTime.now();
-        // Не выдан / не активирован до конца срока действия
-        for (var wb : waybills.findByStatusInAndValidToBefore(
-                EnumSet.of(WaybillStatus.READY, WaybillStatus.ISSUED), now)) {
+        // Документ не дошёл до линии к концу срока действия. CREATED/AWAITING_PAYMENT/PAID —
+        // тоже OPEN_STATUSES: «зависший» после Т1 документ (осмотры/оплата не завершены)
+        // иначе навсегда блокировал бы ТС и водителя (инвариант «один действующий ПЛ»).
+        var pending = EnumSet.of(WaybillStatus.CREATED, WaybillStatus.AWAITING_PAYMENT,
+                WaybillStatus.PAID, WaybillStatus.READY, WaybillStatus.ISSUED);
+        for (var candidate : waybills.findByStatusInAndValidToBefore(pending, now)) {
+            var wb = lockFresh(candidate.getId(), pending, now);
+            if (wb == null) continue; // параллельная операция уже сменила статус — не трогаем
             var from = wb.getStatus();
-            applyTransition(wb, from, "Срок действия истёк: не активирован");
-            log.info("ПЛ {} ({}) просрочен: не активирован до {}", wb.getId(), wb.getNumber(), wb.getValidTo());
+            applyTransition(wb, from, "Срок действия истёк: документ не был активирован");
+            log.info("ПЛ {} ({}) просрочен в статусе {}: срок до {}", wb.getId(), wb.getNumber(), from, wb.getValidTo());
         }
         // На линии, но не закрыт в срок + грейс-период — фиксируется как нарушение
-        for (var wb : waybills.findByStatusInAndValidToBefore(
-                EnumSet.of(WaybillStatus.ACTIVE), now.minusHours(expiryGraceHours))) {
+        var graceEdge = now.minusHours(expiryGraceHours);
+        for (var candidate : waybills.findByStatusInAndValidToBefore(EnumSet.of(WaybillStatus.ACTIVE), graceEdge)) {
+            var wb = lockFresh(candidate.getId(), EnumSet.of(WaybillStatus.ACTIVE), graceEdge);
+            if (wb == null) continue;
             applyTransition(wb, WaybillStatus.ACTIVE,
                     "Срок действия истёк: рейс не закрыт (грейс-период %d ч; нарушение)".formatted(expiryGraceHours));
             log.warn("ПЛ {} ({}) просрочен на линии — нарушение", wb.getId(), wb.getNumber());
@@ -73,13 +80,28 @@ public class LifecycleScheduler {
 
     void archiveOld() {
         var threshold = OffsetDateTime.now().minusDays(archiveAfterDays);
-        for (var wb : waybills.findByStatusAndUpdatedAtBefore(WaybillStatus.COMPLETED, threshold)) {
+        for (var candidate : waybills.findByStatusAndUpdatedAtBefore(WaybillStatus.COMPLETED, threshold)) {
+            var wb = waybills.findByIdForUpdate(candidate.getId()).orElse(null);
+            if (wb == null || wb.getStatus() != WaybillStatus.COMPLETED) continue;
             wb.setStatus(WaybillStatus.ARCHIVED);
             events.save(WaybillStatusEvent.of(wb.getId(), WaybillStatus.COMPLETED, WaybillStatus.ARCHIVED, ACTOR,
                     "Архивирование по политике ретенции (%d дней)".formatted(archiveAfterDays)));
             waybills.save(wb);
             publish(wb, WaybillStatus.COMPLETED, WaybillStatus.ARCHIVED, "Архивирование по политике ретенции");
         }
+    }
+
+    /**
+     * Перечитать кандидата под блокировкой строки (FOR UPDATE) и перепроверить условие:
+     * сериализация с пользовательскими мутациями (getForUpdate в WaybillService) — иначе
+     * save() планировщика затирал бы параллельно выставленные флаги/статус (JPA пишет все колонки).
+     */
+    private tj.mintrans.epd.waybill.domain.Waybill lockFresh(java.util.UUID id,
+            java.util.Set<WaybillStatus> statuses, OffsetDateTime validToBefore) {
+        var wb = waybills.findByIdForUpdate(id).orElse(null);
+        if (wb == null || !statuses.contains(wb.getStatus())) return null;
+        if (wb.getValidTo() == null || !wb.getValidTo().isBefore(validToBefore)) return null;
+        return wb;
     }
 
     private void applyTransition(tj.mintrans.epd.waybill.domain.Waybill wb, WaybillStatus from, String reason) {

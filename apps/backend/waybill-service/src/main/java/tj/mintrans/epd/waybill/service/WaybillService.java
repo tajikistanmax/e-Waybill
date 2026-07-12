@@ -470,7 +470,7 @@ public class WaybillService {
         var doctor = requireEmployee(wb, doctorRma, 1, "Врач");
         if (wb.getStatus() == WaybillStatus.CREATED || wb.getStatus() == WaybillStatus.TECH_REJECTED) {
             if (titles.existsByWaybillIdAndTitleTypeAndSignerRma(id, "T2", doctorRma) && wb.isMedPassed()) {
-                throw new ConflictException("This employee has already confirmed this waybill");
+                throw new ConflictException("Этот сотрудник уже подтвердил данный путевой лист");
             }
             addTitle(wb, "T2", doctorRma, "DOCTOR", withVerdict(indicators, passed, doctor));
             if (passed) {
@@ -498,7 +498,7 @@ public class WaybillService {
         }
         var mechanic = requireEmployee(wb, mechanicRma, 2, "Механик");
         if (titles.existsByWaybillIdAndTitleTypeAndSignerRma(id, "T3", mechanicRma) && wb.isTechPassed()) {
-            throw new ConflictException("This employee has already confirmed this waybill");
+            throw new ConflictException("Этот сотрудник уже подтвердил данный путевой лист");
         }
         addTitle(wb, "T3", mechanicRma, "MECHANIC", withVerdict(checklist, passed, mechanic));
         if (passed) {
