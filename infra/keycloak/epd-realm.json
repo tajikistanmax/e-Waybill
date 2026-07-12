@@ -161,7 +161,19 @@
       "credentials": [
         { "type": "password", "value": "admin", "temporary": false }
       ],
-      "realmRoles": ["COMPANY_ADMIN", "SYSTEM_ADMIN"],
+      "realmRoles": ["SYSTEM_ADMIN"]
+    },
+    {
+      "username": "company",
+      "email": "company@epd.tj",
+      "firstName": "Админ",
+      "lastName": "Компании",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        { "type": "password", "value": "company", "temporary": false }
+      ],
+      "realmRoles": ["COMPANY_ADMIN"],
       "attributes": {
         "rma": ["025680800"],
         "organizationRma": ["025680800"]
