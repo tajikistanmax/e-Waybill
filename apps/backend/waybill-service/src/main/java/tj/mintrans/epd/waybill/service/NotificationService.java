@@ -3,6 +3,7 @@ package tj.mintrans.epd.waybill.service;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
+import tj.mintrans.epd.waybill.client.MasterDataClient;
 import tj.mintrans.epd.waybill.config.CurrentUser;
 import tj.mintrans.epd.waybill.domain.Notification;
 import tj.mintrans.epd.waybill.event.WaybillStatusChanged;
@@ -32,12 +33,19 @@ public class NotificationService {
     private final NotificationRepository repository;
     private final CurrentUser currentUser;
     private final List<NotificationChannel> channels;
+    private final MasterDataClient masterData;
+
+    /** Кэш тумблеров уведомлений (настройки меняются редко; не бьём master-data на каждое событие). */
+    private volatile Map<String, String> togglesCache = Map.of();
+    private volatile long togglesCachedAt = 0;
+    private static final long TOGGLES_TTL_MS = 30_000;
 
     public NotificationService(NotificationRepository repository, CurrentUser currentUser,
-                               List<NotificationChannel> channels) {
+                               List<NotificationChannel> channels, MasterDataClient masterData) {
         this.repository = repository;
         this.currentUser = currentUser;
         this.channels = channels;
+        this.masterData = masterData;
     }
 
     /** Создать уведомление по событию перехода (новая транзакция; best-effort). */
@@ -45,6 +53,11 @@ public class NotificationService {
     public void onStatusChanged(WaybillStatusChanged event) {
         String title = NOTEWORTHY.get(event.toStatus());
         if (title == null || event.organizationRma() == null) {
+            return;
+        }
+        // Тумблер типа события (настройка notifications/notify_<status>): выключено админом → пропуск.
+        // Отсутствие/недоступность настройки трактуется как «включено» (безопасный дефолт).
+        if (!notificationEnabled(event.toStatus())) {
             return;
         }
         try {
@@ -67,6 +80,24 @@ public class NotificationService {
         } catch (RuntimeException ex) {
             // Уведомление best-effort: сбой записи не должен влиять на бизнес-поток.
         }
+    }
+
+    /** Тип события включён к уведомлению? notify_<status>; отсутствие/недоступность → true (дефолт). */
+    private boolean notificationEnabled(String status) {
+        String key = "notify_" + status.toLowerCase();
+        return !"false".equalsIgnoreCase(toggles().get(key));
+    }
+
+    /** Тумблеры уведомлений с кэшем на TTL (best-effort; при сбое — прежний кэш/пусто = «включено»). */
+    private Map<String, String> toggles() {
+        long now = System.currentTimeMillis();
+        if (now - togglesCachedAt > TOGGLES_TTL_MS) {
+            try {
+                togglesCache = masterData.notificationSettings();
+                togglesCachedAt = now;
+            } catch (RuntimeException ignored) { /* оставляем прежний кэш */ }
+        }
+        return togglesCache;
     }
 
     // -------------------------------------------------------- чтение (тенант-скоуп)

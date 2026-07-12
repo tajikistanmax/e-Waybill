@@ -122,6 +122,33 @@ public class MasterDataClient {
         }
     }
 
+    /**
+     * Тумблеры уведомлений (настройки master-data, категория notifications): ключ→значение.
+     * При недоступности — пустая карта (вызывающий трактует отсутствие как «уведомление включено»).
+     */
+    public Map<String, String> notificationSettings() {
+        try {
+            List<Map<String, Object>> rows = client.get()
+                    .uri("/api/v1/settings?category=notifications")
+                    .retrieve()
+                    .body(LIST_OF_MAPS);
+            if (rows == null) {
+                return Map.of();
+            }
+            var map = new java.util.HashMap<String, String>();
+            for (var row : rows) {
+                Object key = row.get("settingKey");
+                Object value = row.get("settingValue");
+                if (key != null) {
+                    map.put(key.toString(), value == null ? null : value.toString());
+                }
+            }
+            return map;
+        } catch (RuntimeException e) {
+            return Map.of();
+        }
+    }
+
     // ------------------------------------------------------- справочники нормирования
 
     public List<Map<String, Object>> listFuelNorms() {

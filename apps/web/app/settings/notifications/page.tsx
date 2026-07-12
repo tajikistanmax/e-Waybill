@@ -3,19 +3,13 @@
 import Link from 'next/link';
 import { useT } from '@/lib/i18n';
 import { Icon, P } from '../../icons';
+import { SettingsEditor } from '../SettingsEditor';
 
-/** События, по которым организация получает уведомление (справочно). */
-const EVENTS = ['medrej', 'techrej', 'ready', 'blocked', 'expired'];
-
-/** Каналы доставки уведомлений и их статус (справочно). */
-const CHANNELS: { key: string; status: 'active' | 'planned' }[] = [
-  { key: 'inapp', status: 'active' },
-  { key: 'sms', status: 'planned' },
-  { key: 'email', status: 'planned' },
-  { key: 'push', status: 'planned' },
-  { key: 'tg', status: 'planned' },
-];
-
+/**
+ * Уведомления (§29): администратор включает/выключает in-app уведомление организации по типу
+ * события ПЛ (реальные тумблеры — настройки категории notifications; читает waybill-service).
+ * Доставка — только внутри платформы (внешние каналы SMS/push не используются по решению заказчика).
+ */
 export default function NotificationsSettingsPage() {
   const { t } = useT();
 
@@ -31,53 +25,21 @@ export default function NotificationsSettingsPage() {
         </Link>
       </div>
 
-      <div className="hint" style={{ marginBottom: 18 }}>{t('setnotif.note')}</div>
+      <div className="hint" style={{ marginBottom: 18 }}>{t('setnotif.note2')}</div>
 
-      <div className="kpi-row" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 14 }}>
-        <div className="card" style={{ padding: 16 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-            <span className="k-ic ic-amber"><Icon d={P.bell} cls="" /></span>
-            <div style={{ fontWeight: 700, fontSize: 14 }}>{t('setnotif.events.t')}</div>
-          </div>
-          <table>
-            <tbody>
-              {EVENTS.map(ev => (
-                <tr key={ev}>
-                  <td>{t(`setnotif.ev.${ev}`)}</td>
-                  <td style={{ textAlign: 'right' }}>
-                    <span className="badge green">{t('setnotif.active')}</span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+      <h2 style={{ margin: '4px 0 6px' }}>{t('setnotif.events.h')}</h2>
+      <div className="page-lead" style={{ marginTop: 0, marginBottom: 14 }}>{t('setnotif.events.lead')}</div>
+      <SettingsEditor category="notifications" />
 
-        <div className="card" style={{ padding: 16 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-            <span className="k-ic ic-blue"><Icon d={P.globe} cls="" /></span>
-            <div style={{ fontWeight: 700, fontSize: 14 }}>{t('setnotif.channels.t')}</div>
-          </div>
-          <table>
-            <tbody>
-              {CHANNELS.map(ch => (
-                <tr key={ch.key}>
-                  <td>{t(`setnotif.ch.${ch.key}`)}</td>
-                  <td style={{ textAlign: 'right' }}>
-                    <span className={`badge ${ch.status === 'active' ? 'green' : 'gray'}`}>
-                      {ch.status === 'active' ? t('setnotif.active') : t('setnotif.planned')}
-                    </span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          <div style={{ marginTop: 14 }}>
-            <Link href="/notifications" className="btn secondary" style={{ textDecoration: 'none' }}>
-              <Icon d={P.bell} cls="" style={{ width: 15, height: 15 }} /> {t('setnotif.open')}
-            </Link>
-          </div>
+      <div className="card" style={{ padding: 16, marginTop: 24, maxWidth: 640 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+          <span className="k-ic ic-green"><Icon d={P.bell} cls="" /></span>
+          <div style={{ fontWeight: 700, fontSize: 14 }}>{t('setnotif.delivery.t')}</div>
         </div>
+        <div style={{ color: 'var(--muted)', fontSize: 13, lineHeight: 1.5, marginBottom: 12 }}>{t('setnotif.delivery.d')}</div>
+        <Link href="/notifications" className="btn secondary" style={{ textDecoration: 'none' }}>
+          <Icon d={P.bell} cls="" style={{ width: 15, height: 15 }} /> {t('setnotif.open')}
+        </Link>
       </div>
     </>
   );
