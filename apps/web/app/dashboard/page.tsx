@@ -89,7 +89,7 @@ export default function DashboardPage() {
     { key: 'sys.svc.waybill', status: health.wb },
     { key: 'sys.svc.masterdata', status: health.md },
   ];
-  const allUp = services.every(s => s.status === 'up');
+  const anyDown = services.some(s => s.status === 'down');
 
   return (
     <>
@@ -186,9 +186,9 @@ export default function DashboardPage() {
               </div>
             ))}
           </div>
-          {allUp
-            ? <div className="sys-ok"><Icon d={P.check} cls="" style={{ width: 16, height: 16 }} /> {t('dash.sysok')}</div>
-            : <div className="sys-ok" style={{ color: 'var(--red)' }}><Icon d={P.alert} cls="" style={{ width: 16, height: 16 }} /> {t('dash.sysdown')}</div>}
+          {anyDown
+            ? <div className="sys-ok" style={{ color: 'var(--red)' }}><Icon d={P.alert} cls="" style={{ width: 16, height: 16 }} /> {t('dash.sysdown')}</div>
+            : <div className="sys-ok"><Icon d={P.check} cls="" style={{ width: 16, height: 16 }} /> {t('dash.sysok')}</div>}
         </div>
       </div>
 

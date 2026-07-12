@@ -20,8 +20,11 @@ export function visibleNav(roles: string[]): Set<NavKey> {
   const s = new Set<NavKey>();
   const add = (...keys: NavKey[]) => keys.forEach(k => s.add(k));
 
-  if (roles.includes('SYSTEM_ADMIN')) add('dashboard', 'waybills', 'med', 'tech', 'company', 'monitoring', 'registry', 'violations', 'reports', 'dictionaries', 'settings');
-  if (roles.includes('COMPANY_ADMIN')) add('dashboard', 'waybills', 'med', 'tech', 'company', 'fleet', 'monitoring', 'registry', 'violations', 'reports', 'dictionaries', 'settings');
+  // Админ надзирает и настраивает — осмотры НЕ проводит (Т2/Т3 подписывают врач/механик
+  // своими РМА в /med и /tech). Поэтому у админов нет АРМ врача/механика в меню.
+  if (roles.includes('SYSTEM_ADMIN')) add('dashboard', 'waybills', 'company', 'monitoring', 'registry', 'violations', 'reports', 'dictionaries', 'settings');
+  // Админ компании управляет своим парком (fleet — «Транспорт и водители»), но осмотры не проводит.
+  if (roles.includes('COMPANY_ADMIN')) add('dashboard', 'waybills', 'company', 'fleet', 'monitoring', 'registry', 'violations', 'reports', 'dictionaries', 'settings');
   if (roles.includes('DISPATCHER')) add('dispatcher', 'dashboard', 'waybills', 'fleet', 'monitoring');
   if (roles.includes('DOCTOR')) add('med', 'fleet');
   if (roles.includes('MECHANIC')) add('tech', 'fleet');
