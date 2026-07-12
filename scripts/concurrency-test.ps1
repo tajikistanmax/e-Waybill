@@ -53,6 +53,30 @@ Chk "Действующих ПЛ на водителя <= 1 (факт: $byDrv)" 
 $open2 = Invoke-RestMethod "$wb/api/v1/waybills" -Headers $hd
 foreach ($o in $open2) { if ($o.vehicleRegNumber -eq '0114TJ01' -and $openLocal -contains $o.status) { try { Cancel $o } catch {} } }
 
+# --- Гонка confirmMed || confirmTech: без блокировки строки (findByIdForUpdate) JPA терял
+# --- один из флагов medPassed/techPassed (last-writer-wins по всем колонкам) и ПЛ застревал
+# --- в CREATED. С блокировкой итог детерминирован: оба флага + статус READY.
+Write-Output ''
+Write-Output '=== ГОНКА Т2 || Т3: параллельные медосмотр и техконтроль одного ПЛ ==='
+function TokenOf($user) { (Invoke-RestMethod -Method Post -Uri "$kc/realms/epd/protocol/openid-connect/token" -Body "client_id=epd-web&grant_type=password&username=$user&password=$user" -ContentType 'application/x-www-form-urlencoded').access_token }
+function PostJ($url, $obj, $h) { Invoke-RestMethod -Method Post -Uri $url -Headers $h -Body ([Text.Encoding]::UTF8.GetBytes(($obj | ConvertTo-Json -Depth 8))) -ContentType 'application/json; charset=utf-8' }
+$w = PostJ "$wb/api/v1/waybills" @{ waybillType = 'WB_BUS'; organizationRma = '025680800'; vehicleRegNumber = '0114TJ01'; driverRma = '461930031'; route = 'concurrency-race' } $hd
+$w = PostJ "$wb/api/v1/waybills/$($w.id)/titles/t1" @{ dispatcherRma = '333333333'; validityDays = 1 } $hd
+$raceJobs = @(
+    Start-Job -ScriptBlock { param($wb, $id, $tok)
+        try { Invoke-RestMethod -Method Post -Uri "$wb/api/v1/waybills/$id/confirm-med" -Headers @{ Authorization = "Bearer $tok" } -Body ([Text.Encoding]::UTF8.GetBytes((@{ employeeRma = '111111111'; passed = $true } | ConvertTo-Json))) -ContentType 'application/json; charset=utf-8' | Out-Null; 200 } catch { -1 }
+    } -ArgumentList $wb, $w.id, (TokenOf 'doctor')
+    Start-Job -ScriptBlock { param($wb, $id, $tok)
+        try { Invoke-RestMethod -Method Post -Uri "$wb/api/v1/waybills/$id/confirm-tech" -Headers @{ Authorization = "Bearer $tok" } -Body ([Text.Encoding]::UTF8.GetBytes((@{ employeeRma = '222222222'; passed = $true } | ConvertTo-Json))) -ContentType 'application/json; charset=utf-8' | Out-Null; 200 } catch { -1 }
+    } -ArgumentList $wb, $w.id, (TokenOf 'mechanic')
+)
+$raceJobs | Wait-Job | Out-Null; $raceJobs | Remove-Job
+Start-Sleep -Seconds 1
+$after = Invoke-RestMethod "$wb/api/v1/waybills/$($w.id)" -Headers $hd
+Chk "Оба осмотра учтены (med+tech, без lost update)" ($after.medPassed -and $after.techPassed)
+Chk "Статус READY после гонки (факт: $($after.status))" ($after.status -eq 'READY')
+try { Cancel $after } catch {}
+
 Write-Output ''
 Write-Output "=== ИТОГ: PASS=$pass, FAIL=$fail ==="
 if ($fail -gt 0) { exit 1 } else { Write-Output 'ИНВАРИАНТ ДЕРЖИТСЯ ПОД КОНКУРЕНТНОСТЬЮ'; exit 0 }

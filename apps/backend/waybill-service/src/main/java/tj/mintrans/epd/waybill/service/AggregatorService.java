@@ -110,7 +110,10 @@ public class AggregatorService {
         events.save(WaybillStatusEvent.of(saved.getId(), null, WaybillStatus.DRAFT, ACTOR, "Заявка агрегатора"));
 
         var employee = employeeRma == null ? null : masterData.findEmployee(employeeRma).orElse(null);
-        if (employee != null && Integer.valueOf(3).equals(intOrNull(employee.get("type")))) {
+        // Т1 атрибутируется только диспетчеру ЭТОЙ организации; чужой/неизвестный/не-диспетчер —
+        // как и прежде, мягкий фолбэк на общую ветку (legacy-толерантность: заявка не отклоняется).
+        if (employee != null && Integer.valueOf(3).equals(intOrNull(employee.get("type")))
+                && str(org.get("id")).equals(str(employee.get("organizationId")))) {
             // employee_rma — диспетчер: Т1 подписывается им
             saved.setDispatcherRma(employeeRma);
             var t1 = new LinkedHashMap<String, Object>();
@@ -158,6 +161,8 @@ public class AggregatorService {
             }
         }
     }
+
+    private static String str(Object o) { return o == null ? "" : o.toString(); }
 
     private static Integer intOrNull(Object o) {
         return o instanceof Number n ? n.intValue() : o != null ? Integer.valueOf(o.toString()) : null;

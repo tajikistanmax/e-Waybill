@@ -422,9 +422,9 @@ public class WaybillService {
     /** Т1 — выпуск: подписывает диспетчер, ПЛ переходит в CREATED. */
     @Transactional
     public Waybill signT1(UUID id, String dispatcherRma, OffsetDateTime validFrom, Integer validityDays) {
-        var wb = get(id);
+        var wb = getForUpdate(id);
         requireStatus(wb, WaybillStatus.DRAFT);
-        var dispatcher = requireEmployee(dispatcherRma, 3, "Диспетчер");
+        var dispatcher = requireEmployee(wb, dispatcherRma, 3, "Диспетчер");
         var from = validFrom != null ? validFrom : OffsetDateTime.now();
         // Лимит срока действия: легальный максимум типа ПЛ, который политика max_validity_days
         // (уровни NATIONAL/ORGANIZATION/VEHICLE_TYPE) может только УЖЕСТОЧИТЬ, но не превысить.
@@ -466,8 +466,8 @@ public class WaybillService {
     /** Т2/Т6 — медицинский осмотр. */
     @Transactional
     public Waybill confirmMed(UUID id, String doctorRma, boolean passed, Map<String, Object> indicators) {
-        var wb = get(id);
-        var doctor = requireEmployee(doctorRma, 1, "Врач");
+        var wb = getForUpdate(id);
+        var doctor = requireEmployee(wb, doctorRma, 1, "Врач");
         if (wb.getStatus() == WaybillStatus.CREATED || wb.getStatus() == WaybillStatus.TECH_REJECTED) {
             if (titles.existsByWaybillIdAndTitleTypeAndSignerRma(id, "T2", doctorRma) && wb.isMedPassed()) {
                 throw new ConflictException("This employee has already confirmed this waybill");
@@ -492,11 +492,11 @@ public class WaybillService {
     /** Т3 — предрейсовый технический контроль. */
     @Transactional
     public Waybill confirmTech(UUID id, String mechanicRma, boolean passed, Map<String, Object> checklist) {
-        var wb = get(id);
+        var wb = getForUpdate(id);
         if (wb.getStatus() != WaybillStatus.CREATED && wb.getStatus() != WaybillStatus.MED_REJECTED) {
             throw new ConflictException("Техконтроль невозможен в статусе " + wb.getStatus());
         }
-        var mechanic = requireEmployee(mechanicRma, 2, "Механик");
+        var mechanic = requireEmployee(wb, mechanicRma, 2, "Механик");
         if (titles.existsByWaybillIdAndTitleTypeAndSignerRma(id, "T3", mechanicRma) && wb.isTechPassed()) {
             throw new ConflictException("This employee has already confirmed this waybill");
         }
@@ -569,7 +569,7 @@ public class WaybillService {
      */
     @Transactional
     public Waybill confirmPayment(UUID id, String method, String externalRef, String actor) {
-        var wb = get(id);
+        var wb = getForUpdate(id);
         requireStatus(wb, WaybillStatus.AWAITING_PAYMENT);
         // Блокирующая загрузка платежа: сериализует одновременные доставки вебхука (идемпотентность).
         var payment = payments.findByWaybillIdForUpdate(id)
@@ -592,7 +592,7 @@ public class WaybillService {
     /** Выдача: водитель подтверждает получение (Face ID/PIN в мобильном кабинете). */
     @Transactional
     public Waybill issue(UUID id, String driverConfirmation) {
-        var wb = get(id);
+        var wb = getForUpdate(id);
         requireStatus(wb, WaybillStatus.READY);
         transition(wb, WaybillStatus.ISSUED, wb.getDriverRma(),
                 "Водитель подтвердил получение (" + (driverConfirmation == null ? "PIN" : driverConfirmation) + ")");
@@ -602,9 +602,9 @@ public class WaybillService {
     /** Т4 — одометр/топливо на выезде; выезд на линию. */
     @Transactional
     public Waybill activate(UUID id, String dispatcherRma, Integer odometerExit) {
-        var wb = get(id);
+        var wb = getForUpdate(id);
         requireStatus(wb, WaybillStatus.ISSUED);
-        requireEmployee(dispatcherRma, 3, "Диспетчер");
+        requireEmployee(wb, dispatcherRma, 3, "Диспетчер");
         Integer lastKnown = wb.getVehicleSnapshot() != null
                 ? intOrNull(wb.getVehicleSnapshot().get("odometer")) : null;
         // Непрерывность одометра (антифрод): явный выезд не может быть отрицательным и не может
@@ -630,9 +630,9 @@ public class WaybillService {
     /** Т5 — возвращение: одометр возврата. */
     @Transactional
     public Waybill returnTrip(UUID id, String dispatcherRma, int odometerEntry) {
-        var wb = get(id);
+        var wb = getForUpdate(id);
         requireStatus(wb, WaybillStatus.ACTIVE);
-        requireEmployee(dispatcherRma, 3, "Диспетчер");
+        requireEmployee(wb, dispatcherRma, 3, "Диспетчер");
         if (wb.getOdometerExit() != null && odometerEntry < wb.getOdometerExit()) {
             throw new UnprocessableException("Одометр возврата меньше одометра выезда");
         }
@@ -651,7 +651,7 @@ public class WaybillService {
      */
     @Transactional
     public Waybill close(UUID id, String actor) {
-        var wb = get(id);
+        var wb = getForUpdate(id);
         requireStatus(wb, WaybillStatus.RETURNED);
         var policies = masterData.effectivePolicies(wb.getOrganizationRma(), wb.getWaybillType().name());
         boolean requireMedPost = policies.containsKey("require_med_post")
@@ -670,7 +670,7 @@ public class WaybillService {
 
     @Transactional
     public Waybill cancel(UUID id, String reason, String actor) {
-        var wb = get(id);
+        var wb = getForUpdate(id);
         if (wb.getStatus().isTerminal()) {
             throw new ConflictException("Аннулирование невозможно в статусе " + wb.getStatus());
         }
@@ -692,9 +692,9 @@ public class WaybillService {
      */
     @Transactional
     public Waybill replaceDriver(UUID id, String newDriverRma, String dispatcherRma) {
-        var wb = get(id);
+        var wb = getForUpdate(id);
         requireStatus(wb, WaybillStatus.MED_REJECTED);
-        requireEmployee(dispatcherRma, 3, "Диспетчер");
+        requireEmployee(wb, dispatcherRma, 3, "Диспетчер");
         var driver = masterData.findDriver(newDriverRma)
                 .orElseThrow(() -> new NotFoundException("Водитель не найден"));
         if (!str(wb.getOrganizationSnapshot().get("id")).equals(str(driver.get("organizationId")))) {
@@ -717,6 +717,14 @@ public class WaybillService {
         if (!waybills.findByDriverRmaAndStatusIn(newDriverRma, WaybillStatus.OPEN_STATUSES).isEmpty()) {
             throw new ConflictException("На нового водителя уже оформлен действующий путевой лист");
         }
+        // Как при создании (runBlockingChecks): водитель с ПЛ, заблокированным инспектором,
+        // не подставляется заменой — требуется решение администратора Минтранса. Без этой
+        // проверки корректирующий титул обходил бы запрет create-пути.
+        if (!waybills.findByDriverRmaAndStatusIn(newDriverRma, java.util.EnumSet.of(WaybillStatus.BLOCKED)).isEmpty()) {
+            throw new ConflictException("На нового водителя есть путевой лист, заблокированный инспектором, — требуется решение администратора Минтранса");
+        }
+        // Минимальный отдых (§5) действует и при замене — иначе политика обходится корректировкой.
+        assertDriverRested(newDriverRma, wb.getOrganizationRma(), wb.getWaybillType());
         String oldDriverRma = wb.getDriverRma();
         wb.setDriverRma(newDriverRma);
         wb.setDriverSnapshot(driver);
@@ -737,9 +745,9 @@ public class WaybillService {
      */
     @Transactional
     public Waybill replaceVehicle(UUID id, String newVehicleRegNumber, String dispatcherRma) {
-        var wb = get(id);
+        var wb = getForUpdate(id);
         requireStatus(wb, WaybillStatus.TECH_REJECTED);
-        requireEmployee(dispatcherRma, 3, "Диспетчер");
+        requireEmployee(wb, dispatcherRma, 3, "Диспетчер");
         var vehicle = masterData.findVehicle(newVehicleRegNumber)
                 .orElseThrow(() -> new NotFoundException("Транспорт не найден"));
         if (!str(wb.getOrganizationSnapshot().get("id")).equals(str(vehicle.get("organizationId")))) {
@@ -753,6 +761,12 @@ public class WaybillService {
         if (techInspection == null || techInspection.isBefore(today)) {
             throw new UnprocessableException("Технический осмотр нового ТС отсутствует или истёк");
         }
+        // Страховой полис (§13) — как при создании: истёкшая страховка блокирует замену
+        // (отсутствие данных не блокирует — пробел в реплике не рушит корректировку).
+        var insurance = dateOrNull(vehicle.get("insuranceValidTo"));
+        if (insurance != null && insurance.isBefore(today)) {
+            throw new UnprocessableException("Срок действия страхового полиса нового ТС истёк");
+        }
         if (Integer.valueOf(1).equals(intOrNull(wb.getOrganizationSnapshot().get("typeCompany")))) {
             var controlCard = dateOrNull(vehicle.get("controlCardValidTo"));
             if (controlCard == null || controlCard.isBefore(today)) {
@@ -763,6 +777,11 @@ public class WaybillService {
         assertLicenseMatchesVehicle(wb.getDriverSnapshot(), vehicle);
         if (!waybills.findByVehicleRegNumberAndStatusIn(newVehicleRegNumber, WaybillStatus.OPEN_STATUSES).isEmpty()) {
             throw new ConflictException("На новое ТС уже оформлен действующий путевой лист");
+        }
+        // Как при создании (runBlockingChecks): ТС с ПЛ, заблокированным инспектором,
+        // не подставляется заменой — требуется решение администратора Минтранса.
+        if (!waybills.findByVehicleRegNumberAndStatusIn(newVehicleRegNumber, java.util.EnumSet.of(WaybillStatus.BLOCKED)).isEmpty()) {
+            throw new ConflictException("На новое ТС есть путевой лист, заблокированный инспектором, — требуется решение администратора Минтранса");
         }
         String oldVehicle = wb.getVehicleRegNumber();
         wb.setVehicleRegNumber(newVehicleRegNumber);
@@ -783,7 +802,7 @@ public class WaybillService {
     /** Блокировка при нарушении на дорожном контроле: ACTIVE → BLOCKED (роль INSPECTOR). */
     @Transactional
     public Waybill block(UUID id, String reason, String actor) {
-        var wb = get(id);
+        var wb = getForUpdate(id);
         requireStatus(wb, WaybillStatus.ACTIVE);
         transition(wb, WaybillStatus.BLOCKED, actor, reason);
         return waybills.save(wb);
@@ -792,7 +811,7 @@ public class WaybillService {
     /** Разблокировка администратором Минтранса (с обоснованием, аудит): BLOCKED → ACTIVE. */
     @Transactional
     public Waybill unblock(UUID id, String reason, String actor) {
-        var wb = get(id);
+        var wb = getForUpdate(id);
         requireStatus(wb, WaybillStatus.BLOCKED);
         transition(wb, WaybillStatus.ACTIVE, actor, reason);
         return waybills.save(wb);
@@ -801,10 +820,24 @@ public class WaybillService {
     // ------------------------------------------------------------------ вспомогательные
 
     public Waybill get(UUID id) {
-        var wb = waybills.findById(id).orElseThrow(() -> new NotFoundException("Путевой лист не найден"));
-        // Мультиарендность: tenant-scoped пользователь (не-админ) видит и меняет только ПЛ
-        // своей организации. Все мутации проходят через get(), поэтому проверка одна.
-        // 404 (а не 403) — чтобы не раскрывать существование чужого документа.
+        return checkTenant(waybills.findById(id).orElseThrow(() -> new NotFoundException("Путевой лист не найден")));
+    }
+
+    /**
+     * Как get(), но с блокировкой строки (FOR UPDATE) — все мутации ПЛ идут через этот
+     * метод и сериализуются: конкурентные confirmMed/confirmTech не теряют флаги
+     * medPassed/techPassed (lost update), двойные issue/transition не задваивают события.
+     */
+    Waybill getForUpdate(UUID id) {
+        return checkTenant(waybills.findByIdForUpdate(id).orElseThrow(() -> new NotFoundException("Путевой лист не найден")));
+    }
+
+    /**
+     * Мультиарендность: tenant-scoped пользователь (не-админ) видит и меняет только ПЛ
+     * своей организации. Все чтения и мутации проходят через get()/getForUpdate(),
+     * поэтому проверка одна. 404 (а не 403) — чтобы не раскрывать существование чужого документа.
+     */
+    private Waybill checkTenant(Waybill wb) {
         if (currentUser.isTenantScoped()
                 && !currentUser.organizationRma().map(rma -> rma.equals(wb.getOrganizationRma())).orElse(false)) {
             throw new NotFoundException("Путевой лист не найден");
@@ -818,11 +851,17 @@ public class WaybillService {
         }
     }
 
-    private Map<String, Object> requireEmployee(String rma, int type, String roleName) {
+    private Map<String, Object> requireEmployee(Waybill wb, String rma, int type, String roleName) {
         var employee = masterData.findEmployee(rma)
                 .orElseThrow(() -> new NotFoundException(roleName + " не найден"));
         if (!Integer.valueOf(type).equals(intOrNull(employee.get("type")))) {
             throw new UnprocessableException("Сотрудник %s не имеет роли «%s»".formatted(rma, roleName));
+        }
+        // Подписант титула — сотрудник организации ПЛ: роль вызывающего проверяет @PreAuthorize,
+        // но без этой сверки титул (юридический след) можно было бы атрибутировать сотруднику
+        // ЧУЖОЙ организации, передав его РМА в теле запроса.
+        if (!str(wb.getOrganizationSnapshot().get("id")).equals(str(employee.get("organizationId")))) {
+            throw new UnprocessableException("Сотрудник %s не принадлежит организации путевого листа".formatted(rma));
         }
         return employee;
     }
