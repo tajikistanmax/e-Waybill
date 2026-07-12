@@ -57,7 +57,8 @@ public class OrganizationController {
             String nameHead,
             String bank,
             LocalDate licenseFrom,
-            LocalDate licenseTo) {
+            LocalDate licenseTo,
+            Boolean blocked) {
     }
 
     /**
@@ -85,6 +86,8 @@ public class OrganizationController {
         org.setBank(req.bank());
         org.setLicenseFrom(req.licenseFrom());
         org.setLicenseTo(req.licenseTo());
+        // Блокировку организации (запрет новых ПЛ, §4) ставит только платформенный админ Минтранса.
+        if (currentUser.isPlatformAdmin() && req.blocked() != null) org.setBlocked(req.blocked());
         var saved = repository.save(org);
         audit.record(existing.isPresent() ? AuditService.UPDATE : AuditService.CREATE,
                 "ORGANIZATION", req.rma(), oldName, saved.getName());

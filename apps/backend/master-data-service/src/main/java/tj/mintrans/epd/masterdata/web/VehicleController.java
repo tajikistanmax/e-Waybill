@@ -65,7 +65,9 @@ public class VehicleController {
             String vincode,
             Short yearManufacture,
             LocalDate techInspectionValidTo,
-            LocalDate controlCardValidTo) {
+            LocalDate controlCardValidTo,
+            LocalDate insuranceValidTo,
+            Boolean blocked) {
     }
 
     public record OdometerUpdate(@NotNull Integer odometer) {
@@ -101,6 +103,9 @@ public class VehicleController {
         vehicle.setYearManufacture(req.yearManufacture());
         vehicle.setTechInspectionValidTo(req.techInspectionValidTo());
         vehicle.setControlCardValidTo(req.controlCardValidTo());
+        vehicle.setInsuranceValidTo(req.insuranceValidTo());
+        // Блокировку ТС ставит/снимает только платформенный админ (Минтранс); перевозчик — нет.
+        if (currentUser.isPlatformAdmin() && req.blocked() != null) vehicle.setBlocked(req.blocked());
         var saved = vehicles.save(vehicle);
         audit.record(existing.isPresent() ? AuditService.UPDATE : AuditService.CREATE,
                 "VEHICLE", canonicalNumber, oldBrand, saved.getBrand());

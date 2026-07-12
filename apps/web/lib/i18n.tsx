@@ -663,6 +663,7 @@ const DICT: Record<string, { ru: string; tj: string; en?: string }> = {
   'fleet.f.odometer': { ru: 'Одометр, км', tj: 'Одометр, км' },
   'fleet.f.tech': { ru: 'Техосмотр до', tj: 'Азназаргузаронӣ то' },
   'fleet.f.card': { ru: 'Контрольная карта до', tj: 'Корти назоратӣ то' },
+  'fleet.f.insurance': { ru: 'Страховка (ОСАГО) до', tj: 'Суғурта то' },
   'fleet.f.inn': { ru: 'ИНН (РМА)', tj: 'РМА' },
   'fleet.f.name': { ru: 'Ф.И.О.', tj: 'Н.Н.Н.' },
   'fleet.f.license': { ru: '№ водительского удостоверения', tj: 'Рақами шаҳодатномаи ронандагӣ' },

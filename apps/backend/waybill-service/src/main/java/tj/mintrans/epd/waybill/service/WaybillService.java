@@ -320,6 +320,12 @@ public class WaybillService {
         if (techInspection == null || techInspection.isBefore(today)) {
             throw new UnprocessableException("Технический осмотр ТС отсутствует или истёк");
         }
+        // Страховой полис ТС (§13): мягкая проверка — блокирует только истёкшая страховка
+        // (отсутствие данных не блокирует, как срок ВУ/медсправки — пробел в реплике не рушит рейс).
+        var insurance = dateOrNull(vehicle.get("insuranceValidTo"));
+        if (insurance != null && insurance.isBefore(today)) {
+            throw new UnprocessableException("Срок действия страхового полиса ТС истёк");
+        }
         // Один активный ПЛ на ТС и на водителя
         if (!waybills.findByVehicleRegNumberAndStatusIn(str(vehicle.get("registrationNumber")), WaybillStatus.OPEN_STATUSES).isEmpty()) {
             throw new ConflictException("На это транспортное средство уже оформлен действующий путевой лист");

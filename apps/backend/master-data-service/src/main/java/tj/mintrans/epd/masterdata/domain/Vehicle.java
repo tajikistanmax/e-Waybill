@@ -51,6 +51,9 @@ public class Vehicle {
     @Column(name = "control_card_valid_to")
     private LocalDate controlCardValidTo;
 
+    @Column(name = "insurance_valid_to")
+    private LocalDate insuranceValidTo;
+
     @Column(nullable = false)
     private boolean blocked;
 
@@ -104,6 +107,8 @@ public class Vehicle {
     public void setTechInspectionValidTo(LocalDate techInspectionValidTo) { this.techInspectionValidTo = techInspectionValidTo; }
     public LocalDate getControlCardValidTo() { return controlCardValidTo; }
     public void setControlCardValidTo(LocalDate controlCardValidTo) { this.controlCardValidTo = controlCardValidTo; }
+    public LocalDate getInsuranceValidTo() { return insuranceValidTo; }
+    public void setInsuranceValidTo(LocalDate insuranceValidTo) { this.insuranceValidTo = insuranceValidTo; }
     public boolean isBlocked() { return blocked; }
     public void setBlocked(boolean blocked) { this.blocked = blocked; }
     public String getSource() { return source; }

@@ -54,6 +54,7 @@ export default function FleetPage() {
     { key: 'odometer', label: t('fleet.f.odometer'), type: 'number' },
     { key: 'techInspectionValidTo', label: t('fleet.f.tech'), type: 'date' },
     { key: 'controlCardValidTo', label: t('fleet.f.card'), type: 'date' },
+    { key: 'insuranceValidTo', label: t('fleet.f.insurance'), type: 'date' },
   ];
   const driverFields: Field[] = [
     { key: 'rma', label: t('fleet.f.inn'), req: true, keyField: true },
