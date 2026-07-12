@@ -4,6 +4,7 @@ import { use, useCallback, useEffect, useState } from 'react';
 import { md, wb, Waybill, Title, StatusEvent, Payment, STATUS_LABELS, type GpsPing } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 import { useAuth } from '@/lib/auth';
+import { ExpensesSection } from './ExpensesSection';
 import QRCode from 'qrcode';
 
 type Employees = { doctors: { rma: string; name: string }[]; mechanics: { rma: string; name: string }[]; dispatchers: { rma: string; name: string }[] };
@@ -131,6 +132,7 @@ export default function WaybillCard({ params }: { params: Promise<{ id: string }
     { key: 'vehicle', label: t('col.transport') },
     ...(showRoute ? [{ key: 'route', label: t('col.route') }] : []),
     { key: 'fuel', label: t('col.fuel') },
+    { key: 'expenses', label: t('wb.tab.expenses') },
     { key: 'inspections', label: t('wb.tab.inspections') },
     { key: 'qr', label: 'QR' },
     { key: 'history', label: t('wb.tab.history') },
@@ -508,6 +510,14 @@ export default function WaybillCard({ params }: { params: Promise<{ id: string }
             </div>
           )}
         </>
+      )}
+
+      {/* Расходы рейса (§12): суточные/дороги/парковка/ремонт с подтверждением бухгалтером */}
+      {tab === 'expenses' && (
+        <div className="card">
+          <h2>{t('wb.tab.expenses')}</h2>
+          <ExpensesSection waybillId={w.id} terminal={['COMPLETED', 'CANCELLED', 'EXPIRED', 'ARCHIVED'].includes(w.status)} />
+        </div>
       )}
 
       {/* Осмотры: Т2 медосмотр и Т3 техконтроль */}

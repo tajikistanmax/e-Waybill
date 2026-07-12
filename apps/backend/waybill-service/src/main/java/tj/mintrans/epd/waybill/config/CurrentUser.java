@@ -32,6 +32,15 @@ public class CurrentUser {
         return Optional.empty();
     }
 
+    /** preferred_username из JWT — человекочитаемый актор для журналов (created_by/confirmed_by). */
+    public Optional<String> username() {
+        if (authentication() instanceof JwtAuthenticationToken jwt
+                && jwt.getToken().getClaim("preferred_username") instanceof String u && !u.isBlank()) {
+            return Optional.of(u);
+        }
+        return Optional.empty();
+    }
+
     /** true, если у текущего субъекта есть realm-роль role (без префикса ROLE_). */
     public boolean hasRole(String role) {
         Authentication auth = authentication();

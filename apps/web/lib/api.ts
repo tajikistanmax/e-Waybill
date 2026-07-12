@@ -326,6 +326,32 @@ export const wb = {
     .then(async r => r.ok ? (r.json() as Promise<GpsPing>) : null),
   // Живой мониторинг: ТС на линии (выданные/активные ПЛ) с последней GPS-координатой (org-скоуп на бэкенде).
   gpsLive: () => fetch('/wb-api/api/v1/gps/live', { headers: authHeaders() }).then(r => handle<LivePosition[]>(r)),
+  // Расходы рейса (§12): список/добавление/подтверждение бухгалтером/удаление.
+  expenses: (id: string) => fetch(`/wb-api/api/v1/waybills/${id}/expenses`, { headers: authHeaders() }).then(r => handle<Expense[]>(r)),
+  addExpense: (id: string, body: Record<string, unknown>) => fetch(`/wb-api/api/v1/waybills/${id}/expenses`, {
+    method: 'POST', headers: authHeaders({ 'Content-Type': 'application/json' }), body: JSON.stringify(body),
+  }).then(r => handle<Expense>(r)),
+  confirmExpense: (eid: string) => fetch(`/wb-api/api/v1/expenses/${eid}/confirm`, { method: 'POST', headers: authHeaders() }).then(r => handle<Expense>(r)),
+  deleteExpense: (eid: string) => fetch(`/wb-api/api/v1/expenses/${eid}`, { method: 'DELETE', headers: authHeaders() })
+    .then(async r => { if (!r.ok && r.status !== 204) { const p = await r.json().catch(() => null); throw new Error(p?.detail ?? p?.title ?? `Ошибка ${r.status}`); } }),
+};
+
+export type Expense = {
+  id: string;
+  waybillId: string;
+  expenseType: 'PER_DIEM' | 'TOLL' | 'PARKING' | 'LODGING' | 'REPAIR' | 'OTHER';
+  amount: number;
+  currency: string;
+  rate: number | null;
+  vat: number | null;
+  description: string | null;
+  receiptNumber: string | null;
+  spentAt: string | null;
+  confirmed: boolean;
+  confirmedBy: string | null;
+  confirmedAt: string | null;
+  createdBy: string | null;
+  createdAt: string;
 };
 
 export type LivePosition = {
