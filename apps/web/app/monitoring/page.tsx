@@ -7,15 +7,31 @@ import { Icon, P } from '../icons';
 
 const REFRESH_MS = 10000;
 
-// Центр отсчёта радара — г. Душанбе (широта/долгота площади Дусти).
+// Центр отсчёта — г. Душанбе (площадь Дусти).
 const CENTER = { lat: 38.5598, lon: 68.7870 };
+
+// Область карты (фиксированный охват Душанбе и окрестностей). Метки ТС проецируются линейно
+// в эту рамку — базовая карта (река/проспекты/кварталы) остаётся на месте при обновлениях.
+const BBOX = { latMin: 38.505, latMax: 38.625, lonMin: 68.690, lonMax: 68.890 };
+const MAP_W = 820, MAP_H = 630;
+const projX = (lon: number) => (lon - BBOX.lonMin) / (BBOX.lonMax - BBOX.lonMin) * MAP_W;
+const projY = (lat: number) => (BBOX.latMax - lat) / (BBOX.latMax - BBOX.latMin) * MAP_H;
+// px на километр по долготе (для масштабной линейки и расстояний).
+const PX_PER_KM = (1000 / (111320 * Math.cos(CENTER.lat * Math.PI / 180))) / (BBOX.lonMax - BBOX.lonMin) * MAP_W;
 
 function agoSec(iso: string | null): number | null {
   if (!iso) return null;
   return Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 1000));
 }
+function distKm(lat: number, lon: number): number {
+  const dx = (lon - CENTER.lon) * 111320 * Math.cos(CENTER.lat * Math.PI / 180);
+  const dy = (lat - CENTER.lat) * 111320;
+  return Math.sqrt(dx * dx + dy * dy) / 1000;
+}
 
-/** GPS-мониторинг: живой список ТС «на линии» + радар с реальными координатами. Автообновление раз в 10 с. */
+const SIG_HEX: Record<string, string> = { green: '#16a34a', amber: '#ea9615', red: '#dc2626', gray: '#94a3b8' };
+
+/** GPS-мониторинг: живой список ТС «на линии» + карта Душанбе с реальными координатами. Автообновление 10 с. */
 export default function MonitoringPage() {
   const { t, tStatus } = useT();
   const [rows, setRows] = useState<LivePosition[]>([]);
@@ -51,10 +67,12 @@ export default function MonitoringPage() {
     return [r.vehicleRegNumber, r.number, r.driver].map(x => String(x ?? '').toLowerCase()).join(' ').includes(s);
   });
   const withGps = rows.filter(r => r.lat != null).length;
+  const moving = rows.filter(r => (r.speedKmh ?? 0) > 3).length;
 
   const kpis = [
     { label: t('mon.kpi.online'), value: rows.length, icon: P.car, cls: 'ic-blue' },
     { label: t('mon.kpi.gps'), value: withGps, icon: P.route, cls: 'ic-green' },
+    { label: t('mon.moving'), value: moving, icon: P.route, cls: 'ic-cyan' },
     { label: t('mon.kpi.nosignal'), value: rows.length - withGps, icon: P.alert, cls: 'ic-amber' },
   ];
 
@@ -66,14 +84,14 @@ export default function MonitoringPage() {
           <div className="page-lead" style={{ margin: 0 }}>{t('mon.lead')}</div>
         </div>
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 10, color: 'var(--muted)', fontSize: 12.5 }}>
-          <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--green)', display: 'inline-block' }} />
+          <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--green)', display: 'inline-block', boxShadow: '0 0 0 4px rgba(22,163,74,.15)' }} />
           {t('mon.live')}{updatedAt ? ` · ${t('mon.updated')} ${updatedAt.toLocaleTimeString('ru-RU')}` : ''}
         </div>
       </div>
 
       {error && <div className="error">{error}</div>}
 
-      <div className="kpi-row" style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
+      <div className="kpi-row" style={{ gridTemplateColumns: 'repeat(4, 1fr)' }}>
         {kpis.map(k => (
           <div className="kpi" key={k.label}>
             <div className="k-top"><span className={`k-ic ${k.cls}`}><Icon d={k.icon} cls="" /></span></div>
@@ -94,7 +112,7 @@ export default function MonitoringPage() {
         </div>
 
         {view === 'map'
-          ? <RadarMap rows={shown} loading={loading} sigColor={sigColor} ago={ago} tStatus={tStatus} t={t} />
+          ? <CityMap rows={shown} loading={loading} sigColor={sigColor} ago={ago} tStatus={tStatus} t={t} />
           : (
             <>
               <table>
@@ -133,9 +151,9 @@ export default function MonitoringPage() {
   );
 }
 
-// --------------------------------------------------------------------- Радар
+// --------------------------------------------------------------------- Карта
 
-type RadarProps = {
+type MapProps = {
   rows: LivePosition[];
   loading: boolean;
   sigColor: (sec: number | null) => string;
@@ -144,123 +162,132 @@ type RadarProps = {
   t: (k: string) => string;
 };
 
-const SIG_HEX: Record<string, string> = { green: '#16a34a', amber: '#ea9615', red: '#dc2626', gray: '#94a3b8' };
-
-/** Самодостаточный SVG-радар: реальные GPS-координаты ТС относительно центра Душанбе.
- *  Без внешних тайлов (ограничение «без зарубежных облаков»). Продакшн — тайлы госЦОД. */
-function RadarMap({ rows, loading, sigColor, ago, tStatus, t }: RadarProps) {
+/** Стилизованная карта Душанбе (самодостаточный SVG, без внешних тайлов — «без зарубежных
+ *  облаков»). Метки ТС — по реальным GPS-координатам. В проде базовый слой заменяется тайлами госЦОД. */
+function CityMap({ rows, loading, sigColor, ago, tStatus, t }: MapProps) {
   const [sel, setSel] = useState<string | null>(null);
 
   const withCoords = useMemo(() => rows.filter(r => r.lat != null && r.lon != null), [rows]);
   const noCoords = rows.filter(r => r.lat == null || r.lon == null);
-
-  // Геопроекция: локальная равнопромежуточная относительно центра, масштаб — по самой дальней точке.
-  const geo = useMemo(() => {
-    const W = 720, H = 560, mid = { x: W / 2, y: H / 2 }, R = 250, pad = 34;
-    const mLat = 111320;                                   // м на градус широты
-    const mLon = 111320 * Math.cos(CENTER.lat * Math.PI / 180); // м на градус долготы (сжатие)
-    const dist = (r: LivePosition) => {
-      const dx = (Number(r.lon) - CENTER.lon) * mLon;
-      const dy = (Number(r.lat) - CENTER.lat) * mLat;
-      return Math.sqrt(dx * dx + dy * dy);
-    };
-    const maxDist = Math.max(2500, ...withCoords.map(dist)); // м; пол 2.5 км, чтобы одна близкая точка не «зумилась»
-    const s = (R - pad) / maxDist;                          // svg-единиц на метр
-    const project = (lat: number, lon: number) => ({
-      x: mid.x + (lon - CENTER.lon) * mLon * s,
-      y: mid.y - (lat - CENTER.lat) * mLat * s,
-    });
-    // Кольца дальности каждые 5 км, пока покрывают точки.
-    const ringStepM = maxDist > 12000 ? 10000 : 5000;
-    const rings: number[] = [];
-    for (let d = ringStepM; d <= maxDist * 1.08; d += ringStepM) rings.push(d);
-    return { W, H, mid, R, s, project, rings, dist };
-  }, [withCoords]);
-
   const selected = withCoords.find(r => r.vehicleRegNumber === sel) ?? null;
+  const scaleKm = 2;
 
   if (loading) return <div style={{ color: 'var(--muted)', padding: 24 }}>{t('mon.loading')}</div>;
-  if (withCoords.length === 0) {
-    return (
-      <div style={{ color: 'var(--muted)', textAlign: 'center', padding: 40 }}>
-        {t('mon.empty')}
-        {noCoords.length > 0 && <div style={{ marginTop: 8, fontSize: 12.5 }}>{t('mon.map.nocoords')}: {noCoords.length}</div>}
-      </div>
-    );
-  }
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 250px', gap: 16, alignItems: 'start' }}>
-      <div style={{ position: 'relative', borderRadius: 14, overflow: 'hidden', background: 'var(--radar-bg, #0b1220)' }}>
-        <svg viewBox={`0 0 ${geo.W} ${geo.H}`} width="100%" style={{ display: 'block' }} role="img" aria-label={t('mon.map.h')}>
+    <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 260px', gap: 16, alignItems: 'start' }}>
+      <div style={{ position: 'relative', borderRadius: 14, overflow: 'hidden', border: '1px solid var(--line)', boxShadow: 'inset 0 0 0 1px rgba(255,255,255,.4)' }}>
+        <svg viewBox={`0 0 ${MAP_W} ${MAP_H}`} width="100%" style={{ display: 'block' }} role="img" aria-label={t('mon.map.h')}>
           <defs>
-            <radialGradient id="radar-glow" cx="50%" cy="50%" r="50%">
-              <stop offset="0%" stopColor="#12324a" />
-              <stop offset="100%" stopColor="#0b1220" />
-            </radialGradient>
+            <linearGradient id="mapbg" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="#eef4ec" />
+              <stop offset="100%" stopColor="#e6eee9" />
+            </linearGradient>
+            <filter id="pinshadow" x="-40%" y="-40%" width="180%" height="180%">
+              <feDropShadow dx="0" dy="1.2" stdDeviation="1.4" floodColor="#0f172a" floodOpacity="0.35" />
+            </filter>
           </defs>
-          <rect x="0" y="0" width={geo.W} height={geo.H} fill="url(#radar-glow)" />
 
-          {/* Оси-перекрестье */}
-          <line x1={geo.mid.x} y1="14" x2={geo.mid.x} y2={geo.H - 14} stroke="#1e3a52" strokeWidth="1" />
-          <line x1="14" y1={geo.mid.y} x2={geo.W - 14} y2={geo.mid.y} stroke="#1e3a52" strokeWidth="1" />
+          <rect x="0" y="0" width={MAP_W} height={MAP_H} fill="url(#mapbg)" />
 
-          {/* Кольца дальности + подписи км */}
-          {geo.rings.map(d => {
-            const r = d * geo.s;
-            return (
-              <g key={d}>
-                <circle cx={geo.mid.x} cy={geo.mid.y} r={r} fill="none" stroke="#1e3a52" strokeWidth="1" strokeDasharray="3 4" />
-                <text x={geo.mid.x + 4} y={geo.mid.y - r - 3} fill="#4d6b86" fontSize="10.5" fontFamily="var(--mono)">{Math.round(d / 1000)} {t('unit.km')}</text>
-              </g>
-            );
-          })}
+          {/* Кварталы (стилизованные жилые массивы) */}
+          {[[70, 90, 150, 110], [250, 60, 130, 95], [600, 120, 160, 120], [120, 380, 150, 130], [560, 400, 170, 140], [330, 470, 150, 110]].map(([x, y, w, h], i) => (
+            <rect key={i} x={x} y={y} width={w} height={h} rx="10" fill="#dfe8e0" opacity="0.75" />
+          ))}
+          {/* Парки */}
+          {[[430, 250, 90, 70], [300, 150, 80, 60]].map(([x, y, w, h], i) => (
+            <rect key={i} x={x} y={y} width={w} height={h} rx="14" fill="#cfe6cf" />
+          ))}
 
-          {/* Север */}
-          <text x={geo.mid.x} y="12" fill="#6b8aa6" fontSize="11" textAnchor="middle" fontWeight="700">N</text>
+          {/* Река Варзоб (север → юг, к западу от центра) */}
+          <path d="M 372 -8 C 340 110, 400 210, 360 340 C 330 450, 400 540, 372 640" fill="none" stroke="#9cc6e6" strokeWidth="9" strokeLinecap="round" opacity="0.9" />
+          <path d="M 372 -8 C 340 110, 400 210, 360 340 C 330 450, 400 540, 372 640" fill="none" stroke="#bfe0f4" strokeWidth="3.5" strokeLinecap="round" />
 
-          {/* Центр — Душанбе */}
-          <circle cx={geo.mid.x} cy={geo.mid.y} r="4.5" fill="#38bdf8" />
-          <text x={geo.mid.x + 8} y={geo.mid.y + 4} fill="#7dd3fc" fontSize="11.5" fontWeight="600">{t('mon.map.center')}</text>
+          {/* Кольцевая дорога */}
+          <rect x="120" y="110" width="580" height="430" rx="80" fill="none" stroke="#cfd8d0" strokeWidth="7" />
+          {/* Проспект Рудаки (С–Ю) и Исмоили Сомонӣ (З–В) — главные оси */}
+          <line x1="398" y1="0" x2="398" y2={MAP_H} stroke="#d7ad5a" strokeWidth="6" opacity="0.75" />
+          <line x1="0" y1="342" x2={MAP_W} y2="342" stroke="#d7ad5a" strokeWidth="6" opacity="0.75" />
+          {/* Второстепенные улицы */}
+          {[250, 560].map(x => <line key={`v${x}`} x1={x} y1="20" x2={x} y2={MAP_H - 20} stroke="#dbe3db" strokeWidth="3" />)}
+          {[180, 490].map(y => <line key={`h${y}`} x1="20" y1={y} x2={MAP_W - 20} y2={y} stroke="#dbe3db" strokeWidth="3" />)}
 
-          {/* Точки ТС */}
+          {/* Подписи районов */}
+          {([['Шоҳмансур', 470, 120], ['Фирдавсӣ', 650, 300], ['Исмоили Сомонӣ', 250, 520], ['Сино', 150, 260]] as const).map(([name, x, y]) => (
+            <text key={name} x={x} y={y} fill="#8aa08f" fontSize="13" fontWeight="600" opacity="0.7" textAnchor="middle">{name}</text>
+          ))}
+
+          {/* Центр — площадь Дусти */}
+          <circle cx={projX(CENTER.lon)} cy={projY(CENTER.lat)} r="6" fill="#0c5c3d" />
+          <circle cx={projX(CENTER.lon)} cy={projY(CENTER.lat)} r="11" fill="none" stroke="#0c5c3d" strokeWidth="1.5" opacity="0.5" />
+          <text x={projX(CENTER.lon) + 14} y={projY(CENTER.lat) + 4} fill="#0c5c3d" fontSize="12.5" fontWeight="700">{t('mon.map.center')}</text>
+
+          {/* Метки ТС */}
           {withCoords.map((r, i) => {
-            const p = geo.project(Number(r.lat), Number(r.lon));
-            const sec = agoSecLocal(r.recordedAt);
+            const x = projX(Number(r.lon)), y = projY(Number(r.lat));
+            const inside = x >= 6 && x <= MAP_W - 6 && y >= 6 && y <= MAP_H - 6;
+            const cx = Math.max(10, Math.min(MAP_W - 10, x));
+            const cy = Math.max(10, Math.min(MAP_H - 10, y));
+            const sec = agoSec(r.recordedAt);
             const col = SIG_HEX[sigColor(sec)] ?? '#94a3b8';
             const isSel = r.vehicleRegNumber === sel;
             const fresh = sec != null && sec < 120;
             return (
               <g key={r.vehicleRegNumber + i} style={{ cursor: 'pointer' }} onClick={() => setSel(isSel ? null : r.vehicleRegNumber)}>
-                {fresh && <circle cx={p.x} cy={p.y} r="10" fill={col} opacity="0.25"><animate attributeName="r" values="6;13;6" dur="2.2s" repeatCount="indefinite" /><animate attributeName="opacity" values="0.35;0;0.35" dur="2.2s" repeatCount="indefinite" /></circle>}
-                <circle cx={p.x} cy={p.y} r={isSel ? 7 : 5} fill={col} stroke="#0b1220" strokeWidth="1.5" />
-                <text x={p.x + 9} y={p.y + 4} fill="#cfe3f5" fontSize="11" fontFamily="var(--mono)" fontWeight={isSel ? 700 : 500}>{r.vehicleRegNumber}</text>
+                {fresh && <circle cx={cx} cy={cy} r="12" fill={col} opacity="0.22"><animate attributeName="r" values="7;16;7" dur="2.4s" repeatCount="indefinite" /><animate attributeName="opacity" values="0.3;0;0.3" dur="2.4s" repeatCount="indefinite" /></circle>}
+                {/* Булавка */}
+                <g filter="url(#pinshadow)">
+                  <circle cx={cx} cy={cy} r={isSel ? 9 : 7} fill={col} stroke="#fff" strokeWidth="2" />
+                  {(r.speedKmh ?? 0) > 3 && <circle cx={cx} cy={cy} r="2.4" fill="#fff" />}
+                </g>
+                {/* Подпись-чип с госномером */}
+                <g transform={`translate(${cx + 11}, ${cy - 9})`}>
+                  <rect x="0" y="0" width={String(r.vehicleRegNumber).length * 7.4 + 12} height="18" rx="9" fill="#ffffff" stroke="#e2e8f0" opacity={isSel ? 1 : 0.92} />
+                  <text x="7" y="13" fill="#0f172a" fontSize="11" fontFamily="var(--mono)" fontWeight={isSel ? 700 : 600}>{r.vehicleRegNumber}</text>
+                </g>
+                {!inside && <text x={cx} y={cy - 12} textAnchor="middle" fill={col} fontSize="10">↕ за картой</text>}
               </g>
             );
           })}
 
           {/* Масштабная линейка */}
-          <ScaleBar geo={geo} t={t} />
+          <g>
+            <line x1="26" y1={MAP_H - 24} x2={26 + scaleKm * PX_PER_KM} y2={MAP_H - 24} stroke="#64748b" strokeWidth="2.5" />
+            <line x1="26" y1={MAP_H - 28} x2="26" y2={MAP_H - 20} stroke="#64748b" strokeWidth="2.5" />
+            <line x1={26 + scaleKm * PX_PER_KM} y1={MAP_H - 28} x2={26 + scaleKm * PX_PER_KM} y2={MAP_H - 20} stroke="#64748b" strokeWidth="2.5" />
+            <text x={26 + scaleKm * PX_PER_KM + 7} y={MAP_H - 20} fill="#475569" fontSize="11.5" fontFamily="var(--mono)">{scaleKm} {t('unit.km')}</text>
+          </g>
+          {/* Компас */}
+          <text x={MAP_W - 26} y="30" fill="#64748b" fontSize="13" fontWeight="700" textAnchor="middle">N</text>
+          <line x1={MAP_W - 26} y1="34" x2={MAP_W - 26} y2="52" stroke="#64748b" strokeWidth="2" />
         </svg>
+
+        {withCoords.length === 0 && (
+          <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', background: 'rgba(255,255,255,.55)', color: 'var(--muted)', fontSize: 14 }}>
+            {t('mon.empty')}
+          </div>
+        )}
       </div>
 
       {/* Боковая панель: выбранное ТС или легенда */}
       <div>
         {selected ? (
           <div className="card" style={{ margin: 0, padding: 14 }}>
-            <div style={{ fontFamily: 'var(--mono)', fontWeight: 700, fontSize: 15 }}>{selected.vehicleRegNumber}</div>
+            <div style={{ fontFamily: 'var(--mono)', fontWeight: 700, fontSize: 16 }}>{selected.vehicleRegNumber}</div>
             <div style={{ color: 'var(--muted)', fontSize: 12.5, marginTop: 2 }}>{selected.number ?? '—'}</div>
             <div style={{ marginTop: 10, fontSize: 13 }}>{selected.driver}</div>
-            <div style={{ marginTop: 6 }}><span className="badge blue">{tStatus(selected.status)}</span></div>
-            <div style={{ marginTop: 10, fontSize: 12.5, fontFamily: 'var(--mono)', color: 'var(--ink-soft)' }}>
+            <div style={{ marginTop: 6, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              <span className="badge blue">{tStatus(selected.status)}</span>
+              <span className={`badge ${(selected.speedKmh ?? 0) > 3 ? 'green' : 'gray'}`}>{(selected.speedKmh ?? 0) > 3 ? t('mon.state.moving') : t('mon.state.parked')}</span>
+            </div>
+            <div style={{ marginTop: 12, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+              <Metric label={t('mon.col.speed')} value={selected.speedKmh != null ? `${selected.speedKmh} ${t('mon.kmh')}` : '—'} />
+              <Metric label={t('mon.map.fromcenter')} value={`${distKm(Number(selected.lat), Number(selected.lon)).toFixed(1)} ${t('unit.km')}`} />
+            </div>
+            <div style={{ marginTop: 10, fontSize: 12, fontFamily: 'var(--mono)', color: 'var(--ink-soft)' }}>
               {Number(selected.lat).toFixed(5)}, {Number(selected.lon).toFixed(5)}
             </div>
-            <div style={{ marginTop: 4, fontSize: 12.5, color: 'var(--muted)' }}>
-              {selected.speedKmh != null ? `${selected.speedKmh} ${t('mon.kmh')} · ` : ''}{ago(agoSecLocal(selected.recordedAt))}
-            </div>
-            <div style={{ marginTop: 4, fontSize: 12, color: 'var(--muted)' }}>
-              {(geo.dist(selected) / 1000).toFixed(1)} {t('unit.km')} {t('mon.map.fromcenter')}
-            </div>
+            <div style={{ marginTop: 3, fontSize: 12, color: 'var(--muted)' }}>{t('mon.col.lastseen')}: {ago(agoSec(selected.recordedAt))}</div>
             <button className="btn secondary" style={{ marginTop: 12, width: '100%' }} onClick={() => setSel(null)}>{t('act.back')}</button>
           </div>
         ) : (
@@ -268,11 +295,14 @@ function RadarMap({ rows, loading, sigColor, ago, tStatus, t }: RadarProps) {
             <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 10 }}>{t('mon.map.legend')}</div>
             {([['green', 'mon.sig.fresh'], ['amber', 'mon.sig.stale'], ['red', 'mon.sig.old'], ['gray', 'mon.nosignal']] as const).map(([c, k]) => (
               <div key={c} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5, marginBottom: 7 }}>
-                <span style={{ width: 11, height: 11, borderRadius: '50%', background: SIG_HEX[c], flex: '0 0 auto' }} />
+                <span style={{ width: 12, height: 12, borderRadius: '50%', background: SIG_HEX[c], border: '2px solid #fff', boxShadow: '0 0 0 1px #e2e8f0', flex: '0 0 auto' }} />
                 {t(k)}
               </div>
             ))}
-            <div className="hint" style={{ marginTop: 8, fontSize: 11.5 }}>{t('mon.map.hint')}</div>
+            <div style={{ borderTop: '1px solid var(--line)', margin: '10px 0', paddingTop: 10, fontSize: 12.5, color: 'var(--ink-soft)' }}>
+              {t('mon.map.count')}: <b>{withCoords.length}</b>
+            </div>
+            <div className="hint" style={{ fontSize: 11.5 }}>{t('mon.map.hint')}</div>
           </div>
         )}
         {noCoords.length > 0 && (
@@ -283,24 +313,11 @@ function RadarMap({ rows, loading, sigColor, ago, tStatus, t }: RadarProps) {
   );
 }
 
-function agoSecLocal(iso: string | null): number | null {
-  if (!iso) return null;
-  return Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 1000));
-}
-
-/** Масштабная линейка: «красивое» число километров, укладывающееся в ~1/4 радиуса. */
-function ScaleBar({ geo, t }: { geo: { mid: { x: number; y: number }; R: number; s: number; H: number }; t: (k: string) => string }) {
-  const targetM = (geo.R / 2) / geo.s;                 // цель — половина радиуса в метрах
-  const nice = [1000, 2000, 5000, 10000, 20000, 50000];
-  const m = nice.reduce((a, b) => (Math.abs(b - targetM) < Math.abs(a - targetM) ? b : a), nice[0]);
-  const len = m * geo.s;
-  const x0 = 24, y0 = geo.H - 22;
+function Metric({ label, value }: { label: string; value: string }) {
   return (
-    <g>
-      <line x1={x0} y1={y0} x2={x0 + len} y2={y0} stroke="#6b8aa6" strokeWidth="2" />
-      <line x1={x0} y1={y0 - 4} x2={x0} y2={y0 + 4} stroke="#6b8aa6" strokeWidth="2" />
-      <line x1={x0 + len} y1={y0 - 4} x2={x0 + len} y2={y0 + 4} stroke="#6b8aa6" strokeWidth="2" />
-      <text x={x0 + len + 6} y={y0 + 4} fill="#8fb0cc" fontSize="11" fontFamily="var(--mono)">{m / 1000} {t('unit.km')}</text>
-    </g>
+    <div style={{ background: 'var(--bg-soft, #f4f7fb)', borderRadius: 9, padding: '8px 10px' }}>
+      <div style={{ fontSize: 10.5, color: 'var(--muted)' }}>{label}</div>
+      <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--ink)', marginTop: 2 }}>{value}</div>
+    </div>
   );
 }
