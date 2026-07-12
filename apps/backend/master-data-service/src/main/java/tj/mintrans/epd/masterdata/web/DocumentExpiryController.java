@@ -63,33 +63,36 @@ public class DocumentExpiryController {
             long daysLeft) {
     }
 
+    /**
+     * Монитор сроков — это операционный инструмент КОНКРЕТНОЙ организации (её автопарк/штат),
+     * а не платформенная сводка. Поэтому он всегда работает в рамках ОДНОЙ организации:
+     * тенант — своя (из токена); платформенная роль — только с явным organizationRma
+     * (иначе пусто: выгружать документы всех организаций одним списком нельзя — при миллионе
+     * ТС это неподъёмно и бессмысленно как «алерт»). Результат ограничен limit (самые срочные).
+     */
     @GetMapping
-    public List<ExpiryItem> list(@RequestParam(defaultValue = "30") int days) {
+    public List<ExpiryItem> list(@RequestParam(defaultValue = "30") int days,
+                                 @RequestParam(required = false) String organizationRma,
+                                 @RequestParam(defaultValue = "100") int limit) {
         LocalDate today = LocalDate.now();
         LocalDate threshold = today.plusDays(days);
+        int cap = Math.min(Math.max(limit, 1), 500);
 
-        List<Driver> driverList;
-        List<Vehicle> vehicleList;
-        List<Organization> orgList;
-
-        // Определяем область видимости с учётом мультиарендности.
+        // Определяем целевую организацию: тенант — свою; платформенная роль — только по явному РМА.
+        Organization org;
         if (currentUser.isTenantScoped()) {
-            // Не-админ: работаем ТОЛЬКО с его организацией и её водителями/ТС.
-            var orgOpt = currentUser.organizationRma().flatMap(organizations::findByRma);
-            if (orgOpt.isEmpty()) {
-                // РМА не задан или организация не найдена — показывать нечего.
-                return List.of();
-            }
-            Organization org = orgOpt.get();
-            driverList = drivers.findByOrganizationId(org.getId());
-            vehicleList = vehicles.findByOrganizationId(org.getId());
-            orgList = List.of(org);
+            org = currentUser.organizationRma().flatMap(organizations::findByRma).orElse(null);
         } else {
-            // Платформенная роль (или анонимный внутренний вызов): все сущности.
-            driverList = drivers.findAll();
-            vehicleList = vehicles.findAll();
-            orgList = organizations.findAll();
+            org = (organizationRma == null || organizationRma.isBlank())
+                    ? null : organizations.findByRma(organizationRma).orElse(null);
         }
+        if (org == null) {
+            // Тенант без организации ИЛИ платформенная роль без выбранной организации — показывать нечего.
+            return List.of();
+        }
+        List<Driver> driverList = drivers.findByOrganizationId(org.getId());
+        List<Vehicle> vehicleList = vehicles.findByOrganizationId(org.getId());
+        List<Organization> orgList = List.of(org);
 
         List<ExpiryItem> result = new ArrayList<>();
 
@@ -119,9 +122,9 @@ public class DocumentExpiryController {
                     o.getLicenseTo(), today, threshold);
         }
 
-        // Сортировка по дате окончания: сначала самые срочные и уже просроченные.
+        // Сортировка по дате окончания (сначала самые срочные/просроченные) + ограничение объёма.
         result.sort(Comparator.comparing(ExpiryItem::validTo));
-        return result;
+        return result.size() > cap ? new ArrayList<>(result.subList(0, cap)) : result;
     }
 
     /**

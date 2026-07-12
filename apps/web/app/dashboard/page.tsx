@@ -10,7 +10,6 @@ import {
 import { wb, Waybill, STATUS_LABELS } from '@/lib/api';
 import { Icon, P } from '../icons';
 import { useT } from '@/lib/i18n';
-import { ExpiryAlert } from '../ExpiryAlert';
 
 const TYPE_COLORS = ['#2563eb', '#16a34a', '#ea9615', '#f97316', '#ef4444', '#7c5cdb', '#0ea5c4', '#64748b', '#db2777', '#0891b2'];
 
@@ -101,9 +100,6 @@ export default function DashboardPage() {
       </div>
 
       {error && <div className="error">{error}</div>}
-
-      {/* Проактивный контроль сроков документов (истекающие ВУ/медсправка/техосмотр/страховка) */}
-      <div style={{ marginBottom: 16 }}><ExpiryAlert days={30} /></div>
 
       {/* KPI */}
       <div className="kpi-row">
