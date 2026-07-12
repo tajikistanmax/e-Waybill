@@ -43,6 +43,9 @@ export type Title = {
   signerRole: string;
   signedAt: string;
   data?: Record<string, unknown>;
+  // Электронная подпись титула (TitleSigner): dev — SHA-256, прод — CAdES УЦ РТ. На бланке
+  // печатается усечённый отпечаток как доказательство подписи в системе.
+  signature?: string;
 };
 
 export type StatusEvent = {
