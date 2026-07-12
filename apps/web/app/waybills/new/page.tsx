@@ -158,15 +158,20 @@ export default function NewWaybillPage() {
 
   const stepOk = (s: number) => s === 1 ? !!form.waybillType : s === 2 ? canStep2 : s === 3 ? canStep3 : true;
 
+  // Реальные клиентские проверки готовности к отправке — то, что клиент действительно знает.
   const checks = [
     { title: tt('wb.chk.org'), sub: orgLabel || tt('wb.chk.org.no'), ok: !!orgRma },
+    { title: tt('wb.chk.vehicle'), sub: vehicleLabel || tt('wb.chk.vehicle.no'), ok: !!form.vehicleRegNumber },
     { title: tt('wb.chk.driver'), sub: driverLabel || tt('wb.chk.driver.no'), ok: !!form.driverRma },
-    { title: tt('wb.chk.license'), sub: tt('wb.chk.license.s'), ok: true },
-    { title: tt('wb.chk.lic'), sub: tt('wb.chk.lic.s'), ok: true },
-    { title: tt('wb.chk.card'), sub: tt('wb.chk.card.s'), ok: true },
-    { title: tt('wb.chk.noactive'), sub: tt('wb.chk.noactive.s'), ok: true },
+    { title: tt('wb.chk.fields'), sub: tt('wb.chk.fields.s'), ok: canStep3 },
   ];
-  const allChecksOk = checks.every(c => c.ok);
+  const clientReady = checks.every(c => c.ok);
+  // Блокирующие проверки выполняет АВТОРИТЕТНО бэкенд при создании/выдаче (runBlockingChecks).
+  // Показываем их честно как «проверит система», а не фейково-зелёными галочками на клиенте.
+  const serverChecks = [
+    tt('wb.chk.srv.license'), tt('wb.chk.srv.med'), tt('wb.chk.srv.tech'),
+    tt('wb.chk.srv.noactive'), tt('wb.chk.srv.payment'),
+  ];
 
   function buildTypeData(): Record<string, unknown> | undefined {
     if (isCar) return { serviceKind };
@@ -527,7 +532,7 @@ export default function NewWaybillPage() {
             <>
               <div className="sys-ok" style={{ marginTop: 0, marginBottom: 18 }}>
                 <Icon d={P.check} cls="" style={{ width: 16, height: 16 }} />
-                {tt('wb.allchecks.ok')}
+                {tt('wb.readynote')}
               </div>
               <dl className="kv">
                 <dt>{tt('wb.sum.type')}</dt>
@@ -625,7 +630,7 @@ export default function NewWaybillPage() {
               <div className="card" style={{ marginBottom: 0 }}>
                 <div className="card-h">
                   <h2>{tt('wb.side.autocheck')}</h2>
-                  {allChecksOk && <span className="badge green" style={{ marginLeft: 'auto' }}>{tt('wb.allpassed')}</span>}
+                  {clientReady && <span className="badge green" style={{ marginLeft: 'auto' }}>{tt('wb.ready')}</span>}
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column' }}>
                   {checks.map((c, i) => (
@@ -637,9 +642,19 @@ export default function NewWaybillPage() {
                         <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--ink)' }}>{c.title}</div>
                         <div style={{ fontSize: 11.5, color: 'var(--muted)' }}>{c.sub}</div>
                       </div>
-                      <Icon d={P.chevron} cls="" style={{ width: 15, height: 15, color: 'var(--faint)', flex: 'none' }} />
                     </div>
                   ))}
+                </div>
+                {/* Честный список: авторитетные блокирующие проверки бэкенда при выдаче. */}
+                <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--line-soft)' }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.03em', marginBottom: 8 }}>{tt('wb.chk.srv.h')}</div>
+                  {serverChecks.map((sc, i) => (
+                    <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '5px 0', fontSize: 12, color: 'var(--ink-soft)' }}>
+                      <Icon d={P.shield} cls="" style={{ width: 14, height: 14, color: 'var(--blue-600)', flex: 'none' }} />
+                      {sc}
+                    </div>
+                  ))}
+                  <div className="hint" style={{ marginTop: 8, fontSize: 11 }}>{tt('wb.chk.srv.note')}</div>
                 </div>
               </div>
             )}

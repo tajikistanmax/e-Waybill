@@ -40,7 +40,7 @@ const fmt = (s: string | null | undefined) =>
 
 /** АРМ механика (контролёр техсостояния): предрейсовый техконтроль Т3. */
 export default function TechWorkstation() {
-  const { t, tType } = useT();
+  const { t, tType, tStatus } = useT();
   const [queue, setQueue] = useState<Waybill[]>([]);
   const [all, setAll] = useState<Waybill[]>([]);
   const [mechanics, setMechanics] = useState<Record<string, { rma: string; name: string }[]>>({});
@@ -118,6 +118,13 @@ export default function TechWorkstation() {
       ? (dr.licenseCategories as unknown[]).join(', ')
       : String(dr.licenseCategories ?? '—');
     const failed = CHECK_ITEMS.filter(i => checks[i.key] === false);
+    // Реальная история техосмотров этого ТС — из загруженного списка ПЛ (свои по орг):
+    // прошлые ПЛ того же ТС, где техконтроль состоялся (пройден или отклонён).
+    const vehHistory = all
+      .filter(x => x.vehicleRegNumber === w.vehicleRegNumber && x.id !== w.id && (x.techPassed || x.status === 'TECH_REJECTED'))
+      .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)))
+      .slice(0, 10);
+    const prevExam = vehHistory[0];
 
     return (
       <>
@@ -144,9 +151,8 @@ export default function TechWorkstation() {
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'flex-start' }}>
                 <span className="plate">
                   <span className="p-main">{w.vehicleRegNumber}</span>
-                  <span className="p-reg" style={{ lineHeight: 1 }}>01<br /><span style={{ fontSize: 8 }}>RUS</span></span>
+                  <span className="p-reg" style={{ lineHeight: 1 }}>TJ</span>
                 </span>
-                <span className="badge green">{t('st.active')}</span>
               </div>
             </Field>
             <Field label={t('tech.f.brandmodel')}>
@@ -164,7 +170,7 @@ export default function TechWorkstation() {
             </Field>
             <Field label={t('tech.f.waybill')}>
               <div className="number">{w.number ?? '—'}</div>
-              <div style={{ marginTop: 6 }}><span className="badge blue">{t('st.assigned')}</span></div>
+              <div style={{ marginTop: 6 }}><span className="badge blue">{tStatus(w.status)}</span></div>
             </Field>
             <Field label={t('tech.f.examdate')}>
               <div style={{ fontWeight: 600, color: 'var(--ink)', fontSize: 14 }}>{fmt(w.validFrom ?? w.createdAt)}</div>
@@ -177,9 +183,14 @@ export default function TechWorkstation() {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 22 }}>
             <Field label={t('tech.f.examstatus')}><span className="badge blue">{t('st.inprocess')}</span></Field>
             <Field label={t('tech.f.prevexam')}>
-              <span style={{ color: 'var(--muted)' }}>—</span>
+              {prevExam
+                ? <span style={{ fontSize: 12.5, display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                    <span className={`badge ${prevExam.techPassed ? 'green' : 'red'}`}>{prevExam.techPassed ? t('st.serviceable') : t('tech.state.faulty')}</span>
+                    <span style={{ color: 'var(--muted)' }}>{fmt(prevExam.validFrom ?? prevExam.createdAt)}</span>
+                  </span>
+                : <span style={{ color: 'var(--muted)' }}>{t('tech.noprev')}</span>}
             </Field>
-            <Field label={t('tech.f.techstate')}><span className="badge green">{t('st.serviceable')}</span></Field>
+            <Field label={t('tech.f.techstate')}><span className={`badge ${failed.length ? 'red' : 'green'}`}>{failed.length ? t('tech.state.faulty') : t('st.serviceable')}</span></Field>
             <Field label={t('tech.f.admission')}><span className="badge gray">{t('st.notissued')}</span></Field>
           </div>
         </div>
@@ -275,7 +286,19 @@ export default function TechWorkstation() {
           <div>
             <div className="card">
               <div className="card-h"><h2>{t('tech.hist.h')}</h2></div>
-              <div style={{ color: 'var(--muted)', fontSize: 13, padding: '10px 2px' }}>{t('tech.hist.empty')}</div>
+              {vehHistory.length === 0
+                ? <div style={{ color: 'var(--muted)', fontSize: 13, padding: '10px 2px' }}>{t('tech.hist.empty')}</div>
+                : <div style={{ display: 'flex', flexDirection: 'column' }}>
+                    {vehHistory.map((h, i) => (
+                      <div key={h.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 0', borderBottom: i < vehHistory.length - 1 ? '1px solid var(--line-soft)' : 'none' }}>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div className="number" style={{ fontSize: 12.5 }}>{h.number ?? '—'}</div>
+                          <div style={{ fontSize: 11.5, color: 'var(--muted)' }}>{fmt(h.validFrom ?? h.createdAt)}</div>
+                        </div>
+                        <span className={`badge ${h.techPassed ? 'green' : 'red'}`}>{h.techPassed ? t('st.serviceable') : t('tech.state.faulty')}</span>
+                      </div>
+                    ))}
+                  </div>}
             </div>
           </div>
         </div>
