@@ -42,6 +42,22 @@ async function getJson<T>(url: string): Promise<T> {
   return r.json();
 }
 
+/** Экранирование ячейки CSV (разделитель «;» — как ждёт Excel в RU-локали). */
+function csvCell(v: unknown): string {
+  const s = v == null ? '' : String(v);
+  return /[";\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+}
+
+/** Скачать CSV с UTF-8 BOM — Excel открывает напрямую и корректно показывает кириллицу. */
+function downloadCsv(filename: string, rows: unknown[][]) {
+  const text = rows.map(r => r.map(csvCell).join(';')).join('\r\n');
+  const blob = new Blob(['﻿' + text], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename; a.click();
+  URL.revokeObjectURL(url);
+}
+
 function today(offsetDays = 0) {
   const d = new Date();
   d.setDate(d.getDate() + offsetDays);
@@ -93,6 +109,44 @@ export default function ReportsPage() {
 
   useEffect(() => { load(); }, [load]);
 
+  const hasData = tab === 'summary' ? !!summary
+    : tab === 'journal' ? journal.length > 0
+    : tab === 'driver' ? byDriver.length > 0
+    : tab === 'vehicle' ? byVehicle.length > 0
+    : fuel.length > 0;
+
+  /** Экспорт текущей вкладки в CSV (открывается в Excel). */
+  function exportCurrent() {
+    const stripType = (x: string) => tType(x).replace(/\s*\(.*\)/, '');
+    if (tab === 'summary' && summary) {
+      const rows: unknown[][] = [['Показатель', 'Значение'],
+        ['Путевых листов', summary.totals.waybills], ['Завершено', summary.totals.completed],
+        ['Активных', summary.totals.active], ['Аннулировано', summary.totals.cancelled],
+        ['Пробег, км', summary.totals.distanceKm], ['Топливо выдано, л', summary.totals.fuelGivenLiters],
+        ['Выручка, сомони', summary.totals.revenue], [], ['По статусам', '']];
+      Object.entries(summary.byStatus).forEach(([k, v]) => rows.push([tStatus(k), v]));
+      rows.push([], ['По типам', '']);
+      Object.entries(summary.byType).forEach(([k, v]) => rows.push([stripType(k), v]));
+      downloadCsv(`отчёт-сводка-${from}_${to}.csv`, rows);
+    } else if (tab === 'journal') {
+      const rows: unknown[][] = [['Номер', 'Тип', 'ТС', 'Водитель', 'Статус', 'Одометр выезд', 'Одометр возврат']];
+      journal.forEach(r => rows.push([r.number ?? '', stripType(r.waybillType), r.vehicleRegNumber, r.driverName, tStatus(r.status), r.odometerExit ?? '', r.odometerEntry ?? '']));
+      downloadCsv(`отчёт-журнал-${journalDate}.csv`, rows);
+    } else if (tab === 'driver') {
+      const rows: unknown[][] = [['Водитель', 'РМА', 'Путевых листов', 'Завершено', 'Пробег, км']];
+      byDriver.forEach(r => rows.push([r.fullName ?? '', r.driverRma ?? '', r.waybills, r.completed, r.distanceKm]));
+      downloadCsv(`отчёт-по-водителям-${from}_${to}.csv`, rows);
+    } else if (tab === 'vehicle') {
+      const rows: unknown[][] = [['ТС / госномер', 'Путевых листов', 'Завершено', 'Пробег, км']];
+      byVehicle.forEach(r => rows.push([r.vehicleRegNumber ?? '', r.waybills, r.completed, r.distanceKm]));
+      downloadCsv(`отчёт-по-тс-${from}_${to}.csv`, rows);
+    } else if (tab === 'fuel') {
+      const rows: unknown[][] = [['Топливо', 'Выдано, л', 'Остаток, л']];
+      fuel.forEach(r => rows.push([r.fuelName ?? FUEL_NAMES[r.fuelType] ?? r.fuelType, r.given, r.remainEnd]));
+      downloadCsv(`отчёт-топливо-${from}_${to}.csv`, rows);
+    }
+  }
+
   const statusMax = summary ? Math.max(1, ...Object.values(summary.byStatus)) : 1;
   const typeMax = summary ? Math.max(1, ...Object.values(summary.byType)) : 1;
 
@@ -128,6 +182,9 @@ export default function ReportsPage() {
             <input type="date" style={{ width: 170 }} value={to} onChange={e => setTo(e.target.value)} />
           </>
         )}
+        <button className="btn secondary" onClick={exportCurrent} disabled={!hasData} title={t('rep.export.hint')}>
+          <Icon d={P.chart} cls="" style={{ width: 15, height: 15 }} /> {t('rep.export')}
+        </button>
       </div>
       {error && <div className="error">{error}</div>}
 
