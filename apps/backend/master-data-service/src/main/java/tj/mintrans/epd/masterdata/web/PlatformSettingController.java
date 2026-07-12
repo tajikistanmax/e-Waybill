@@ -29,8 +29,8 @@ import java.util.List;
 @RequestMapping("/api/v1/settings")
 public class PlatformSettingController {
 
-    /** Категории, видимые без аутентификации (страница входа): контакты + язык по умолчанию. */
-    private static final List<String> PUBLIC_CATEGORIES = List.of("general", "interface");
+    /** Категории, видимые без аутентификации (страница входа): контакты, язык, брендинг. */
+    private static final List<String> PUBLIC_CATEGORIES = List.of("general", "interface", "branding");
 
     private final PlatformSettingRepository repository;
     private final AuditService audit;

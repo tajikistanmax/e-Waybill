@@ -271,6 +271,23 @@ export const md = {
   publicSettings: () => fetch('/md-api/api/v1/settings/public').then(r => handle<PlatformSetting[]>(r)),
   saveSetting: (category: string, settingKey: string, value: string) =>
     mdPost('settings', { category, settingKey, value }) as Promise<PlatformSetting>,
+  // Брендинг (§29): изображения логотипа/фона входа. GET публичный (используется в <img src>),
+  // загрузка/сброс — SYSTEM_ADMIN. Тексты бренда — обычные настройки категории branding.
+  branding: {
+    url: (key: 'logo' | 'login_bg') => `/md-api/api/v1/branding/${key}`,
+    upload: (key: 'logo' | 'login_bg', file: File) => {
+      const form = new FormData();
+      form.append('file', file);
+      // Content-Type НЕ задаём — браузер сам проставит multipart boundary; authHeaders() даёт только Bearer.
+      return fetch(`/md-api/api/v1/branding/${key}`, { method: 'POST', headers: authHeaders(), body: form })
+        .then(async r => {
+          if (!r.ok) { const p = await r.json().catch(() => null); throw new Error(p?.detail ?? p?.message ?? `Ошибка ${r.status}`); }
+          return r.json() as Promise<{ key: string; contentType: string; size: number }>;
+        });
+    },
+    reset: (key: 'logo' | 'login_bg') => fetch(`/md-api/api/v1/branding/${key}`, { method: 'DELETE', headers: authHeaders() })
+      .then(r => { if (!r.ok && r.status !== 204) throw new Error(`Ошибка ${r.status}`); }),
+  },
 };
 
 export type PlatformSetting = {

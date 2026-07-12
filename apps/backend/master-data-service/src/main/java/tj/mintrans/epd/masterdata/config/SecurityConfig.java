@@ -55,6 +55,9 @@ public class SecurityConfig {
                         .requestMatchers("/api/v1/verify/**").permitAll()
                         // Публичные контакты поддержки для страницы входа (пре-аутентификация)
                         .requestMatchers(HttpMethod.GET, "/api/v1/settings/public").permitAll()
+                        // Изображения бренда (логотип/фон входа) — публичны: страница входа
+                        // читает их до аутентификации. Загрузка/сброс (POST/DELETE) — ниже под токеном.
+                        .requestMatchers(HttpMethod.GET, "/api/v1/branding/**").permitAll()
                         // GET и межсервисный PATCH одометра требуют токена (закрыт анонимный доступ
                         // к ПДн — аудит). Пользователь ходит со своим JWT (тенант-фильтр по организации),
                         // а межсервисные вызовы waybill-service без пользователя (агрегатор ЧУРА/НЕРУ,

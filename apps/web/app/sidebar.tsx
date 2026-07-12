@@ -6,12 +6,14 @@ import { useState } from 'react';
 import { Icon, P } from './icons';
 import { useAuth } from '@/lib/auth';
 import { useT } from '@/lib/i18n';
+import { useBrand, BrandLogo } from '@/lib/brand';
 import { visibleNav } from '@/lib/roles';
 
 export function Sidebar() {
   const pathname = usePathname();
   const { logout, roles } = useAuth();
   const { t } = useT();
+  const brand = useBrand();
   const [open, setOpen] = useState(pathname.startsWith('/waybills'));
   const nav = visibleNav(roles);
 
@@ -28,10 +30,10 @@ export function Sidebar() {
   return (
     <aside className="sidebar no-print">
       <div className="side-brand">
-        <span className="mark"><Icon d={P.docActive} cls="" /></span>
+        <span className="mark"><BrandLogo /></span>
         <div>
-          <div className="bt">е-Роҳхат</div>
-          <div className="bs">{t('brand.sub')}</div>
+          <div className="bt">{brand.name}</div>
+          <div className="bs">{brand.subtitle || t('brand.sub')}</div>
         </div>
       </div>
 

@@ -7,6 +7,7 @@ import { useAuth } from '@/lib/auth';
 import { useT } from '@/lib/i18n';
 import { roleHome } from '@/lib/roles';
 import { md, type PlatformSetting } from '@/lib/api';
+import { useBrand, BrandLogo } from '@/lib/brand';
 
 // Английский — только для страницы входа (остальная платформа RU/TJ, фолбэк на RU).
 const EN: Record<string, string> = {
@@ -52,6 +53,7 @@ const card: CSSProperties = {
 export default function LoginPage() {
   const { login, authenticated, ready, roles } = useAuth();
   const { t, lang, setLang } = useT();
+  const brand = useBrand();
   const router = useRouter();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -102,8 +104,8 @@ export default function LoginPage() {
       {/* Левая колонка — форма */}
       <div className="login-left">
         <div className="login-brand">
-          <span className="mark"><Icon d={P.docActive} cls="" /></span>
-          <span className="lt">е-Роҳхат</span>
+          <span className="mark"><BrandLogo /></span>
+          <span className="lt">{brand.name}</span>
         </div>
 
         <h1>{L('login.h')}</h1>
@@ -169,8 +171,10 @@ export default function LoginPage() {
         <div className="login-foot">© 2025 ГУП «Маркази рақамикунонии соҳаи нақлиёт» · Министерство транспорта Республики Таджикистан</div>
       </div>
 
-      {/* Правая колонка — фоновое изображение (1.1) с наложенным дашбордом */}
-      <div className="login-right" style={{ background: 'linear-gradient(180deg, rgba(226,238,255,.28), rgba(226,238,255,0) 34%), url(/login-bg.png) center/cover no-repeat' }}>
+      {/* Правая колонка — фон входа. Слои сверху вниз: осветляющий градиент → пользовательское
+          изображение (branding/login_bg, если задано админом) → зашитый дефолт /login-bg.png.
+          Если пользовательского нет (404), его слой прозрачен и виден дефолт. */}
+      <div className="login-right" style={{ background: 'linear-gradient(180deg, rgba(226,238,255,.28), rgba(226,238,255,0) 34%), url(/md-api/api/v1/branding/login_bg) center/cover no-repeat, url(/login-bg.png) center/cover no-repeat' }}>
         <div className="lang">
           <Icon d={P.globe} cls="" style={{ width: 16, height: 16 }} />
           <span className="lang-switch on-blue">

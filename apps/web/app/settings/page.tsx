@@ -13,6 +13,7 @@ type St = 'done' | 'partial' | 'planned';
 const MODULES: { key: string; icon: string; cls: string; st: St; href?: string; admin?: boolean }[] = [
   { key: 'rules', icon: P.settings, cls: 'ic-green', st: 'done', href: '/settings/policies' },
   { key: 'general', icon: P.help, cls: 'ic-blue', st: 'done', href: '/settings/general' },
+  { key: 'branding', icon: P.building, cls: 'ic-purple', st: 'done', href: '/settings/branding', admin: true },
   { key: 'org', icon: P.building, cls: 'ic-blue', st: 'partial', href: '/company' },
   { key: 'wbtypes', icon: P.doc, cls: 'ic-cyan', st: 'partial', href: '/settings/types' },
   { key: 'fields', icon: P.book, cls: 'ic-cyan', st: 'done', href: '/settings/fields' },

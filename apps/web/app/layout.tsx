@@ -2,6 +2,7 @@ import './globals.css';
 import type { Metadata } from 'next';
 import { AuthProvider } from '@/lib/auth';
 import { LangProvider } from '@/lib/i18n';
+import { BrandProvider } from '@/lib/brand';
 import { Shell } from './shell';
 
 export const metadata: Metadata = {
@@ -14,9 +15,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="ru">
       <body>
         <LangProvider>
-          <AuthProvider>
-            <Shell>{children}</Shell>
-          </AuthProvider>
+          <BrandProvider>
+            <AuthProvider>
+              <Shell>{children}</Shell>
+            </AuthProvider>
+          </BrandProvider>
         </LangProvider>
       </body>
     </html>
