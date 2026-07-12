@@ -264,6 +264,11 @@ export const md = {
   audit: (entityType?: string, limit = 100) => fetch(
     `/md-api/api/v1/audit?limit=${limit}${entityType ? `&entityType=${entityType}` : ''}`,
     { headers: authHeaders() }).then(r => handle<AuditEntry[]>(r)),
+  // Доступ ролей к разделам меню (§29): чтение — любой авторизованный (для навигации);
+  // изменение — SYSTEM_ADMIN. Это UI-навигация, реальные права — @PreAuthorize на бэкенде.
+  roleAccess: () => fetch('/md-api/api/v1/role-access', { headers: authHeaders() }).then(r => handle<RoleAccess[]>(r)),
+  saveRoleAccess: (role: string, homeKey: string, navKeys: string[]) =>
+    mdPost('role-access', { role, homeKey, navKeys }) as Promise<RoleAccess>,
   // Настройки платформы (§29): чтение по категории; изменение — SYSTEM_ADMIN.
   settings: (category: string) => fetch(`/md-api/api/v1/settings?category=${category}`, { headers: authHeaders() })
     .then(r => handle<PlatformSetting[]>(r)),
@@ -289,6 +294,8 @@ export const md = {
       .then(r => { if (!r.ok && r.status !== 204) throw new Error(`Ошибка ${r.status}`); }),
   },
 };
+
+export type RoleAccess = { role: string; homeKey: string; navKeys: string[] };
 
 export type PlatformSetting = {
   id: string;

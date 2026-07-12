@@ -7,15 +7,16 @@ import { Icon, P } from './icons';
 import { useAuth } from '@/lib/auth';
 import { useT } from '@/lib/i18n';
 import { useBrand, BrandLogo } from '@/lib/brand';
-import { visibleNav } from '@/lib/roles';
+import { useRoleAccess } from '@/lib/roleaccess';
 
 export function Sidebar() {
   const pathname = usePathname();
   const { logout, roles } = useAuth();
   const { t } = useT();
   const brand = useBrand();
+  const { navFor } = useRoleAccess();
   const [open, setOpen] = useState(pathname.startsWith('/waybills'));
-  const nav = visibleNav(roles);
+  const nav = navFor(roles);
 
   const active = (h: string) => pathname === h || pathname.startsWith(h + '/');
   const wbActive = pathname === '/waybills' || (pathname.startsWith('/waybills/') && pathname !== '/waybills/new');

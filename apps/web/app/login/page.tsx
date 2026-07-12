@@ -5,9 +5,9 @@ import { useRouter } from 'next/navigation';
 import { Icon, P } from '../icons';
 import { useAuth } from '@/lib/auth';
 import { useT } from '@/lib/i18n';
-import { roleHome } from '@/lib/roles';
 import { md, type PlatformSetting } from '@/lib/api';
 import { useBrand, BrandLogo } from '@/lib/brand';
+import { useRoleAccess } from '@/lib/roleaccess';
 
 // Английский — только для страницы входа (остальная платформа RU/TJ, фолбэк на RU).
 const EN: Record<string, string> = {
@@ -54,6 +54,7 @@ export default function LoginPage() {
   const { login, authenticated, ready, roles } = useAuth();
   const { t, lang, setLang } = useT();
   const brand = useBrand();
+  const { homeFor } = useRoleAccess();
   const router = useRouter();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -68,7 +69,7 @@ export default function LoginPage() {
   // Английский для страницы входа; иначе — обычный перевод (RU/TJ).
   const L = (k: string) => (lang === 'en' && EN[k] ? EN[k] : t(k));
 
-  useEffect(() => { if (ready && authenticated) router.replace(roleHome(roles)); }, [ready, authenticated, roles, router]);
+  useEffect(() => { if (ready && authenticated) router.replace(homeFor(roles)); }, [ready, authenticated, roles, router, homeFor]);
 
   // Контакты поддержки — из публичных настроек платформы (§29), не захардкожены.
   useEffect(() => {

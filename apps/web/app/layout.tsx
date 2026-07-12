@@ -3,6 +3,7 @@ import type { Metadata } from 'next';
 import { AuthProvider } from '@/lib/auth';
 import { LangProvider } from '@/lib/i18n';
 import { BrandProvider } from '@/lib/brand';
+import { RoleAccessProvider } from '@/lib/roleaccess';
 import { Shell } from './shell';
 
 export const metadata: Metadata = {
@@ -17,7 +18,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <LangProvider>
           <BrandProvider>
             <AuthProvider>
-              <Shell>{children}</Shell>
+              <RoleAccessProvider>
+                <Shell>{children}</Shell>
+              </RoleAccessProvider>
             </AuthProvider>
           </BrandProvider>
         </LangProvider>
