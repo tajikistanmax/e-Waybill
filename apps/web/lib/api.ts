@@ -192,6 +192,16 @@ function mdPost(path: string, body: unknown) {
   }).then(r => handle<Record<string, unknown>>(r));
 }
 
+function mdDelete(path: string): Promise<void> {
+  return fetch(`/md-api/api/v1/${path}`, { method: 'DELETE', headers: authHeaders() })
+    .then(async r => {
+      if (!r.ok && r.status !== 204) {
+        const p = await r.json().catch(() => null);
+        throw new Error(p?.detail ?? p?.title ?? `Ошибка ${r.status}`);
+      }
+    });
+}
+
 export const md = {
   organizations: () => fetch('/md-api/api/v1/organizations', { headers: authHeaders() }).then(r => handle<Record<string, unknown>[]>(r)),
   drivers: (orgRma: string) => fetch(`/md-api/api/v1/drivers?organizationRma=${orgRma}`, { headers: authHeaders() }).then(r => handle<Record<string, unknown>[]>(r)),
@@ -214,12 +224,18 @@ export const md = {
   allDrivers: () => fetch('/md-api/api/v1/drivers', { headers: authHeaders() }).then(r => handle<Record<string, unknown>[]>(r)),
   allVehicles: () => fetch('/md-api/api/v1/vehicles', { headers: authHeaders() }).then(r => handle<Record<string, unknown>[]>(r)),
   allEmployees: () => fetch('/md-api/api/v1/employees', { headers: authHeaders() }).then(r => handle<Record<string, unknown>[]>(r)),
-  // Прямое создание/обновление (upsert) записей справочника — полный ручной ввод всех полей.
-  // Соответствует POST /organizations|/drivers|/vehicles|/employees (роль SYSTEM_ADMIN / API_INTEGRATOR).
+  // Нативное управление субъектами/объектами внутри платформы — полный ручной ввод всех полей.
+  // POST /organizations|/drivers|/vehicles|/employees: перевозчик (COMPANY_ADMIN/DISPATCHER) ведёт
+  // СВОЮ организацию (тенант-защита на бэкенде), сисадмин/интегратор — любую.
   createOrganization: (body: Record<string, unknown>) => mdPost('organizations', body),
   createDriver: (body: Record<string, unknown>) => mdPost('drivers', body),
   createVehicle: (body: Record<string, unknown>) => mdPost('vehicles', body),
   createEmployee: (body: Record<string, unknown>) => mdPost('employees', body),
+  // Удаление (COMPANY_ADMIN/SYSTEM_ADMIN; организация — только SYSTEM_ADMIN). История ПЛ цела (снимки).
+  deleteDriver: (id: string) => mdDelete(`drivers/${id}`),
+  deleteVehicle: (id: string) => mdDelete(`vehicles/${id}`),
+  deleteEmployee: (id: string) => mdDelete(`employees/${id}`),
+  deleteOrganization: (id: string) => mdDelete(`organizations/${id}`),
   // Движок бизнес-правил (политик) — административная подсистема «Настройки».
   policies: () => fetch('/md-api/api/v1/policies', { headers: authHeaders() }).then(r => handle<Policy[]>(r)),
   savePolicy: (body: Record<string, unknown>) => mdPost('policies', body) as Promise<Policy>,

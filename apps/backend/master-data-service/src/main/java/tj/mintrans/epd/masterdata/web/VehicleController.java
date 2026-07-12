@@ -9,7 +9,9 @@ import jakarta.validation.constraints.Pattern;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -70,19 +72,21 @@ public class VehicleController {
     }
 
     /**
-     * Прямой upsert — только push-канал единой платформы (API_INTEGRATOR) и сисадмин.
-     * Перевозчики добавляют ТС по госномеру через POST /api/v1/sync/vehicle
-     * (марка, VIN, техосмотр — из базы ГАИ).
+     * Нативное управление ТС внутри платформы: перевозчик (COMPANY_ADMIN/DISPATCHER) ведёт ТС
+     * СВОЕЙ организации; push-канал единой платформы (API_INTEGRATOR) и сисадмин — любые.
+     * Тенант не пишет в чужую организацию (403) и не «захватывает» ТС по госномеру (409).
      */
     @PostMapping
-    @PreAuthorize("hasAnyRole('API_INTEGRATOR','SYSTEM_ADMIN')")
+    @PreAuthorize("hasAnyRole('API_INTEGRATOR','SYSTEM_ADMIN','COMPANY_ADMIN','DISPATCHER')")
     public ResponseEntity<Vehicle> upsert(@Valid @RequestBody VehicleRequest req) {
+        requireOwnOrganization(req.organizationRma());
         var org = organizations.findByRma(req.organizationRma())
                 .orElseThrow(() -> new NotFoundException("Организация не найдена"));
         // Госномер канонизируется (обрезка пробелов + верхний регистр), иначе "0114TJ01"
         // и "0114tj01 " создали бы два физически одинаковых ТС и раздвоили бы поиск при выдаче ПЛ.
         var canonicalNumber = canonical(req.registrationNumber());
         var existing = vehicles.findByRegistrationNumber(canonicalNumber);
+        assertNotForeign(existing.map(Vehicle::getOrganizationId).orElse(null), org.getId(), "ТС");
         String oldBrand = existing.map(Vehicle::getBrand).orElse(null); // до мутации (existing и vehicle — один объект)
         var vehicle = existing.orElseGet(Vehicle::new);
         vehicle.setRegistrationNumber(canonicalNumber);
@@ -175,6 +179,43 @@ public class VehicleController {
             }
         }
         return vehicle;
+    }
+
+    /** Удаление ТС своей организации. Историю ПЛ не рушит — путевые листы хранят снимок ТС. */
+    @DeleteMapping("/{id}")
+    @PreAuthorize("hasAnyRole('SYSTEM_ADMIN','COMPANY_ADMIN')")
+    public ResponseEntity<Void> delete(@PathVariable UUID id) {
+        var vehicle = vehicles.findById(id).orElseThrow(() -> new NotFoundException("Транспорт не найден"));
+        requireOwnEntity(vehicle.getOrganizationId());
+        vehicles.delete(vehicle);
+        audit.record(AuditService.DELETE, "VEHICLE", vehicle.getRegistrationNumber(), vehicle.getBrand(), null);
+        return ResponseEntity.noContent().build();
+    }
+
+    // ------------------------------------------------------------ тенант-защита записи
+
+    private void requireOwnOrganization(String organizationRma) {
+        if (currentUser.isTenantScoped()) {
+            var own = currentUser.organizationRma();
+            if (own.isEmpty() || !own.get().equals(organizationRma)) {
+                throw new AccessDeniedException("Доступ только к своей организации");
+            }
+        }
+    }
+
+    private void assertNotForeign(UUID existingOrgId, UUID targetOrgId, String what) {
+        if (currentUser.isTenantScoped() && existingOrgId != null && !existingOrgId.equals(targetOrgId)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, what + " уже закреплён(а) за другой организацией");
+        }
+    }
+
+    private void requireOwnEntity(UUID entityOrgId) {
+        if (currentUser.isTenantScoped()) {
+            var own = currentUser.organizationRma().flatMap(organizations::findByRma).orElse(null);
+            if (own == null || !own.getId().equals(entityOrgId)) {
+                throw new AccessDeniedException("Доступ только к своей организации");
+            }
+        }
     }
 
     /** Каноническая форма госномера: обрезка пробелов + верхний регистр (null → null). */

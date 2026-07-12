@@ -6,7 +6,9 @@ import jakarta.validation.constraints.Pattern;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -14,6 +16,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.server.ResponseStatusException;
 import tj.mintrans.epd.masterdata.config.CurrentUser;
 import tj.mintrans.epd.masterdata.domain.Driver;
 import tj.mintrans.epd.masterdata.repository.DriverRepository;
@@ -61,16 +64,19 @@ public class DriverController {
     }
 
     /**
-     * Прямой upsert — только push-канал единой платформы (API_INTEGRATOR) и сисадмин.
-     * Перевозчики добавляют водителей по ИНН через POST /api/v1/sync/driver
-     * (ФИО — из налоговой, ВУ и медсправка — из ГАИ/Минздрава).
+     * Нативное управление водителями внутри платформы: перевозчик (COMPANY_ADMIN/DISPATCHER)
+     * ведёт водителей СВОЕЙ организации; платформенный push-канал единой платформы
+     * (API_INTEGRATOR) и сисадмин — любую. Тенант не может писать в чужую организацию
+     * (403) и «захватывать» водителя другой организации по РМА (409).
      */
     @PostMapping
-    @PreAuthorize("hasAnyRole('API_INTEGRATOR','SYSTEM_ADMIN')")
+    @PreAuthorize("hasAnyRole('API_INTEGRATOR','SYSTEM_ADMIN','COMPANY_ADMIN','DISPATCHER')")
     public ResponseEntity<Driver> upsert(@Valid @RequestBody DriverRequest req) {
+        requireOwnOrganization(req.organizationRma());
         var org = organizations.findByRma(req.organizationRma())
                 .orElseThrow(() -> new NotFoundException("Организация не найдена"));
         var existing = drivers.findByRma(req.rma());
+        assertNotForeign(existing.map(Driver::getOrganizationId).orElse(null), org.getId(), "Водитель");
         String oldName = existing.map(Driver::getFullName).orElse(null); // до мутации (existing и driver — один объект)
         var driver = existing.orElseGet(Driver::new);
         driver.setRma(req.rma());
@@ -141,5 +147,46 @@ public class DriverController {
             }
         }
         return driver;
+    }
+
+    /** Удаление водителя своей организации. Историю ПЛ не рушит — путевые листы хранят
+     *  снимок данных водителя на момент выдачи (master-data и waybill — раздельные БД). */
+    @DeleteMapping("/{id}")
+    @PreAuthorize("hasAnyRole('SYSTEM_ADMIN','COMPANY_ADMIN')")
+    public ResponseEntity<Void> delete(@PathVariable UUID id) {
+        var driver = drivers.findById(id).orElseThrow(() -> new NotFoundException("Водитель не найден"));
+        requireOwnEntity(driver.getOrganizationId());
+        drivers.delete(driver);
+        audit.record(AuditService.DELETE, "DRIVER", driver.getRma(), driver.getFullName(), null);
+        return ResponseEntity.noContent().build();
+    }
+
+    // ------------------------------------------------------------ тенант-защита записи
+
+    /** Тенант пишет только в свою организацию (иначе 403); платформенный админ — в любую. */
+    private void requireOwnOrganization(String organizationRma) {
+        if (currentUser.isTenantScoped()) {
+            var own = currentUser.organizationRma();
+            if (own.isEmpty() || !own.get().equals(organizationRma)) {
+                throw new AccessDeniedException("Доступ только к своей организации");
+            }
+        }
+    }
+
+    /** Нельзя «захватить»/изменить сущность, уже закреплённую за другой организацией (409). */
+    private void assertNotForeign(UUID existingOrgId, UUID targetOrgId, String what) {
+        if (currentUser.isTenantScoped() && existingOrgId != null && !existingOrgId.equals(targetOrgId)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, what + " уже закреплён(а) за другой организацией");
+        }
+    }
+
+    /** Тенант удаляет/меняет только сущность своей организации (иначе 403). */
+    private void requireOwnEntity(UUID entityOrgId) {
+        if (currentUser.isTenantScoped()) {
+            var own = currentUser.organizationRma().flatMap(organizations::findByRma).orElse(null);
+            if (own == null || !own.getId().equals(entityOrgId)) {
+                throw new AccessDeniedException("Доступ только к своей организации");
+            }
+        }
     }
 }

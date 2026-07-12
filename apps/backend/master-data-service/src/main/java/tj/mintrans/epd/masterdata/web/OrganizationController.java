@@ -7,7 +7,9 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -59,13 +61,14 @@ public class OrganizationController {
     }
 
     /**
-     * Прямой upsert — ТОЛЬКО push-канал единой платформы Минтранса (API_INTEGRATOR)
-     * и системный администратор. Перевозчики субъектов не регистрируют:
-     * данные подтягиваются по ИНН через POST /api/v1/sync/organization.
+     * Нативное управление: администратор компании редактирует реквизиты СВОЕЙ организации
+     * (rma совпадает); создание/редактирование любой организации — push-канал единой платформы
+     * (API_INTEGRATOR) и системный администратор. Тенант в чужую организацию писать не может (403).
      */
     @PostMapping
-    @PreAuthorize("hasAnyRole('API_INTEGRATOR','SYSTEM_ADMIN')")
+    @PreAuthorize("hasAnyRole('API_INTEGRATOR','SYSTEM_ADMIN','COMPANY_ADMIN')")
     public ResponseEntity<Organization> upsert(@Valid @RequestBody OrganizationRequest req) {
+        requireOwnOrganization(req.rma());
         var existing = repository.findByRma(req.rma());
         String oldName = existing.map(Organization::getName).orElse(null); // до мутации (existing и org — один объект)
         var org = existing.orElseGet(Organization::new);
@@ -112,5 +115,25 @@ public class OrganizationController {
             throw new NotFoundException("Организация не найдена");
         }
         return org;
+    }
+
+    /** Удаление организации — только системный администратор Минтранса (не тенант). */
+    @DeleteMapping("/{id}")
+    @PreAuthorize("hasRole('SYSTEM_ADMIN')")
+    public ResponseEntity<Void> delete(@PathVariable UUID id) {
+        var org = repository.findById(id).orElseThrow(() -> new NotFoundException("Организация не найдена"));
+        repository.delete(org);
+        audit.record(AuditService.DELETE, "ORGANIZATION", org.getRma(), org.getName(), null);
+        return ResponseEntity.noContent().build();
+    }
+
+    /** Тенант (COMPANY_ADMIN) пишет только в свою организацию (иначе 403); админ — в любую. */
+    private void requireOwnOrganization(String organizationRma) {
+        if (currentUser.isTenantScoped()) {
+            var own = currentUser.organizationRma();
+            if (own.isEmpty() || !own.get().equals(organizationRma)) {
+                throw new AccessDeniedException("Доступ только к своей организации");
+            }
+        }
     }
 }

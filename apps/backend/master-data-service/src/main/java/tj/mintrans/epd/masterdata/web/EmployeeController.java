@@ -8,7 +8,9 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -16,6 +18,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.server.ResponseStatusException;
 import tj.mintrans.epd.masterdata.config.CurrentUser;
 import tj.mintrans.epd.masterdata.domain.Employee;
 import tj.mintrans.epd.masterdata.repository.EmployeeRepository;
@@ -56,15 +59,18 @@ public class EmployeeController {
     }
 
     /**
-     * Прямой upsert — только push-канал единой платформы (API_INTEGRATOR) и сисадмин.
-     * Перевозчики добавляют сотрудников по ИНН через POST /api/v1/sync/employee.
+     * Нативное управление сотрудниками (врач/механик/диспетчер) внутри платформы: администратор
+     * компании ведёт сотрудников СВОЕЙ организации; push-канал единой платформы (API_INTEGRATOR)
+     * и сисадмин — любых. Тенант не пишет в чужую организацию (403), не «захватывает» по РМА (409).
      */
     @PostMapping
-    @PreAuthorize("hasAnyRole('API_INTEGRATOR','SYSTEM_ADMIN')")
+    @PreAuthorize("hasAnyRole('API_INTEGRATOR','SYSTEM_ADMIN','COMPANY_ADMIN')")
     public ResponseEntity<Employee> upsert(@Valid @RequestBody EmployeeRequest req) {
+        requireOwnOrganization(req.organizationRma());
         var org = organizations.findByRma(req.organizationRma())
                 .orElseThrow(() -> new NotFoundException("Организация не найдена"));
         var existing = employees.findByRma(req.rma());
+        assertNotForeign(existing.map(Employee::getOrganizationId).orElse(null), org.getId(), "Сотрудник");
         String oldName = existing.map(Employee::getName).orElse(null); // до мутации (existing и employee — один объект)
         var employee = existing.orElseGet(Employee::new);
         employee.setRma(req.rma());
@@ -118,5 +124,42 @@ public class EmployeeController {
             }
         }
         return employee;
+    }
+
+    /** Удаление сотрудника своей организации (COMPANY_ADMIN/SYSTEM_ADMIN). */
+    @DeleteMapping("/{id}")
+    @PreAuthorize("hasAnyRole('SYSTEM_ADMIN','COMPANY_ADMIN')")
+    public ResponseEntity<Void> delete(@PathVariable UUID id) {
+        var employee = employees.findById(id).orElseThrow(() -> new NotFoundException("Сотрудник не найден"));
+        requireOwnEntity(employee.getOrganizationId());
+        employees.delete(employee);
+        audit.record(AuditService.DELETE, "EMPLOYEE", employee.getRma(), employee.getName(), null);
+        return ResponseEntity.noContent().build();
+    }
+
+    // ------------------------------------------------------------ тенант-защита записи
+
+    private void requireOwnOrganization(String organizationRma) {
+        if (currentUser.isTenantScoped()) {
+            var own = currentUser.organizationRma();
+            if (own.isEmpty() || !own.get().equals(organizationRma)) {
+                throw new AccessDeniedException("Доступ только к своей организации");
+            }
+        }
+    }
+
+    private void assertNotForeign(UUID existingOrgId, UUID targetOrgId, String what) {
+        if (currentUser.isTenantScoped() && existingOrgId != null && !existingOrgId.equals(targetOrgId)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, what + " уже закреплён(а) за другой организацией");
+        }
+    }
+
+    private void requireOwnEntity(UUID entityOrgId) {
+        if (currentUser.isTenantScoped()) {
+            var own = currentUser.organizationRma().flatMap(organizations::findByRma).orElse(null);
+            if (own == null || !own.getId().equals(entityOrgId)) {
+                throw new AccessDeniedException("Доступ только к своей организации");
+            }
+        }
     }
 }
