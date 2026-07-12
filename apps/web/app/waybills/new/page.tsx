@@ -2,7 +2,7 @@
 
 import { Fragment, useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { md, wb, TYPE_LABELS, type FieldDefinition } from '@/lib/api';
+import { md, wb, TYPE_LABELS, type FieldDefinition, type Eligibility, type TypeAvailability } from '@/lib/api';
 import { Icon, P } from '../../icons';
 import { SearchSelect, type SSOption } from '../../SearchSelect';
 import { useT } from '@/lib/i18n';
@@ -75,6 +75,10 @@ export default function NewWaybillPage() {
   });
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  // Пригодность (preflight): доступность типов по лицензии (шаг 1) + полная проверка связки (шаг 3).
+  const [typeAvail, setTypeAvail] = useState<Record<string, TypeAvailability>>({});
+  const [pf, setPf] = useState<Eligibility | null>(null);
+  const [pfBusy, setPfBusy] = useState(false);
 
   useEffect(() => {
     md.organizations()
@@ -131,6 +135,28 @@ export default function NewWaybillPage() {
   }, [form.driverRma, intl.secondDriverRma]);
 
   useEffect(() => { window.scrollTo({ top: 0 }); }, [step]);
+
+  // Доступные типы ПЛ для организации (по лицензии/виду субъекта) — для индикации на шаге выбора типа.
+  useEffect(() => {
+    if (!orgRma) { setTypeAvail({}); return; }
+    let ignore = false;
+    wb.availableTypes(orgRma)
+      .then(list => { if (!ignore) setTypeAvail(Object.fromEntries(list.map(a => [a.type, a]))); })
+      .catch(() => { if (!ignore) setTypeAvail({}); });
+    return () => { ignore = true; };
+  }, [orgRma]);
+
+  // Полная проверка пригодности выбранной связки (тип+организация+ТС+водитель) — на шаге параметров.
+  useEffect(() => {
+    if (step !== 3 || !orgRma || !form.vehicleRegNumber || !form.driverRma) { setPf(null); return; }
+    let ignore = false;
+    setPfBusy(true);
+    wb.preflight({ type: form.waybillType, organizationRma: orgRma, vehicleRegNumber: form.vehicleRegNumber, driverRma: form.driverRma })
+      .then(r => { if (!ignore) setPf(r); })
+      .catch(() => { if (!ignore) setPf(null); })
+      .finally(() => { if (!ignore) setPfBusy(false); });
+    return () => { ignore = true; };
+  }, [step, orgRma, form.vehicleRegNumber, form.driverRma, form.waybillType]);
 
   const t = form.waybillType;
   const isCar = t === 'WB_CAR' || t === 'WB_TAXI';
@@ -272,13 +298,19 @@ export default function NewWaybillPage() {
               {Object.entries(TYPE_LABELS).map(([value]) => {
                 const meta = TYPE_META[value];
                 const active = form.waybillType === value;
+                const avail = typeAvail[value];
+                const unavailable = !!avail && !avail.available;
+                const reason = unavailable ? (avail.reasons[0] ?? tt('wb.type.unavail')) : undefined;
                 return (
                   <button
                     type="button"
                     key={value}
-                    onClick={() => setForm({ ...form, waybillType: value })}
+                    disabled={unavailable}
+                    title={reason}
+                    onClick={() => { if (!unavailable) setForm({ ...form, waybillType: value }); }}
                     style={{
-                      display: 'flex', alignItems: 'center', gap: 13, textAlign: 'left', cursor: 'pointer',
+                      display: 'flex', alignItems: 'center', gap: 13, textAlign: 'left',
+                      cursor: unavailable ? 'not-allowed' : 'pointer', opacity: unavailable ? 0.55 : 1,
                       padding: 14, borderRadius: 12, background: active ? 'var(--blue-050)' : '#fff', fontFamily: 'inherit',
                       border: active ? '1.5px solid var(--blue-600)' : '1.5px solid var(--line)',
                       boxShadow: active ? '0 0 0 3px rgba(37,99,235,.14)' : 'var(--shadow-xs)',
@@ -291,7 +323,10 @@ export default function NewWaybillPage() {
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--ink)' }}>{tType(value)}</div>
                       <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2, lineHeight: 1.35 }}>{tt(meta.desc)}</div>
-                      <span style={{ display: 'inline-block', marginTop: 8, fontSize: 10.5, fontWeight: 600, color: 'var(--ink-soft)', background: 'var(--line-soft)', padding: '3px 9px', borderRadius: 999 }}>{tt(meta.group)}</span>
+                      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8, alignItems: 'center' }}>
+                        <span style={{ display: 'inline-block', fontSize: 10.5, fontWeight: 600, color: 'var(--ink-soft)', background: 'var(--line-soft)', padding: '3px 9px', borderRadius: 999 }}>{tt(meta.group)}</span>
+                        {unavailable && <span className="badge red" title={reason} style={{ fontSize: 10.5 }}>{tt('wb.type.unavail')}</span>}
+                      </div>
                     </div>
                     <Icon d={P.chevron} cls="" style={{ width: 18, height: 18, color: active ? 'var(--blue-600)' : 'var(--faint)', flex: 'none' }} />
                   </button>
@@ -561,7 +596,7 @@ export default function NewWaybillPage() {
             </button>
             <div style={{ flex: 1 }} />
             {step < STEPS.length ? (
-              <button type="button" className="btn" disabled={!stepOk(step)} onClick={() => setStep(s => Math.min(STEPS.length, s + 1))}>
+              <button type="button" className="btn" disabled={!stepOk(step) || (step === 3 && pf != null && !pf.eligible)} onClick={() => setStep(s => Math.min(STEPS.length, s + 1))}>
                 {tt('wb.btn.next')} <Icon d={P.chevron} cls="" style={{ width: 16, height: 16 }} />
               </button>
             ) : (
@@ -645,16 +680,43 @@ export default function NewWaybillPage() {
                     </div>
                   ))}
                 </div>
-                {/* Честный список: авторитетные блокирующие проверки бэкенда при выдаче. */}
+                {/* Проверка пригодности: реальный результат preflight (что разрешит сервер), с фолбэком. */}
                 <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--line-soft)' }}>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.03em', marginBottom: 8 }}>{tt('wb.chk.srv.h')}</div>
-                  {serverChecks.map((sc, i) => (
-                    <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '5px 0', fontSize: 12, color: 'var(--ink-soft)' }}>
-                      <Icon d={P.shield} cls="" style={{ width: 14, height: 14, color: 'var(--blue-600)', flex: 'none' }} />
-                      {sc}
-                    </div>
-                  ))}
-                  <div className="hint" style={{ marginTop: 8, fontSize: 11 }}>{tt('wb.chk.srv.note')}</div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.03em' }}>{tt('wb.pf.h')}</div>
+                    {pf && <span className={`badge ${pf.eligible ? 'green' : 'red'}`} style={{ marginLeft: 'auto', fontSize: 10.5 }}>{pf.eligible ? tt('wb.pf.ok') : tt('wb.pf.no')}</span>}
+                  </div>
+                  {pfBusy && !pf ? (
+                    <div style={{ fontSize: 12, color: 'var(--muted)' }}>{tt('wb.pf.checking')}</div>
+                  ) : pf ? (
+                    <>
+                      <div className={pf.eligible ? 'sys-ok' : ''} style={pf.eligible ? { marginTop: 0, marginBottom: 8 } : { fontSize: 12.5, color: '#dc2626', fontWeight: 600, marginBottom: 8 }}>
+                        {pf.eligible
+                          ? (<><Icon d={P.check} cls="" style={{ width: 16, height: 16 }} /> {tt('wb.pf.ok.s')}</>)
+                          : tt('wb.pf.no.s')}
+                      </div>
+                      {pf.checks.map((c, i) => (
+                        <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 9, padding: '5px 0', fontSize: 12, color: 'var(--ink-soft)' }}>
+                          <span className={c.severity === 'ERROR' ? 'ic-red' : 'ic-amber'} style={{ width: 22, height: 22, borderRadius: '50%', display: 'grid', placeItems: 'center', flex: 'none' }}>
+                            <Icon d={P.alert} cls="" style={{ width: 13, height: 13 }} />
+                          </span>
+                          <span style={{ lineHeight: 1.35 }}>{c.message}</span>
+                        </div>
+                      ))}
+                      <div className="hint" style={{ marginTop: 8, fontSize: 11 }}>{tt('wb.pf.note')}</div>
+                    </>
+                  ) : (
+                    <>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.03em', marginBottom: 8 }}>{tt('wb.chk.srv.h')}</div>
+                      {serverChecks.map((sc, i) => (
+                        <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '5px 0', fontSize: 12, color: 'var(--ink-soft)' }}>
+                          <Icon d={P.shield} cls="" style={{ width: 14, height: 14, color: 'var(--blue-600)', flex: 'none' }} />
+                          {sc}
+                        </div>
+                      ))}
+                      <div className="hint" style={{ marginTop: 8, fontSize: 11 }}>{tt('wb.chk.srv.note')}</div>
+                    </>
+                  )}
                 </div>
               </div>
             )}

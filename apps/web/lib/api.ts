@@ -327,8 +327,25 @@ export type Payment = {
   confirmedBy: string | null;
 };
 
+// Пригодность (preflight): проактивная проверка «можно ли оформить такой ПЛ» до создания.
+export type EligibilityCheck = { code: string; severity: 'ERROR' | 'WARN'; message: string };
+export type Eligibility = { eligible: boolean; checks: EligibilityCheck[] };
+export type TypeAvailability = { type: string; available: boolean; reasons: string[] };
+
 export const wb = {
   list: () => fetch('/wb-api/api/v1/waybills', { headers: authHeaders() }).then(r => handle<Waybill[]>(r)),
+  // Доступные типы ПЛ для организации (по лицензии/виду субъекта) — для шага выбора типа.
+  availableTypes: (orgRma: string) => fetch(
+    `/wb-api/api/v1/waybills/available-types?organizationRma=${encodeURIComponent(orgRma)}`,
+    { headers: authHeaders() }).then(r => handle<TypeAvailability[]>(r)),
+  // Пригодность выбранной связки (тип+организация+ТС+водитель) — «Доступен/Недоступно + причина».
+  preflight: (params: { type: string; organizationRma: string; vehicleRegNumber?: string; driverRma?: string }) => {
+    const q = new URLSearchParams({ type: params.type, organizationRma: params.organizationRma });
+    if (params.vehicleRegNumber) q.set('vehicleRegNumber', params.vehicleRegNumber);
+    if (params.driverRma) q.set('driverRma', params.driverRma);
+    return fetch(`/wb-api/api/v1/waybills/preflight?${q.toString()}`, { headers: authHeaders() })
+      .then(r => handle<Eligibility>(r));
+  },
   payment: (id: string) => fetch(`/wb-api/api/v1/waybills/${id}/payment`, { headers: authHeaders() }).then(r => handle<Payment>(r)),
   get: (id: string) => fetch(`/wb-api/api/v1/waybills/${id}`, { headers: authHeaders() }).then(r => handle<Waybill>(r)),
   titles: (id: string) => fetch(`/wb-api/api/v1/waybills/${id}/titles`, { headers: authHeaders() }).then(r => handle<Title[]>(r)),

@@ -417,6 +417,194 @@ public class WaybillService {
                 "Категория водительского удостоверения не соответствует типу ТС: требуется «%s»".formatted(required));
     }
 
+    // ---------------------------------------------------- пригодность (preflight, read-only)
+
+    /** Одна причина пригодности: severity ERROR (недоступно) | WARN (предупреждение). */
+    public record CheckResult(String code, String severity, String message) {}
+    /** Результат проверки пригодности (тип, организация, ТС, водитель). */
+    public record EligibilityResult(boolean eligible, java.util.List<CheckResult> checks) {}
+    /** Доступность типа ПЛ для организации (уровень лицензии/вида субъекта). */
+    public record TypeAvailability(String type, boolean available, java.util.List<String> reasons) {}
+
+    /** Типы ПЛ общего пользования — недоступны организации «для собственных нужд» (type_company=2). */
+    private static final java.util.Set<WaybillType> PUBLIC_SERVICE_TYPES = java.util.EnumSet.of(
+            WaybillType.WB_TAXI, WaybillType.WB_BUS, WaybillType.WB_TROLLEYBUS, WaybillType.WB_MINIBUS);
+
+    /** Допустимые виды ТС (transport_type 1..6) для типа ПЛ; null — не ограничиваем (спецтехника). */
+    private static java.util.Set<Integer> allowedTransportTypes(WaybillType type) {
+        return switch (type) {
+            case WB_BUS -> java.util.Set.of(1);
+            case WB_TROLLEYBUS -> java.util.Set.of(2);
+            case WB_MINIBUS -> java.util.Set.of(3);
+            case WB_CAR, WB_TAXI -> java.util.Set.of(4);
+            case WB_TRUCK -> java.util.Set.of(5);
+            case WB_TRUCK_INTL, WB_DANGEROUS -> java.util.Set.of(5, 6);
+            case WB_PAX_INTL -> java.util.Set.of(1, 3);
+            case WB_SPECIAL -> null; // спецтехника — вид ТС не ограничиваем
+        };
+    }
+
+    private static boolean isCargo(WaybillType type) {
+        return type == WaybillType.WB_TRUCK || type == WaybillType.WB_TRUCK_INTL
+                || type == WaybillType.WB_DANGEROUS || type == WaybillType.WB_SPECIAL;
+    }
+
+    /**
+     * Пригодность (preflight) для (тип, организация, ТС, водитель) — read-only, для мастера создания:
+     * диспетчер видит «Доступен/Недоступно + причина» ДО создания. Ничего не меняет.
+     */
+    public EligibilityResult preflight(WaybillType type, String organizationRma,
+                                       String vehicleRegNumber, String driverRma) {
+        if (currentUser.isTenantScoped()
+                && !currentUser.organizationRma().map(rma -> rma.equals(organizationRma)).orElse(false)) {
+            throw new ForbiddenException("Проверка пригодности за другую организацию запрещена");
+        }
+        var org = masterData.findOrganization(organizationRma).orElse(null);
+        var driver = (driverRma == null || driverRma.isBlank())
+                ? null : masterData.findDriver(driverRma).orElse(null);
+        var vehicle = (vehicleRegNumber == null || vehicleRegNumber.isBlank())
+                ? null : masterData.findVehicle(vehicleRegNumber).orElse(null);
+        var checks = collectEligibility(type, org, driver, vehicle);
+        boolean eligible = checks.stream().noneMatch(c -> "ERROR".equals(c.severity()));
+        return new EligibilityResult(eligible, checks);
+    }
+
+    /**
+     * Доступные типы ПЛ для организации по лицензии/виду субъекта — read-only, для шага выбора типа:
+     * диспетчер видит, какие путевые листы может дать исходя из лицензии организации.
+     */
+    public java.util.List<TypeAvailability> availableTypes(String organizationRma) {
+        if (currentUser.isTenantScoped()
+                && !currentUser.organizationRma().map(rma -> rma.equals(organizationRma)).orElse(false)) {
+            throw new ForbiddenException("Просмотр типов за другую организацию запрещён");
+        }
+        var org = masterData.findOrganization(organizationRma).orElse(null);
+        var result = new java.util.ArrayList<TypeAvailability>();
+        for (var type : WaybillType.values()) {
+            var checks = collectEligibility(type, org, null, null); // только уровень лицензии/субъекта
+            boolean available = checks.stream().noneMatch(c -> "ERROR".equals(c.severity()));
+            result.add(new TypeAvailability(type.name(), available,
+                    checks.stream().map(CheckResult::message).toList()));
+        }
+        return result;
+    }
+
+    /**
+     * Read-only сбор причин пригодности. НАМЕРЕННО зеркалит блокирующие проверки runBlockingChecks
+     * (она остаётся единственным авторитетным местом при создании), плюс добавляет проактивные
+     * сигналы (тип↔лицензия, тип↔вид ТС, курс БДД, ADR) для показа диспетчеру. Ничего не бросает.
+     * driver/vehicle могут быть null (уровень лицензии — для выбора типа).
+     */
+    private java.util.List<CheckResult> collectEligibility(WaybillType type, Map<String, Object> org,
+                                                           Map<String, Object> driver, Map<String, Object> vehicle) {
+        var out = new java.util.ArrayList<CheckResult>();
+        if (org == null) {
+            out.add(new CheckResult("ORG_NOT_FOUND", "ERROR", "Организация не найдена"));
+            return out;
+        }
+        var today = LocalDate.now();
+        Integer typeCompany = intOrNull(org.get("typeCompany"));
+        String orgId = str(org.get("id"));
+        if (Boolean.TRUE.equals(org.get("blocked"))) {
+            out.add(new CheckResult("ORG_BLOCKED", "ERROR", "Организация заблокирована"));
+        }
+        // Тип ПЛ ↔ вид субъекта: ведомственная организация (собственные нужды) не оказывает
+        // перевозки общего пользования (такси, городской пассажирский).
+        if (Integer.valueOf(2).equals(typeCompany) && PUBLIC_SERVICE_TYPES.contains(type)) {
+            out.add(new CheckResult("TYPE_NOT_FOR_OWN_USE", "WARN",
+                    "Для собственных нужд (ведомственная организация) перевозки общего пользования обычно недоступны"));
+        }
+        // Лицензия перевозчика общего пользования (type_company=1) — как в runBlockingChecks.
+        if (Integer.valueOf(1).equals(typeCompany)) {
+            var licenseTo = dateOrNull(org.get("licenseTo"));
+            if (licenseTo == null || licenseTo.isBefore(today)) {
+                out.add(new CheckResult("LICENSE_EXPIRED", "ERROR", "Лицензия организации отсутствует или истекла"));
+            }
+        }
+        if (vehicle != null) {
+            if (!orgId.equals(str(vehicle.get("organizationId")))) {
+                out.add(new CheckResult("VEHICLE_FOREIGN", "ERROR", "Транспорт не принадлежит организации"));
+            }
+            if (Boolean.TRUE.equals(vehicle.get("blocked"))) {
+                out.add(new CheckResult("VEHICLE_BLOCKED", "ERROR", "Транспорт заблокирован"));
+            }
+            // Тип ПЛ ↔ вид ТС (например, автобусный ПЛ на грузовом ТС).
+            var allowed = allowedTransportTypes(type);
+            Integer tt = intOrNull(vehicle.get("transportType"));
+            if (allowed != null && tt != null && !allowed.contains(tt)) {
+                out.add(new CheckResult("TYPE_VEHICLE_MISMATCH", "WARN",
+                        "Тип путевого листа не соответствует виду выбранного ТС"));
+            }
+            var techInspection = dateOrNull(vehicle.get("techInspectionValidTo"));
+            if (techInspection == null || techInspection.isBefore(today)) {
+                out.add(new CheckResult("TECH_INSPECTION", "ERROR", "Технический осмотр ТС отсутствует или истёк"));
+            }
+            if (Integer.valueOf(1).equals(typeCompany)) {
+                var controlCard = dateOrNull(vehicle.get("controlCardValidTo"));
+                if (controlCard == null || controlCard.isBefore(today)) {
+                    out.add(new CheckResult("CONTROL_CARD", "ERROR", "Контрольная карточка ТС отсутствует или истекла"));
+                }
+            }
+            var insurance = dateOrNull(vehicle.get("insuranceValidTo"));
+            if (insurance != null && insurance.isBefore(today)) {
+                out.add(new CheckResult("INSURANCE_EXPIRED", "ERROR", "Срок действия страхового полиса ТС истёк"));
+            }
+            if (!waybills.findByVehicleRegNumberAndStatusIn(
+                    str(vehicle.get("registrationNumber")), WaybillStatus.OPEN_STATUSES).isEmpty()) {
+                out.add(new CheckResult("VEHICLE_HAS_ACTIVE", "ERROR", "На это ТС уже оформлен действующий путевой лист"));
+            }
+        }
+        if (driver != null) {
+            if (!orgId.equals(str(driver.get("organizationId")))) {
+                out.add(new CheckResult("DRIVER_FOREIGN", "ERROR", "Водитель не принадлежит организации"));
+            }
+            if (Boolean.TRUE.equals(driver.get("suspended"))) {
+                out.add(new CheckResult("DRIVER_SUSPENDED", "ERROR", "Водитель отстранён"));
+            }
+            var licenseValidTo = dateOrNull(driver.get("licenseValidTo"));
+            if (licenseValidTo != null && licenseValidTo.isBefore(today)) {
+                out.add(new CheckResult("DL_EXPIRED", "ERROR", "Срок действия водительского удостоверения истёк"));
+            }
+            var medCert = dateOrNull(driver.get("medCertValidTo"));
+            if (medCert != null && medCert.isBefore(today)) {
+                out.add(new CheckResult("MED_CERT_EXPIRED", "ERROR", "Срок действия медицинской справки водителя истёк"));
+            }
+            // Курс БДД (20-часовые занятия) для пассажирских/грузовых перевозок — предупреждение.
+            if (type.isPassenger() || isCargo(type)) {
+                var safety = dateOrNull(driver.get("safetyCourseValidTo"));
+                if (safety == null || safety.isBefore(today)) {
+                    out.add(new CheckResult("SAFETY_COURSE", "WARN",
+                            "Курс БДД (20-часовые занятия) у водителя отсутствует или истёк"));
+                }
+            }
+            if (!waybills.findByDriverRmaAndStatusIn(
+                    str(driver.get("rma")), WaybillStatus.OPEN_STATUSES).isEmpty()) {
+                out.add(new CheckResult("DRIVER_HAS_ACTIVE", "ERROR", "На этого водителя уже оформлен действующий путевой лист"));
+            }
+        }
+        // Категория ВУ ↔ вид ТС (как assertLicenseMatchesVehicle) — если известны и водитель, и ТС.
+        if (driver != null && vehicle != null) {
+            String required = requiredLicenseCategory(intOrNull(vehicle.get("transportType")));
+            String categories = str(driver.get("licenseCategories"));
+            if (required != null && !categories.isBlank()) {
+                boolean has = false;
+                for (String token : categories.split("[,;\\s]+")) {
+                    if (token.equalsIgnoreCase(required)) { has = true; break; }
+                }
+                if (!has) {
+                    out.add(new CheckResult("DRIVER_CATEGORY", "ERROR",
+                            "Категория ВУ не соответствует типу ТС: требуется «%s»".formatted(required)));
+                }
+            }
+        }
+        // Опасные грузы — свидетельство ADR (предупреждение; поле ADR появится в следующей итерации).
+        if (type == WaybillType.WB_DANGEROUS && (driver != null || vehicle != null)) {
+            out.add(new CheckResult("ADR_REQUIRED", "WARN",
+                    "Опасные грузы: требуется свидетельство ADR у водителя и допуск ТС"));
+        }
+        return out;
+    }
+
     // ------------------------------------------------------------------ титулы
 
     /** Т1 — выпуск: подписывает диспетчер, ПЛ переходит в CREATED. */

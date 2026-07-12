@@ -236,6 +236,26 @@ public class WaybillController {
                 req == null || req.actor() == null ? "accountant" : req.actor());
     }
 
+    // ------------------------------------------------------------- пригодность (preflight)
+
+    /** Доступные типы ПЛ для организации по её лицензии/виду субъекта (для шага выбора типа). */
+    @GetMapping("/available-types")
+    @PreAuthorize("hasAnyRole('DISPATCHER','SYSTEM_ADMIN')")
+    public List<WaybillService.TypeAvailability> availableTypes(@RequestParam String organizationRma) {
+        return service.availableTypes(organizationRma);
+    }
+
+    /** Пригодность (тип+организация+ТС+водитель): диспетчер видит «Доступен/Недоступно + причина» до создания. */
+    @GetMapping("/preflight")
+    @PreAuthorize("hasAnyRole('DISPATCHER','SYSTEM_ADMIN')")
+    public WaybillService.EligibilityResult preflight(
+            @RequestParam WaybillType type,
+            @RequestParam String organizationRma,
+            @RequestParam(required = false) String vehicleRegNumber,
+            @RequestParam(required = false) String driverRma) {
+        return service.preflight(type, organizationRma, vehicleRegNumber, driverRma);
+    }
+
     // ------------------------------------------------------------- чтение
 
     @GetMapping("/{id}")
