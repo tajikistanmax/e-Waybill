@@ -17,7 +17,15 @@ export default function PrintWaybill({ params }: { params: Promise<{ id: string 
   const [error, setError] = useState('');
   // Опции бланка из настроек платформы (§29, /settings/print). Дефолт — полный бланк A4.
   const [opt, setOpt] = useState({ showQr: true, showStamp: true, paperSize: 'A4' });
+  const [landscape, setLandscape] = useState(false); // §17: альбомная ориентация
+  const [copy, setCopy] = useState(false);           // §17: отметка «КОПИЯ»
   const { tType } = useT();
+
+  // Печать копии: включает водяной знак «КОПИЯ», печатает, затем снимает знак.
+  function printCopy() {
+    setCopy(true);
+    setTimeout(() => { window.print(); setTimeout(() => setCopy(false), 400); }, 60);
+  }
 
   useEffect(() => {
     (async () => {
@@ -55,7 +63,7 @@ export default function PrintWaybill({ params }: { params: Promise<{ id: string 
   return (
     <>
       <style>{`
-        @page { size: ${opt.paperSize} portrait; margin: 12mm; }
+        @page { size: ${opt.paperSize} ${landscape ? 'landscape' : 'portrait'}; margin: 12mm; }
         @media print {
           header.top, .no-print { display: none !important; }
           main { max-width: none; margin: 0; padding: 0; }
@@ -63,8 +71,16 @@ export default function PrintWaybill({ params }: { params: Promise<{ id: string 
           body { background: #fff; }
         }
         .sheet {
+          position: relative; overflow: hidden;
           background: #fff; border: 1px solid #94a3b8; padding: 22px 26px;
-          max-width: ${opt.paperSize === 'A5' ? 540 : 760}px; margin: 0 auto; font-size: 12.5px; color: #111;
+          max-width: ${(landscape ? (opt.paperSize === 'A5' ? 760 : 1040) : (opt.paperSize === 'A5' ? 540 : 760))}px; margin: 0 auto; font-size: 12.5px; color: #111;
+        }
+        .sheet .copy-wm {
+          position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+          pointer-events: none; z-index: 5;
+          font-size: ${landscape ? 120 : 96}px; font-weight: 800; letter-spacing: 10px;
+          color: rgba(220, 38, 38, 0.18); transform: rotate(-32deg); white-space: nowrap;
+          -webkit-print-color-adjust: exact; print-color-adjust: exact;
         }
         .sheet table { font-size: 12.5px; }
         .sheet th, .sheet td { border: 1px solid #cbd5e1; padding: 4px 8px; }
@@ -76,12 +92,18 @@ export default function PrintWaybill({ params }: { params: Promise<{ id: string 
         .sheet .sig div { border-top: 1px solid #94a3b8; padding-top: 3px; font-size: 11px; color: #334155; }
       `}</style>
 
-      <div className="no-print toolbar">
+      <div className="no-print toolbar" style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
         <button className="btn" onClick={() => window.print()}>🖨 Печать / сохранить в PDF</button>
-        <a className="btn secondary" href={`/waybills/${id}`}>← К карточке</a>
+        <button className="btn secondary" onClick={printCopy}>📄 Печать копии</button>
+        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, color: 'var(--muted)' }}>
+          <input type="checkbox" checked={landscape} onChange={e => setLandscape(e.target.checked)} />
+          Альбомная ориентация
+        </label>
+        <a className="btn secondary" href={`/waybills/${id}`} style={{ marginLeft: 'auto' }}>← К карточке</a>
       </div>
 
       <div className="sheet">
+        {copy && <div className="copy-wm">КОПИЯ</div>}
         <div className="head">
           <div className="stat">
             <b>ВАЗОРАТИ НАҚЛИЁТИ ҶУМҲУРИИ ТОҶИКИСТОН</b><br />
