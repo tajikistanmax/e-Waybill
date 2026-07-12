@@ -7,6 +7,7 @@ import { useRoleAccess } from '@/lib/roleaccess';
 import { type NavKey } from '@/lib/roles';
 import { Sidebar } from './sidebar';
 import { Topbar } from './topbar';
+import { MaintenanceBanner } from './MaintenanceBanner';
 
 const isPublic = (path: string) => path === '/login' || path.startsWith('/verify/');
 
@@ -38,17 +39,20 @@ export function Shell({ children }: { children: React.ReactNode }) {
     if (!allowed) router.replace(homeFor(roles));
   }, [ready, authenticated, roles, pathname, allowed, router, homeFor]);
 
-  if (isPublic(pathname)) return <>{children}</>;
+  if (isPublic(pathname)) return <><MaintenanceBanner />{children}</>;
   if (!ready) return <div className="boot">Загрузка системы…</div>;
   if (!authenticated) return <div className="boot">Переход к странице входа…</div>;
 
   return (
-    <div className="app">
-      <Sidebar />
-      <div className="content">
-        <Topbar />
-        <main className="page">{allowed ? children : <div className="boot">Переход…</div>}</main>
+    <>
+      <MaintenanceBanner />
+      <div className="app">
+        <Sidebar />
+        <div className="content">
+          <Topbar />
+          <main className="page">{allowed ? children : <div className="boot">Переход…</div>}</main>
+        </div>
       </div>
-    </div>
+    </>
   );
 }
