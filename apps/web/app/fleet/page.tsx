@@ -7,6 +7,7 @@ import { useT } from '@/lib/i18n';
 import { Icon, P } from '../icons';
 
 type Row = Record<string, unknown>;
+type FTab = 'vehicles' | 'drivers' | 'employees';
 type Field = { key: string; label: string; type?: 'text' | 'number' | 'date' | 'select'; opts?: { v: string; l: string }[]; req?: boolean; keyField?: boolean };
 
 /** Транспорт и водители организации: полное нативное управление внутри платформы —
@@ -19,12 +20,14 @@ export default function FleetPage() {
   // Механик осматривает ТС, врач — водителей; управляющие роли видят и то, и другое.
   const showVehicles = canManage || roles.includes('MECHANIC');
   const showDrivers = canManage || roles.includes('DOCTOR');
+  // Персонал (врач/механик/диспетчер) ведёт админ компании/платформы — кадровая функция.
+  const showEmployees = roles.includes('COMPANY_ADMIN') || roles.includes('SYSTEM_ADMIN');
 
-  const [tab, setTab] = useState<'vehicles' | 'drivers'>('vehicles');
+  const [tab, setTab] = useState<FTab>('vehicles');
   useEffect(() => {
-    if (tab === 'vehicles' && !showVehicles && showDrivers) setTab('drivers');
-    else if (tab === 'drivers' && !showDrivers && showVehicles) setTab('vehicles');
-  }, [showVehicles, showDrivers, tab]);
+    const ok = tab === 'vehicles' ? showVehicles : tab === 'drivers' ? showDrivers : showEmployees;
+    if (!ok) setTab(showVehicles ? 'vehicles' : showDrivers ? 'drivers' : 'employees');
+  }, [showVehicles, showDrivers, showEmployees, tab]);
 
   const [orgRma, setOrgRma] = useState('');
   const [q, setQ] = useState('');
@@ -42,6 +45,7 @@ export default function FleetPage() {
     { v: '1', l: t('tt.1') }, { v: '2', l: t('tt.2') }, { v: '3', l: t('tt.3') },
     { v: '4', l: t('tt.4') }, { v: '5', l: t('tt.5') }, { v: '6', l: t('tt.6') },
   ];
+  const ET = [{ v: '1', l: t('fleet.emp.1') }, { v: '2', l: t('fleet.emp.2') }, { v: '3', l: t('fleet.emp.3') }];
   const vehicleFields: Field[] = [
     { key: 'registrationNumber', label: t('fleet.f.plate'), req: true, keyField: true },
     { key: 'transportType', label: t('fleet.f.type'), type: 'select', opts: TT, req: true },
@@ -69,13 +73,26 @@ export default function FleetPage() {
     { key: 'adrCertValidTo', label: t('fleet.f.adrcert'), type: 'date' },
     { key: 'phone', label: t('fleet.f.phone') },
   ];
-  const fields = tab === 'vehicles' ? vehicleFields : driverFields;
+  const employeeFields: Field[] = [
+    { key: 'rma', label: t('fleet.f.inn'), req: true, keyField: true },
+    { key: 'name', label: t('fleet.f.name'), req: true },
+    { key: 'type', label: t('fleet.f.emptype'), type: 'select', opts: ET, req: true },
+    { key: 'tabNumber', label: t('fleet.f.tab') },
+    { key: 'phone', label: t('fleet.f.phone') },
+  ];
+  const fields = tab === 'vehicles' ? vehicleFields : tab === 'drivers' ? driverFields : employeeFields;
 
-  const load = useCallback(async (query: string, which: 'vehicles' | 'drivers') => {
+  const load = useCallback(async (query: string, which: FTab) => {
     setLoading(true); setErr('');
     try {
-      const list = which === 'vehicles' ? await md.searchVehicles('', query, 50) : await md.searchDrivers('', query, 50);
-      setRows(list);
+      if (which === 'employees') {
+        // Сотрудников у организации немного (врач/механик/диспетчер) — грузим своих и фильтруем на клиенте.
+        const all = await md.allEmployees();
+        const s = query.trim().toLowerCase();
+        setRows(s ? all.filter(e => String(e.name ?? '').toLowerCase().includes(s) || String(e.rma ?? '').includes(s)) : all);
+      } else {
+        setRows(which === 'vehicles' ? await md.searchVehicles('', query, 50) : await md.searchDrivers('', query, 50));
+      }
     } catch (e) { setErr((e as Error).message); setRows([]); }
     finally { setLoading(false); }
   }, []);
@@ -102,10 +119,11 @@ export default function FleetPage() {
       for (const f of fields) {
         const val = (form[f.key] ?? '').trim();
         if (val === '') continue;
-        body[f.key] = (f.type === 'number' || f.key === 'transportType') ? Number(val) : val;
+        body[f.key] = (f.type === 'number' || f.key === 'transportType' || f.key === 'type') ? Number(val) : val;
       }
       if (tab === 'vehicles') await md.createVehicle(body);
-      else await md.createDriver(body);
+      else if (tab === 'drivers') await md.createDriver(body);
+      else await md.createEmployee(body);
       setMsg(editing ? t('fleet.saved') : t('fleet.added'));
       setForm(null);
       load(q, tab);
@@ -114,22 +132,23 @@ export default function FleetPage() {
   }
 
   async function remove(row: Row) {
-    const name = tab === 'vehicles' ? String(row.registrationNumber) : String(row.fullName);
+    const name = tab === 'vehicles' ? String(row.registrationNumber) : tab === 'drivers' ? String(row.fullName) : String(row.name);
     if (!window.confirm(t('fleet.delete.confirm').replace('{name}', name))) return;
     setErr(''); setMsg('');
     try {
       if (tab === 'vehicles') await md.deleteVehicle(String(row.id));
-      else await md.deleteDriver(String(row.id));
+      else if (tab === 'drivers') await md.deleteDriver(String(row.id));
+      else await md.deleteEmployee(String(row.id));
       setMsg(t('fleet.deleted'));
       load(q, tab);
     } catch (e) { setErr((e as Error).message); }
   }
 
-  function switchTab(which: 'vehicles' | 'drivers') {
+  function switchTab(which: FTab) {
     setTab(which); setQ(''); setRows([]); setForm(null); setMsg(''); setErr('');
   }
 
-  const cols = tab === 'vehicles' ? 5 : 5;
+  const cols = tab === 'employees' ? 6 : 5;
 
   return (
     <>
@@ -143,26 +162,35 @@ export default function FleetPage() {
         {canManage && (
           <button className="btn" style={{ marginLeft: 'auto' }} onClick={() => (form ? setForm(null) : openNew())}>
             <Icon d={P.plus} cls="" style={{ width: 15, height: 15 }} />{' '}
-            {tab === 'vehicles' ? t('fleet.add.vehicle') : t('fleet.add.driver')}
+            {tab === 'vehicles' ? t('fleet.add.vehicle') : tab === 'drivers' ? t('fleet.add.driver') : t('fleet.add.employee')}
           </button>
         )}
       </div>
 
-      {showVehicles && showDrivers && (
+      {[showVehicles, showDrivers, showEmployees].filter(Boolean).length > 1 && (
         <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
-          <button className={`btn ${tab === 'vehicles' ? 'primary' : 'secondary'}`} onClick={() => switchTab('vehicles')}>
-            <Icon d={P.car} cls="" style={{ width: 15, height: 15 }} /> {t('fleet.tab.vehicles')}
-          </button>
-          <button className={`btn ${tab === 'drivers' ? 'primary' : 'secondary'}`} onClick={() => switchTab('drivers')}>
-            <Icon d={P.user} cls="" style={{ width: 15, height: 15 }} /> {t('fleet.tab.drivers')}
-          </button>
+          {showVehicles && (
+            <button className={`btn ${tab === 'vehicles' ? 'primary' : 'secondary'}`} onClick={() => switchTab('vehicles')}>
+              <Icon d={P.car} cls="" style={{ width: 15, height: 15 }} /> {t('fleet.tab.vehicles')}
+            </button>
+          )}
+          {showDrivers && (
+            <button className={`btn ${tab === 'drivers' ? 'primary' : 'secondary'}`} onClick={() => switchTab('drivers')}>
+              <Icon d={P.user} cls="" style={{ width: 15, height: 15 }} /> {t('fleet.tab.drivers')}
+            </button>
+          )}
+          {showEmployees && (
+            <button className={`btn ${tab === 'employees' ? 'primary' : 'secondary'}`} onClick={() => switchTab('employees')}>
+              <Icon d={P.users} cls="" style={{ width: 15, height: 15 }} /> {t('fleet.tab.employees')}
+            </button>
+          )}
         </div>
       )}
 
       {/* Полная форма ручного ввода/редактирования */}
       {canManage && form && (
         <div className="card" style={{ padding: 18, marginBottom: 16 }}>
-          <h2 style={{ marginTop: 0 }}>{editing ? t('fleet.edit') : (tab === 'vehicles' ? t('fleet.new.vehicle') : t('fleet.new.driver'))}</h2>
+          <h2 style={{ marginTop: 0 }}>{editing ? t('fleet.edit') : (tab === 'vehicles' ? t('fleet.new.vehicle') : tab === 'drivers' ? t('fleet.new.driver') : t('fleet.new.employee'))}</h2>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 12 }}>
             {fields.map(f => (
               <div key={f.key}>
@@ -194,13 +222,15 @@ export default function FleetPage() {
       {/* Поиск + таблица */}
       <div className="card" style={{ padding: 16 }}>
         <input value={q} onChange={e => setQ(e.target.value)}
-          placeholder={tab === 'vehicles' ? t('fleet.search.vehicle') : t('fleet.search.driver')} style={{ marginBottom: 12 }} />
+          placeholder={tab === 'vehicles' ? t('fleet.search.vehicle') : tab === 'drivers' ? t('fleet.search.driver') : t('fleet.search.employee')} style={{ marginBottom: 12 }} />
         <table>
           <thead>
             {tab === 'vehicles' ? (
               <tr><th>{t('fleet.col.plate')}</th><th>{t('fleet.col.brand')}</th><th>{t('fleet.col.type')}</th><th>{t('fleet.col.tech')}</th><th style={{ textAlign: 'right' }}>{t('fleet.col.actions')}</th></tr>
-            ) : (
+            ) : tab === 'drivers' ? (
               <tr><th>{t('fleet.col.name')}</th><th>{t('fleet.col.inn')}</th><th>{t('fleet.col.cat')}</th><th>{t('fleet.col.license')}</th><th style={{ textAlign: 'right' }}>{t('fleet.col.actions')}</th></tr>
+            ) : (
+              <tr><th>{t('fleet.col.name')}</th><th>{t('fleet.col.inn')}</th><th>{t('fleet.f.emptype')}</th><th>{t('fleet.f.tab')}</th><th>{t('fleet.f.phone')}</th><th style={{ textAlign: 'right' }}>{t('fleet.col.actions')}</th></tr>
             )}
           </thead>
           <tbody>
@@ -222,6 +252,16 @@ export default function FleetPage() {
                 <td>{String(d.licenseCategories ?? '—')}</td>
                 <td>{d.licenseValidTo ? String(d.licenseValidTo) : '—'}</td>
                 <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>{canManage && rowActions(d)}</td>
+              </tr>
+            ))}
+            {!loading && tab === 'employees' && rows.map((e, i) => (
+              <tr key={i}>
+                <td style={{ fontWeight: 600 }}>{String(e.name ?? '')}</td>
+                <td style={{ fontFamily: 'var(--mono)' }}>{String(e.rma ?? '')}</td>
+                <td>{ET.find(x => x.v === String(e.type))?.l ?? String(e.type ?? '—')}</td>
+                <td>{String(e.tabNumber ?? '—')}</td>
+                <td>{String(e.phone ?? '—')}</td>
+                <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>{canManage && rowActions(e)}</td>
               </tr>
             ))}
           </tbody>

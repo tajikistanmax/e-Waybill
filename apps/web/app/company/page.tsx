@@ -1,7 +1,9 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import { authHeaders, md } from '@/lib/api';
+import { useAuth } from '@/lib/auth';
 import { useT } from '@/lib/i18n';
 import { Icon, P } from '../icons';
 import { ExpiryAlert } from '../ExpiryAlert';
@@ -63,11 +65,21 @@ function rowToForm(row: Record<string, unknown>, keys: string[]): Record<string,
 }
 
 /**
- * Кабинет компании-перевозчика. Субъекты (водители, сотрудники) и объекты (ТС)
- * НЕ регистрируются здесь вручную — они добавляются по ИНН/госномеру, а данные
- * приходят из единой платформы Минтранса (налоговая, ГАИ, Минздрав).
+ * Раздел «Компания» адаптируется под роль:
+ *  - SYSTEM_ADMIN (администратор платформы) — реестр ВСЕХ организаций: регистрация, управление;
+ *  - COMPANY_ADMIN (перевозчик) — «Профиль своей компании»: одна своя организация, сводка, ссылки.
+ * Управление парком/персоналом перевозчика вынесено в /fleet (единое место, без дублей).
  */
 export default function CompanyPage() {
+  const { roles } = useAuth();
+  return roles.includes('SYSTEM_ADMIN') ? <OrgRegistry /> : <CompanyProfile />;
+}
+
+/**
+ * Реестр организаций — только SYSTEM_ADMIN: список ВСЕХ организаций, регистрация по ИНН
+ * (данные из единой платформы) или вручную, управление их водителями/ТС/сотрудниками.
+ */
+function OrgRegistry() {
   const { t } = useT();
   const [orgs, setOrgs] = useState<Row[]>([]);
   const [counts, setCounts] = useState<Record<string, Counts>>({});
@@ -572,6 +584,107 @@ export default function CompanyPage() {
           </table>
         )}
       </div>
+    </>
+  );
+}
+
+/**
+ * Профиль компании-перевозчика (COMPANY_ADMIN): ОДНА своя организация (тенант видит только её) —
+ * реквизиты, лицензия перевозчика, сводка по парку/персоналу, истекающие документы + быстрые
+ * ссылки. Управление ТС/водителями/сотрудниками — в /fleet (без дублирования и без чужих орг).
+ */
+function CompanyProfile() {
+  const { t } = useT();
+  const [org, setOrg] = useState<Row | null>(null);
+  const [counts, setCounts] = useState<Counts>({ vehicles: 0, drivers: 0, employees: 0 });
+  const [err, setErr] = useState('');
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    md.organizations()
+      .then(async list => {
+        const o = list[0] ?? null; // тенант-скоуп: перевозчик видит только свою организацию
+        setOrg(o);
+        if (o) {
+          const rma = String(o.rma);
+          const [v, d, e] = await Promise.all([
+            md.vehicles(rma).catch(() => [] as Row[]),
+            md.drivers(rma).catch(() => [] as Row[]),
+            md.employees(rma).catch(() => [] as Row[]),
+          ]);
+          setCounts({ vehicles: v.length, drivers: d.length, employees: e.length });
+        }
+      })
+      .catch(e => setErr((e as Error).message))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const active = org ? orgActive(org) : false;
+  const KPIS = [
+    { label: t('comp.kpi.transport'), value: counts.vehicles, icon: P.car, cls: 'ic-cyan' },
+    { label: t('comp.kpi.drivers'), value: counts.drivers, icon: P.users, cls: 'ic-purple' },
+    { label: t('comp.kpi.employees'), value: counts.employees, icon: P.user, cls: 'ic-blue' },
+  ];
+
+  return (
+    <>
+      <div className="toolbar">
+        <div>
+          <h1>{t('comp.profile.h')}</h1>
+          <div className="page-lead" style={{ margin: 0 }}>{t('comp.profile.lead')}</div>
+        </div>
+      </div>
+
+      {err && <div className="error">{err}</div>}
+      <div style={{ marginBottom: 16 }}><ExpiryAlert days={30} /></div>
+
+      {org ? (
+        <>
+          <div className="card">
+            <div className="card-h" style={{ alignItems: 'center' }}>
+              <h2 style={{ margin: 0 }}>{String(org.name)}</h2>
+              <span className={`badge ${active ? 'green' : 'red'}`} style={{ marginLeft: 'auto' }}>
+                {active ? t('comp.badge.active') : t('comp.badge.licexpired')}
+              </span>
+            </div>
+            <dl className="kv" style={{ marginTop: 12 }}>
+              <dt>{t('col.innrma')}</dt>
+              <dd><span className="number">{String(org.rma)}</span>{org.source === 'UNIFIED' && <> · <span className="badge blue">{t('comp.badge.unified')}</span></>}</dd>
+              <dt>{t('col.type')}</dt><dd>{SUBJECT_TYPES[String(org.subjectType)] ?? '—'}</dd>
+              <dt>{t('comp.kv.subjectregion')}</dt><dd>{String(org.cityName ?? '—')} ({t('col.region').toLowerCase()} {String(org.regionId ?? '—')})</dd>
+              <dt>{t('col.address')}</dt><dd>{String(org.address ?? '—')}</dd>
+              <dt>{t('col.phone')}</dt><dd>{String(org.phone ?? '—')}{org.email ? ` · ${String(org.email)}` : ''}</dd>
+              <dt>{t('comp.f.head')}</dt><dd>{String(org.nameHead ?? '—')}</dd>
+              <dt>{t('comp.kv.carrierlic')}</dt><dd>{String(org.licenseFrom ?? '—')} → {String(org.licenseTo ?? '—')}</dd>
+            </dl>
+          </div>
+
+          <div className="kpi-row" style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
+            {KPIS.map(k => (
+              <div className="kpi" key={k.label}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                  <span className={`k-ic ${k.cls}`}><Icon d={k.icon} cls="" /></span>
+                  <div style={{ minWidth: 0 }}>
+                    <div className="k-label">{k.label}</div>
+                    <div className="k-value" style={{ marginTop: 4 }}>{k.value.toLocaleString('ru-RU')}</div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="card">
+            <h2>{t('comp.profile.quick')}</h2>
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+              <Link href="/fleet" className="btn" style={{ textDecoration: 'none' }}>{t('comp.profile.tofleet')}</Link>
+              <Link href="/waybills" className="btn secondary" style={{ textDecoration: 'none' }}>{t('comp.profile.towaybills')}</Link>
+              <Link href="/reports" className="btn secondary" style={{ textDecoration: 'none' }}>{t('comp.profile.toreports')}</Link>
+            </div>
+          </div>
+        </>
+      ) : (
+        <div className="card"><p style={{ color: 'var(--muted)', margin: 0 }}>{loading ? t('comp.profile.loading') : t('comp.profile.noorg')}</p></div>
+      )}
     </>
   );
 }

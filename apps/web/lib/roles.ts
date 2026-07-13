@@ -23,8 +23,10 @@ export function visibleNav(roles: string[]): Set<NavKey> {
   // Админ надзирает и настраивает — осмотры НЕ проводит (Т2/Т3 подписывают врач/механик
   // своими РМА в /med и /tech). Поэтому у админов нет АРМ врача/механика в меню.
   if (roles.includes('SYSTEM_ADMIN')) add('dashboard', 'waybills', 'company', 'monitoring', 'registry', 'violations', 'reports', 'dictionaries', 'settings');
-  // Админ компании управляет своим парком (fleet — «Транспорт и водители»), но осмотры не проводит.
-  if (roles.includes('COMPANY_ADMIN')) add('dashboard', 'waybills', 'company', 'fleet', 'monitoring', 'registry', 'violations', 'reports', 'dictionaries', 'settings');
+  // Админ компании-перевозчика ведёт ТОЛЬКО свою организацию: профиль (company), парк и
+  // персонал (fleet), свои ПЛ/отчёты/нарушения/GPS. НЕ платформенные разделы (Настройки §29,
+  // нац. Справочники, глобальные Реестры — это администратор платформы/Минтранс).
+  if (roles.includes('COMPANY_ADMIN')) add('dashboard', 'waybills', 'company', 'fleet', 'monitoring', 'violations', 'reports');
   if (roles.includes('DISPATCHER')) add('dispatcher', 'dashboard', 'waybills', 'fleet', 'monitoring');
   if (roles.includes('DOCTOR')) add('med', 'fleet');
   if (roles.includes('MECHANIC')) add('tech', 'fleet');
