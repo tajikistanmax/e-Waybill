@@ -52,7 +52,8 @@ export default function NewWaybillPage() {
   const [countries, setCountries] = useState<Option[]>([]);
   const [adrClasses, setAdrClasses] = useState<Option[]>([]);
   const [permitTypes, setPermitTypes] = useState<Option[]>([]);
-  const [dangerous, setDangerous] = useState({ adrClass: '', unNumber: '' });
+  // Опасный груз — режим грузового ПЛ (2-Б): галочка on + класс ADR.
+  const [dangerous, setDangerous] = useState({ on: false, adrClass: '', unNumber: '' });
   const [customDefs, setCustomDefs] = useState<FieldDefinition[]>([]);
   const [customValues, setCustomValues] = useState<Record<string, string>>({});
   const [orgRma, setOrgRma] = useState('');
@@ -162,7 +163,6 @@ export default function NewWaybillPage() {
   const isCar = t === 'WB_CAR' || t === 'WB_TAXI';
   const isTruck = t === 'WB_TRUCK';
   const isIntl = INTL_TYPES.includes(t);
-  const isDangerous = t === 'WB_DANGEROUS';
 
   const orgLabel = orgs.find(o => o.value === orgRma)?.label ?? '';
   const vehicleLabel = selVehicle?.label ?? form.vehicleRegNumber;
@@ -179,7 +179,7 @@ export default function NewWaybillPage() {
   const canStep3 = (isIntl ? intlValid : true)
     && (isCar && serviceKind === 'ROUTE' ? !!form.route.trim() : true)
     && (isTruck ? trailersValid : true)
-    && (isDangerous ? !!dangerous.adrClass : true)
+    && (isTruck && dangerous.on ? !!dangerous.adrClass : true)
     && customValid;
 
   const stepOk = (s: number) => s === 1 ? !!form.waybillType : s === 2 ? canStep2 : s === 3 ? canStep3 : true;
@@ -201,7 +201,11 @@ export default function NewWaybillPage() {
 
   function buildTypeData(): Record<string, unknown> | undefined {
     if (isCar) return { serviceKind };
-    if (isTruck) return { shipmentKind, ...(trailers.length ? { trailers } : {}) };
+    if (isTruck) return {
+      shipmentKind,
+      ...(trailers.length ? { trailers } : {}),
+      ...(dangerous.on ? { dangerous: true, adrClass: dangerous.adrClass, ...(dangerous.unNumber ? { unNumber: dangerous.unNumber } : {}) } : {}),
+    };
     if (isIntl) {
       return {
         visaValidTo: intl.visaValidTo,
@@ -215,7 +219,6 @@ export default function NewWaybillPage() {
         ...(intl.bbaNumber ? { bbaNumber: intl.bbaNumber } : {}),
       };
     }
-    if (isDangerous) return { adrClass: dangerous.adrClass, ...(dangerous.unNumber ? { unNumber: dangerous.unNumber } : {}) };
     return undefined;
   }
 
@@ -440,8 +443,16 @@ export default function NewWaybillPage() {
                 </div>
               )}
 
-              {/* --- Опасные грузы: класс ADR --- */}
-              {isDangerous && (
+              {/* --- 2-Б: опасный груз — режим грузового ПЛ (галочка + класс ADR) --- */}
+              {isTruck && (
+                <div style={{ gridColumn: '1 / -1' }}>
+                  <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontWeight: 600 }}>
+                    <input type="checkbox" checked={dangerous.on} onChange={e => setDangerous({ ...dangerous, on: e.target.checked })} style={{ width: 'auto' }} />
+                    {tt('wb.f.dangerous')}
+                  </label>
+                </div>
+              )}
+              {isTruck && dangerous.on && (
                 <>
                   <div>
                     <label>{tt('wb.f.adrclass')}{tt('wb.required.suffix')}</label>

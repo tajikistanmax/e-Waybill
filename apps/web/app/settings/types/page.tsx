@@ -19,7 +19,6 @@ const TYPES = [
   { code: 'WB_TRUCK_INTL', form: '5Б-БМ', num: '07', days: 30, pax: false, intl: true },
   { code: 'WB_PAX_INTL', form: '4М-БМ', num: '08', days: 30, pax: true, intl: true },
   { code: 'WB_SPECIAL', form: 'спецтехника', num: '09', days: 7, pax: false, intl: false },
-  { code: 'WB_DANGEROUS', form: 'опасные грузы', num: '10', days: 1, pax: false, intl: false },
 ];
 
 export default function TypesSettingsPage() {

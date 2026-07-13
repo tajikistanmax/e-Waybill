@@ -126,6 +126,18 @@ public class WaybillService {
                     throw new UnprocessableException("Недопустимый вид перевозки «%s»: ожидается PIECEWORK (корбайъ) или HOURLY (соатбайъ)".formatted(shipmentKind));
                 }
                 validateTrailers(data.get("trailers"));
+                // Опасный груз (ДОПОГ) — режим грузового ПЛ, а не отдельный тип: при отметке
+                // dangerous обязателен класс ADR (1–9). Свидетельства ADR (водитель/ТС) проверяются
+                // мягко в preflight (как и раньше) — жёсткая блокировка появится с наполнением данных.
+                if (Boolean.TRUE.equals(data.get("dangerous"))) {
+                    String adrClass = str(data.get("adrClass"));
+                    if (adrClass.isBlank()) {
+                        throw new UnprocessableException("Для опасного груза укажите класс ADR (adrClass): 1–9");
+                    }
+                    if (!adrClass.matches("[1-9]")) {
+                        throw new UnprocessableException("Недопустимый класс ADR «%s»: ожидается число 1–9".formatted(adrClass));
+                    }
+                }
             }
             case WB_TRUCK_INTL, WB_PAX_INTL -> { // 5Б-БМ / 4М-БМ международные
                 requireText(data, "visaCountry", "Укажите страну выдачи визы (visaCountry)");
