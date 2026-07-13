@@ -3,6 +3,9 @@
   "enabled": true,
   "registrationAllowed": false,
   "sslRequired": "external",
+  "attributes": {
+    "frontendUrl": "http://localhost:8180"
+  },
   "roles": {
     "realm": [
       { "name": "DISPATCHER", "description": "Диспетчер (Танзимгар)" },

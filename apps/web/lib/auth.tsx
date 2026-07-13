@@ -3,7 +3,10 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { setAuthToken, md } from '@/lib/api';
 
-const KC = process.env.NEXT_PUBLIC_KEYCLOAK_URL || 'http://localhost:8180';
+// 127.0.0.1 (не localhost): на Windows браузер/Node резолвят localhost в IPv6 ::1 через
+// happy-eyeballs, а Keycloak (docker) слушает IPv4 → запрос к localhost:8180 из браузера
+// ВИСНЕТ и boot-экран «Загрузка системы…» держится вечно. Та же причина, что в next.config.
+const KC = process.env.NEXT_PUBLIC_KEYCLOAK_URL || 'http://127.0.0.1:8180';
 const TOKEN_URL = `${KC}/realms/epd/protocol/openid-connect/token`;
 const LOGOUT_URL = `${KC}/realms/epd/protocol/openid-connect/logout`;
 const RT_KEY = 'dts_rt';
@@ -85,6 +88,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const res = await fetch(TOKEN_URL, {
         method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body: new URLSearchParams({ client_id: 'epd-web', grant_type: 'refresh_token', refresh_token: rt }),
+        // Не зависать на недоступном Keycloak: иначе ready не станет true и boot-экран держится вечно.
+        signal: AbortSignal.timeout(8000),
       });
       if (!res.ok) throw new Error('expired');
       applyToken(await res.json());
@@ -96,10 +101,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [applyToken]);
 
   const login = useCallback(async (username: string, password: string, remember = true) => {
-    const res = await fetch(TOKEN_URL, {
-      method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({ client_id: 'epd-web', grant_type: 'password', scope: 'openid', username, password }),
-    });
+    let res: Response;
+    try {
+      res = await fetch(TOKEN_URL, {
+        method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({ client_id: 'epd-web', grant_type: 'password', scope: 'openid', username, password }),
+        signal: AbortSignal.timeout(12000),
+      });
+    } catch {
+      throw new Error('Сервер аутентификации недоступен. Повторите попытку.');
+    }
     if (!res.ok) throw new Error('Неверный логин или пароль');
     const data = await res.json();
     chooseRt(data.refresh_token, remember); // разместить RT по выбору «Запомнить меня»
