@@ -232,6 +232,18 @@ public class WaybillService {
                     throw new UnprocessableException("Недопустимый класс ADR «%s»: ожидается число 1–9".formatted(adrClass));
                 }
             }
+            case WB_SPECIAL -> { // спецтехника (форма 09) — учёт по МОТОЧАСАМ, не по километражу
+                // Спецтехника (экскаватор/кран/погрузчик/каток/…) часто работает на площадке:
+                // одометр не отражает работу, показатель — моточасы; вместо маршрута — вид работ
+                // и объект. Одометр/маршрут для этого типа необязательны.
+                requireText(data, "workType", "Укажите вид работ (workType)");
+                double mhExit = parseMotorHours(data.get("motorHoursExit"),
+                        "Укажите моточасы на выезде (motorHoursExit)");
+                if (mhExit < 0) {
+                    throw new UnprocessableException("Моточасы на выезде не могут быть отрицательными");
+                }
+                // workObject (объект/адрес работ) — рекомендуется, но не обязателен
+            }
             default -> { /* прочие типы — свободная схема type_data */ }
         }
         validateCustomFields(wb.getWaybillType(), data);
@@ -263,6 +275,19 @@ public class WaybillService {
                             "Обязательное дополнительное поле «%s» не заполнено".formatted(label.isBlank() ? key : label));
                 }
             }
+        }
+    }
+
+    /** Моточасы спецтехники (формы 09): дробное неотрицательное число; пустое — ошибка requiredMsg. */
+    private static double parseMotorHours(Object v, String requiredMsg) {
+        String s = str(v).trim();
+        if (s.isBlank()) {
+            throw new UnprocessableException(requiredMsg);
+        }
+        try {
+            return Double.parseDouble(s);
+        } catch (NumberFormatException e) {
+            throw new UnprocessableException("Моточасы должны быть числом (например 1240.5)");
         }
     }
 
@@ -842,6 +867,12 @@ public class WaybillService {
     /** Т5 — возвращение: одометр возврата. */
     @Transactional
     public Waybill returnTrip(UUID id, String dispatcherRma, int odometerEntry) {
+        return returnTrip(id, dispatcherRma, odometerEntry, null);
+    }
+
+    /** Возврат (Т5). Для спецтехники дополнительно фиксируются моточасы возврата (motorHoursEntry). */
+    @Transactional
+    public Waybill returnTrip(UUID id, String dispatcherRma, int odometerEntry, Double motorHoursEntry) {
         var wb = getForUpdate(id);
         requireStatus(wb, WaybillStatus.ACTIVE);
         requireEmployee(wb, dispatcherRma, 3, "Диспетчер");
@@ -849,6 +880,23 @@ public class WaybillService {
             throw new UnprocessableException("Одометр возврата меньше одометра выезда");
         }
         wb.setOdometerEntry(odometerEntry);
+        // Спецтехника: учёт по моточасам — фиксируем моточасы возврата в type_data,
+        // отработано = возврат − выезд (проверяем непрерывность, как у одометра).
+        if (wb.getWaybillType() == WaybillType.WB_SPECIAL && motorHoursEntry != null) {
+            var td = wb.getTypeData() != null
+                    ? new java.util.LinkedHashMap<String, Object>(wb.getTypeData())
+                    : new java.util.LinkedHashMap<String, Object>();
+            double exit = td.get("motorHoursExit") == null ? 0
+                    : Double.parseDouble(str(td.get("motorHoursExit")));
+            if (motorHoursEntry < 0) {
+                throw new UnprocessableException("Моточасы возврата не могут быть отрицательными");
+            }
+            if (motorHoursEntry < exit) {
+                throw new UnprocessableException("Моточасы возврата меньше моточасов выезда");
+            }
+            td.put("motorHoursEntry", motorHoursEntry);
+            wb.setTypeData(td);
+        }
         addTitle(wb, "T5", dispatcherRma, "DISPATCHER", Map.of(
                 "odometerEntry", odometerEntry,
                 "distance", wb.getOdometerExit() != null ? odometerEntry - wb.getOdometerExit() : 0));

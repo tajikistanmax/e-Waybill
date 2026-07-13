@@ -52,8 +52,11 @@ export default function NewWaybillPage() {
   const [countries, setCountries] = useState<Option[]>([]);
   const [adrClasses, setAdrClasses] = useState<Option[]>([]);
   const [permitTypes, setPermitTypes] = useState<Option[]>([]);
+  const [workTypes, setWorkTypes] = useState<Option[]>([]);
   // Опасный груз — режим грузового ПЛ (2-Б): галочка on + класс ADR.
   const [dangerous, setDangerous] = useState({ on: false, adrClass: '', unNumber: '' });
+  // Спецтехника (09): вид работ + объект + моточасы на выезде (учёт по моточасам, не по км).
+  const [special, setSpecial] = useState({ workType: '', workObject: '', motorHoursExit: '' });
   const [customDefs, setCustomDefs] = useState<FieldDefinition[]>([]);
   const [customValues, setCustomValues] = useState<Record<string, string>>({});
   const [orgRma, setOrgRma] = useState('');
@@ -113,6 +116,9 @@ export default function NewWaybillPage() {
     md.classifiers('PERMIT_TYPE')
       .then(list => setPermitTypes(list.map(c => ({ value: c.nameRu, label: c.nameRu }))))
       .catch(() => {});
+    md.classifiers('WORK_TYPE')
+      .then(list => setWorkTypes(list.map(c => ({ value: c.nameRu, label: c.nameRu }))))
+      .catch(() => {});
   }, []);
 
   // Доп.поля выбранного типа ПЛ (конструктор полей). Флаг отмены — против гонки:
@@ -163,6 +169,7 @@ export default function NewWaybillPage() {
   const isCar = t === 'WB_CAR' || t === 'WB_TAXI';
   const isTruck = t === 'WB_TRUCK';
   const isIntl = INTL_TYPES.includes(t);
+  const isSpecial = t === 'WB_SPECIAL';
 
   const orgLabel = orgs.find(o => o.value === orgRma)?.label ?? '';
   const vehicleLabel = selVehicle?.label ?? form.vehicleRegNumber;
@@ -180,6 +187,7 @@ export default function NewWaybillPage() {
     && (isCar && serviceKind === 'ROUTE' ? !!form.route.trim() : true)
     && (isTruck ? trailersValid : true)
     && (isTruck && dangerous.on ? !!dangerous.adrClass : true)
+    && (isSpecial ? (!!special.workType && special.motorHoursExit.trim() !== '') : true)
     && customValid;
 
   const stepOk = (s: number) => s === 1 ? !!form.waybillType : s === 2 ? canStep2 : s === 3 ? canStep3 : true;
@@ -205,6 +213,11 @@ export default function NewWaybillPage() {
       shipmentKind,
       ...(trailers.length ? { trailers } : {}),
       ...(dangerous.on ? { dangerous: true, adrClass: dangerous.adrClass, ...(dangerous.unNumber ? { unNumber: dangerous.unNumber } : {}) } : {}),
+    };
+    if (isSpecial) return {
+      workType: special.workType,
+      motorHoursExit: Number(special.motorHoursExit),
+      ...(special.workObject.trim() ? { workObject: special.workObject.trim() } : {}),
     };
     if (isIntl) {
       return {
@@ -543,6 +556,30 @@ export default function NewWaybillPage() {
                 </>
               )}
 
+              {/* --- Спецтехника (09): вид работ, объект, моточасы (учёт по моточасам) --- */}
+              {isSpecial && (
+                <>
+                  <div>
+                    <label>{tt('wb.f.worktype')}{tt('wb.required.suffix')}</label>
+                    <select required value={special.workType} onChange={e => setSpecial({ ...special, workType: e.target.value })}>
+                      <option value="">{tt('wb.opt.worktype')}</option>
+                      {workTypes.map(w => <option key={w.value} value={w.value}>{w.label}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label>{tt('wb.f.motorhours')}{tt('wb.required.suffix')}</label>
+                    <input type="number" min="0" step="0.1" required placeholder="1240.5"
+                      value={special.motorHoursExit} onChange={e => setSpecial({ ...special, motorHoursExit: e.target.value })} />
+                  </div>
+                  <div style={{ gridColumn: '1 / -1' }}>
+                    <label>{tt('wb.f.workobject')}</label>
+                    <input value={special.workObject} placeholder={tt('wb.ph.workobject')}
+                      onChange={e => setSpecial({ ...special, workObject: e.target.value })} />
+                  </div>
+                  <div style={{ gridColumn: '1 / -1' }} className="hint">{tt('wb.spec.note')}</div>
+                </>
+              )}
+
               {/* --- Доп.поля типа (конструктор полей) --- */}
               {customDefs.length > 0 && (
                 <div style={{ gridColumn: '1 / -1', borderTop: '1px solid var(--line)', paddingTop: 10, marginTop: 2, fontSize: 12.5, fontWeight: 700, color: 'var(--muted)' }}>
@@ -596,6 +633,7 @@ export default function NewWaybillPage() {
                 {isCar && (<><dt>{tt('wb.svc.label')}</dt><dd>{tt(({ TAXI: 'wb.svc.taxi', ROUTE: 'wb.svc.route', HOURLY: 'wb.svc.hourly' } as Record<string, string>)[serviceKind])}</dd></>)}
                 {isTruck && (<><dt>{tt('wb.ship.label')}</dt><dd>{shipmentKind === 'HOURLY' ? tt('wb.ship.hourly') : tt('wb.ship.piecework')}{trailers.length ? ` · ${tt('wb.trailerscount')}: ${trailers.length}` : ''}</dd></>)}
                 {isIntl && (<><dt>{tt('wb.intl.trip')}</dt><dd>{intl.loadCountry || '—'} → {intl.unloadCountry || '—'} · {tt('wb.permit.short')} {intl.permitNumber || '—'}{intl.secondDriverRma ? tt('wb.withsecond') : ''}</dd></>)}
+                {isSpecial && (<><dt>{tt('wb.spec.label')}</dt><dd>{special.workType || '—'}{special.motorHoursExit ? ` · ${tt('wb.f.motorhours')}: ${special.motorHoursExit}` : ''}{special.workObject ? ` · ${special.workObject}` : ''}</dd></>)}
               </dl>
             </>
           )}

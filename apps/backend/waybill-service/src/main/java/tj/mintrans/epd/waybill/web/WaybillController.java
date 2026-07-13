@@ -100,7 +100,8 @@ public class WaybillController {
 
     public record ReturnRequest(
             @NotBlank @Pattern(regexp = "\\d{9,10}") String dispatcherRma,
-            @NotNull Integer odometerEntry) {
+            @NotNull Integer odometerEntry,
+            Double motorHoursEntry) { // моточасы возврата — только для спецтехники (иначе null)
     }
 
     public record CloseRequest(String actor) {
@@ -172,7 +173,7 @@ public class WaybillController {
     @PostMapping("/{id}/return")
     @PreAuthorize("hasAnyRole('DISPATCHER','SYSTEM_ADMIN')")
     public Waybill returnTrip(@PathVariable UUID id, @Valid @RequestBody ReturnRequest req) {
-        return service.returnTrip(id, req.dispatcherRma(), req.odometerEntry());
+        return service.returnTrip(id, req.dispatcherRma(), req.odometerEntry(), req.motorHoursEntry());
     }
 
     @PostMapping("/{id}/close")

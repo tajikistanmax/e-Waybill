@@ -19,6 +19,7 @@ export default function WaybillCard({ params }: { params: Promise<{ id: string }
   const [error, setError] = useState('');
   const [ok, setOk] = useState('');
   const [odometerEntry, setOdometerEntry] = useState('');
+  const [motorHoursEntry, setMotorHoursEntry] = useState(''); // моточасы возврата — спецтехника
   const [fuelCalc, setFuelCalc] = useState<Record<string, unknown> | null>(null);
   const [workDays, setWorkDays] = useState<Record<string, unknown>[]>([]);
   const [dayForm, setDayForm] = useState({ workDate: '', exitTime: '06:00', entryTime: '', odometerExit: '', odometerEntry: '', laps: '', revenue: '' });
@@ -112,10 +113,15 @@ export default function WaybillCard({ params }: { params: Promise<{ id: string }
   const intlKeys = ['loadCountry', 'unloadCountry', 'transitCountries', 'permitNumber', 'visaValidTo', 'cargoName', 'bbaNumber'];
   const isIntl = intlKeys.some(k => k in td);
   const hasServiceInfo = 'serviceKind' in td || 'shipmentKind' in td;
-  const showRoute = isIntl || hasServiceInfo || !!w.route || !!w.schedule;
+  const isSpecial = w.waybillType === 'WB_SPECIAL';
+  const showRoute = isIntl || hasServiceInfo || isSpecial || !!w.route || !!w.schedule;
   const trailers = Array.isArray(td.trailers) ? (td.trailers as { registrationNumber: string; brand: string }[]) : [];
   const titlesWithData = titles.filter(t => t.data && Object.keys(t.data).length > 0);
   const mileage = (w.odometerExit != null && w.odometerEntry != null) ? w.odometerEntry - w.odometerExit : null;
+  // Спецтехника: отработано моточасов (возврат − выезд), если оба показателя есть
+  const mhExit = td.motorHoursExit != null ? Number(td.motorHoursExit) : null;
+  const mhEntry = td.motorHoursEntry != null ? Number(td.motorHoursEntry) : null;
+  const motorHoursWorked = (mhExit != null && mhEntry != null) ? +(mhEntry - mhExit).toFixed(1) : null;
 
   const vehicleName = String(w.vehicleSnapshot?.brand ?? '');
   const driverName = String(w.driverSnapshot?.fullName ?? w.driverRma);
@@ -193,11 +199,23 @@ export default function WaybillCard({ params }: { params: Promise<{ id: string }
             </button>
           )}
           {w.status === 'ACTIVE' && canDispatch && (
-            <span>
-              <input type="number" inputMode="numeric" min={0} style={{ width: 180, marginRight: 8, display: 'inline-block' }} placeholder={t('wb.ph.odoentry')}
+            <span style={{ display: 'inline-flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+              {isSpecial && (
+                <input type="number" min={0} step="0.1" style={{ width: 180 }} placeholder={t('wb.ph.motohours')}
+                  value={motorHoursEntry} onChange={e => setMotorHoursEntry(e.target.value)} />
+              )}
+              <input type="number" inputMode="numeric" min={0} style={{ width: 180 }}
+                placeholder={isSpecial ? t('wb.ph.odoentry.opt') : t('wb.ph.odoentry')}
                 value={odometerEntry} onChange={e => setOdometerEntry(e.target.value)} />
-              <button className="btn" disabled={!dispatcher || !Number.isFinite(Number(odometerEntry)) || odometerEntry.trim() === ''}
-                onClick={() => act(t('wb.act.returned'), () => wb.post(`/${id}/return`, { dispatcherRma: dispatcher, odometerEntry: Number(odometerEntry) }))}>
+              <button className="btn"
+                disabled={!dispatcher || (isSpecial
+                  ? (motorHoursEntry.trim() === '' || !Number.isFinite(Number(motorHoursEntry)))
+                  : (!Number.isFinite(Number(odometerEntry)) || odometerEntry.trim() === ''))}
+                onClick={() => act(t('wb.act.returned'), () => wb.post(`/${id}/return`, {
+                  dispatcherRma: dispatcher,
+                  odometerEntry: odometerEntry.trim() !== '' ? Number(odometerEntry) : (w.odometerExit ?? 0),
+                  ...(isSpecial ? { motorHoursEntry: Number(motorHoursEntry) } : {}),
+                }))}>
                 {t('wb.btn.t5')}
               </button>
             </span>
@@ -373,6 +391,8 @@ export default function WaybillCard({ params }: { params: Promise<{ id: string }
             <dt>{t('wb.schedule')}</dt><dd>{w.schedule ?? '—'}</dd>
             {'serviceKind' in td && <><dt>{t('wb.svc.label')}</dt><dd>{{ TAXI: t('wb.svc.taxi'), ROUTE: t('wb.svc.route'), HOURLY: t('wb.svc.hourly') }[String(td.serviceKind)] ?? String(td.serviceKind)}</dd></>}
             {'shipmentKind' in td && <><dt>{t('wb.ship.label')}</dt><dd>{String(td.shipmentKind) === 'PIECEWORK' ? t('wb.ship.piecework') : t('wb.ship.hourly')}</dd></>}
+            {'workType' in td && <><dt>{t('wb.f.worktype')}</dt><dd>{String(td.workType)}</dd></>}
+            {'workObject' in td && <><dt>{t('wb.f.workobject')}</dt><dd>{String(td.workObject)}</dd></>}
             {'permitNumber' in td && <><dt>{t('wb.dt.permit')}</dt><dd>{String(td.permitNumber)}</dd></>}
             {'visaValidTo' in td && <><dt>{t('wb.visa')}</dt><dd>{t('wb.until')} {String(td.visaValidTo)} · {String(td.visaCountry ?? '')}</dd></>}
             {'loadCountry' in td && <><dt>{t('wb.triproute')}</dt><dd>{String(td.loadCountry)} → {Array.isArray(td.transitCountries) && td.transitCountries.length ? `${(td.transitCountries as string[]).join(', ')} → ` : ''}{String(td.unloadCountry)}</dd></>}
@@ -390,6 +410,10 @@ export default function WaybillCard({ params }: { params: Promise<{ id: string }
             <dl className="kv">
               <dt>{t('wb.odo.exitentry')}</dt><dd>{w.odometerExit ?? '—'} → {w.odometerEntry ?? '—'}</dd>
               <dt>{t('col.mileage')}</dt><dd>{mileage != null ? `${mileage} ${t('unit.km')}` : '—'}</dd>
+              {isSpecial && (<>
+                <dt>{t('wb.f.motorhours')} → {t('wb.f.motorhours.in')}</dt><dd>{mhExit ?? '—'} → {mhEntry ?? '—'}</dd>
+                <dt>{t('wb.spec.worked')}</dt><dd>{motorHoursWorked != null ? `${motorHoursWorked} ${t('unit.mh')}` : '—'}</dd>
+              </>)}
             </dl>
           </div>
 
