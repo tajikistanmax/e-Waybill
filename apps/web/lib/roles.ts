@@ -28,11 +28,14 @@ export function visibleNav(roles: string[]): Set<NavKey> {
   // нац. Справочники, глобальные Реестры — это администратор платформы/Минтранс).
   if (roles.includes('COMPANY_ADMIN')) add('dashboard', 'waybills', 'company', 'fleet', 'monitoring', 'violations', 'reports');
   if (roles.includes('DISPATCHER')) add('dispatcher', 'dashboard', 'waybills', 'fleet', 'monitoring');
-  if (roles.includes('DOCTOR')) add('med', 'fleet');
-  if (roles.includes('MECHANIC')) add('tech', 'fleet');
+  // Врач/механик (аутсорс-пункт) работают в своём АРМ — осмотр очереди, а НЕ управление парком перевозчика.
+  if (roles.includes('DOCTOR')) add('med');
+  if (roles.includes('MECHANIC')) add('tech');
   if (roles.includes('DRIVER')) add('driver');
-  if (roles.includes('ACCOUNTANT')) add('dashboard', 'reports', 'waybills');
-  if (roles.includes('INSPECTOR')) add('inspector', 'dashboard', 'violations', 'monitoring');
+  // Бухгалтер — финансовая функция (подтверждение оплаты + отчёты), оперативный дашборд ему не нужен.
+  if (roles.includes('ACCOUNTANT')) add('reports', 'waybills');
+  // Инспектор — контроль (проверка ПЛ + нарушения + GPS), оперативный дашборд перевозчика ему не нужен.
+  if (roles.includes('INSPECTOR')) add('inspector', 'violations', 'monitoring');
   // Аналитик Минтранса — надзор/аналитика по всем организациям (только чтение).
   if (roles.includes('MINTRANS_ANALYST')) add('dashboard', 'reports', 'registry', 'violations', 'monitoring');
 
