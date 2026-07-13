@@ -69,7 +69,12 @@ export function Sidebar() {
         {showWorkplaces && <div className="group-label">{t('nav.group.workplaces')}</div>}
         {nav.has('med') && <Link href="/med" className={`snav ${active('/med') ? 'active' : ''}`}><Icon d={P.med} /> {t('nav.med')}</Link>}
         {nav.has('tech') && <Link href="/tech" className={`snav ${active('/tech') ? 'active' : ''}`}><Icon d={P.wrench} /> {t('nav.tech')}</Link>}
-        {nav.has('driver') && <Link href="/driver" className={`snav ${active('/driver') ? 'active' : ''}`}><Icon d={P.car} /> {t('nav.driver')}</Link>}
+        {nav.has('driver') && (
+          <>
+            <Link href="/driver" className={`snav ${pathname === '/driver' ? 'active' : ''}`}><Icon d={P.car} /> {t('nav.driver')}</Link>
+            <Link href="/driver/waybills" className={`snav ${active('/driver/waybills') ? 'active' : ''}`}><Icon d={P.doc} /> {t('drv.mywaybills')}</Link>
+          </>
+        )}
         {nav.has('inspector') && <Link href="/inspector" className={`snav ${active('/inspector') ? 'active' : ''}`}><Icon d={P.shield} /> {t('nav.inspector')}</Link>}
         {nav.has('fleet') && <Link href="/fleet" className={`snav ${active('/fleet') ? 'active' : ''}`}><Icon d={fleetIcon} /> {fleetLabel}</Link>}
         {nav.has('monitoring') && <Link href="/monitoring" className={`snav ${active('/monitoring') ? 'active' : ''}`}><Icon d={P.route} /> {t('nav.monitoring')}</Link>}

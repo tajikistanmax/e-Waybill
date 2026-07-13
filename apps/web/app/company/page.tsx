@@ -289,7 +289,7 @@ function OrgRegistry() {
       {error && <div className="error">{error}</div>}
       {ok && <div className="success">{ok}</div>}
 
-      <div style={{ marginBottom: 16 }}><ExpiryAlert days={30} /></div>
+      <div style={{ marginBottom: 16 }}><ExpiryAlert days={30} compact /></div>
 
       {/* KPI */}
       <div className="kpi-row" style={{ gridTemplateColumns: 'repeat(4, 1fr)' }}>
@@ -636,7 +636,7 @@ function CompanyProfile() {
       </div>
 
       {err && <div className="error">{err}</div>}
-      <div style={{ marginBottom: 16 }}><ExpiryAlert days={30} /></div>
+      <div style={{ marginBottom: 16 }}><ExpiryAlert days={30} compact /></div>
 
       {org ? (
         <>

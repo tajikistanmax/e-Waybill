@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { wb, Waybill, STATUS_LABELS, authHeaders, TYPE_LABELS, type WaybillRequest } from '@/lib/api';
+import { wb, md, Waybill, STATUS_LABELS, authHeaders, TYPE_LABELS, type WaybillRequest } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 import { Icon, P } from '../icons';
 import QRCode from 'qrcode';
@@ -51,6 +51,7 @@ export default function DriverCabinet() {
   const [reqBusy, setReqBusy] = useState(false);
   const [reqMsg, setReqMsg] = useState('');
   const [reqErr, setReqErr] = useState('');
+  const [orgName, setOrgName] = useState('');
 
   useEffect(() => {
     wb.list().then(setItems).catch((e: Error) => setError(e.message)).finally(() => setLoading(false));
@@ -99,7 +100,11 @@ export default function DriverCabinet() {
   }, [current]);
 
   function loadReqs() { wb.requests.mine().then(setReqs).catch(() => {}); }
-  useEffect(() => { loadReqs(); }, []);
+  useEffect(() => {
+    loadReqs();
+    // Организация, к которой привязан водитель (тенант-скоуп → своя). Фолбэк — из снимка ПЛ ниже.
+    md.organizations().then(l => setOrgName(String(l[0]?.name ?? ''))).catch(() => {});
+  }, []);
 
   async function submitRequest(e: React.FormEvent) {
     e.preventDefault();
@@ -133,15 +138,26 @@ export default function DriverCabinet() {
   ];
 
   const cs = current ? STATUS_LABELS[current.status] ?? { label: current.status, color: 'gray' } : null;
+  const company = orgName || String(current?.organizationSnapshot?.name ?? '');
 
   return (
     <>
       <div className="toolbar">
         <div>
           <h1>{t('drv.h')}</h1>
-          <div className="page-lead" style={{ margin: 0 }}>{t('drv.lead')}</div>
+          <div className="page-lead" style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            <span>{t('drv.lead')}</span>
+            {company && (
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: 'var(--blue-700)', fontWeight: 600, background: 'var(--blue-050)', padding: '3px 10px', borderRadius: 999 }}>
+                <Icon d={P.building} cls="" style={{ width: 14, height: 14 }} /> {t('drv.company')}: {company}
+              </span>
+            )}
+          </div>
         </div>
-        <button className="btn" style={{ marginLeft: 'auto' }} onClick={() => { setShowReqForm(v => !v); setReqErr(''); setReqMsg(''); }}>
+        <Link href="/driver/waybills" className="btn secondary" style={{ marginLeft: 'auto', textDecoration: 'none' }}>
+          <Icon d={P.doc} cls="" style={{ width: 16, height: 16 }} /> {t('drv.mywaybills')}
+        </Link>
+        <button className="btn" onClick={() => { setShowReqForm(v => !v); setReqErr(''); setReqMsg(''); }}>
           <Icon d={P.doc} cls="" style={{ width: 16, height: 16 }} /> {showReqForm ? t('drvreq.hide') : t('drvreq.new')}
         </button>
       </div>
@@ -312,14 +328,14 @@ export default function DriverCabinet() {
       <div className="card">
         <div className="card-h">
           <h2>{t('drv.hist.h')}</h2>
-          <Link className="link" href="/waybills">{t('drv.allwb')}</Link>
+          <Link className="link" href="/driver/waybills">{t('drv.allwb')}</Link>
         </div>
         <table>
           <thead>
             <tr><th>{t('col.number')}</th><th>{t('col.type')}</th><th>{t('col.route')}</th><th>{t('col.date')}</th><th>{t('col.mileage')}</th><th>{t('col.status')}</th></tr>
           </thead>
           <tbody>
-            {history.map(w => {
+            {history.slice(0, 5).map(w => {
               const s = STATUS_LABELS[w.status] ?? { label: w.status, color: 'gray' };
               const km = mileage(w);
               return (

@@ -151,7 +151,7 @@ export default function DispatcherCabinet() {
 
       {error && <div className="error">{error}</div>}
 
-      <div style={{ marginBottom: 16 }}><ExpiryAlert days={30} /></div>
+      <div style={{ marginBottom: 16 }}><ExpiryAlert days={30} compact /></div>
 
       {/* Заявки на путевые листы от водителей */}
       <div className="card">
