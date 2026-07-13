@@ -28,9 +28,14 @@ public class FuelNorm {
     @Column(name = "base_norm", nullable = false)
     private BigDecimal baseNorm;
 
+    /** Единица нормирования: KM (л/100км, по умолчанию) или MOTORHOUR (л/моточас — спецтехника). */
+    @Column(name = "unit", nullable = false)
+    private String unit = "KM";
+
     @PrePersist
     void prePersist() {
         if (id == null) id = UUID.randomUUID();
+        if (unit == null || unit.isBlank()) unit = "KM";
     }
 
     public UUID getId() { return id; }
@@ -40,4 +45,6 @@ public class FuelNorm {
     public void setBrand(String brand) { this.brand = brand; }
     public BigDecimal getBaseNorm() { return baseNorm; }
     public void setBaseNorm(BigDecimal baseNorm) { this.baseNorm = baseNorm; }
+    public String getUnit() { return unit; }
+    public void setUnit(String unit) { this.unit = unit; }
 }

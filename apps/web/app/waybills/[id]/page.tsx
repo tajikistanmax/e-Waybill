@@ -516,8 +516,17 @@ export default function WaybillCard({ params }: { params: Promise<{ id: string }
                 </button>
               ) : (
                 <dl className="kv">
-                  <dt>{t('col.mileage')}</dt><dd>{String(fuelCalc.km)} {t('unit.km')}</dd>
-                  <dt>{t('wb.basenorm')}</dt><dd>{String(fuelCalc.baseNormPer100km)} л/100км</dd>
+                  {fuelCalc.unit === 'MOTORHOUR' ? (
+                    <>
+                      <dt>{t('wb.spec.worked')}</dt><dd>{String(fuelCalc.motorHours)} {t('unit.mh')}</dd>
+                      <dt>{t('wb.basenorm')}</dt><dd>{String(fuelCalc.baseNormPer100km)} {t('unit.lpermh')}</dd>
+                    </>
+                  ) : (
+                    <>
+                      <dt>{t('col.mileage')}</dt><dd>{String(fuelCalc.km)} {t('unit.km')}</dd>
+                      <dt>{t('wb.basenorm')}</dt><dd>{String(fuelCalc.baseNormPer100km)} л/100км</dd>
+                    </>
+                  )}
                   <dt>{t('dict.sec.coefficients')}</dt>
                   <dd>{Array.isArray(fuelCalc.coefficientsApplied) && fuelCalc.coefficientsApplied.length
                     ? (fuelCalc.coefficientsApplied as Record<string, unknown>[]).map(c => `${c.name} ×${c.value}`).join(', ')
