@@ -1106,7 +1106,14 @@ const DICT: Record<string, { ru: string; tj: string; en?: string }> = {
   'setroles.note': { ru: 'Данные выводятся из текущей логики ролей платформы (lib/roles). Гранулярные права (создание/подписание/…) — по дорожной карте.', tj: 'Маълумот аз мантиқи ҷории нақшҳои платформа бароварда мешавад. Ҳуқуқҳои муфассал (эҷод/имзо/…) — аз рӯи харитаи роҳ.' },
   'setroles.note.edit': { ru: 'Отметьте разделы меню, доступные роли, и её стартовую страницу. Это состав кабинета (навигация); реальные права действий проверяются на сервере по ролям и не отключаются здесь.', tj: 'Бахшҳои менюеро, ки ба нақш дастрасанд, ва саҳифаи оғозии онро қайд кунед. Ин таркиби кабинет (навигатсия) аст; ҳуқуқҳои воқеии амалҳо дар сервер аз рӯи нақшҳо санҷида мешаванд ва дар ин ҷо хомӯш намешаванд.' },
   'setroles.home': { ru: 'Стартовая страница', tj: 'Саҳифаи оғозӣ' },
-  'settypes.lead': { ru: 'Официальные коды форм и сроки действия по каждому типу', tj: 'Кодҳои расмии шаклҳо ва мӯҳлати эътибор аз рӯи ҳар навъ' },
+  'settypes.lead': { ru: 'Названия типов (редактируются) + официальные коды форм и сроки', tj: 'Номҳои навъҳо (таҳриршаванда) + кодҳои расмии шаклҳо ва мӯҳлатҳо' },
+  'col.code': { ru: 'Код', tj: 'Код' },
+  'settypes.nameru': { ru: 'Название (RU)', tj: 'Ном (RU)' },
+  'settypes.nametj': { ru: 'Название (TJ)', tj: 'Ном (TJ)' },
+  'settypes.editnote': { ru: 'Редактируйте названия типов путевых листов. Структурные параметры (код формы, нац.код, срок) заданы системой и не меняются.', tj: 'Номҳои навъҳои роҳхатро таҳрир кунед. Параметрҳои сохторӣ (коди шакл, коди миллӣ, мӯҳлат) аз ҷониби система муайян шудаанд ва тағйир намеёбанд.' },
+  'settypes.applynote': { ru: 'Изменённые названия применяются во всём приложении после обновления страницы.', tj: 'Номҳои тағйирёфта пас аз навсозии саҳифа дар тамоми барнома татбиқ мешаванд.' },
+  'settypes.saved': { ru: 'Название сохранено', tj: 'Ном нигоҳ дошта шуд' },
+  'settypes.needname': { ru: 'Укажите название (RU)', tj: 'Ном (RU)-ро нависед' },
   'settypes.note': { ru: 'Справочное отображение конфигурации типов из системы. Редактирование типов (вкл/выкл, поля, проверки) — по дорожной карте раздела «Настройки».', tj: 'Намоиши маълумотии танзими навъҳо аз система. Таҳрири навъҳо (фаъол/ғайрифаъол, майдонҳо, санҷишҳо) — аз рӯи харитаи роҳи бахши «Танзимот».' },
   'settypes.form': { ru: 'Код формы', tj: 'Коди шакл' },
   'settypes.natcode': { ru: 'Нац. код', tj: 'Коди миллӣ' },
@@ -1465,6 +1472,18 @@ export const useT = () => useContext(LangContext);
 
 export function LangProvider({ children }: { children: React.ReactNode }) {
   const [lang, setLangState] = useState<Lang>('ru');
+  // Редактируемые названия типов ПЛ (классификатор WAYBILL_TYPE, публичный) — переопределяют дефолт WTYPE.
+  const [typeNames, setTypeNames] = useState<Record<string, { ru: string; tj: string }>>({});
+  useEffect(() => {
+    fetch('/md-api/api/v1/classifiers/waybill-types')
+      .then(r => (r.ok ? r.json() : []))
+      .then((rows: { code: string; nameRu: string; nameTj: string | null }[]) => {
+        if (Array.isArray(rows) && rows.length) {
+          setTypeNames(Object.fromEntries(rows.map(x => [x.code, { ru: x.nameRu, tj: x.nameTj || x.nameRu }])));
+        }
+      })
+      .catch(() => { /* нет связи — остаётся зашитый дефолт WTYPE */ });
+  }, []);
   useEffect(() => {
     // Личный выбор пользователя имеет приоритет; иначе — язык платформы по умолчанию
     // (настройка interface/default_language, публичная — работает и до входа).
@@ -1483,7 +1502,7 @@ export function LangProvider({ children }: { children: React.ReactNode }) {
   // EN — опциональный: где нет перевода, фолбэк на русский (без «сырых» ключей).
   const base: 'ru' | 'tj' = lang === 'en' ? 'ru' : lang;
   const t = (k: string) => DICT[k]?.[lang] ?? DICT[k]?.ru ?? k;
-  const tType = (x: string) => WTYPE[x]?.[base] ?? x;
+  const tType = (x: string) => typeNames[x]?.[base] ?? WTYPE[x]?.[base] ?? x;
   const tStatus = (x: string) => WSTATUS[x]?.[base] ?? x;
   return <LangContext.Provider value={{ lang, setLang, t, tType, tStatus }}>{children}</LangContext.Provider>;
 }

@@ -55,6 +55,15 @@ public class ClassifierController {
                 : repository.findByCategoryAndActiveTrueOrderBySortOrderAscCodeAsc(category);
     }
 
+    /**
+     * Публичное чтение названий типов ПЛ (категория WAYBILL_TYPE) — нужно для отображения
+     * названий (tType) в т.ч. до входа. Редактирование — через общий upsert (SYSTEM_ADMIN).
+     */
+    @GetMapping("/waybill-types")
+    public List<Classifier> waybillTypes() {
+        return repository.findByCategoryAndActiveTrueOrderBySortOrderAscCodeAsc("WAYBILL_TYPE");
+    }
+
     @PostMapping
     @PreAuthorize("hasRole('SYSTEM_ADMIN')")
     public ResponseEntity<Classifier> upsert(@Valid @RequestBody ClassifierRequest req) {
