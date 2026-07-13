@@ -3,10 +3,18 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { wb, Waybill, STATUS_LABELS, authHeaders } from '@/lib/api';
+import { wb, Waybill, STATUS_LABELS, authHeaders, TYPE_LABELS, type WaybillRequest } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 import { Icon, P } from '../icons';
 import QRCode from 'qrcode';
+
+/** Статус заявки на путевой лист → ключ i18n + цвет бейджа. */
+const REQ_STATUS: Record<string, { k: string; color: string }> = {
+  PENDING: { k: 'req.st.pending', color: 'amber' },
+  APPROVED: { k: 'req.st.approved', color: 'green' },
+  REJECTED: { k: 'req.st.rejected', color: 'red' },
+  CANCELLED: { k: 'req.st.cancelled', color: 'gray' },
+};
 
 function fmtDate(iso: string | null) {
   return iso ? new Date(iso).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '—';
@@ -36,6 +44,13 @@ export default function DriverCabinet() {
   const [error, setError] = useState('');
   const [qr, setQr] = useState('');
   const router = useRouter();
+  // Заявка на путевой лист (водитель подаёт сам; личность — из входа, госномер вписывает вручную).
+  const [reqs, setReqs] = useState<WaybillRequest[]>([]);
+  const [showReqForm, setShowReqForm] = useState(false);
+  const [reqForm, setReqForm] = useState({ vehicleRegNumber: '', waybillType: 'WB_BUS', requestedFrom: '', odometer: '', route: '', notes: '' });
+  const [reqBusy, setReqBusy] = useState(false);
+  const [reqMsg, setReqMsg] = useState('');
+  const [reqErr, setReqErr] = useState('');
 
   useEffect(() => {
     wb.list().then(setItems).catch((e: Error) => setError(e.message)).finally(() => setLoading(false));
@@ -83,6 +98,33 @@ export default function DriverCabinet() {
     return () => { cancelled = true; };
   }, [current]);
 
+  function loadReqs() { wb.requests.mine().then(setReqs).catch(() => {}); }
+  useEffect(() => { loadReqs(); }, []);
+
+  async function submitRequest(e: React.FormEvent) {
+    e.preventDefault();
+    setReqBusy(true); setReqErr(''); setReqMsg('');
+    try {
+      await wb.requests.create({
+        waybillType: reqForm.waybillType,
+        vehicleRegNumber: reqForm.vehicleRegNumber.trim(),
+        requestedFrom: reqForm.requestedFrom || null,
+        odometer: reqForm.odometer ? Number(reqForm.odometer) : null,
+        route: reqForm.route || null,
+        notes: reqForm.notes || null,
+      });
+      setReqMsg(t('drvreq.sent'));
+      setReqForm({ vehicleRegNumber: '', waybillType: 'WB_BUS', requestedFrom: '', odometer: '', route: '', notes: '' });
+      setShowReqForm(false);
+      loadReqs();
+    } catch (err) { setReqErr((err as Error).message); }
+    finally { setReqBusy(false); }
+  }
+  async function cancelReq(id: string) {
+    setReqErr('');
+    try { await wb.requests.cancel(id); loadReqs(); } catch (err) { setReqErr((err as Error).message); }
+  }
+
   const kpis = [
     { label: t('drv.kpi.total'), value: stats.total, icon: P.doc, cls: 'ic-blue' },
     { label: t('drv.kpi.active'), value: stats.active, icon: P.car, cls: 'ic-cyan' },
@@ -99,9 +141,86 @@ export default function DriverCabinet() {
           <h1>{t('drv.h')}</h1>
           <div className="page-lead" style={{ margin: 0 }}>{t('drv.lead')}</div>
         </div>
+        <button className="btn" style={{ marginLeft: 'auto' }} onClick={() => { setShowReqForm(v => !v); setReqErr(''); setReqMsg(''); }}>
+          <Icon d={P.doc} cls="" style={{ width: 16, height: 16 }} /> {showReqForm ? t('drvreq.hide') : t('drvreq.new')}
+        </button>
       </div>
 
       {error && <div className="error">{error}</div>}
+      {reqErr && <div className="error">{reqErr}</div>}
+      {reqMsg && <div className="success">{reqMsg}</div>}
+
+      {/* Заявка на путевой лист (водитель подаёт сам) */}
+      {showReqForm && (
+        <div className="card" style={{ borderColor: 'var(--blue-500)' }}>
+          <h2 style={{ marginTop: 0 }}>{t('drvreq.new')}</h2>
+          <p className="hint">{t('drvreq.hint')}</p>
+          <form onSubmit={submitRequest} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 12 }}>
+            <div>
+              <label style={{ fontSize: 12.5, color: 'var(--muted)' }}>{t('drvreq.f.plate')} *</label>
+              <input required placeholder="0101TJ01" value={reqForm.vehicleRegNumber}
+                onChange={e => setReqForm({ ...reqForm, vehicleRegNumber: e.target.value })} style={{ width: '100%', marginTop: 4 }} />
+            </div>
+            <div>
+              <label style={{ fontSize: 12.5, color: 'var(--muted)' }}>{t('drvreq.f.type')} *</label>
+              <select value={reqForm.waybillType} onChange={e => setReqForm({ ...reqForm, waybillType: e.target.value })} style={{ width: '100%', marginTop: 4 }}>
+                {Object.keys(TYPE_LABELS).map(v => <option key={v} value={v}>{tType(v)}</option>)}
+              </select>
+            </div>
+            <div>
+              <label style={{ fontSize: 12.5, color: 'var(--muted)' }}>{t('drvreq.f.from')}</label>
+              <input type="date" value={reqForm.requestedFrom} onChange={e => setReqForm({ ...reqForm, requestedFrom: e.target.value })} style={{ width: '100%', marginTop: 4 }} />
+            </div>
+            <div>
+              <label style={{ fontSize: 12.5, color: 'var(--muted)' }}>{t('drvreq.f.odometer')}</label>
+              <input type="number" min={0} placeholder={t('drvreq.f.odometer.ph')} value={reqForm.odometer}
+                onChange={e => setReqForm({ ...reqForm, odometer: e.target.value })} style={{ width: '100%', marginTop: 4 }} />
+            </div>
+            <div>
+              <label style={{ fontSize: 12.5, color: 'var(--muted)' }}>{t('drvreq.f.route')}</label>
+              <input value={reqForm.route} onChange={e => setReqForm({ ...reqForm, route: e.target.value })} style={{ width: '100%', marginTop: 4 }} />
+            </div>
+            <div>
+              <label style={{ fontSize: 12.5, color: 'var(--muted)' }}>{t('drvreq.f.notes')}</label>
+              <input value={reqForm.notes} onChange={e => setReqForm({ ...reqForm, notes: e.target.value })} style={{ width: '100%', marginTop: 4 }} />
+            </div>
+            <div style={{ gridColumn: '1 / -1', display: 'flex', gap: 10, marginTop: 4 }}>
+              <button className="btn primary" type="submit" disabled={reqBusy || !reqForm.vehicleRegNumber.trim()}>{reqBusy ? '…' : t('drvreq.send')}</button>
+              <button type="button" className="btn secondary" onClick={() => setShowReqForm(false)}>{t('fleet.cancel')}</button>
+            </div>
+          </form>
+          <div className="hint" style={{ marginTop: 8 }}>{t('drvreq.privacy')}</div>
+        </div>
+      )}
+
+      {reqs.length > 0 && (
+        <div className="card">
+          <div className="card-h"><h2>{t('drvreq.mine.h')}</h2></div>
+          <table>
+            <thead><tr><th>{t('col.type')}</th><th>{t('col.transport')}</th><th>{t('drvreq.f.from')}</th><th>{t('col.odometer')}</th><th>{t('col.status')}</th><th></th></tr></thead>
+            <tbody>
+              {reqs.map(r => {
+                const rs = REQ_STATUS[r.status] ?? { k: r.status, color: 'gray' };
+                return (
+                  <tr key={r.id}>
+                    <td>{tType(r.waybillType).replace(/\s*\(.*\)/, '')}</td>
+                    <td><span className="number">{r.vehicleRegNumber}</span></td>
+                    <td>{r.requestedFrom ?? '—'}</td>
+                    <td>{r.odometer != null ? `${r.odometer.toLocaleString('ru-RU')} км` : '—'}</td>
+                    <td>
+                      <span className={`badge ${rs.color}`}>{t(rs.k)}</span>
+                      {r.status === 'REJECTED' && r.rejectReason ? <div style={{ fontSize: 11.5, color: 'var(--red)', marginTop: 2 }}>{r.rejectReason}</div> : null}
+                    </td>
+                    <td style={{ textAlign: 'right' }}>
+                      {r.status === 'PENDING' && <button className="btn secondary" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => cancelReq(r.id)}>{t('drvreq.cancel')}</button>}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       {/* Текущий путевой лист */}
       {current ? (

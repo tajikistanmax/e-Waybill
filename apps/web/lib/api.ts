@@ -332,6 +332,29 @@ export type EligibilityCheck = { code: string; severity: 'ERROR' | 'WARN'; messa
 export type Eligibility = { eligible: boolean; checks: EligibilityCheck[] };
 export type TypeAvailability = { type: string; available: boolean; reasons: string[] };
 
+// Заявка на путевой лист (driver-initiated): водитель подаёт → диспетчер одобряет/отклоняет.
+export type WaybillRequestStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELLED';
+export type WaybillRequest = {
+  id: string;
+  organizationRma: string;
+  driverRma: string;
+  driverName: string | null;
+  vehicleRegNumber: string;
+  waybillType: string;
+  requestedFrom: string | null;
+  odometer: number | null;
+  communicationType: string | null;
+  route: string | null;
+  schedule: string | null;
+  notes: string | null;
+  status: WaybillRequestStatus;
+  rejectReason: string | null;
+  waybillId: string | null;
+  reviewedBy: string | null;
+  reviewedAt: string | null;
+  createdAt: string;
+};
+
 export const wb = {
   list: () => fetch('/wb-api/api/v1/waybills', { headers: authHeaders() }).then(r => handle<Waybill[]>(r)),
   // Доступные типы ПЛ для организации (по лицензии/виду субъекта) — для шага выбора типа.
@@ -345,6 +368,24 @@ export const wb = {
     if (params.driverRma) q.set('driverRma', params.driverRma);
     return fetch(`/wb-api/api/v1/waybills/preflight?${q.toString()}`, { headers: authHeaders() })
       .then(r => handle<Eligibility>(r));
+  },
+  // Заявки на путевой лист: водитель (mine/create/cancel), диспетчер (list/edit/approve/reject).
+  requests: {
+    mine: () => fetch('/wb-api/api/v1/waybill-requests/mine', { headers: authHeaders() }).then(r => handle<WaybillRequest[]>(r)),
+    list: (status?: string) => fetch(`/wb-api/api/v1/waybill-requests${status ? `?status=${encodeURIComponent(status)}` : ''}`, { headers: authHeaders() }).then(r => handle<WaybillRequest[]>(r)),
+    create: (body: Record<string, unknown>) => fetch('/wb-api/api/v1/waybill-requests', {
+      method: 'POST', headers: authHeaders({ 'Content-Type': 'application/json' }), body: JSON.stringify(body),
+    }).then(r => handle<WaybillRequest>(r)),
+    cancel: (id: string) => fetch(`/wb-api/api/v1/waybill-requests/${id}/cancel`, { method: 'POST', headers: authHeaders() }).then(r => handle<WaybillRequest>(r)),
+    edit: (id: string, body: Record<string, unknown>) => fetch(`/wb-api/api/v1/waybill-requests/${id}`, {
+      method: 'PATCH', headers: authHeaders({ 'Content-Type': 'application/json' }), body: JSON.stringify(body),
+    }).then(r => handle<WaybillRequest>(r)),
+    approve: (id: string, body?: Record<string, unknown>) => fetch(`/wb-api/api/v1/waybill-requests/${id}/approve`, {
+      method: 'POST', headers: authHeaders({ 'Content-Type': 'application/json' }), body: JSON.stringify(body ?? {}),
+    }).then(r => handle<WaybillRequest>(r)),
+    reject: (id: string, reason: string) => fetch(`/wb-api/api/v1/waybill-requests/${id}/reject`, {
+      method: 'POST', headers: authHeaders({ 'Content-Type': 'application/json' }), body: JSON.stringify({ reason }),
+    }).then(r => handle<WaybillRequest>(r)),
   },
   payment: (id: string) => fetch(`/wb-api/api/v1/waybills/${id}/payment`, { headers: authHeaders() }).then(r => handle<Payment>(r)),
   get: (id: string) => fetch(`/wb-api/api/v1/waybills/${id}`, { headers: authHeaders() }).then(r => handle<Waybill>(r)),
