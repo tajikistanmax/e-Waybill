@@ -302,46 +302,63 @@ function Form5B({ w, org, veh, drv, td, signed, qrUrl, copy, showQr, showStamp, 
         </tbody>
       </table>
 
-      {/* ТС / водители / прицепы / лицензия / виза / страна назначения */}
+      {/* Верхняя часть: СЛЕВА — ТС/водители/прицепы/лицензия/виза/страна; СПРАВА — таблицы операций (1–5) и топлива (6–13) */}
       <table style={{ marginTop: 3 }}>
         <tbody>
           <tr>
-            <td className="lbl" style={{ width: '30%' }}>Номи корхона / The name of org-n / Наимен. орг-ции</td>
-            <td className="val">{s(org.name)}</td>
-          </tr>
-          <tr>
-            <td className="lbl">Автомобил (тамға ва рақ. дав.) / Vehicle (model, plate №) / Автомобиль (марка, гос. №)</td>
-            <td className="val">{s(veh.brand)} · {w.vehicleRegNumber}</td>
-          </tr>
-          <tr>
-            <td className="lbl">Ронандаи 1 (насаб, рақ. шаҳод.) / Driver 1 (name, cert. №) / Водитель 1 (Ф.И.О., № удост.)</td>
-            <td className="val">{s(drv.fullName) || w.driverRma} · ВУ {s(drv.licenseNumber) || '—'} ({s(drv.licenseCategories) || '—'})</td>
-          </tr>
-          <tr>
-            <td className="lbl">Ронандаи 2 / Driver 2 / Водитель 2</td>
-            <td className="val">{s(secondDrv.fullName) || (w.secondDriverRma ?? '')}</td>
-          </tr>
-          {[0, 1, 2].map(i => (
-            <tr key={i}>
-              <td className="lbl">Ядаки {i + 1} (тамға ва рақ. дав.) / Trailer {i + 1} / Прицеп {i + 1} (марка, гос. №)</td>
-              <td className="val">{trailers[i] ? `${s(trailers[i].brand)} · ${s(trailers[i].registrationNumber)}` : ''}</td>
-            </tr>
-          ))}
-          <tr>
-            <td className="lbl">Иҷозатнома / дозвол (E-PERMIT) № · Рақ. сертификат / License · Certificate № / № лицензии · сертификата</td>
-            <td className="val">{s(td.permitNumber)}</td>
-          </tr>
-          <tr>
-            <td className="lbl">Рақ. китобчаи ББА / № of TIR Carnet / № книжки МДП</td>
-            <td className="val">{s(td.tirCarnet)}</td>
-          </tr>
-          <tr>
-            <td className="lbl">Мӯҳлати виза / Validity of the visa / Срок визы</td>
-            <td className="val">{s(td.visaCountry) ? `${s(td.visaCountry)} · ` : ''}до {s(td.visaValidTo) || '____'}</td>
-          </tr>
-          <tr>
-            <td className="lbl">Ба давлати / In State / В государство</td>
-            <td className="val">{s(td.unloadCountry)}</td>
+            <td style={{ width: '45%', padding: 0, verticalAlign: 'top' }}>
+              <table style={{ height: '100%' }}>
+                <tbody>
+                  <tr><td className="lbl" style={{ width: '48%' }}>Номи корхона / Наимен. орг-ции</td><td className="val">{s(org.name)}</td></tr>
+                  <tr><td className="lbl">Автомобил (тамға ва рақ. дав.) / Автомобиль (марка, гос. №)</td><td className="val">{s(veh.brand)} · {w.vehicleRegNumber}</td></tr>
+                  <tr><td className="lbl">Ронандаи 1 (насаб, рақ. шаҳод.) / Водитель 1 (Ф.И.О., № удост.)</td><td className="val">{s(drv.fullName) || w.driverRma} · ВУ {s(drv.licenseNumber) || '—'} ({s(drv.licenseCategories) || '—'})</td></tr>
+                  <tr><td className="lbl">Ронандаи 2 / Водитель 2</td><td className="val">{s(secondDrv.fullName) || (w.secondDriverRma ?? '')}</td></tr>
+                  {[0, 1, 2].map(i => (
+                    <tr key={i}><td className="lbl">Ядаки {i + 1} / Прицеп {i + 1} (марка, гос. №)</td><td className="val">{trailers[i] ? `${s(trailers[i].brand)} · ${s(trailers[i].registrationNumber)}` : ''}</td></tr>
+                  ))}
+                  <tr><td className="lbl">Иҷозатнома / дозвол (E-PERMIT) № · Рақ. сертификат / № лицензии · сертификата</td><td className="val">{s(td.permitNumber)}</td></tr>
+                  <tr><td className="lbl">Рақ. китобчаи ББА / № книжки МДП (TIR)</td><td className="val">{s(td.tirCarnet)}</td></tr>
+                  <tr><td className="lbl">Мӯҳлати виза / Срок визы</td><td className="val">{s(td.visaCountry) ? `${s(td.visaCountry)} · ` : ''}до {s(td.visaValidTo) || '____'}</td></tr>
+                  <tr><td className="lbl">Ба давлати / In State / В государство</td><td className="val">{s(td.unloadCountry)}</td></tr>
+                </tbody>
+              </table>
+            </td>
+            <td style={{ width: '55%', padding: 0, verticalAlign: 'top' }}>
+              {/* Кори ронанда ва автомобил (колонки 1–5) */}
+              <table>
+                <tbody>
+                  <tr><td colSpan={5} className="t3" style={{ fontSize: 7.3 }}>Кори ронанда ва автомобил / Operation process / Работа водителя и автомобиля</td></tr>
+                  <tr className="lbl">
+                    <td rowSpan={2}>Амалиёт / Operation / Операция</td>
+                    <td colSpan={2}>Вақт аз рӯи нақша / Time on graphic / Время по графику</td>
+                    <td rowSpan={2}>Нишондод, суръат / Speedometer / Показание спидометра (км)</td>
+                    <td rowSpan={2}>Вақти воқеъӣ / Actual / Фактическое время</td>
+                  </tr>
+                  <tr className="lbl"><td>Сана / Дата</td><td>Вақт / Время</td></tr>
+                  <tr className="cnum"><td>1</td><td>2</td><td>3</td><td>4</td><td>5</td></tr>
+                  <tr><td className="lbl">Баромад / Start / Выезд</td><td></td><td></td><td className="val">{w.odometerExit ?? ''}</td><td></td></tr>
+                  <tr><td className="lbl">Бозгашт / Return / Заезд</td><td></td><td></td><td className="val">{w.odometerEntry ?? ''}</td><td></td></tr>
+                </tbody>
+              </table>
+              {/* Ҳаракати сӯзишворӣ (колонки 6–13) */}
+              <table style={{ marginTop: 2 }}>
+                <tbody>
+                  <tr><td colSpan={8} className="t3" style={{ fontSize: 7.3 }}>Ҳаракати сӯзишворӣ / Fuel / Движение горючего</td></tr>
+                  <tr className="lbl">
+                    <td rowSpan={2}>Рамзи сӯзишворӣ / Марка горючего</td>
+                    <td rowSpan={2}>Дода шуд / Выдано</td>
+                    <td rowSpan={2}>Боқӣ монд / Остаток при</td>
+                    <td rowSpan={2}>Баргардонида / Сдано</td>
+                    <td rowSpan={2}>Коэффи-циент</td>
+                    <td colSpan={3}>Вақти корӣ / Time of working / Время работы</td>
+                  </tr>
+                  <tr className="lbl"><td>Баромад / Бозгашт</td><td>Муҳаррик / Мотор</td><td>Тачҳиз. махс / Спецобор.</td></tr>
+                  <tr className="cnum"><td>6</td><td>7</td><td>8</td><td>9</td><td>10</td><td>11</td><td>12</td><td>13</td></tr>
+                  <tr className="blank"><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>
+                  <tr className="lbl"><td colSpan={8}>Имзо / Signature / Подпись: &nbsp; Тақ. сӯзиш. · Механик · Тақ. сӯзиш. · Танзимгар</td></tr>
+                </tbody>
+              </table>
+            </td>
           </tr>
         </tbody>
       </table>
@@ -351,23 +368,29 @@ function Form5B({ w, org, veh, drv, td, signed, qrUrl, copy, showQr, showStamp, 
       <table>
         <thead>
           <tr className="lbl">
-            <td>Дар ихтиёри / Disposal / В распоряжение</td>
-            <td>Сана ва вақти расидан / Arrival / Дата и время прибытия</td>
-            <td>Ҷои боргирӣ / Loading / Место погрузки</td>
-            <td>Ҷои фаровардан / Delivery / Место разгрузки</td>
-            <td>Давлатҳои транзитӣ / Transit / Транзит</td>
-            <td>Номгӯи бор / Freight / Наименование груза</td>
-            <td>Масофа, км / Distance / Расст.</td>
-            <td>Ҳачм, тн / Weight / Объём</td>
+            <td rowSpan={2}>Дар ихтиёри / Disposal / В распоряжение</td>
+            <td rowSpan={2}>Сана ва вақти расидан / Arrival / Дата и время прибытия</td>
+            <td colSpan={2}>Ҷои боргирӣ / Loading / Место погрузки</td>
+            <td colSpan={2}>Ҷои фаровардани бор / Delivery / Место разгрузки</td>
+            <td rowSpan={2}>Давлатҳои транзитӣ / Transit / Транзитные государства</td>
+            <td rowSpan={2}>Номгӯи бор / Freight / Наименование груза</td>
+            <td rowSpan={2}>Масофа, км / Distance / Расстояние</td>
+            <td rowSpan={2}>Ҳачми бор, тн / Weight / Объём</td>
           </tr>
-          <tr className="cnum"><td>14</td><td>15</td><td>16</td><td>17</td><td>18</td><td>19</td><td>20</td><td>21</td></tr>
+          <tr className="lbl">
+            <td>Давлат / State / Государство</td><td>Шаҳр / City / Город</td>
+            <td>Давлат / State / Государство</td><td>Шаҳр / City / Город</td>
+          </tr>
+          <tr className="cnum"><td>14</td><td>15</td><td>16</td><td>17</td><td>18</td><td>19</td><td>20</td><td>21</td><td>22</td><td>23</td></tr>
         </thead>
         <tbody>
           <tr>
             <td className="val">{s(td.consignee) || ''}</td>
             <td className="val"></td>
-            <td className="val">{s(td.loadCountry)}{w.route ? ` · ${w.route}` : ''}</td>
+            <td className="val">{s(td.loadCountry)}</td>
+            <td className="val">{w.route ? s(w.route).split('—')[0].trim() : ''}</td>
             <td className="val">{s(td.unloadCountry)}</td>
+            <td className="val">{w.route && s(w.route).includes('—') ? s(w.route).split('—')[1].trim() : ''}</td>
             <td className="val">{transit.join(', ')}</td>
             <td className="val">{s(td.cargoName)}</td>
             <td className="val"></td>
