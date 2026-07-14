@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 import { wb, Waybill, STATUS_LABELS, TYPE_LABELS } from '@/lib/api';
 import { Icon, P } from '../icons';
 import { useT } from '@/lib/i18n';
@@ -16,7 +15,6 @@ export default function WaybillsPage() {
   const [type, setType] = useState('');
   const [q, setQ] = useState('');
   const [page, setPage] = useState(1);
-  const router = useRouter();
   const { t, tType, tStatus } = useT();
 
   useEffect(() => { wb.list().then(setItems).catch(e => setError(e.message)); }, []);
@@ -87,7 +85,7 @@ export default function WaybillsPage() {
             {view.map(w => {
               const s = STATUS_LABELS[w.status] ?? { label: w.status, color: 'gray' };
               return (
-                <tr key={w.id} className="clickable" onClick={() => router.push(`/waybills/${w.id}`)}>
+                <tr key={w.id}>
                   <td><span className="number">{w.number ?? t('viol.draft')}</span></td>
                   <td>{tType(w.waybillType).replace(/\s*\(.*\)/, '')}</td>
                   <td>{String(w.organizationSnapshot?.name ?? w.organizationRma)}</td>
@@ -97,9 +95,10 @@ export default function WaybillsPage() {
                   <td><span className={`badge ${w.medPassed ? 'green' : 'gray'}`}>{w.medPassed ? t('st.passeddone') : '—'}</span></td>
                   <td><span className={`badge ${w.techPassed ? 'green' : 'gray'}`}>{w.techPassed ? t('st.passeddone') : '—'}</span></td>
                   <td><span className={`badge ${s.color}`}>{tStatus(w.status)}</span></td>
-                  <td onClick={e => e.stopPropagation()}>
-                    <Link href={`/waybills/${w.id}`} className="tb-icon" style={{ width: 32, height: 32, display: 'inline-grid' }} title={t('btn.open')}>
-                      <Icon d={P.eye} cls="" style={{ width: 17, height: 17, color: 'var(--muted)' }} />
+                  <td>
+                    <Link href={`/waybills/${w.id}`} className="btn secondary"
+                      style={{ padding: '5px 12px', fontSize: 12.5, textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap' }}>
+                      <Icon d={P.eye} cls="" style={{ width: 15, height: 15 }} /> {t('btn.open')}
                     </Link>
                   </td>
                 </tr>

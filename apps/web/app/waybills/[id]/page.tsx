@@ -153,6 +153,9 @@ export default function WaybillCard({ params }: { params: Promise<{ id: string }
     <>
       {/* Шапка документа */}
       <div className="toolbar">
+        <a href="/waybills" className="btn secondary" style={{ textDecoration: 'none' }} title={t('nav.waybill.registry')}>
+          ← {t('wb.btn.back')}
+        </a>
         <h1 style={{ marginBottom: 0 }}>
           {t('wb.card.h')} {w.number ? <span className="number">{w.number}</span> : t('wb.nonumber')}
         </h1>

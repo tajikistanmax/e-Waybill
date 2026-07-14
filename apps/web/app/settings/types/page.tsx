@@ -26,6 +26,8 @@ export default function TypesSettingsPage() {
   const { roles } = useAuth();
   const canEdit = roles.includes('SYSTEM_ADMIN');
   const [names, setNames] = useState<Record<string, { ru: string; tj: string }>>({});
+  // Эффективный макс срок по типу: override из правила max_validity_days (уровень типа ТС) или законный лимит.
+  const [days, setDays] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState('');
   const [msg, setMsg] = useState('');
   const [err, setErr] = useState('');
@@ -34,18 +36,31 @@ export default function TypesSettingsPage() {
     md.classifiers('WAYBILL_TYPE', true)
       .then(list => setNames(Object.fromEntries(list.map(c => [c.code, { ru: c.nameRu, tj: c.nameTj ?? '' }]))))
       .catch(() => { /* нет доступа/связи — поля будут пустыми, плейсхолдер покажет дефолт */ });
+    md.policies()
+      .then(pols => {
+        const ovr: Record<string, string> = {};
+        for (const p of pols) if (p.scopeLevel === 'VEHICLE_TYPE' && p.ruleKey === 'max_validity_days') ovr[p.scopeKey] = p.ruleValue;
+        setDays(Object.fromEntries(TYPES.map(x => [x.code, ovr[x.code] ?? String(x.days)])));
+      })
+      .catch(() => setDays(Object.fromEntries(TYPES.map(x => [x.code, String(x.days)]))));
   }
   useEffect(() => { load(); }, []);
 
   const set = (code: string, field: 'ru' | 'tj', v: string) =>
     setNames(s => ({ ...s, [code]: { ...(s[code] ?? { ru: '', tj: '' }), [field]: v } }));
 
-  async function save(code: string, sortOrder: number) {
+  async function save(code: string, sortOrder: number, legalMax: number) {
     setBusy(code); setErr(''); setMsg('');
     try {
       const n = names[code] ?? { ru: '', tj: '' };
       if (!n.ru.trim()) { setErr(t('settypes.needname')); setBusy(''); return; }
       await md.saveClassifier({ category: 'WAYBILL_TYPE', code, nameRu: n.ru.trim(), nameTj: n.tj.trim() || null, sortOrder, active: true });
+      // Макс срок → правило max_validity_days (уровень типа ТС). Потолок = законный лимит:
+      // значение зажимается в [1, legalMax]; на бэкенде signT1 тоже применяет min(закон, политика).
+      const raw = parseInt((days[code] ?? String(legalMax)).trim(), 10);
+      const capped = Math.max(1, Math.min(legalMax, Number.isFinite(raw) ? raw : legalMax));
+      setDays(s => ({ ...s, [code]: String(capped) }));
+      await md.savePolicy({ scopeLevel: 'VEHICLE_TYPE', scopeKey: code, ruleKey: 'max_validity_days', ruleValue: String(capped) });
       setMsg(t('settypes.saved'));
     } catch (e) { setErr((e as Error).message); }
     finally { setBusy(''); }
@@ -91,13 +106,19 @@ export default function TypesSettingsPage() {
                   onChange={e => set(x.code, 'tj', e.target.value)} style={{ minWidth: 160 }} /></td>
                 <td><span className="badge blue" style={{ fontFamily: 'var(--mono)' }}>{x.form}</span></td>
                 <td><span className="number">{x.num}</span></td>
-                <td style={{ whiteSpace: 'nowrap' }}>{x.days} {t('unit.days')}</td>
+                <td style={{ whiteSpace: 'nowrap' }}>
+                  <input type="number" min={1} max={x.days} disabled={!canEdit}
+                    value={days[x.code] ?? String(x.days)}
+                    onChange={e => setDays(s => ({ ...s, [x.code]: e.target.value }))}
+                    style={{ width: 62 }} /> {t('unit.days')}
+                  <div style={{ fontSize: 10.5, color: 'var(--faint)', marginTop: 2 }}>{t('settypes.legalmax')}: {x.days}</div>
+                </td>
                 <td style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                   <span className={`badge ${x.pax ? 'teal' : 'gray'}`}>{x.pax ? t('settypes.pax') : t('settypes.freight')}</span>
                   {x.intl && <span className="badge amber">{t('settypes.intl')}</span>}
                 </td>
                 <td>{canEdit && (
-                  <button className="btn" style={{ padding: '5px 12px', fontSize: 12.5 }} disabled={busy === x.code} onClick={() => save(x.code, i + 1)}>
+                  <button className="btn" style={{ padding: '5px 12px', fontSize: 12.5 }} disabled={busy === x.code} onClick={() => save(x.code, i + 1, x.days)}>
                     {busy === x.code ? '…' : t('fleet.save')}
                   </button>
                 )}</td>
