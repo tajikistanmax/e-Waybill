@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { wb, md, Waybill, STATUS_LABELS, authHeaders, TYPE_LABELS, type WaybillRequest } from '@/lib/api';
@@ -52,6 +52,11 @@ export default function DriverCabinet() {
   const [reqMsg, setReqMsg] = useState('');
   const [reqErr, setReqErr] = useState('');
   const [orgName, setOrgName] = useState('');
+  const [orgRma, setOrgRma] = useState('');
+  // Автоподсказка ТС по госномеру: список машин своей компании (появляется при почти полном вводе).
+  const [plateOpts, setPlateOpts] = useState<{ reg: string; brand: string }[]>([]);
+  const [plateOpen, setPlateOpen] = useState(false);
+  const pickedRef = useRef(false); // подавляет повторное открытие списка сразу после выбора
 
   useEffect(() => {
     wb.list().then(setItems).catch((e: Error) => setError(e.message)).finally(() => setLoading(false));
@@ -103,8 +108,42 @@ export default function DriverCabinet() {
   useEffect(() => {
     loadReqs();
     // Организация, к которой привязан водитель (тенант-скоуп → своя). Фолбэк — из снимка ПЛ ниже.
-    md.organizations().then(l => setOrgName(String(l[0]?.name ?? ''))).catch(() => {});
+    md.organizations().then(l => {
+      setOrgName(String(l[0]?.name ?? ''));
+      setOrgRma(String(l[0]?.rma ?? ''));
+    }).catch(() => {});
   }, []);
+
+  // Заявка «Ожидает» уже подана → новую подать нельзя (правило «одна заявка в работе»).
+  const hasPending = useMemo(() => reqs.some(r => r.status === 'PENDING'), [reqs]);
+  // Сегодня в локальной дате (YYYY-MM-DD) — нижняя граница «Даты выхода»: нельзя задним числом.
+  const todayStr = new Date().toLocaleDateString('en-CA');
+
+  // Автоподсказка ТС: ищем машины своей компании по подстроке госномера. Подсказываем уже с
+  // 3 символов (номера бывают короткие, напр. 451TJ01). Выбор подставляет госномер.
+  useEffect(() => {
+    if (pickedRef.current) { pickedRef.current = false; setPlateOpen(false); return; }
+    const q = reqForm.vehicleRegNumber.trim();
+    if (!showReqForm || q.length < 3) { setPlateOpts([]); setPlateOpen(false); return; }
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      md.searchVehicles(orgRma, q, 8)
+        .then(list => {
+          if (cancelled) return;
+          const opts = list.map(v => ({ reg: String(v.registrationNumber ?? ''), brand: String(v.brand ?? '') }));
+          setPlateOpts(opts);
+          setPlateOpen(opts.length > 0);
+        })
+        .catch(() => { if (!cancelled) { setPlateOpts([]); setPlateOpen(false); } });
+    }, 250);
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [reqForm.vehicleRegNumber, showReqForm, orgRma]);
+
+  function pickPlate(reg: string) {
+    pickedRef.current = true;
+    setReqForm(f => ({ ...f, vehicleRegNumber: reg }));
+    setPlateOpen(false);
+  }
 
   async function submitRequest(e: React.FormEvent) {
     e.preventDefault();
@@ -157,7 +196,8 @@ export default function DriverCabinet() {
         <Link href="/driver/waybills" className="btn secondary" style={{ marginLeft: 'auto', textDecoration: 'none' }}>
           <Icon d={P.doc} cls="" style={{ width: 16, height: 16 }} /> {t('drv.mywaybills')}
         </Link>
-        <button className="btn" onClick={() => { setShowReqForm(v => !v); setReqErr(''); setReqMsg(''); }}>
+        <button className="btn" disabled={hasPending} title={hasPending ? t('drvreq.onlyone') : undefined}
+          onClick={() => { setShowReqForm(v => !v); setReqErr(''); setReqMsg(''); }}>
           <Icon d={P.doc} cls="" style={{ width: 16, height: 16 }} /> {showReqForm ? t('drvreq.hide') : t('drvreq.new')}
         </button>
       </div>
@@ -165,6 +205,7 @@ export default function DriverCabinet() {
       {error && <div className="error">{error}</div>}
       {reqErr && <div className="error">{reqErr}</div>}
       {reqMsg && <div className="success">{reqMsg}</div>}
+      {hasPending && <div className="hint">{t('drvreq.onlyone')}</div>}
 
       {/* Заявка на путевой лист (водитель подаёт сам) */}
       {showReqForm && (
@@ -172,10 +213,33 @@ export default function DriverCabinet() {
           <h2 style={{ marginTop: 0 }}>{t('drvreq.new')}</h2>
           <p className="hint">{t('drvreq.hint')}</p>
           <form onSubmit={submitRequest} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 12 }}>
-            <div>
+            <div style={{ position: 'relative' }}>
               <label style={{ fontSize: 12.5, color: 'var(--muted)' }}>{t('drvreq.f.plate')} *</label>
-              <input required placeholder="0101TJ01" value={reqForm.vehicleRegNumber}
-                onChange={e => setReqForm({ ...reqForm, vehicleRegNumber: e.target.value })} style={{ width: '100%', marginTop: 4 }} />
+              <input required placeholder="0101TJ01" value={reqForm.vehicleRegNumber} autoComplete="off"
+                onChange={e => setReqForm({ ...reqForm, vehicleRegNumber: e.target.value })}
+                onFocus={() => { if (plateOpts.length) setPlateOpen(true); }}
+                onBlur={() => setTimeout(() => setPlateOpen(false), 120)}
+                style={{ width: '100%', marginTop: 4 }} />
+              {plateOpen && plateOpts.length > 0 && (
+                <div style={{
+                  position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 40, marginTop: 4,
+                  background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 8,
+                  boxShadow: '0 10px 30px rgba(15,23,42,.14)', maxHeight: 240, overflowY: 'auto',
+                }}>
+                  {plateOpts.map(o => (
+                    <button type="button" key={o.reg} onMouseDown={e => { e.preventDefault(); pickPlate(o.reg); }}
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: 10, width: '100%', textAlign: 'left',
+                        padding: '9px 12px', background: 'none', border: 'none', cursor: 'pointer',
+                        fontFamily: 'inherit', borderBottom: '1px solid var(--line-soft)',
+                      }}>
+                      <span className="number" style={{ fontWeight: 700 }}>{o.reg}</span>
+                      {o.brand && <span style={{ color: 'var(--muted)', fontSize: 12.5 }}>{o.brand}</span>}
+                    </button>
+                  ))}
+                </div>
+              )}
+              <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 3 }}>{t('drvreq.f.plate.hint')}</div>
             </div>
             <div>
               <label style={{ fontSize: 12.5, color: 'var(--muted)' }}>{t('drvreq.f.type')} *</label>
@@ -185,7 +249,7 @@ export default function DriverCabinet() {
             </div>
             <div>
               <label style={{ fontSize: 12.5, color: 'var(--muted)' }}>{t('drvreq.f.from')}</label>
-              <input type="date" value={reqForm.requestedFrom} onChange={e => setReqForm({ ...reqForm, requestedFrom: e.target.value })} style={{ width: '100%', marginTop: 4 }} />
+              <input type="date" min={todayStr} value={reqForm.requestedFrom} onChange={e => setReqForm({ ...reqForm, requestedFrom: e.target.value })} style={{ width: '100%', marginTop: 4 }} />
             </div>
             <div>
               <label style={{ fontSize: 12.5, color: 'var(--muted)' }}>{t('drvreq.f.odometer')}</label>
@@ -201,7 +265,7 @@ export default function DriverCabinet() {
               <input value={reqForm.notes} onChange={e => setReqForm({ ...reqForm, notes: e.target.value })} style={{ width: '100%', marginTop: 4 }} />
             </div>
             <div style={{ gridColumn: '1 / -1', display: 'flex', gap: 10, marginTop: 4 }}>
-              <button className="btn primary" type="submit" disabled={reqBusy || !reqForm.vehicleRegNumber.trim()}>{reqBusy ? '…' : t('drvreq.send')}</button>
+              <button className="btn primary" type="submit" disabled={reqBusy || hasPending || !reqForm.vehicleRegNumber.trim()}>{reqBusy ? '…' : t('drvreq.send')}</button>
               <button type="button" className="btn secondary" onClick={() => setShowReqForm(false)}>{t('fleet.cancel')}</button>
             </div>
           </form>

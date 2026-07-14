@@ -17,6 +17,7 @@ import tj.mintrans.epd.waybill.web.error.ApiErrors.UnprocessableException;
 
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
+import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Map;
@@ -55,6 +56,17 @@ public class WaybillRequestService {
                                  String schedule, String notes) {
         String driverRma = currentUser.rma()
                 .orElseThrow(() -> new ForbiddenException("Не удалось определить водителя из входа"));
+        // «Одна заявка в работе»: пока прошлая заявка водителя ещё не рассмотрена (PENDING),
+        // подать новую нельзя — иначе диспетчер получил бы дубли на один и тот же выезд.
+        if (requests.existsByDriverRmaAndStatus(driverRma, WaybillRequest.PENDING)) {
+            throw new ConflictException(
+                    "У вас уже есть заявка в статусе «Ожидает» — дождитесь её рассмотрения диспетчером "
+                            + "или отмените её, прежде чем подавать новую.");
+        }
+        // Задним числом заявку подать нельзя: дата выхода не может быть в прошлом (по времени РТ).
+        if (requestedFrom != null && requestedFrom.isBefore(LocalDate.now(ZoneId.of("Asia/Dushanbe")))) {
+            throw new UnprocessableException("Дата выхода не может быть в прошлом — задним числом заявку подать нельзя.");
+        }
         String orgRma = currentUser.organizationRma()
                 .orElseThrow(() -> new ForbiddenException("Не удалось определить организацию водителя"));
         var org = masterData.findOrganization(orgRma)

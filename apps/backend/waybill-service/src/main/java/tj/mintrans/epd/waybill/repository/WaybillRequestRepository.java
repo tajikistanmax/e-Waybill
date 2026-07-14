@@ -19,6 +19,9 @@ public interface WaybillRequestRepository extends JpaRepository<WaybillRequest, 
 
     List<WaybillRequest> findByDriverRmaOrderByCreatedAtDesc(String driverRma);
 
+    /** Есть ли у водителя незавершённая заявка в заданном статусе (для правила «одна заявка в работе»). */
+    boolean existsByDriverRmaAndStatus(String driverRma, String status);
+
     /** Блокирующая загрузка для одобрения/изменения (сериализует конкурентные действия по заявке). */
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select r from WaybillRequest r where r.id = :id")
