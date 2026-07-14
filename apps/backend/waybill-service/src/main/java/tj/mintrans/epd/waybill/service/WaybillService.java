@@ -1102,6 +1102,16 @@ public class WaybillService {
                 && !currentUser.organizationRma().map(rma -> rma.equals(wb.getOrganizationRma())).orElse(false)) {
             throw new NotFoundException("Путевой лист не найден");
         }
+        // Водитель (роль DRIVER) видит только СВОИ рейсы — как основной или второй водитель.
+        // Иначе через прямой GET /{id} и /{id}/qr он вытянул бы чужой ПЛ и подписанный QR
+        // (тот же инвариант, что уже применяется в списке WaybillController.list()).
+        if (currentUser.isTenantScoped() && currentUser.hasRole("DRIVER")) {
+            String myRma = currentUser.rma().orElse(null);
+            if (myRma == null
+                    || (!myRma.equals(wb.getDriverRma()) && !myRma.equals(wb.getSecondDriverRma()))) {
+                throw new NotFoundException("Путевой лист не найден");
+            }
+        }
         return wb;
     }
 

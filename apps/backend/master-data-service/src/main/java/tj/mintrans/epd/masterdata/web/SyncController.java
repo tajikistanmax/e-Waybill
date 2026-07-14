@@ -242,7 +242,11 @@ public class SyncController {
 
     // ------------------------------------------------------------ дозволы (E-PERMIT)
 
-    /** Онлайн-проверка дозвола на международную перевозку (система E-PERMIT). */
+    /** Онлайн-проверка дозвола на международную перевозку (система E-PERMIT).
+     *  Доступ: перевозчик (диспетчер/админ компании) при оформлении международного ПЛ,
+     *  платформенный админ и межсервисный вызов waybill-service (API_INTEGRATOR). Иначе —
+     *  любой аутентифицированный мог бы перебирать номера дозволов и нагружать upstream. */
+    @PreAuthorize("hasAnyRole('DISPATCHER','COMPANY_ADMIN','SYSTEM_ADMIN','API_INTEGRATOR')")
     @org.springframework.web.bind.annotation.GetMapping("/permit/{number}")
     public UnifiedPlatformClient.PermitInfo permit(@org.springframework.web.bind.annotation.PathVariable String number) {
         return unifiedPlatform.findPermit(number)

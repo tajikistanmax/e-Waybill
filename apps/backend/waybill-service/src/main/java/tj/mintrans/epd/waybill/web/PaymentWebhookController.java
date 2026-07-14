@@ -28,7 +28,11 @@ import java.util.UUID;
 @RequestMapping("/api/v1/payments")
 public class PaymentWebhookController {
 
-    private static final String DEV_SECRET = "dev_webhook_secret";
+    // Известные committed/слабые дефолты секрета вебхука — недопустимы при включённой оплате.
+    // ВАЖНО: держать в синхроне с дефолтами в infra/docker-compose*.yml и application.yml.
+    private static final java.util.Set<String> WEAK_SECRETS = java.util.Set.of(
+            "dev_webhook_secret", "epd_webhook_dev_secret");
+    private static final int MIN_SECRET_LEN = 16;
 
     private final WaybillService service;
     private final String webhookSecret;
@@ -46,9 +50,11 @@ public class PaymentWebhookController {
      *  любой мог бы пометить ПЛ оплаченным. В dev (payment.enabled=false) — пропускается. */
     @PostConstruct
     void validateSecret() {
-        if (paymentEnabled && (webhookSecret == null || webhookSecret.isBlank() || DEV_SECRET.equals(webhookSecret))) {
+        if (paymentEnabled && (webhookSecret == null || webhookSecret.isBlank()
+                || WEAK_SECRETS.contains(webhookSecret) || webhookSecret.length() < MIN_SECRET_LEN)) {
             throw new IllegalStateException(
-                    "PAYMENT_WEBHOOK_SECRET не задан или дефолтный при включённой оплате — задайте сильный секрет.");
+                    "PAYMENT_WEBHOOK_SECRET не задан, дефолтный или короче " + MIN_SECRET_LEN
+                    + " символов при включённой оплате — задайте сильный секрет.");
         }
     }
 
