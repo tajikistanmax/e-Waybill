@@ -406,9 +406,11 @@ export const wb = {
     .then(r => { if (!r.ok && r.status !== 204) throw new Error(`Ошибка ${r.status}`); }),
   markAllNotifRead: () => fetch('/wb-api/api/v1/notifications/read-all', { method: 'POST', headers: authHeaders() })
     .then(r => { if (!r.ok && r.status !== 204) throw new Error(`Ошибка ${r.status}`); }),
-  // Витрина Neru: действующий ПЛ по госномеру (404 → null).
+  // Витрина Neru: действующий ПЛ по госномеру. 404 → null (действующего ПЛ нет).
+  // Прочие ошибки (500 и т.п.) НЕ маскируем под «не найден» — пробрасываем, чтобы инспектор
+  // на дороге увидел сбой, а не сделал ложный вывод об отсутствии ПЛ.
   neruByPlate: (plate: string) => fetch(`/wb-api/api/v1/neru/active-by-plate?plate=${encodeURIComponent(plate)}`, { headers: authHeaders() })
-    .then(async r => r.ok ? (r.json() as Promise<NeruView>) : null),
+    .then(r => r.status === 404 ? null : handle<NeruView>(r)),
   // Последняя GPS-позиция ТС (404 → null).
   gpsLast: (vehicleRegNumber: string) => fetch(`/wb-api/api/v1/gps/last?vehicleRegNumber=${encodeURIComponent(vehicleRegNumber)}`, { headers: authHeaders() })
     .then(async r => r.ok ? (r.json() as Promise<GpsPing>) : null),

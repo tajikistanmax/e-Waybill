@@ -30,7 +30,12 @@ export function Shell({ children }: { children: React.ReactNode }) {
   // Раздел, к которому относится путь, разрешён ролям пользователя? Неизвестные пути — разрешены.
   const seg = pathname.split('/')[1] ?? '';
   const routeKey = ROUTE_NAV[seg];
-  const allowed = routeKey ? navFor(roles).has(routeKey) : true;
+  // Карточка ПЛ (/waybills/{id}, /{id}/print, /journal) достижима deep-link'ом из кабинетов
+  // водителя/инспектора/аналитика, у которых нет пункта «waybills» в меню. Доступ к самой
+  // карточке ограничен ролями ВНУТРИ страницы + tenant/IDOR на бэкенде, поэтому гейтим по
+  // меню только список /waybills, а его детальные подпути пускаем.
+  const isWaybillDetail = seg === 'waybills' && (pathname.split('/')[2] ?? '') !== '';
+  const allowed = !routeKey || isWaybillDetail || navFor(roles).has(routeKey);
 
   useEffect(() => {
     if (!ready || isPublic(pathname)) return;

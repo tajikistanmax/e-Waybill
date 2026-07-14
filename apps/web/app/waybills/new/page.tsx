@@ -110,15 +110,18 @@ export default function NewWaybillPage() {
     md.classifiers('COUNTRY')
       .then(list => setCountries(list.map(c => ({ value: c.nameRu, label: c.nameRu }))))
       .catch(() => { /* классификатор недоступен — поля останутся пустыми */ });
+    // ADR-классы и виды работ — ОБЯЗАТЕЛЬНЫЕ поля для опасного груза/спецтехники (шаг 3).
+    // При сбое загрузки не молчим: иначе пользователь застрянет на пустом обязательном списке
+    // без объяснения. Показываем ошибку в общий баннер.
     md.classifiers('ADR_CLASS')
       .then(list => setAdrClasses(list.map(c => ({ value: c.code, label: `${c.code} — ${c.nameRu}` }))))
-      .catch(() => {});
+      .catch(() => setError('Не удалось загрузить справочник классов ADR — обратитесь к администратору'));
     md.classifiers('PERMIT_TYPE')
       .then(list => setPermitTypes(list.map(c => ({ value: c.nameRu, label: c.nameRu }))))
       .catch(() => {});
     md.classifiers('WORK_TYPE')
       .then(list => setWorkTypes(list.map(c => ({ value: c.nameRu, label: c.nameRu }))))
-      .catch(() => {});
+      .catch(() => setError('Не удалось загрузить справочник видов работ — обратитесь к администратору'));
   }, []);
 
   // Доп.поля выбранного типа ПЛ (конструктор полей). Флаг отмены — против гонки:

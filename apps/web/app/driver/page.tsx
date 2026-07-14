@@ -104,7 +104,7 @@ export default function DriverCabinet() {
     return () => { cancelled = true; };
   }, [current]);
 
-  function loadReqs() { wb.requests.mine().then(setReqs).catch(() => {}); }
+  function loadReqs() { wb.requests.mine().then(r => { setReqs(r); setReqErr(''); }).catch((e: unknown) => setReqErr(e instanceof Error ? e.message : 'Не удалось загрузить заявки')); }
   useEffect(() => {
     loadReqs();
     // Организация, к которой привязан водитель (тенант-скоуп → своя). Фолбэк — из снимка ПЛ ниже.

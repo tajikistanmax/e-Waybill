@@ -47,9 +47,9 @@ export default function InspectorCabinet() {
     e.preventDefault();
     const p = neruPlate.trim();
     if (!p) return;
-    setNeruBusy(true); setNeru(null);
+    setNeruBusy(true); setNeru(null); setError('');
     try { const r = await wb.neruByPlate(p); setNeru(r ?? 'none'); }
-    catch { setNeru('none'); }
+    catch (e) { setNeru(null); setError(e instanceof Error ? e.message : 'Ошибка проверки Neru'); }
     finally { setNeruBusy(false); }
   }
 
