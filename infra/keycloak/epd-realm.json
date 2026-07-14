@@ -4,7 +4,7 @@
   "registrationAllowed": false,
   "sslRequired": "external",
   "attributes": {
-    "frontendUrl": "http://localhost:8180"
+    "frontendUrl": "http://10.10.29.70:8180"
   },
   "roles": {
     "realm": [
@@ -30,8 +30,8 @@
       "directAccessGrantsEnabled": true,
       "serviceAccountsEnabled": false,
       "fullScopeAllowed": true,
-      "redirectUris": ["http://localhost:3000/*"],
-      "webOrigins": ["http://localhost:3000"],
+      "redirectUris": ["http://localhost:3000/*", "http://10.10.29.70/*", "http://10.10.29.70:3000/*", "http://10.10.29.70:8180/*"],
+      "webOrigins": ["http://localhost:3000", "http://10.10.29.70", "http://10.10.29.70:3000"],
       "attributes": {
         "pkce.code.challenge.method": "S256"
       },

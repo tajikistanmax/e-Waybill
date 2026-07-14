@@ -109,11 +109,14 @@ services:
       DB_URL: jdbc:postgresql://postgres:5432/masterdata
       DB_USER: ${DB_USER:-epd}
       DB_PASSWORD: ${DB_PASSWORD:-epd_dev_password}
-      KEYCLOAK_ISSUER_URI: http://keycloak:8180/realms/epd
+      KEYCLOAK_ISSUER_URI: ${KEYCLOAK_ISSUER_URI:-http://10.10.29.70:8180/realms/epd}
       # Единая платформа Минтранса (субъекты из налоговой, ТС из ГАИ).
       # stub — имитация; при подключении реальной платформы: http + UNIFIED_PLATFORM_URL
       UNIFIED_PLATFORM_MODE: ${UNIFIED_PLATFORM_MODE:-stub}
       UNIFIED_PLATFORM_URL: ${UNIFIED_PLATFORM_URL:-http://unified-platform:8090}
+      # Ограничение кучи JVM: на небольших узлах (≤6 ГБ RAM) не даём сервису забрать
+      # слишком много и уронить соседей/себя в OOM. При переносе на крупный узел — убрать.
+      JAVA_TOOL_OPTIONS: ${MD_JAVA_OPTS:--Xmx384m}
     depends_on:
       postgres:
         condition: service_healthy
@@ -133,7 +136,11 @@ services:
       DB_URL: jdbc:postgresql://postgres:5432/waybill
       DB_USER: ${DB_USER:-epd}
       DB_PASSWORD: ${DB_PASSWORD:-epd_dev_password}
-      KEYCLOAK_ISSUER_URI: http://keycloak:8180/realms/epd
+      KEYCLOAK_ISSUER_URI: ${KEYCLOAK_ISSUER_URI:-http://10.10.29.70:8180/realms/epd}
+      # Межсервисный (client-credentials) токен для вызовов master-data/агрегатора без
+      # пользовательского токена (закрытие ПЛ, NERU/ЧУРА, планировщик). ВНУТРИ сети compose
+      # Keycloak доступен как keycloak:8180 — дефолт application.yml (localhost:8180) там нерабочий.
+      SERVICE_TOKEN_URI: ${SERVICE_TOKEN_URI:-http://keycloak:8180/realms/epd/protocol/openid-connect/token}
       MASTER_DATA_URL: http://master-data:8081
       # Оплата ПЛ включена (AWAITING_PAYMENT → PAID; агрегаторские ПЛ покрыты абонементом)
       PAYMENT_ENABLED: ${PAYMENT_ENABLED:-true}
@@ -143,6 +150,8 @@ services:
       AGGREGATOR_OPEN: ${AGGREGATOR_OPEN:-false}
       # Статусные события ПЛ → Kafka (внутренний listener) для единого кабинета/аналитики
       KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      # Ограничение кучи JVM на небольших узлах (см. master-data). Убрать на крупном узле.
+      JAVA_TOOL_OPTIONS: ${WB_JAVA_OPTS:--Xmx384m}
     depends_on:
       postgres:
         condition: service_healthy
@@ -169,7 +178,7 @@ services:
       MD_API_URL: http://master-data:8081
       WB_API_URL: http://waybill:8082
     ports:
-      - "3000:3000"
+      - "80:3000"
     depends_on:
       - master-data
       - waybill

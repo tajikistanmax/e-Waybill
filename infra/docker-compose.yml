@@ -52,6 +52,10 @@ services:
       KC_BOOTSTRAP_ADMIN_USERNAME: admin
       KC_BOOTSTRAP_ADMIN_PASSWORD: admin_dev_password
       KC_HTTP_PORT: 8180
+      # Фиксируем внешний адрес Keycloak, чтобы issuer токенов был стабильным
+      # (http://10.10.22.50:8180/realms/epd) для входа с других ПК в локальной сети.
+      # Должен совпадать с KEYCLOAK_ISSUER_URI бэкенда и NEXT_PUBLIC_KEYCLOAK_URL web.
+      KC_HOSTNAME: http://10.10.22.50:8180
     ports:
       - "8180:8180"
     volumes:
