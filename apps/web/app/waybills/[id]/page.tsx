@@ -1,7 +1,7 @@
 'use client';
 
 import { use, useCallback, useEffect, useState } from 'react';
-import { md, wb, Waybill, Title, StatusEvent, Payment, STATUS_LABELS, type GpsPing } from '@/lib/api';
+import { md, wb, Waybill, Title, StatusEvent, Payment, STATUS_LABELS, type GpsPing, type FieldDefinition } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 import { useAuth } from '@/lib/auth';
 import { ExpensesSection } from './ExpensesSection';
@@ -30,13 +30,17 @@ export default function WaybillCard({ params }: { params: Promise<{ id: string }
   const [payment, setPayment] = useState<Payment | null>(null);
   const [tab, setTab] = useState('main');
   const [gps, setGps] = useState<GpsPing | null>(null);
-  const { t, tType, tStatus } = useT();
+  // Определения доп.полей типа (конструктор полей) — для подписей значений typeData.custom.
+  // all=true: поле могло быть отключено после выдачи ПЛ, но его значение в документе остаётся.
+  const [fieldDefs, setFieldDefs] = useState<FieldDefinition[]>([]);
+  const { t, tType, tStatus, lang } = useT();
   const { roles } = useAuth();
 
   const reload = useCallback(async () => {
     const data = await wb.get(id);
     setW(data);
     wb.gpsLast(data.vehicleRegNumber).then(setGps).catch(() => setGps(null));
+    md.fieldDefinitions(data.waybillType, true).then(setFieldDefs).catch(() => setFieldDefs([]));
     setTitles(await wb.titles(id));
     setHistory(await wb.history(id));
     if (data.number) {
@@ -122,6 +126,24 @@ export default function WaybillCard({ params }: { params: Promise<{ id: string }
   const mhExit = td.motorHoursExit != null ? Number(td.motorHoursExit) : null;
   const mhEntry = td.motorHoursEntry != null ? Number(td.motorHoursEntry) : null;
   const motorHoursWorked = (mhExit != null && mhEntry != null) ? +(mhEntry - mhExit).toFixed(1) : null;
+  // Доп.поля (конструктор полей): значения из typeData.custom с подписями из определений
+  // (порядок — sortOrder определения; поля без определения — в конце, по ключу).
+  const customRaw = (td.custom && typeof td.custom === 'object') ? td.custom as Record<string, unknown> : {};
+  const customEntries: { key: string; label: string; value: string }[] = (() => {
+    const defByKey = new Map(fieldDefs.map(d => [d.fieldKey, d]));
+    const fmt = (d: FieldDefinition | undefined, v: unknown) => {
+      const s = String(v);
+      if (d?.dataType === 'BOOLEAN' || s === 'true' || s === 'false') return s === 'true' ? t('fld.yes') : t('fld.no');
+      return s;
+    };
+    return Object.entries(customRaw)
+      .map(([key, v]) => {
+        const d = defByKey.get(key);
+        const label = d ? (lang === 'tj' && d.labelTj ? d.labelTj : d.labelRu) : key;
+        return { key, label, value: fmt(d, v), order: d?.sortOrder ?? 9999 };
+      })
+      .sort((a, b) => a.order - b.order || a.key.localeCompare(b.key));
+  })();
 
   const vehicleName = String(w.vehicleSnapshot?.brand ?? '');
   const driverName = String(w.driverSnapshot?.fullName ?? w.driverRma);
@@ -340,6 +362,16 @@ export default function WaybillCard({ params }: { params: Promise<{ id: string }
             <dt>{t('drv.routeschedule')}</dt><dd>{w.route ?? '—'} / {w.schedule ?? '—'}</dd>
             {w.specialMark && <><dt>{t('wb.specialmark')}</dt><dd>{w.specialMark}</dd></>}
           </dl>
+          {customEntries.length > 0 && (
+            <>
+              <h2 style={{ marginTop: 18 }}>{t('fld.section')}</h2>
+              <dl className="kv">
+                {customEntries.map(c => (
+                  <span key={c.key} style={{ display: 'contents' }}><dt>{c.label}</dt><dd>{c.value}</dd></span>
+                ))}
+              </dl>
+            </>
+          )}
         </div>
       )}
 

@@ -1,7 +1,7 @@
 'use client';
 
 import { use, useEffect, useState } from 'react';
-import { wb, md, Waybill, Title } from '@/lib/api';
+import { wb, md, Waybill, Title, type FieldDefinition } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 import QRCode from 'qrcode';
 
@@ -32,6 +32,8 @@ export default function PrintWaybill({ params }: { params: Promise<{ id: string 
   const [opt, setOpt] = useState({ showQr: true, showStamp: true, paperSize: 'A4' });
   const [landscape, setLandscape] = useState(false);
   const [copy, setCopy] = useState(false);
+  // Определения доп.полей (конструктор) — подписи значений typeData.custom на бланке.
+  const [fieldDefs, setFieldDefs] = useState<FieldDefinition[]>([]);
   const { tType } = useT();
 
   function printCopy() {
@@ -44,6 +46,7 @@ export default function PrintWaybill({ params }: { params: Promise<{ id: string 
       const data = await wb.get(id);
       setW(data);
       setTitles(await wb.titles(id));
+      md.fieldDefinitions(data.waybillType, true).then(setFieldDefs).catch(() => setFieldDefs([]));
       if (data.number) {
         const { jws } = await wb.qr(id);
         setQrUrl(await QRCode.toDataURL(`${window.location.origin}/verify/${jws}`, { width: 150, margin: 0 }));
@@ -98,6 +101,20 @@ export default function PrintWaybill({ params }: { params: Promise<{ id: string 
     push('Прицепы', (td.trailers as Record<string, unknown>[]).map(tr => `${s(tr.registrationNumber)} (${s(tr.brand)})`).join('; '));
   }
   if (w.secondDriverRma) push('Второй водитель (РМА)', w.secondDriverRma);
+  // Доп.поля (конструктор полей, «Настройки → Доп.поля»): значения typeData.custom
+  // с подписями из определений — печатаются в «Дополнительных сведениях по типу».
+  const customRaw = (td.custom && typeof td.custom === 'object') ? td.custom as Record<string, unknown> : {};
+  const defByKey = new Map(fieldDefs.map(d => [d.fieldKey, d]));
+  const customPairs = Object.entries(customRaw)
+    .sort(([a], [b]) => (defByKey.get(a)?.sortOrder ?? 9999) - (defByKey.get(b)?.sortOrder ?? 9999) || a.localeCompare(b))
+    .map(([key, v]) => {
+      const def = defByKey.get(key);
+      const val = String(v) === 'true' ? 'да' : String(v) === 'false' ? 'нет' : s(v);
+      return [def?.labelRu ?? key, val] as [string, string];
+    });
+  customPairs.forEach(([k, v]) => push(k, v));
+  // Официальный бланк 5Б-БМ фиксирован приказом — доп.поля уходят в «Особые отметки».
+  const customText = customPairs.map(([k, v]) => `${k}: ${v}`).join('; ');
 
   return (
     <>
@@ -154,7 +171,7 @@ export default function PrintWaybill({ params }: { params: Promise<{ id: string 
       </div>
 
       {isIntlTruck ? (
-        <Form5B w={w} org={org} veh={veh} drv={drv} td={td} signed={signed} qrUrl={qrUrl}
+        <Form5B w={w} org={org} veh={veh} drv={drv} td={td} signed={signed} qrUrl={qrUrl} customText={customText}
           copy={copy} showQr={opt.showQr} showStamp={opt.showStamp} fingerprint={fingerprint} signerName={signerName} s={s} />
       ) : (
         <div className="sheet">
@@ -240,9 +257,9 @@ export default function PrintWaybill({ params }: { params: Promise<{ id: string 
  * ячейки — сетка бланка для отметок в пути. QR — на месте оттиска.
  * ==================================================================== */
 type S = (o: unknown) => string;
-function Form5B({ w, org, veh, drv, td, signed, qrUrl, copy, showQr, showStamp, fingerprint, s }: {
+function Form5B({ w, org, veh, drv, td, signed, qrUrl, customText, copy, showQr, showStamp, fingerprint, s }: {
   w: Waybill; org: Record<string, unknown>; veh: Record<string, unknown>; drv: Record<string, unknown>;
-  td: Record<string, unknown>; signed: Title[]; qrUrl: string; copy: boolean; showQr: boolean; showStamp: boolean;
+  td: Record<string, unknown>; signed: Title[]; qrUrl: string; customText: string; copy: boolean; showQr: boolean; showStamp: boolean;
   fingerprint: (t: Title) => string; signerName: (t: Title) => string; s: S;
 }) {
   const vf = w.validFrom ? new Date(w.validFrom) : null;
@@ -456,7 +473,7 @@ function Form5B({ w, org, veh, drv, td, signed, qrUrl, copy, showQr, showStamp, 
           <tr>
             <td style={{ width: '68%' }}>
               <b>Қайдҳои махсус / Special marks / Особые отметки:</b><br />
-              <span className="val">{s(w.specialMark)}</span>
+              <span className="val">{[s(w.specialMark), customText].filter(Boolean).join(' · ')}</span>
               <div style={{ marginTop: 4, fontSize: 7 }}>
                 Ҳуҷҷат дар низоми «е-Роҳхат» электронӣ имзо шудааст — имзои дастӣ ва мӯҳри тар лозим нест.
                 Санҷиш — аз рӯи QR (офлайн). / Документ подписан электронно в «е-Роҳхат»; проверка по QR (офлайн).
