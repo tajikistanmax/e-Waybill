@@ -58,8 +58,10 @@ public class SecurityConfig {
                         // Изображения бренда (логотип/фон входа) — публичны: страница входа
                         // читает их до аутентификации. Загрузка/сброс (POST/DELETE) — ниже под токеном.
                         .requestMatchers(HttpMethod.GET, "/api/v1/branding/**").permitAll()
-                        // Названия типов ПЛ — публичное справочное отображение (tType до/после входа).
+                        // Названия типов/статусов ПЛ — публичное справочное отображение
+                        // (tType/tStatus до/после входа, в т.ч. страница проверки QR).
                         .requestMatchers(HttpMethod.GET, "/api/v1/classifiers/waybill-types").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/v1/classifiers/waybill-statuses").permitAll()
                         // GET и межсервисный PATCH одометра требуют токена (закрыт анонимный доступ
                         // к ПДн — аудит). Пользователь ходит со своим JWT (тенант-фильтр по организации),
                         // а межсервисные вызовы waybill-service без пользователя (агрегатор ЧУРА/НЕРУ,

@@ -66,6 +66,16 @@ public class ClassifierController {
         return repository.findByCategoryOrderBySortOrderAscCodeAsc("WAYBILL_TYPE");
     }
 
+    /**
+     * Публичное чтение названий статусов ПЛ (категория WAYBILL_STATUS) — для отображения (tStatus)
+     * в т.ч. на публичной странице проверки QR. Статусная машина остаётся в коде — редактируются
+     * только названия (SYSTEM_ADMIN, общий upsert).
+     */
+    @GetMapping("/waybill-statuses")
+    public List<Classifier> waybillStatuses() {
+        return repository.findByCategoryOrderBySortOrderAscCodeAsc("WAYBILL_STATUS");
+    }
+
     @PostMapping
     @PreAuthorize("hasRole('SYSTEM_ADMIN')")
     public ResponseEntity<Classifier> upsert(@Valid @RequestBody ClassifierRequest req) {
