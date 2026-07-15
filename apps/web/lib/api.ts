@@ -251,6 +251,10 @@ export const md = {
   classifiers: (category: string, all = false) => fetch(
     `/md-api/api/v1/classifiers?category=${category}${all ? '&all=true' : ''}`,
     { headers: authHeaders() }).then(r => handle<ClassifierItem[]>(r)),
+  // Типы ПЛ (WAYBILL_TYPE, публичный, включая active=false): по active фронт скрывает
+  // отключённые типы из форм выбора (создание ПЛ, заявка водителя).
+  waybillTypes: () => fetch('/md-api/api/v1/classifiers/waybill-types')
+    .then(r => handle<ClassifierItem[]>(r)),
   saveClassifier: (body: Record<string, unknown>) => mdPost('classifiers', body) as Promise<ClassifierItem>,
   deleteClassifier: (id: string) => fetch(`/md-api/api/v1/classifiers/${id}`, { method: 'DELETE', headers: authHeaders() })
     .then(r => { if (!r.ok && r.status !== 204) throw new Error(`Ошибка ${r.status}`); }),

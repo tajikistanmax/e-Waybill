@@ -57,6 +57,23 @@ export default function DriverCabinet() {
   const [plateOpts, setPlateOpts] = useState<{ reg: string; brand: string }[]>([]);
   const [plateOpen, setPlateOpen] = useState(false);
   const pickedRef = useRef(false); // подавляет повторное открытие списка сразу после выбора
+  // Типы ПЛ, отключённые администратором — не показываются в форме заявки.
+  const [offTypes, setOffTypes] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    md.waybillTypes()
+      .then(list => {
+        const off = new Set(list.filter(c => !c.active).map(c => c.code));
+        setOffTypes(off);
+        // Предвыбранный тип отключён — переключаем на первый доступный.
+        setReqForm(f => {
+          if (!off.has(f.waybillType)) return f;
+          const first = Object.keys(TYPE_LABELS).find(v => !off.has(v));
+          return first ? { ...f, waybillType: first } : f;
+        });
+      })
+      .catch(() => { /* fail-open: бэкенд всё равно отклонит отключённый тип */ });
+  }, []);
 
   useEffect(() => {
     wb.list().then(setItems).catch((e: Error) => setError(e.message)).finally(() => setLoading(false));
@@ -244,7 +261,7 @@ export default function DriverCabinet() {
             <div>
               <label style={{ fontSize: 12.5, color: 'var(--muted)' }}>{t('drvreq.f.type')} *</label>
               <select value={reqForm.waybillType} onChange={e => setReqForm({ ...reqForm, waybillType: e.target.value })} style={{ width: '100%', marginTop: 4 }}>
-                {Object.keys(TYPE_LABELS).map(v => <option key={v} value={v}>{tType(v)}</option>)}
+                {Object.keys(TYPE_LABELS).filter(v => !offTypes.has(v)).map(v => <option key={v} value={v}>{tType(v)}</option>)}
               </select>
             </div>
             <div>

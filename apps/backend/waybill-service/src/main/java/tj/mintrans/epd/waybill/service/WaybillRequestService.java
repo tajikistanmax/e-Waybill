@@ -56,6 +56,9 @@ public class WaybillRequestService {
                                  String schedule, String notes) {
         String driverRma = currentUser.rma()
                 .orElseThrow(() -> new ForbiddenException("Не удалось определить водителя из входа"));
+        // Отключённый администратором тип нельзя даже запросить — водителю сразу понятная ошибка,
+        // а не отказ диспетчера при одобрении (там assertTypeEnabled сработает повторно).
+        waybillService.assertTypeEnabled(type);
         // «Одна заявка в работе»: пока прошлая заявка водителя ещё не рассмотрена (PENDING),
         // подать новую нельзя — иначе диспетчер получил бы дубли на один и тот же выезд.
         if (requests.existsByDriverRmaAndStatus(driverRma, WaybillRequest.PENDING)) {

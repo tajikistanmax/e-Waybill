@@ -26,6 +26,9 @@ export default function TypesSettingsPage() {
   const { roles } = useAuth();
   const canEdit = roles.includes('SYSTEM_ADMIN');
   const [names, setNames] = useState<Record<string, { ru: string; tj: string }>>({});
+  // Активность типа (классификатор WAYBILL_TYPE.active): выключен → скрыт из форм выбора
+  // и заблокирован на бэкенде при создании ПЛ/заявки.
+  const [act, setAct] = useState<Record<string, boolean>>({});
   // Эффективный макс срок по типу: override из правила max_validity_days (уровень типа ТС) или законный лимит.
   const [days, setDays] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState('');
@@ -34,7 +37,10 @@ export default function TypesSettingsPage() {
 
   function load() {
     md.classifiers('WAYBILL_TYPE', true)
-      .then(list => setNames(Object.fromEntries(list.map(c => [c.code, { ru: c.nameRu, tj: c.nameTj ?? '' }]))))
+      .then(list => {
+        setNames(Object.fromEntries(list.map(c => [c.code, { ru: c.nameRu, tj: c.nameTj ?? '' }])));
+        setAct(Object.fromEntries(list.map(c => [c.code, c.active])));
+      })
       .catch(() => { /* нет доступа/связи — поля будут пустыми, плейсхолдер покажет дефолт */ });
     md.policies()
       .then(pols => {
@@ -49,12 +55,29 @@ export default function TypesSettingsPage() {
   const set = (code: string, field: 'ru' | 'tj', v: string) =>
     setNames(s => ({ ...s, [code]: { ...(s[code] ?? { ru: '', tj: '' }), [field]: v } }));
 
+  // Мгновенное вкл/выкл типа: applied сразу (upsert классификатора), название сохраняется текущее.
+  async function toggle(code: string, sortOrder: number) {
+    setBusy(code); setErr(''); setMsg('');
+    const next = !(act[code] ?? true);
+    try {
+      const n = names[code] ?? { ru: '', tj: '' };
+      await md.saveClassifier({
+        category: 'WAYBILL_TYPE', code,
+        nameRu: n.ru.trim() || tType(code), nameTj: n.tj.trim() || null,
+        sortOrder, active: next,
+      });
+      setAct(s => ({ ...s, [code]: next }));
+      setMsg(next ? t('settypes.enabled') : t('settypes.disabled'));
+    } catch (e) { setErr((e as Error).message); }
+    finally { setBusy(''); }
+  }
+
   async function save(code: string, sortOrder: number, legalMax: number) {
     setBusy(code); setErr(''); setMsg('');
     try {
       const n = names[code] ?? { ru: '', tj: '' };
       if (!n.ru.trim()) { setErr(t('settypes.needname')); setBusy(''); return; }
-      await md.saveClassifier({ category: 'WAYBILL_TYPE', code, nameRu: n.ru.trim(), nameTj: n.tj.trim() || null, sortOrder, active: true });
+      await md.saveClassifier({ category: 'WAYBILL_TYPE', code, nameRu: n.ru.trim(), nameTj: n.tj.trim() || null, sortOrder, active: act[code] ?? true });
       // Макс срок → правило max_validity_days (уровень типа ТС). Потолок = законный лимит:
       // значение зажимается в [1, legalMax]; на бэкенде signT1 тоже применяет min(закон, политика).
       const raw = parseInt((days[code] ?? String(legalMax)).trim(), 10);
@@ -93,6 +116,7 @@ export default function TypesSettingsPage() {
               <th>{t('settypes.natcode')}</th>
               <th>{t('settypes.validity')}</th>
               <th>{t('settypes.category')}</th>
+              <th>{t('settypes.state')}</th>
               <th></th>
             </tr>
           </thead>
@@ -117,10 +141,21 @@ export default function TypesSettingsPage() {
                   <span className={`badge ${x.pax ? 'teal' : 'gray'}`}>{x.pax ? t('settypes.pax') : t('settypes.freight')}</span>
                   {x.intl && <span className="badge amber">{t('settypes.intl')}</span>}
                 </td>
-                <td>{canEdit && (
-                  <button className="btn" style={{ padding: '5px 12px', fontSize: 12.5 }} disabled={busy === x.code} onClick={() => save(x.code, i + 1, x.days)}>
-                    {busy === x.code ? '…' : t('fleet.save')}
-                  </button>
+                <td style={{ whiteSpace: 'nowrap' }}>
+                  <span className={`badge ${(act[x.code] ?? true) ? 'green' : 'red'}`}>
+                    {(act[x.code] ?? true) ? t('settypes.on') : t('settypes.off')}
+                  </span>
+                </td>
+                <td style={{ whiteSpace: 'nowrap' }}>{canEdit && (
+                  <>
+                    <button className="btn" style={{ padding: '5px 12px', fontSize: 12.5 }} disabled={busy === x.code} onClick={() => save(x.code, i + 1, x.days)}>
+                      {busy === x.code ? '…' : t('fleet.save')}
+                    </button>{' '}
+                    <button className="btn secondary" style={{ padding: '5px 12px', fontSize: 12.5 }} disabled={busy === x.code}
+                      title={t('settypes.togglehint')} onClick={() => toggle(x.code, i + 1)}>
+                      {(act[x.code] ?? true) ? t('settypes.turnoff') : t('settypes.turnon')}
+                    </button>
+                  </>
                 )}</td>
               </tr>
             ))}

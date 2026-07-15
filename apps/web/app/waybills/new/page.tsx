@@ -81,6 +81,8 @@ export default function NewWaybillPage() {
   const [busy, setBusy] = useState(false);
   // Пригодность (preflight): доступность типов по лицензии (шаг 1) + полная проверка связки (шаг 3).
   const [typeAvail, setTypeAvail] = useState<Record<string, TypeAvailability>>({});
+  // Типы, отключённые администратором (WAYBILL_TYPE.active=false) — скрываются из выбора совсем.
+  const [offTypes, setOffTypes] = useState<Set<string>>(new Set());
   const [pf, setPf] = useState<Eligibility | null>(null);
   const [pfBusy, setPfBusy] = useState(false);
 
@@ -122,6 +124,20 @@ export default function NewWaybillPage() {
     md.classifiers('WORK_TYPE')
       .then(list => setWorkTypes(list.map(c => ({ value: c.nameRu, label: c.nameRu }))))
       .catch(() => setError('Не удалось загрузить справочник видов работ — обратитесь к администратору'));
+    // Отключённые администратором типы ПЛ убираются из шага выбора (при сбое — показываем все,
+    // бэкенд всё равно заблокирует создание отключённого типа).
+    md.waybillTypes()
+      .then(list => {
+        const off = new Set(list.filter(c => !c.active).map(c => c.code));
+        setOffTypes(off);
+        // Предвыбранный тип оказался отключён — переключаем на первый доступный.
+        setForm(f => {
+          if (!off.has(f.waybillType)) return f;
+          const first = Object.keys(TYPE_LABELS).find(v => !off.has(v));
+          return first ? { ...f, waybillType: first } : f;
+        });
+      })
+      .catch(() => { /* fail-open */ });
   }, []);
 
   // Доп.поля выбранного типа ПЛ (конструктор полей). Флаг отмены — против гонки:
@@ -314,7 +330,7 @@ export default function NewWaybillPage() {
           {/* ======= ШАГ 1 — Выбор типа ======= */}
           {step === 1 && (
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-              {Object.entries(TYPE_LABELS).map(([value]) => {
+              {Object.entries(TYPE_LABELS).filter(([value]) => !offTypes.has(value)).map(([value]) => {
                 const meta = TYPE_META[value];
                 const active = form.waybillType === value;
                 const avail = typeAvail[value];

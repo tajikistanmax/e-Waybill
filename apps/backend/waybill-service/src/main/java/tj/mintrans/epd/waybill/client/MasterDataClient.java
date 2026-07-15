@@ -149,6 +149,19 @@ public class MasterDataClient {
         }
     }
 
+    /**
+     * Классификатор WAYBILL_TYPE целиком (включая active=false): по нему сервис блокирует
+     * отключённые администратором типы ПЛ. При недоступности master-data — пустой список
+     * (fail-open: отключение типа — административное удобство, а не барьер безопасности).
+     */
+    public List<Map<String, Object>> waybillTypeClassifiers() {
+        try {
+            return list("/api/v1/classifiers?category=WAYBILL_TYPE&all=true");
+        } catch (RuntimeException e) {
+            return List.of();
+        }
+    }
+
     // ------------------------------------------------------- справочники нормирования
 
     public List<Map<String, Object>> listFuelNorms() {
