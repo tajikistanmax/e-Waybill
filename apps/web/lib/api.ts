@@ -154,6 +154,23 @@ export type FieldDefinition = {
   active: boolean;
 };
 
+// Эксплуатационные сводки сервисов (ops/overview, SYSTEM_ADMIN) — живые данные админ-панели.
+export type OpsRuntime = { uptimeMs: number; heapUsedBytes: number; heapMaxBytes: number; processors: number };
+export type MdOps = {
+  unifiedPlatformMode: string;
+  databases: { name: string; size_bytes: number }[];
+  runtime: OpsRuntime;
+};
+export type WbOps = {
+  paymentEnabled: boolean;
+  aggregatorOpen: boolean;
+  signingMode: string;
+  kafkaBootstrap: string;
+  eventsTopic: string;
+  numbering: { type: string; total: number; numbered: number; last_number: string | null }[];
+  runtime: OpsRuntime;
+};
+
 export type ClassifierItem = {
   id: string;
   category: string;
@@ -255,6 +272,9 @@ export const md = {
   // отключённые типы из форм выбора (создание ПЛ, заявка водителя).
   waybillTypes: () => fetch('/md-api/api/v1/classifiers/waybill-types')
     .then(r => handle<ClassifierItem[]>(r)),
+  // Названия статусов ПЛ (WAYBILL_STATUS, публичный) — редактор в «Настройки → Статусы».
+  waybillStatuses: () => fetch('/md-api/api/v1/classifiers/waybill-statuses')
+    .then(r => handle<ClassifierItem[]>(r)),
   saveClassifier: (body: Record<string, unknown>) => mdPost('classifiers', body) as Promise<ClassifierItem>,
   deleteClassifier: (id: string) => fetch(`/md-api/api/v1/classifiers/${id}`, { method: 'DELETE', headers: authHeaders() })
     .then(r => { if (!r.ok && r.status !== 204) throw new Error(`Ошибка ${r.status}`); }),
@@ -265,6 +285,9 @@ export const md = {
   saveFieldDefinition: (body: Record<string, unknown>) => mdPost('field-definitions', body) as Promise<FieldDefinition>,
   deleteFieldDefinition: (id: string) => fetch(`/md-api/api/v1/field-definitions/${id}`, { method: 'DELETE', headers: authHeaders() })
     .then(r => { if (!r.ok && r.status !== 204) throw new Error(`Ошибка ${r.status}`); }),
+  // Эксплуатационная сводка master-data (SYSTEM_ADMIN): единая платформа, размеры БД, JVM.
+  ops: () => fetch('/md-api/api/v1/ops/overview', { headers: authHeaders() })
+    .then(r => handle<MdOps>(r)),
   // Монитор истечения документов (тенант-скоуп).
   documentExpiry: (days = 30) => fetch(`/md-api/api/v1/document-expiry?days=${days}`, { headers: authHeaders() })
     .then(r => handle<ExpiryItem[]>(r)),
@@ -362,6 +385,8 @@ export type WaybillRequest = {
 
 export const wb = {
   list: () => fetch('/wb-api/api/v1/waybills', { headers: authHeaders() }).then(r => handle<Waybill[]>(r)),
+  // Эксплуатационная сводка waybill-service (SYSTEM_ADMIN): интеграции, нумерация, JVM.
+  ops: () => fetch('/wb-api/api/v1/ops/overview', { headers: authHeaders() }).then(r => handle<WbOps>(r)),
   // Доступные типы ПЛ для организации (по лицензии/виду субъекта) — для шага выбора типа.
   availableTypes: (orgRma: string) => fetch(
     `/wb-api/api/v1/waybills/available-types?organizationRma=${encodeURIComponent(orgRma)}`,

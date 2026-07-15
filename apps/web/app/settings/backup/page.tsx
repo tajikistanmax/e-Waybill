@@ -1,8 +1,14 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { md, type MdOps } from '@/lib/api';
 import { useT } from '@/lib/i18n';
+import { useAuth } from '@/lib/auth';
 import { Icon, P } from '../../icons';
+
+const fmtSize = (b: number) =>
+  b >= 1073741824 ? `${(b / 1073741824).toFixed(1)} ГБ` : `${Math.max(1, Math.round(b / 1048576))} МБ`;
 
 /** Политика резервного копирования и восстановления (справочно, read-only).
  *  st: 'on' — уже действует, 'planned' — реализация на этапе продовой инфраструктуры. */
@@ -16,6 +22,16 @@ const CARDS: { key: string; icon: string; cls: string; st: 'on' | 'planned' }[] 
 
 export default function BackupSettingsPage() {
   const { t } = useT();
+  const { roles } = useAuth();
+  const isAdmin = roles.includes('SYSTEM_ADMIN');
+  // Реальные размеры баз данных (ops/overview master-data) — что именно подлежит копированию.
+  const [dbs, setDbs] = useState<MdOps['databases'] | null>(null);
+  const [opsErr, setOpsErr] = useState('');
+
+  useEffect(() => {
+    if (!isAdmin) return;
+    md.ops().then(o => setDbs(o.databases)).catch(e => setOpsErr((e as Error).message));
+  }, [isAdmin]);
 
   return (
     <>
@@ -30,6 +46,29 @@ export default function BackupSettingsPage() {
       </div>
 
       <div className="hint" style={{ marginBottom: 18 }}>{t('setbak.note')}</div>
+
+      {isAdmin && (
+        <div className="card" style={{ padding: 16, marginBottom: 16 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+            <span className="k-ic ic-blue"><Icon d={P.book} cls="" /></span>
+            <div style={{ fontWeight: 700, fontSize: 14 }}>{t('setbak.live.h')}</div>
+          </div>
+          {opsErr && <div className="error" style={{ marginBottom: 10 }}>{opsErr}</div>}
+          {dbs && (
+            <table style={{ width: '100%' }}>
+              <thead><tr><th>{t('setbak.live.db')}</th><th style={{ textAlign: 'right' }}>{t('setbak.live.size')}</th></tr></thead>
+              <tbody>
+                {dbs.map(d => (
+                  <tr key={d.name}>
+                    <td style={{ fontFamily: 'var(--mono)' }}>{d.name}</td>
+                    <td style={{ textAlign: 'right' }}>{fmtSize(Number(d.size_bytes))}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
 
       <div className="kpi-row" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 14 }}>
         {CARDS.map(c => (

@@ -1,7 +1,10 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { wb, type WbOps } from '@/lib/api';
 import { useT } from '@/lib/i18n';
+import { useAuth } from '@/lib/auth';
 import { Icon, P } from '../../icons';
 
 /** Компоненты формата номера ПЛ: RR-YY-TT-NNNNNNN-K (справочно). */
@@ -14,7 +17,17 @@ const PARTS: { code: string; key: string; ic: string; icon: keyof typeof P }[] =
 ];
 
 export default function NumberingSettingsPage() {
-  const { t } = useT();
+  const { t, tType } = useT();
+  const { roles } = useAuth();
+  const isAdmin = roles.includes('SYSTEM_ADMIN');
+  // Живые счётчики нумерации по типам (ops/overview waybill-service) — только SYSTEM_ADMIN.
+  const [counters, setCounters] = useState<WbOps['numbering'] | null>(null);
+  const [opsErr, setOpsErr] = useState('');
+
+  useEffect(() => {
+    if (!isAdmin) return;
+    wb.ops().then(o => setCounters(o.numbering)).catch(e => setOpsErr((e as Error).message));
+  }, [isAdmin]);
 
   return (
     <>
@@ -29,6 +42,32 @@ export default function NumberingSettingsPage() {
       </div>
 
       <div className="hint" style={{ marginBottom: 18 }}>{t('setnum.note')}</div>
+
+      {isAdmin && (
+        <div className="card" style={{ padding: 16, marginBottom: 18 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+            <span className="k-ic ic-green"><Icon d={P.chart} cls="" /></span>
+            <div style={{ fontWeight: 700, fontSize: 14 }}>{t('setnum.live.h')}</div>
+          </div>
+          {opsErr && <div className="error" style={{ marginBottom: 10 }}>{opsErr}</div>}
+          {counters && counters.length === 0 && <div className="hint" style={{ margin: 0 }}>{t('setnum.live.empty')}</div>}
+          {counters && counters.length > 0 && (
+            <table style={{ width: '100%' }}>
+              <thead><tr><th>{t('col.type')}</th><th>{t('setnum.live.total')}</th><th>{t('setnum.live.numbered')}</th><th>{t('setnum.live.last')}</th></tr></thead>
+              <tbody>
+                {counters.map(c => (
+                  <tr key={c.type}>
+                    <td>{tType(c.type)}</td>
+                    <td>{c.total}</td>
+                    <td>{c.numbered}</td>
+                    <td style={{ fontFamily: 'var(--mono)' }}>{c.last_number ?? '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
 
       <div className="card" style={{ padding: 24, marginBottom: 18, textAlign: 'center' }}>
         <div style={{ fontSize: 12.5, color: 'var(--muted)', marginBottom: 12, letterSpacing: '0.04em', textTransform: 'uppercase' }}>{t('setnum.format')}</div>

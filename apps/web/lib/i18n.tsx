@@ -1125,6 +1125,33 @@ const DICT: Record<string, { ru: string; tj: string; en?: string }> = {
   'settypes.togglehint': { ru: 'Отключённый тип скрывается из форм выбора и блокируется при оформлении', tj: 'Навъи хомӯшшуда аз интихоб пинҳон ва ҳангоми барасмиятдарорӣ баста мешавад' },
   'settypes.enabled': { ru: 'Тип включён — снова доступен для оформления', tj: 'Навъ фаъол шуд — боз барои барасмиятдарорӣ дастрас аст' },
   'settypes.disabled': { ru: 'Тип отключён — скрыт из выбора и заблокирован при оформлении', tj: 'Навъ хомӯш шуд — аз интихоб пинҳон ва баста шуд' },
+  // Живые блоки админ-панели (ops/overview)
+  'setint.live.h': { ru: 'Текущая конфигурация стенда', tj: 'Танзимоти ҷории стенд' },
+  'setint.live.unified': { ru: 'Единая платформа Минтранса (налоговая, ГАИ)', tj: 'Платформаи ягонаи Вазорати нақлиёт (андоз, БДА)' },
+  'setint.live.payment': { ru: 'Оплата путевых листов', tj: 'Пардохти роҳхатҳо' },
+  'setint.live.aggregator': { ru: 'API агрегаторов (ЧУРА/НЕРУ)', tj: 'API агрегаторҳо (ЧУРА/НЕРУ)' },
+  'setint.live.signing': { ru: 'Подпись титулов (ЭП)', tj: 'Имзои унвонҳо (ИЭ)' },
+  'setint.live.kafka': { ru: 'Шина событий (Kafka · топик)', tj: 'Шинаи рӯйдодҳо (Kafka · топик)' },
+  'setint.v.on': { ru: 'Включена', tj: 'Фаъол' },
+  'setint.v.off': { ru: 'Выключена', tj: 'Хомӯш' },
+  'setint.v.http': { ru: 'Боевое подключение', tj: 'Пайвасти воқеӣ' },
+  'setint.v.stub': { ru: 'Имитация (stub)', tj: 'Тақлид (stub)' },
+  'setint.v.aggopen': { ru: 'Открыт (dev)', tj: 'Кушода (dev)' },
+  'setint.v.aggclosed': { ru: 'Закрыт (по токену)', tj: 'Пӯшида (бо токен)' },
+  'setint.v.stubsign': { ru: 'Тестовая (stub)', tj: 'Санҷишӣ (stub)' },
+  'setperf.live.h': { ru: 'Состояние сервисов (реальное время)', tj: 'Ҳолати хидматҳо (вақти воқеӣ)' },
+  'setperf.live.total': { ru: 'Всего ПЛ в системе', tj: 'Ҳамагӣ РР дар низом' },
+  'setperf.live.svc': { ru: 'Сервис', tj: 'Хидмат' },
+  'setperf.live.uptime': { ru: 'Аптайм', tj: 'Вақти корӣ' },
+  'setperf.live.heap': { ru: 'Память (куча)', tj: 'Ҳофиза (heap)' },
+  'setnum.live.h': { ru: 'Счётчики нумерации по типам (реальные данные)', tj: 'Ҳисобкунакҳои рақамгузорӣ аз рӯи навъҳо (маълумоти воқеӣ)' },
+  'setnum.live.total': { ru: 'Всего ПЛ', tj: 'Ҳамагӣ РР' },
+  'setnum.live.numbered': { ru: 'С номером', tj: 'Бо рақам' },
+  'setnum.live.last': { ru: 'Последний номер', tj: 'Рақами охирин' },
+  'setnum.live.empty': { ru: 'Путевых листов ещё нет — счётчики появятся после первой выдачи.', tj: 'Ҳоло роҳхат нест — ҳисобкунакҳо пас аз додани аввалин пайдо мешаванд.' },
+  'setbak.live.h': { ru: 'Базы данных платформы (реальные размеры)', tj: 'Пойгоҳҳои додаи платформа (андозаҳои воқеӣ)' },
+  'setbak.live.db': { ru: 'База данных', tj: 'Пойгоҳи дода' },
+  'setbak.live.size': { ru: 'Размер', tj: 'Андоза' },
   'settypes.note': { ru: 'Справочное отображение конфигурации типов из системы. Редактирование типов (вкл/выкл, поля, проверки) — по дорожной карте раздела «Настройки».', tj: 'Намоиши маълумотии танзими навъҳо аз система. Таҳрири навъҳо (фаъол/ғайрифаъол, майдонҳо, санҷишҳо) — аз рӯи харитаи роҳи бахши «Танзимот».' },
   'settypes.form': { ru: 'Код формы', tj: 'Коди шакл' },
   'settypes.natcode': { ru: 'Нац. код', tj: 'Коди миллӣ' },
@@ -1445,7 +1472,8 @@ const DICT: Record<string, { ru: string; tj: string; en?: string }> = {
   'wb.gps.kmh': { ru: 'км/ч', tj: 'км/с' },
   // ═══ Статусная модель (справочник) ═══
   'stat.lead': { ru: 'Жизненный цикл путевого листа по этапам', tj: 'Давраи ҳаёти роҳхат аз рӯи марҳилаҳо' },
-  'stat.note': { ru: 'Справочное отображение статусной модели и её характера. Настраиваемые переходы — по дорожной карте.', tj: 'Намоиши маълумотии модели вазъиятҳо ва хусусияти онҳо. Гузаришҳои танзимшаванда — аз рӯи харитаи роҳ.' },
+  'stat.note': { ru: 'Статусная модель жизненного цикла ПЛ. Переходы между статусами закреплены в системе.', tj: 'Модели вазъиятҳои давраи ҳаёти РР. Гузаришҳои байни вазъиятҳо дар низом муқаррар шудаанд.' },
+  'stat.editnote': { ru: 'Названия статусов (RU/TJ) редактируются и применяются во всём приложении — включая кабинеты и страницу проверки QR.', tj: 'Номҳои вазъиятҳо (RU/TJ) таҳрир мешаванд ва дар тамоми барнома татбиқ мегарданд — аз ҷумла дар кабинетҳо ва саҳифаи санҷиши QR.' },
   'stat.nature': { ru: 'Характер', tj: 'Хусусият' },
   'stat.n.open': { ru: 'Действующий', tj: 'Амалкунанда' },
   'stat.n.terminal': { ru: 'Завершающий', tj: 'Хотимавӣ' },
@@ -1498,17 +1526,22 @@ export const useT = () => useContext(LangContext);
 
 export function LangProvider({ children }: { children: React.ReactNode }) {
   const [lang, setLangState] = useState<Lang>('ru');
-  // Редактируемые названия типов ПЛ (классификатор WAYBILL_TYPE, публичный) — переопределяют дефолт WTYPE.
+  // Редактируемые названия типов и статусов ПЛ (классификаторы WAYBILL_TYPE/WAYBILL_STATUS,
+  // публичные) — переопределяют зашитые дефолты WTYPE/WSTATUS.
   const [typeNames, setTypeNames] = useState<Record<string, { ru: string; tj: string }>>({});
+  const [statusNames, setStatusNames] = useState<Record<string, { ru: string; tj: string }>>({});
   useEffect(() => {
-    fetch('/md-api/api/v1/classifiers/waybill-types')
-      .then(r => (r.ok ? r.json() : []))
-      .then((rows: { code: string; nameRu: string; nameTj: string | null }[]) => {
-        if (Array.isArray(rows) && rows.length) {
-          setTypeNames(Object.fromEntries(rows.map(x => [x.code, { ru: x.nameRu, tj: x.nameTj || x.nameRu }])));
-        }
-      })
-      .catch(() => { /* нет связи — остаётся зашитый дефолт WTYPE */ });
+    const load = (path: string, set: typeof setTypeNames) =>
+      fetch(path)
+        .then(r => (r.ok ? r.json() : []))
+        .then((rows: { code: string; nameRu: string; nameTj: string | null }[]) => {
+          if (Array.isArray(rows) && rows.length) {
+            set(Object.fromEntries(rows.map(x => [x.code, { ru: x.nameRu, tj: x.nameTj || x.nameRu }])));
+          }
+        })
+        .catch(() => { /* нет связи — остаётся зашитый дефолт */ });
+    load('/md-api/api/v1/classifiers/waybill-types', setTypeNames);
+    load('/md-api/api/v1/classifiers/waybill-statuses', setStatusNames);
   }, []);
   useEffect(() => {
     // Личный выбор пользователя имеет приоритет; иначе — язык платформы по умолчанию
@@ -1529,6 +1562,6 @@ export function LangProvider({ children }: { children: React.ReactNode }) {
   const base: 'ru' | 'tj' = lang === 'en' ? 'ru' : lang;
   const t = (k: string) => DICT[k]?.[lang] ?? DICT[k]?.ru ?? k;
   const tType = (x: string) => typeNames[x]?.[base] ?? WTYPE[x]?.[base] ?? x;
-  const tStatus = (x: string) => WSTATUS[x]?.[base] ?? x;
+  const tStatus = (x: string) => statusNames[x]?.[base] ?? WSTATUS[x]?.[base] ?? x;
   return <LangContext.Provider value={{ lang, setLang, t, tType, tStatus }}>{children}</LangContext.Provider>;
 }
