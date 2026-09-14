@@ -1,7 +1,10 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { md, wb, type MdOps, type WbOps } from '@/lib/api';
 import { useT } from '@/lib/i18n';
+import { useAuth } from '@/lib/auth';
 import { Icon, P } from '../../icons';
 
 type Status = 'live' | 'partial' | 'via' | 'planned';
@@ -68,6 +71,21 @@ const GROUPS: { key: string; icon: string; ic: string; items: { key: string; sta
 
 export default function IntegrationsSettingsPage() {
   const { t } = useT();
+  const { roles } = useAuth();
+  const isAdmin = roles.includes('SYSTEM_ADMIN');
+  // Живая конфигурация стенда (ops/overview обоих сервисов) — только SYSTEM_ADMIN.
+  const [mdOps, setMdOps] = useState<MdOps | null>(null);
+  const [wbOps, setWbOps] = useState<WbOps | null>(null);
+  const [opsErr, setOpsErr] = useState('');
+
+  useEffect(() => {
+    if (!isAdmin) return;
+    md.ops().then(setMdOps).catch(e => setOpsErr((e as Error).message));
+    wb.ops().then(setWbOps).catch(e => setOpsErr((e as Error).message));
+  }, [isAdmin]);
+
+  const onOff = (v: boolean, onKey = 'setint.v.on', offKey = 'setint.v.off') =>
+    <span className={`badge ${v ? 'green' : 'gray'}`}>{t(v ? onKey : offKey)}</span>;
 
   return (
     <>
@@ -82,6 +100,39 @@ export default function IntegrationsSettingsPage() {
       </div>
 
       <div className="hint" style={{ marginBottom: 18 }}>{t('setint.note')}</div>
+
+      {isAdmin && (
+        <div className="card" style={{ padding: 16, marginBottom: 16 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+            <span className="k-ic ic-green"><Icon d={P.settings} cls="" /></span>
+            <div style={{ fontWeight: 700, fontSize: 14 }}>{t('setint.live.h')}</div>
+          </div>
+          {opsErr && <div className="error" style={{ marginBottom: 10 }}>{opsErr}</div>}
+          <table>
+            <tbody>
+              <tr><td>{t('setint.live.unified')}</td><td style={{ textAlign: 'right' }}>
+                {mdOps ? (mdOps.unifiedPlatformMode === 'http'
+                  ? <span className="badge green">{t('setint.v.http')}</span>
+                  : <span className="badge amber">{t('setint.v.stub')}</span>) : '…'}
+              </td></tr>
+              <tr><td>{t('setint.live.payment')}</td><td style={{ textAlign: 'right' }}>{wbOps ? onOff(wbOps.paymentEnabled) : '…'}</td></tr>
+              <tr><td>{t('setint.live.aggregator')}</td><td style={{ textAlign: 'right' }}>
+                {wbOps ? (wbOps.aggregatorOpen
+                  ? <span className="badge amber">{t('setint.v.aggopen')}</span>
+                  : <span className="badge green">{t('setint.v.aggclosed')}</span>) : '…'}
+              </td></tr>
+              <tr><td>{t('setint.live.signing')}</td><td style={{ textAlign: 'right' }}>
+                {wbOps ? (wbOps.signingMode === 'cades'
+                  ? <span className="badge green">CAdES</span>
+                  : <span className="badge amber">{t('setint.v.stubsign')}</span>) : '…'}
+              </td></tr>
+              <tr><td>{t('setint.live.kafka')}</td><td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontSize: 12 }}>
+                {wbOps ? `${wbOps.kafkaBootstrap} · ${wbOps.eventsTopic}` : '…'}
+              </td></tr>
+            </tbody>
+          </table>
+        </div>
+      )}
 
       <div className="kpi-row" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 14 }}>
         {GROUPS.map(group => (

@@ -4,6 +4,12 @@ server:
 spring:
   application:
     name: waybill-service
+  mvc:
+    # Встроенные ошибки Spring MVC (400 невалидный JSON, 404 нет обработчика, 405, 415)
+    # отдаются в едином формате RFC 7807 (application/problem+json), как и кастомные —
+    # чтобы фронт (api.ts handle: problem.detail/title) единообразно показывал их пользователю.
+    problemdetails:
+      enabled: true
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
   datasource:

@@ -56,12 +56,24 @@ public class ClassifierController {
     }
 
     /**
-     * Публичное чтение названий типов ПЛ (категория WAYBILL_TYPE) — нужно для отображения
-     * названий (tType) в т.ч. до входа. Редактирование — через общий upsert (SYSTEM_ADMIN).
+     * Публичное чтение типов ПЛ (категория WAYBILL_TYPE) — нужно для отображения названий (tType)
+     * в т.ч. до входа. Отдаёт ВСЕ записи, включая active=false: названия отключённых типов нужны
+     * для ранее выданных ПЛ, а по флагу active фронт скрывает тип из форм выбора.
+     * Редактирование — через общий upsert (SYSTEM_ADMIN).
      */
     @GetMapping("/waybill-types")
     public List<Classifier> waybillTypes() {
-        return service.listActiveByCategory("WAYBILL_TYPE");
+        return repository.findByCategoryOrderBySortOrderAscCodeAsc("WAYBILL_TYPE");
+    }
+
+    /**
+     * Публичное чтение названий статусов ПЛ (категория WAYBILL_STATUS) — для отображения (tStatus)
+     * в т.ч. на публичной странице проверки QR. Статусная машина остаётся в коде — редактируются
+     * только названия (SYSTEM_ADMIN, общий upsert).
+     */
+    @GetMapping("/waybill-statuses")
+    public List<Classifier> waybillStatuses() {
+        return repository.findByCategoryOrderBySortOrderAscCodeAsc("WAYBILL_STATUS");
     }
 
     @PostMapping

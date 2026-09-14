@@ -66,16 +66,23 @@ export default function DriverCabinet() {
   const [plateOpts, setPlateOpts] = useState<{ reg: string; brand: string }[]>([]);
   const [plateOpen, setPlateOpen] = useState(false);
   const pickedRef = useRef(false); // подавляет повторное открытие списка сразу после выбора
-  // Живая позиция ТС текущего рейса (водителю доступен /gps/last по своему ТС).
-  const [pos, setPos] = useState<GpsPing | null>(null);
-  // Реквизиты закреплённого ТС (сроки техосмотра/страховки) — из справочника парка.
-  const [vehInfo, setVehInfo] = useState<Record<string, unknown> | null>(null);
-  // «Сообщить о проблеме» — сообщение диспетчеру.
-  const [reportOpen, setReportOpen] = useState(false);
-  const [reportForm, setReportForm] = useState({ issueType: '', message: '' });
-  const [reportBusy, setReportBusy] = useState(false);
-  const [reportMsg, setReportMsg] = useState('');
-  const [reportErr, setReportErr] = useState('');
+  // Типы ПЛ, отключённые администратором — не показываются в форме заявки.
+  const [offTypes, setOffTypes] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    md.waybillTypes()
+      .then(list => {
+        const off = new Set(list.filter(c => !c.active).map(c => c.code));
+        setOffTypes(off);
+        // Предвыбранный тип отключён — переключаем на первый доступный.
+        setReqForm(f => {
+          if (!off.has(f.waybillType)) return f;
+          const first = Object.keys(TYPE_LABELS).find(v => !off.has(v));
+          return first ? { ...f, waybillType: first } : f;
+        });
+      })
+      .catch(() => { /* fail-open: бэкенд всё равно отклонит отключённый тип */ });
+  }, []);
 
   useEffect(() => {
     wb.list().then(setItems).catch((e: Error) => setError(e.message)).finally(() => setLoading(false));
@@ -123,47 +130,7 @@ export default function DriverCabinet() {
     return () => { cancelled = true; };
   }, [current]);
 
-  // Живая позиция ТС текущего рейса — только своё ТС (обновление 15 с).
-  useEffect(() => {
-    if (!current) { setPos(null); return; }
-    let alive = true;
-    const load = () => wb.gpsLast(current.vehicleRegNumber).then(p => { if (alive) setPos(p); }).catch(() => {});
-    load();
-    const h = window.setInterval(load, 15000);
-    return () => { alive = false; window.clearInterval(h); };
-  }, [current]);
-
-  // Реквизиты закреплённого ТС (сроки техосмотра/страховки) из справочника парка.
-  useEffect(() => {
-    if (!current) { setVehInfo(null); return; }
-    let alive = true;
-    md.searchVehicles(orgRma, current.vehicleRegNumber, 3)
-      .then(list => {
-        if (!alive) return;
-        const reg = current.vehicleRegNumber.trim().toUpperCase();
-        setVehInfo(list.find(v => String(v.registrationNumber ?? '').toUpperCase() === reg) ?? list[0] ?? null);
-      })
-      .catch(() => { if (alive) setVehInfo(null); });
-    return () => { alive = false; };
-  }, [current, orgRma]);
-
-  async function submitReport() {
-    if (!reportForm.message.trim()) return;
-    setReportBusy(true); setReportErr('');
-    try {
-      await wb.reportIssue({
-        issueType: reportForm.issueType || t('drv.report.t.other'),
-        message: reportForm.message.trim(),
-        waybillId: current?.id ?? null,
-      });
-      setReportMsg(t('drv.report.sent'));
-      setReportOpen(false);
-      setReportForm({ issueType: '', message: '' });
-    } catch (err) { setReportErr((err as Error).message); }
-    finally { setReportBusy(false); }
-  }
-
-  function loadReqs() { wb.requests.mine().then(setReqs).catch(() => {}); }
+  function loadReqs() { wb.requests.mine().then(r => { setReqs(r); setReqErr(''); }).catch((e: unknown) => setReqErr(e instanceof Error ? e.message : 'Не удалось загрузить заявки')); }
   useEffect(() => {
     loadReqs();
     // Организация, к которой привязан водитель (тенант-скоуп → своя). Фолбэк — из снимка ПЛ ниже.
@@ -327,7 +294,7 @@ export default function DriverCabinet() {
             <div>
               <label style={{ fontSize: 12.5, color: 'var(--muted)' }}>{t('drvreq.f.type')} *</label>
               <select value={reqForm.waybillType} onChange={e => setReqForm({ ...reqForm, waybillType: e.target.value })} style={{ width: '100%', marginTop: 4 }}>
-                {Object.keys(TYPE_LABELS).map(v => <option key={v} value={v}>{tType(v)}</option>)}
+                {Object.keys(TYPE_LABELS).filter(v => !offTypes.has(v)).map(v => <option key={v} value={v}>{tType(v)}</option>)}
               </select>
             </div>
             <div>

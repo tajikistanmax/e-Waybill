@@ -18,11 +18,26 @@ export function ExpiryAlert({ days = 30, max = 6, href = '/settings/expiry', com
   { days?: number; max?: number; href?: string; compact?: boolean }) {
   const { t } = useT();
   const [rows, setRows] = useState<ExpiryItem[] | null>(null);
+  const [err, setErr] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(false);
 
   useEffect(() => {
-    md.documentExpiry(days).then(setRows).catch(() => setRows([]));
+    setErr(null);
+    md.documentExpiry(days)
+      .then(r => { setRows(r); })
+      .catch((e: unknown) => { setRows([]); setErr(e instanceof Error ? e.message : 'Не удалось загрузить сроки документов'); });
   }, [days]);
+
+  // Проверка сроков упала — НЕ маскируем под «всё в порядке»: показываем ошибку,
+  // иначе просроченные документы не отобразятся, а пользователь решит, что всё чисто.
+  if (err) {
+    return (
+      <div className="card" style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 16px', borderLeft: '3px solid var(--red)' }}>
+        <span className="k-ic ic-red" style={{ width: 30, height: 30 }}><Icon d={P.alert} cls="" /></span>
+        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink)' }}>Не удалось проверить сроки документов: {err}</div>
+      </div>
+    );
+  }
 
   if (rows === null) return null; // молча ждём (не мигаем)
 

@@ -98,6 +98,7 @@ public class WaybillService {
         if (tenantScope.isBounded() && !tenantScope.canWrite(organizationRma)) {
             throw new ForbiddenException("Оформление путевого листа за другую организацию запрещено");
         }
+        assertTypeEnabled(type);
         var org = masterData.findOrganization(organizationRma)
                 .orElseThrow(() -> new NotFoundException("Организация не найдена"));
         var driver = masterData.findDriver(driverRma)
@@ -632,6 +633,10 @@ public class WaybillService {
         var vehicle = (vehicleRegNumber == null || vehicleRegNumber.isBlank())
                 ? null : masterData.findVehicle(vehicleRegNumber).orElse(null);
         var checks = collectEligibility(type, org, driver, vehicle);
+        // Тип отключён администратором — недоступен независимо от лицензии/документов.
+        if (disabledTypes().contains(type.name())) {
+            checks.add(0, new CheckResult("TYPE_DISABLED", "ERROR", TYPE_DISABLED_MESSAGE));
+        }
         boolean eligible = checks.stream().noneMatch(c -> "ERROR".equals(c.severity()));
         return new EligibilityResult(eligible, checks);
     }
@@ -645,14 +650,43 @@ public class WaybillService {
             throw new ForbiddenException("Просмотр типов за другую организацию запрещён");
         }
         var org = masterData.findOrganization(organizationRma).orElse(null);
+        var disabled = disabledTypes();
         var result = new java.util.ArrayList<TypeAvailability>();
         for (var type : WaybillType.values()) {
+            if (disabled.contains(type.name())) {
+                // Тип отключён администратором платформы (классификатор WAYBILL_TYPE, active=false)
+                result.add(new TypeAvailability(type.name(), false, java.util.List.of(TYPE_DISABLED_MESSAGE)));
+                continue;
+            }
             var checks = collectEligibility(type, org, null, null); // только уровень лицензии/субъекта
             boolean available = checks.stream().noneMatch(c -> "ERROR".equals(c.severity()));
             result.add(new TypeAvailability(type.name(), available,
                     checks.stream().map(CheckResult::message).toList()));
         }
         return result;
+    }
+
+    static final String TYPE_DISABLED_MESSAGE = "Тип путевого листа отключён администратором платформы";
+
+    /**
+     * Коды типов ПЛ, отключённых администратором (настройки → «Типы путевых листов»):
+     * классификатор WAYBILL_TYPE с active=false. При недоступности master-data — пусто (все разрешены).
+     */
+    private java.util.Set<String> disabledTypes() {
+        var out = new java.util.HashSet<String>();
+        for (var row : masterData.waybillTypeClassifiers()) {
+            if (Boolean.FALSE.equals(row.get("active")) && row.get("code") != null) {
+                out.add(row.get("code").toString());
+            }
+        }
+        return out;
+    }
+
+    /** Оформление ПЛ отключённого типа запрещено — единая проверка для создания и одобрения заявки. */
+    void assertTypeEnabled(WaybillType type) {
+        if (disabledTypes().contains(type.name())) {
+            throw new UnprocessableException(TYPE_DISABLED_MESSAGE);
+        }
     }
 
     /**
@@ -1561,9 +1595,13 @@ public class WaybillService {
         if (tenantScope.isBounded() && !tenantScope.contains(wb.getOrganizationRma())) {
             throw new NotFoundException("Путевой лист не найден");
         }
-        if (currentUser.hasRole("DRIVER")) {
-            String driverRma = currentUser.rma().orElse("");
-            if (!driverRma.equals(wb.getDriverRma()) && !driverRma.equals(wb.getSecondDriverRma())) {
+        // Водитель (роль DRIVER) видит только СВОИ рейсы — как основной или второй водитель.
+        // Иначе через прямой GET /{id} и /{id}/qr он вытянул бы чужой ПЛ и подписанный QR
+        // (тот же инвариант, что уже применяется в списке WaybillController.list()).
+        if (currentUser.isTenantScoped() && currentUser.hasRole("DRIVER")) {
+            String myRma = currentUser.rma().orElse(null);
+            if (myRma == null
+                    || (!myRma.equals(wb.getDriverRma()) && !myRma.equals(wb.getSecondDriverRma()))) {
                 throw new NotFoundException("Путевой лист не найден");
             }
         }
