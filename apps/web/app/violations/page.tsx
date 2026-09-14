@@ -11,6 +11,7 @@ type Detail = { reason: string | null; at: string; actor: string | null };
 
 // Инциденты = статусы ПЛ, требующие внимания контролёра.
 const INCIDENT_STATUSES = ['BLOCKED', 'CANCELLED', 'EXPIRED'];
+const PER_PAGE = 15;
 
 /** Источник нарушения по статусу: блокировка — инспектор, аннулирование — диспетчер, просрочка — система. */
 function sourceLabel(status: string, t: (k: string) => string): string {
@@ -29,26 +30,15 @@ export default function ViolationsPage() {
   const [details, setDetails] = useState<Record<string, Detail | null>>({});
   const [scope, setScope] = useState<'blocked' | 'all'>('blocked');
   const [q, setQ] = useState('');
+  const [page, setPage] = useState(1);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const router = useRouter();
 
   useEffect(() => {
     let cancelled = false;
-    wb.list().then(async list => {
-      if (cancelled) return;
-      setItems(list);
-      const incidents = list.filter(w => INCIDENT_STATUSES.includes(w.status));
-      const entries = await Promise.all(incidents.map(async w => {
-        try {
-          const h = await wb.history(w.id);
-          const ev = [...h].reverse().find(e => e.toStatus === w.status);
-          return [w.id, ev ? { reason: ev.reason, at: ev.createdAt, actor: ev.actor } : null] as const;
-        } catch {
-          return [w.id, null] as const;
-        }
-      }));
-      if (!cancelled) { setDetails(Object.fromEntries(entries)); setLoading(false); }
+    wb.list().then(list => {
+      if (!cancelled) { setItems(list); setLoading(false); }
     }).catch(e => { if (!cancelled) { setError(e.message); setLoading(false); } });
     return () => { cancelled = true; };
   }, []);
@@ -59,6 +49,11 @@ export default function ViolationsPage() {
     expired: items.filter(w => w.status === 'EXPIRED').length,
   }), [items]);
 
+  // Сортировка по дате создания/начала ПЛ — доступна сразу, без сети. Точную дату и причину
+  // самого инцидента (из истории статусов) подгружаем отдельно только для видимой страницы —
+  // раньше здесь был Promise.all(wb.history(id)) на КАЖДЫЙ инцидент разом (в демо-данных
+  // это сотни параллельных запросов на один заход на страницу), что и роняло общий rate-limit
+  // на всю платформу разом (найдено 2026-09-04 по жалобе пользователя на частые 429).
   const rows = useMemo(() => {
     const allowed = scope === 'blocked' ? ['BLOCKED'] : INCIDENT_STATUSES;
     const s = q.trim().toLowerCase();
@@ -69,8 +64,32 @@ export default function ViolationsPage() {
         const hay = `${w.number ?? ''} ${w.vehicleRegNumber} ${String(w.driverSnapshot?.fullName ?? w.driverRma)} ${String(w.organizationSnapshot?.name ?? '')} ${details[w.id]?.reason ?? ''}`.toLowerCase();
         return hay.includes(s);
       })
-      .sort((a, b) => (details[b.id]?.at ?? '').localeCompare(details[a.id]?.at ?? ''));
+      .sort((a, b) => (b.validFrom ?? b.createdAt).localeCompare(a.validFrom ?? a.createdAt));
   }, [items, scope, q, details]);
+
+  const pages = Math.max(1, Math.ceil(rows.length / PER_PAGE));
+  const pageRows = useMemo(() => rows.slice((page - 1) * PER_PAGE, page * PER_PAGE), [rows, page]);
+  useEffect(() => { setPage(1); }, [scope, q]);
+
+  // Точные причина/время инцидента — только для строк текущей страницы (максимум PER_PAGE
+  // запросов за раз, не сотни).
+  useEffect(() => {
+    let cancelled = false;
+    const need = pageRows.filter(w => !(w.id in details));
+    if (need.length === 0) return;
+    Promise.all(need.map(async w => {
+      try {
+        const h = await wb.history(w.id);
+        const ev = [...h].reverse().find(e => e.toStatus === w.status);
+        return [w.id, ev ? { reason: ev.reason, at: ev.createdAt, actor: ev.actor } : null] as const;
+      } catch {
+        return [w.id, null] as const;
+      }
+    })).then(entries => {
+      if (!cancelled) setDetails(d => ({ ...d, ...Object.fromEntries(entries) }));
+    });
+    return () => { cancelled = true; };
+  }, [pageRows, details]);
 
   const fmt = (d: string | null | undefined) => d ? new Date(d).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—';
 
@@ -124,7 +143,7 @@ export default function ViolationsPage() {
             </tr>
           </thead>
           <tbody>
-            {rows.map(w => {
+            {pageRows.map(w => {
               const s = STATUS_LABELS[w.status] ?? { label: w.status, color: 'gray' };
               const d = details[w.id];
               return (
@@ -155,6 +174,10 @@ export default function ViolationsPage() {
 
         <div style={{ display: 'flex', alignItems: 'center', padding: '14px 16px', borderTop: '1px solid var(--line)', fontSize: 13, color: 'var(--muted)' }}>
           {t('dash.total')}: <b style={{ color: 'var(--ink)', marginLeft: 4 }}>{rows.length}</b>
+          <span style={{ flex: 1 }} />
+          <button className="btn secondary" disabled={page <= 1} onClick={() => setPage(p => p - 1)} style={{ padding: '6px 12px' }}>‹</button>
+          <span style={{ margin: '0 12px' }}>{page} / {pages}</span>
+          <button className="btn secondary" disabled={page >= pages} onClick={() => setPage(p => p + 1)} style={{ padding: '6px 12px' }}>›</button>
         </div>
       </div>
     </>

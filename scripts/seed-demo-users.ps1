@@ -41,8 +41,9 @@ function Upsert($username, $org, $rma, $roleName, $fio) {
             $loc = $resp.Headers['Location']; if ($loc -is [array]) { $loc = $loc[0] }
             $uid = ($loc -split '/')[-1]
         }
-        # Пароль — отдельным вызовом (надёжно, не временный).
-        $pw = @{ type = 'password'; value = $username; temporary = $false } | ConvertTo-Json -Compress
+        # Пароль — отдельным вызовом (надёжно, не временный). Не равен логину и длиннее
+        # 12 символов — того требует парольная политика реалма (см. epd-realm.json).
+        $pw = @{ type = 'password'; value = "$username-Epd-Qa-2026"; temporary = $false } | ConvertTo-Json -Compress
         Invoke-WebRequest -Method Put -Uri "$kc/admin/realms/epd/users/$uid/reset-password" -Headers @{ Authorization = "Bearer $adm" } -ContentType 'application/json' -Body ([Text.Encoding]::UTF8.GetBytes($pw)) -UseBasicParsing | Out-Null
         $role = RoleRep $roleName
         $rbody = '[' + (@{ id = $role.id; name = $role.name } | ConvertTo-Json -Compress) + ']'

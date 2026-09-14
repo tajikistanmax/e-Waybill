@@ -50,6 +50,17 @@ public class AuditLog {
     @Column(name = "user_agent")
     private String userAgent;
 
+    /** Монотонный порядковый номер (BIGSERIAL) — однозначный порядок цепочки хешей,
+     * в отличие от occurred_at, который может совпасть при конкурентных записях. */
+    @Column(insertable = false, updatable = false)
+    private Long seq;
+
+    @Column(name = "prev_hash")
+    private String prevHash;
+
+    @Column(name = "record_hash")
+    private String recordHash;
+
     @PrePersist
     void prePersist() {
         if (id == null) id = UUID.randomUUID();
@@ -76,4 +87,9 @@ public class AuditLog {
     public void setClientIp(String clientIp) { this.clientIp = clientIp; }
     public String getUserAgent() { return userAgent; }
     public void setUserAgent(String userAgent) { this.userAgent = userAgent; }
+    public Long getSeq() { return seq; }
+    public String getPrevHash() { return prevHash; }
+    public void setPrevHash(String prevHash) { this.prevHash = prevHash; }
+    public String getRecordHash() { return recordHash; }
+    public void setRecordHash(String recordHash) { this.recordHash = recordHash; }
 }

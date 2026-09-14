@@ -36,14 +36,17 @@ public class WaybillRequestService {
     private final WaybillService waybillService;
     private final MasterDataClient masterData;
     private final CurrentUser currentUser;
+    private final tj.mintrans.epd.waybill.config.TenantScope tenantScope;
 
     public WaybillRequestService(WaybillRequestRepository requests, WaybillRepository waybills,
-                                 WaybillService waybillService, MasterDataClient masterData, CurrentUser currentUser) {
+                                 WaybillService waybillService, MasterDataClient masterData,
+                                 CurrentUser currentUser, tj.mintrans.epd.waybill.config.TenantScope tenantScope) {
         this.requests = requests;
         this.waybills = waybills;
         this.waybillService = waybillService;
         this.masterData = masterData;
         this.currentUser = currentUser;
+        this.tenantScope = tenantScope;
     }
 
     /**
@@ -66,6 +69,15 @@ public class WaybillRequestService {
         // Задним числом заявку подать нельзя: дата выхода не может быть в прошлом (по времени РТ).
         if (requestedFrom != null && requestedFrom.isBefore(LocalDate.now(ZoneId.of("Asia/Dushanbe")))) {
             throw new UnprocessableException("Дата выхода не может быть в прошлом — задним числом заявку подать нельзя.");
+        }
+        // Текущий пробег обязателен: диспетчер выпускает лист (Т4) от показаний одометра, и
+        // непрерывность пробега — антифрод-инвариант. Правило здесь, а не в DTO, чтобы веб и
+        // мобильное приложение подчинялись одному условию.
+        if (odometer == null) {
+            throw new UnprocessableException("Укажите текущий показатель одометра — без него диспетчер не выпустит лист.");
+        }
+        if (odometer < 0) {
+            throw new UnprocessableException("Показатель одометра не может быть отрицательным.");
         }
         String orgRma = currentUser.organizationRma()
                 .orElseThrow(() -> new ForbiddenException("Не удалось определить организацию водителя"));
@@ -103,23 +115,29 @@ public class WaybillRequestService {
                 .orElseGet(List::of);
     }
 
-    /** Заявки организации диспетчера (пусто без организации; по умолчанию — все, можно фильтр по статусу). */
+    /** Заявки области диспетчера/администратора (своя организация + филиалы для администратора компании). */
     public List<WaybillRequest> listForOrganization(String status) {
-        String orgRma = currentUser.organizationRma().orElse(null);
-        if (orgRma == null) {
+        if (!tenantScope.isBounded()) {
+            var all = requests.findAll().stream()
+                    .sorted(java.util.Comparator.comparing(WaybillRequest::getCreatedAt).reversed());
+            return (status == null || status.isBlank())
+                    ? all.toList()
+                    : all.filter(r -> status.equals(r.getStatus())).toList();
+        }
+        var scope = tenantScope.rmas();
+        if (scope.isEmpty() || scope.contains("__none__")) {
             return List.of();
         }
         return (status == null || status.isBlank())
-                ? requests.findByOrganizationRmaOrderByCreatedAtDesc(orgRma)
-                : requests.findByOrganizationRmaAndStatusOrderByCreatedAtAsc(orgRma, status);
+                ? requests.findByOrganizationRmaInOrderByCreatedAtDesc(scope)
+                : requests.findByOrganizationRmaInAndStatusOrderByCreatedAtAsc(scope, status);
     }
 
-    /** Заявка с тенант-проверкой (не-админ видит только заявки своей организации; иначе 404). */
+    /** Заявка с тенант-проверкой (тенант видит заявки своей области; иначе 404). */
     private WaybillRequest getScoped(UUID id) {
         var req = requests.findByIdForUpdate(id)
                 .orElseThrow(() -> new NotFoundException("Заявка не найдена"));
-        if (currentUser.isTenantScoped()
-                && !currentUser.organizationRma().map(o -> o.equals(req.getOrganizationRma())).orElse(false)) {
+        if (tenantScope.isBounded() && !tenantScope.contains(req.getOrganizationRma())) {
             throw new NotFoundException("Заявка не найдена");
         }
         return req;

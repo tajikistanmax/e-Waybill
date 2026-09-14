@@ -4,6 +4,7 @@ import { AuthProvider } from '@/lib/auth';
 import { LangProvider } from '@/lib/i18n';
 import { BrandProvider } from '@/lib/brand';
 import { RoleAccessProvider } from '@/lib/roleaccess';
+import { OrgScopeProvider } from '@/lib/orgscope';
 import { Shell } from './shell';
 
 export const metadata: Metadata = {
@@ -19,7 +20,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <BrandProvider>
             <AuthProvider>
               <RoleAccessProvider>
-                <Shell>{children}</Shell>
+                <OrgScopeProvider>
+                  <Shell>{children}</Shell>
+                </OrgScopeProvider>
               </RoleAccessProvider>
             </AuthProvider>
           </BrandProvider>

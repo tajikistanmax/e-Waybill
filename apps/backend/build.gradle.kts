@@ -33,6 +33,8 @@ subprojects {
         "implementation"("org.springdoc:springdoc-openapi-starter-webmvc-ui:2.8.9")
         "runtimeOnly"("org.postgresql:postgresql")
         "testImplementation"("org.springframework.boot:spring-boot-starter-test")
+        // Мок JWT/ролей в web-slice тестах прав доступа: SecurityMockMvcRequestPostProcessors.jwt()
+        "testImplementation"("org.springframework.security:spring-security-test")
     }
 
     tasks.withType<Test> {

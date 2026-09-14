@@ -2,15 +2,78 @@
 
 import { Fragment, useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { md, wb, TYPE_LABELS, type FieldDefinition, type Eligibility, type TypeAvailability } from '@/lib/api';
+import Link from 'next/link';
+import { md, wb, TYPE_LABELS, type FieldDefinition, type Eligibility, type TypeAvailability, type Client, type Direction, type RouteType } from '@/lib/api';
 import { Icon, P } from '../../icons';
 import { SearchSelect, type SSOption } from '../../SearchSelect';
 import { useT } from '@/lib/i18n';
+import { useAuth } from '@/lib/auth';
+import { canCreateWaybill } from '@/lib/roles';
 
 type Option = { value: string; label: string };
 type Trailer = { registrationNumber: string; brand: string };
 
 const INTL_TYPES = ['WB_TRUCK_INTL', 'WB_PAX_INTL'];
+// Пассажирские типы (для необязательного поля «Тип маршрута»): автобус/троллейбус/маршрутка + легковой/такси.
+const PAX_TYPES = ['WB_BUS', 'WB_TROLLEYBUS', 'WB_MINIBUS', 'WB_CAR', 'WB_TAXI'];
+
+// Ходуди фаъолият (2-Б/3-С) — 7 именованных зон legacy-справочника (spec/data/dictionaries.yaml:
+// regions). Отдельного справочника в проекте намеренно нет — лёгкий числовой код 1..7.
+const REGION_OPTIONS: Option[] = [
+  { value: '1', label: '1 — Душанбе' },
+  { value: '2', label: '2 — ВМКБ' },
+  { value: '3', label: '3 — Суғд' },
+  { value: '4', label: '4 — Рашт' },
+  { value: '5', label: '5 — Хатлон-Бохтар' },
+  { value: '6', label: '6 — Хатлон-Кӯлоб' },
+  { value: '7', label: '7 — Ҳисор' },
+];
+
+// Автосохранение черновика мастера (QA §7): состояние формы переживает случайное закрытие
+// вкладки/перезагрузку. Живёт только в localStorage браузера — на сервере до шага 4 ничего
+// не создаётся (submit — единственная точка появления ПЛ), поэтому это не серверный черновик.
+const DRAFT_KEY = 'epd:wb-new-draft';
+// Срок жизни черновика: старше — сбрасывается (не восстанавливается) при открытии.
+// Отсчёт от последнего изменения, а не от создания: активно правишь — живёт; забыл на день — сбрасывается.
+const DRAFT_TTL_MS = 12 * 60 * 60 * 1000; // 12 часов
+type DraftState = {
+  step: number; orgRma: string;
+  form: { waybillType: string; vehicleRegNumber: string; driverRma: string; communicationType: string; route: string; schedule: string };
+  serviceKind: string; shipmentKind: string; trailers: Trailer[];
+  cargo: { name: string; unit: string; weight: string; packages: string; cls: string };
+  intl: { secondDriverRma: string; visaValidTo: string; visaCountry: string; loadCountry: string; unloadCountry: string; loadCity: string; unloadCity: string; transitCountries: string; cargoName: string; permitNumber: string; permitType: string; bbaNumber: string };
+  routeTypeCode: string;
+  dangerous: { on: boolean; adrClass: string; unNumber: string };
+  special: { workType: string; workObject: string; motorHoursExit: string };
+  bus: { columnNumber: string; brigadeNumber: string };
+  directionId: string; client: { id: string; name: string } | null; workRegions: number[];
+  customValues: Record<string, string>;
+  selVehicle: SSOption | null; selDriver: SSOption | null; selSecondDriver: SSOption | null;
+  savedAt?: number; // момент последнего автосохранения (для TTL)
+};
+
+// Черновик «содержательный» — пользователь действительно что-то ввёл, а не открыл чистую форму.
+// Организацию и тип ПЛ НЕ считаем: организация автоподставляется при единственной, а тип по умолчанию
+// WB_BUS. Иначе после «Начать заново» пустое дефолтное состояние тут же сохранялось бы снова, и баннер
+// «восстановлен черновик» возвращался бы при каждом обновлении страницы.
+function draftHasContent(d: DraftState): boolean {
+  const f = d.form ?? ({} as DraftState['form']);
+  if ((d.step ?? 1) > 1) return true;
+  if (f.vehicleRegNumber || f.driverRma || f.route || f.schedule) return true;
+  if (d.selVehicle || d.selDriver || d.selSecondDriver) return true;
+  if ((d.trailers?.length ?? 0) > 0 || (d.workRegions?.length ?? 0) > 0) return true;
+  if (d.directionId || d.client) return true;
+  if (d.dangerous?.on) return true;
+  const c = d.cargo ?? ({} as DraftState['cargo']);
+  if (c.name || c.unit || c.weight || c.packages || c.cls) return true;
+  const sp = d.special ?? ({} as DraftState['special']);
+  if (sp.workType || sp.workObject || sp.motorHoursExit) return true;
+  const b = d.bus ?? ({} as DraftState['bus']);
+  if (b.columnNumber || b.brigadeNumber) return true;
+  if (Object.values(d.intl ?? {}).some(Boolean)) return true;
+  if (Object.values(d.customValues ?? {}).some(Boolean)) return true;
+  return false;
+}
 
 // Локальные глифы (Icon принимает любой path d — icons.tsx не трогаем).
 const BUS_ICON = 'M4 6h13a2 2 0 0 1 2 2v7H4zM4 15v2h3v-2M16 15v2h3v-2M4 10.5h15M9 6v9M13 6v9';
@@ -42,7 +105,9 @@ const STEPS = [
 
 export default function NewWaybillPage() {
   const router = useRouter();
-  const { t: tt, tType } = useT();
+  const { t: tt, tType, lang } = useT();
+  const { roles } = useAuth();
+  const canCreate = canCreateWaybill(roles);
   const [step, setStep] = useState(1);
   const [orgs, setOrgs] = useState<Option[]>([]);
   // Выбранные ТС/водитель — храним саму опцию (label для шага проверки), без загрузки всего парка.
@@ -72,13 +137,36 @@ export default function NewWaybillPage() {
   const [serviceKind, setServiceKind] = useState('TAXI');           // 3-С
   const [shipmentKind, setShipmentKind] = useState('PIECEWORK');    // 2-Б
   const [trailers, setTrailers] = useState<Trailer[]>([]);          // 2-Б
+  // Карточка груза (2-Б / 5Б-БМ) — для печатного бланка «Номгӯи бор» с деталями.
+  const [cargo, setCargo] = useState({ name: '', unit: '', weight: '', packages: '', cls: '' });
   const [intl, setIntl] = useState({                                // 5Б-БМ / 4М-БМ
     secondDriverRma: '', visaValidTo: '', visaCountry: '',
-    loadCountry: '', unloadCountry: '', transitCountries: '',
+    loadCountry: '', unloadCountry: '', loadCity: '', unloadCity: '', transitCountries: '',
     cargoName: '', permitNumber: '', permitType: '', bbaNumber: '',
   });
+  // Внешние города (справочник, привязан к стране по ISO alpha-2) — подсказки для datalist.
+  // Селекты стран хранят nameRu, поэтому нужен маппинг nameRu → ISO-код для запроса городов.
+  const [countryCodeByName, setCountryCodeByName] = useState<Record<string, string>>({});
+  const [loadCities, setLoadCities] = useState<string[]>([]);
+  const [unloadCities, setUnloadCities] = useState<string[]>([]);
+  // Типы маршрутов (справочник, ключ = числовой code) — необязательное поле пассажирских ПЛ.
+  const [routeTypes, setRouteTypes] = useState<RouteType[]>([]);
+  const [routeTypeCode, setRouteTypeCode] = useState('');
+  // Колонна/бригада — Т(1-АД), реальные диспетчерские графы бланка автобуса/троллейбуса.
+  const [bus, setBus] = useState({ columnNumber: '', brigadeNumber: '' });
+  // Самт (направление, справочник Direction) и Заказчик (справочник Client) — 2-Б.
+  const [directions, setDirections] = useState<Direction[]>([]);
+  const [clients, setClients] = useState<Client[]>([]);
+  const [directionId, setDirectionId] = useState('');
+  const [client, setClient] = useState<{ id: string; name: string } | null>(null);
+  // Ходуди фаъолият (зоны 1–7) — общее поле для 2-Б (грузовой) и 3-С (такси/легковой).
+  const [workRegions, setWorkRegions] = useState<number[]>([]);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [draftRestored, setDraftRestored] = useState(false);
+  const [draftSavedAt, setDraftSavedAt] = useState<number | null>(null);
+  const [draftLoaded, setDraftLoaded] = useState(false);
+  const [copiedFromNumber, setCopiedFromNumber] = useState('');
   // Пригодность (preflight): доступность типов по лицензии (шаг 1) + полная проверка связки (шаг 3).
   const [typeAvail, setTypeAvail] = useState<Record<string, TypeAvailability>>({});
   const [pf, setPf] = useState<Eligibility | null>(null);
@@ -92,6 +180,114 @@ export default function NewWaybillPage() {
       })
       .catch(e => setError(e.message));
   }, []);
+
+  // Копирование ПЛ (QA §7 «на основании предыдущего») — при ?from={id} префилл полями
+  // исходного ПЛ вместо восстановления черновика; даты/показания одометра/разовые номера
+  // (виза, дозвол, номер книжки ББА) намеренно НЕ копируются — их нужно вводить заново.
+  useEffect(() => {
+    const from = new URLSearchParams(window.location.search).get('from');
+    if (!from) return;
+    wb.get(from).then(src => {
+      setOrgRma(src.organizationRma);
+      setForm(f => ({
+        ...f, waybillType: src.waybillType, vehicleRegNumber: src.vehicleRegNumber,
+        driverRma: src.driverRma, route: src.route ?? '', schedule: src.schedule ?? '',
+      }));
+      const vehName = (src.vehicleSnapshot?.brand as string | undefined);
+      setSelVehicle({ value: src.vehicleRegNumber, label: src.vehicleRegNumber, sub: vehName ?? '' });
+      const drvName = (src.driverSnapshot?.fullName as string | undefined) ?? src.driverRma;
+      setSelDriver({ value: src.driverRma, label: drvName });
+      const td = (src.typeData ?? {}) as Record<string, unknown>;
+      if (typeof td.serviceKind === 'string') setServiceKind(td.serviceKind);
+      if (typeof td.shipmentKind === 'string') setShipmentKind(td.shipmentKind);
+      if (Array.isArray(td.trailers)) setTrailers(td.trailers as Trailer[]);
+      if (td.dangerous) setDangerous(v => ({ ...v, on: true, adrClass: String(td.adrClass ?? ''), unNumber: String(td.unNumber ?? '') }));
+      if (td.cargo && typeof td.cargo === 'object') {
+        const c = td.cargo as Record<string, unknown>;
+        setCargo({ name: String(c.name ?? ''), unit: String(c.unit ?? ''), weight: c.weight != null ? String(c.weight) : '', packages: c.packages != null ? String(c.packages) : '', cls: String(c.class ?? '') });
+      }
+      if (typeof td.workType === 'string') setSpecial(v => ({ ...v, workType: td.workType as string, workObject: String(td.workObject ?? '') }));
+      // Международные: страны/тип дозвола переносим, визу/номер дозвола/книжки ББА — нет (разовые).
+      setIntl(v => ({
+        ...v,
+        visaCountry: String(td.visaCountry ?? ''), loadCountry: String(td.loadCountry ?? ''),
+        unloadCountry: String(td.unloadCountry ?? ''),
+        loadCity: String(td.loadCity ?? ''), unloadCity: String(td.unloadCity ?? ''),
+        transitCountries: Array.isArray(td.transitCountries) ? (td.transitCountries as string[]).join(', ') : '',
+        permitType: String(td.permitType ?? ''), cargoName: String(td.cargoName ?? ''),
+      }));
+      if (td.routeTypeCode != null) setRouteTypeCode(String(td.routeTypeCode));
+      setCopiedFromNumber(src.number ?? src.id.slice(0, 8));
+      setStep(2);
+    }).catch(() => { /* исходный ПЛ недоступен — остаёмся с чистой формой */ });
+  }, []);
+
+  // Восстановление автосохранённого черновика — один раз при монтировании, до первой записи
+  // (иначе пустое начальное состояние тут же перезаписало бы сохранённый черновик в localStorage).
+  // Пропускается, если пришли через копирование (?from=) — шаблон источника важнее старого черновика.
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get('from')) { setDraftLoaded(true); return; }
+    try {
+      const raw = window.localStorage.getItem(DRAFT_KEY);
+      if (raw) {
+        const d = JSON.parse(raw) as DraftState;
+        // Просроченный (старше TTL) или пустой черновик не восстанавливаем и удаляем,
+        // чтобы он не «воскресал» при следующем открытии.
+        const expired = !d.savedAt || (Date.now() - d.savedAt) > DRAFT_TTL_MS;
+        if (expired || !draftHasContent(d)) {
+          window.localStorage.removeItem(DRAFT_KEY);
+          setDraftLoaded(true);
+          return;
+        }
+        setStep(d.step ?? 1);
+        setOrgRma(d.orgRma ?? '');
+        setForm(f => ({ ...f, ...d.form }));
+        setServiceKind(d.serviceKind ?? 'TAXI');
+        setShipmentKind(d.shipmentKind ?? 'PIECEWORK');
+        setTrailers(d.trailers ?? []);
+        setCargo(c => ({ ...c, ...d.cargo }));
+        setIntl(v => ({ ...v, ...d.intl }));
+        setRouteTypeCode(d.routeTypeCode ?? '');
+        setDangerous(v => ({ ...v, ...d.dangerous }));
+        setSpecial(v => ({ ...v, ...d.special }));
+        setBus(v => ({ ...v, ...d.bus }));
+        setDirectionId(d.directionId ?? '');
+        setClient(d.client ?? null);
+        setWorkRegions(d.workRegions ?? []);
+        setCustomValues(d.customValues ?? {});
+        setSelVehicle(d.selVehicle ?? null);
+        setSelDriver(d.selDriver ?? null);
+        setSelSecondDriver(d.selSecondDriver ?? null);
+        setDraftSavedAt(d.savedAt ?? null);
+        setDraftRestored(true);
+      }
+    } catch { /* повреждённый черновик — просто начинаем с чистого листа */ }
+    setDraftLoaded(true);
+  }, []);
+
+  // Автосохранение — на каждое изменение состояния мастера, но только после восстановления
+  // (иначе первый рендер с дефолтами затирает ещё не прочитанный черновик).
+  useEffect(() => {
+    if (!draftLoaded) return;
+    const d: DraftState = {
+      step, orgRma, form, serviceKind, shipmentKind, trailers, cargo, intl, routeTypeCode, dangerous, special,
+      bus, directionId, client, workRegions,
+      customValues, selVehicle, selDriver, selSecondDriver,
+      savedAt: Date.now(),
+    };
+    try {
+      // Сохраняем только содержательный черновик. Пустую дефолтную форму не пишем (и стираем
+      // прежний ключ) — иначе «Начать заново» + обновление возвращали бы баннер черновика.
+      if (draftHasContent(d)) window.localStorage.setItem(DRAFT_KEY, JSON.stringify(d));
+      else window.localStorage.removeItem(DRAFT_KEY);
+    } catch { /* квота/приватный режим — не критично */ }
+  }, [draftLoaded, step, orgRma, form, serviceKind, shipmentKind, trailers, cargo, intl, routeTypeCode, dangerous, special,
+      bus, directionId, client, workRegions, customValues, selVehicle, selDriver, selSecondDriver]);
+
+  function discardDraft() {
+    try { window.localStorage.removeItem(DRAFT_KEY); } catch { /* noop */ }
+    window.location.reload();
+  }
 
   // Поисковые загрузчики (серверный подстрочный поиск, лимит 25) — для автопарков в тысячи ТС/водителей.
   const searchVehicles = useCallback(async (q: string): Promise<SSOption[]> => {
@@ -108,7 +304,11 @@ export default function NewWaybillPage() {
   // Классификаторы для форм международных/опасных ПЛ (значение = наименование/код).
   useEffect(() => {
     md.classifiers('COUNTRY')
-      .then(list => setCountries(list.map(c => ({ value: c.nameRu, label: c.nameRu }))))
+      .then(list => {
+        setCountries(list.map(c => ({ value: c.nameRu, label: c.nameRu })));
+        // nameRu → ISO alpha-2 (селекты стран хранят nameRu, а справочник городов ждёт код).
+        setCountryCodeByName(Object.fromEntries(list.map(c => [c.nameRu, c.code])));
+      })
       .catch(() => { /* классификатор недоступен — поля останутся пустыми */ });
     md.classifiers('ADR_CLASS')
       .then(list => setAdrClasses(list.map(c => ({ value: c.code, label: `${c.code} — ${c.nameRu}` }))))
@@ -119,7 +319,33 @@ export default function NewWaybillPage() {
     md.classifiers('WORK_TYPE')
       .then(list => setWorkTypes(list.map(c => ({ value: c.nameRu, label: c.nameRu }))))
       .catch(() => {});
+    // Направления (Самт) и заказчики (справочник Client) — для 2-Б.
+    md.directions().then(setDirections).catch(() => { /* справочник недоступен — поле останется пустым */ });
+    md.clients().then(setClients).catch(() => { /* справочник недоступен — поле останется пустым */ });
+    // Типы маршрутов (пассажирские ПЛ) — необязательный выбор на шаге маршрута.
+    md.routeTypes().then(setRouteTypes).catch(() => { /* справочник недоступен — селект останется пустым */ });
   }, []);
+
+  // Города погрузки/разгрузки — подгружаются по выбранной стране (справочник неполный, поэтому
+  // это лишь подсказки datalist; при непустой стране без справочника список пустой, ввод — свободный).
+  useEffect(() => {
+    const code = countryCodeByName[intl.loadCountry];
+    if (!code) { setLoadCities([]); return; }
+    let ignore = false;
+    md.externalCities(code)
+      .then(list => { if (!ignore) setLoadCities(list.filter(c => c.active).map(c => (lang === 'tj' && c.nameTj) ? c.nameTj : c.nameRu)); })
+      .catch(() => { if (!ignore) setLoadCities([]); });
+    return () => { ignore = true; };
+  }, [intl.loadCountry, countryCodeByName, lang]);
+  useEffect(() => {
+    const code = countryCodeByName[intl.unloadCountry];
+    if (!code) { setUnloadCities([]); return; }
+    let ignore = false;
+    md.externalCities(code)
+      .then(list => { if (!ignore) setUnloadCities(list.filter(c => c.active).map(c => (lang === 'tj' && c.nameTj) ? c.nameTj : c.nameRu)); })
+      .catch(() => { if (!ignore) setUnloadCities([]); });
+    return () => { ignore = true; };
+  }, [intl.unloadCountry, countryCodeByName, lang]);
 
   // Доп.поля выбранного типа ПЛ (конструктор полей). Флаг отмены — против гонки:
   // запоздавший ответ по прежнему типу не должен перезаписать поля текущего.
@@ -170,6 +396,21 @@ export default function NewWaybillPage() {
   const isTruck = t === 'WB_TRUCK';
   const isIntl = INTL_TYPES.includes(t);
   const isSpecial = t === 'WB_SPECIAL';
+  const isBus = t === 'WB_BUS' || t === 'WB_TROLLEYBUS';
+  const isPassenger = PAX_TYPES.includes(t);
+
+  // Заказчик (2-Б): поиск по уже загруженному справочнику Client — без отдельного серверного эндпоинта.
+  const searchClients = useCallback(async (q: string): Promise<SSOption[]> => {
+    const ql = q.trim().toLowerCase();
+    return clients
+      .filter(c => !ql || c.name.toLowerCase().includes(ql))
+      .slice(0, 25)
+      .map(c => ({ value: c.id, label: c.name, sub: c.address ?? '' }));
+  }, [clients]);
+
+  function toggleWorkRegion(code: number) {
+    setWorkRegions(prev => prev.includes(code) ? prev.filter(r => r !== code) : [...prev, code].sort((a, b) => a - b));
+  }
 
   const orgLabel = orgs.find(o => o.value === orgRma)?.label ?? '';
   const vehicleLabel = selVehicle?.label ?? form.vehicleRegNumber;
@@ -207,12 +448,33 @@ export default function NewWaybillPage() {
     tt('wb.chk.srv.noactive'), tt('wb.chk.srv.payment'),
   ];
 
+  function cargoCard(): Record<string, unknown> | undefined {
+    const c: Record<string, unknown> = {};
+    if (cargo.name.trim()) c.name = cargo.name.trim();
+    if (cargo.unit.trim()) c.unit = cargo.unit.trim();
+    if (cargo.weight.trim() && Number.isFinite(Number(cargo.weight))) c.weight = Number(cargo.weight);
+    if (cargo.packages.trim() && Number.isFinite(Number(cargo.packages))) c.packages = Number(cargo.packages);
+    if (cargo.cls.trim()) c.class = cargo.cls.trim();
+    return Object.keys(c).length ? c : undefined;
+  }
+
   function buildTypeData(): Record<string, unknown> | undefined {
-    if (isCar) return { serviceKind };
+    if (isCar) return {
+      serviceKind,
+      ...(workRegions.length ? { workRegions } : {}),
+    };
     if (isTruck) return {
       shipmentKind,
       ...(trailers.length ? { trailers } : {}),
       ...(dangerous.on ? { dangerous: true, adrClass: dangerous.adrClass, ...(dangerous.unNumber ? { unNumber: dangerous.unNumber } : {}) } : {}),
+      ...(cargoCard() ? { cargo: cargoCard() } : {}),
+      ...(directionId ? { directionId: Number(directionId) } : {}),
+      ...(client ? { clientId: client.id, clientName: client.name } : {}),
+      ...(workRegions.length ? { workRegions } : {}),
+    };
+    if (isBus) return {
+      ...(bus.columnNumber.trim() ? { columnNumber: bus.columnNumber.trim() } : {}),
+      ...(bus.brigadeNumber.trim() ? { brigadeNumber: bus.brigadeNumber.trim() } : {}),
     };
     if (isSpecial) return {
       workType: special.workType,
@@ -225,11 +487,14 @@ export default function NewWaybillPage() {
         visaCountry: intl.visaCountry,
         loadCountry: intl.loadCountry,
         unloadCountry: intl.unloadCountry,
+        ...(intl.loadCity.trim() ? { loadCity: intl.loadCity.trim() } : {}),
+        ...(intl.unloadCity.trim() ? { unloadCity: intl.unloadCity.trim() } : {}),
         ...(intl.transitCountries ? { transitCountries: intl.transitCountries.split(',').map(s => s.trim()).filter(Boolean) } : {}),
         ...(t === 'WB_TRUCK_INTL' ? { cargoName: intl.cargoName } : {}),
         permitNumber: intl.permitNumber,
         ...(intl.permitType ? { permitType: intl.permitType } : {}),
         ...(intl.bbaNumber ? { bbaNumber: intl.bbaNumber } : {}),
+        ...(cargoCard() ? { cargo: cargoCard() } : {}),
       };
     }
     return undefined;
@@ -240,6 +505,8 @@ export default function NewWaybillPage() {
     setBusy(true);
     try {
       const td = buildTypeData() ?? {};
+      // Тип маршрута (необязательный) — только для пассажирских ПЛ; кладём числовой code.
+      if (isPassenger && routeTypeCode) (td as Record<string, unknown>).routeTypeCode = Number(routeTypeCode);
       const custom = Object.fromEntries(
         Object.entries(customValues).filter(([, v]) => v !== '' && v != null));
       if (Object.keys(custom).length) (td as Record<string, unknown>).custom = custom;
@@ -250,6 +517,7 @@ export default function NewWaybillPage() {
         ...(isIntl && intl.secondDriverRma ? { secondDriverRma: intl.secondDriverRma } : {}),
         typeData: Object.keys(td).length ? td : undefined,
       });
+      try { window.localStorage.removeItem(DRAFT_KEY); } catch { /* noop */ }
       router.push(`/waybills/${created.id}`);
     } catch (err) {
       setError((err as Error).message);
@@ -259,6 +527,22 @@ export default function NewWaybillPage() {
 
   const cur = STEPS[step - 1];
 
+  // Выписывает ПЛ только диспетчер (POST /api/v1/waybills). Прямой заход бухгалтера/аналитика
+  // по ссылке иначе упирался бы в 403 на каждом шаге мастера — показываем понятное объяснение.
+  if (!canCreate) {
+    return (
+      <>
+        <div className="toolbar"><h1>{tt('wb.new.h')}</h1></div>
+        <div className="card">
+          <p style={{ margin: '0 0 10px' }}>{tt('wb.new.norole')}</p>
+          <Link className="btn secondary" href="/waybills" style={{ textDecoration: 'none' }}>
+            {tt('nav.waybill.registry')}
+          </Link>
+        </div>
+      </>
+    );
+  }
+
   return (
     <>
       <div className="toolbar">
@@ -267,6 +551,29 @@ export default function NewWaybillPage() {
         <span className="page-lead" style={{ margin: 0 }}>{tt('wb.step')} {step} {tt('paging.of')} {STEPS.length} · {tt(cur.sub)}</span>
       </div>
       {error && <div className="error">{error}</div>}
+      {copiedFromNumber && (
+        <div className="sys-ok">
+          <Icon d={P.check} cls="" style={{ width: 16, height: 16 }} /> {tt('wb.copy.notice')} {copiedFromNumber}
+        </div>
+      )}
+      {!copiedFromNumber && draftRestored && (
+        <div className="sys-ok" style={{ justifyContent: 'space-between' }}>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Icon d={P.check} cls="" style={{ width: 16, height: 16 }} />
+            <span>
+              {tt('wb.draft.restored')}
+              {draftSavedAt != null && (
+                <span style={{ color: 'var(--muted)', marginLeft: 6 }}>
+                  · {new Date(draftSavedAt).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })} · {tt('wb.draft.kept')}
+                </span>
+              )}
+            </span>
+          </span>
+          <button type="button" className="btn secondary" style={{ padding: '4px 10px', fontSize: 12 }} onClick={discardDraft}>
+            {tt('wb.draft.discard')}
+          </button>
+        </div>
+      )}
 
       {/* ---------- Степпер ---------- */}
       <div className="card" style={{ padding: '18px 22px' }}>
@@ -425,11 +732,38 @@ export default function NewWaybillPage() {
                 </div>
               )}
 
+              {/* --- Т(1-АД): колонна/бригада --- */}
+              {isBus && (
+                <>
+                  <div>
+                    <label>{tt('wbf.column')}</label>
+                    <input value={bus.columnNumber} onChange={e => setBus({ ...bus, columnNumber: e.target.value })} placeholder="напр. 3" />
+                  </div>
+                  <div>
+                    <label>{tt('wbf.brigade')}</label>
+                    <input value={bus.brigadeNumber} onChange={e => setBus({ ...bus, brigadeNumber: e.target.value })} placeholder="напр. 12" />
+                  </div>
+                </>
+              )}
+
               <div>
                 <label>{tt('wb.f.route')}{isCar && serviceKind === 'ROUTE' ? tt('wb.required.suffix') : ''}</label>
                 <input required={isCar && serviceKind === 'ROUTE'} value={form.route}
                   onChange={e => setForm({ ...form, route: e.target.value })} placeholder={tt('wb.ph.route')} />
               </div>
+
+              {/* --- Тип маршрута (пассажирские ПЛ, справочник route-types) — необязательное поле --- */}
+              {isPassenger && (
+                <div>
+                  <label>{tt('wb.f.routetype')}</label>
+                  <select value={routeTypeCode} onChange={e => setRouteTypeCode(e.target.value)}>
+                    <option value="">{tt('wb.opt.none')}</option>
+                    {routeTypes.map(rt => (
+                      <option key={rt.id} value={rt.code}>{(lang === 'tj' && rt.nameTj) ? rt.nameTj : rt.nameRu}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
               <div>
                 <label>{tt('wb.f.schedule')}</label>
                 <input value={form.schedule} onChange={e => setForm({ ...form, schedule: e.target.value })} placeholder={tt('wb.ph.schedule')} />
@@ -453,6 +787,62 @@ export default function NewWaybillPage() {
                       {tt('wb.btn.addtrailer')}
                     </button>
                   )}
+                </div>
+              )}
+
+              {/* --- 2-Б: Самт (направление, справочник Direction) --- */}
+              {isTruck && (
+                <div>
+                  <label>{tt('wbf.samt')}</label>
+                  <select value={directionId} onChange={e => setDirectionId(e.target.value)}>
+                    <option value="">{tt('wbf.selectdir')}</option>
+                    {directions.map(d => <option key={d.id} value={d.id}>{d.title}</option>)}
+                  </select>
+                </div>
+              )}
+
+              {/* --- 2-Б: Заказчик (справочник Client) --- */}
+              {isTruck && (
+                <div>
+                  <label>{tt('wbf.client')}</label>
+                  <SearchSelect
+                    value={client?.id ?? ''}
+                    selectedLabel={client?.name ?? ''}
+                    placeholder={tt('wbf.clientsearch')}
+                    onSearch={searchClients}
+                    onSelect={o => setClient({ id: o.value, name: o.label })}
+                    onClear={() => setClient(null)}
+                    loadingText={tt('wb.search.loading')} emptyText={tt('wb.search.empty')} hintText={tt('wbf.clientsearchhint')} />
+                </div>
+              )}
+
+              {/* --- Карточка груза (2-Б / 5Б-БМ) — для печатного бланка «Номгӯи бор» --- */}
+              {(isTruck || isIntl) && (
+                <div style={{ gridColumn: '1 / -1', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 8 }}>
+                  <div><label>{tt('wbf.cargoname')}</label><input value={cargo.name} onChange={e => setCargo({ ...cargo, name: e.target.value })} placeholder="напр. хлопок-волокно" /></div>
+                  <div><label>{tt('wbf.unit')}</label><input value={cargo.unit} onChange={e => setCargo({ ...cargo, unit: e.target.value })} placeholder="т / м³ / шт" /></div>
+                  <div><label>{tt('wbf.grossmass')}</label><input type="number" step="0.001" min={0} value={cargo.weight} onChange={e => setCargo({ ...cargo, weight: e.target.value })} /></div>
+                  <div><label>{tt('wbf.places')}</label><input type="number" min={0} value={cargo.packages} onChange={e => setCargo({ ...cargo, packages: e.target.value })} /></div>
+                  <div><label>{tt('wbf.cargoclass')}</label><input value={cargo.cls} onChange={e => setCargo({ ...cargo, cls: e.target.value })} placeholder="1–4" /></div>
+                </div>
+              )}
+
+              {/* --- 2-Б / 3-С: Ходуди фаъолият (зоны 1–7) --- */}
+              {(isTruck || isCar) && (
+                <div style={{ gridColumn: '1 / -1' }}>
+                  <label>{tt('wbf.workzones')}</label>
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                    {REGION_OPTIONS.map(r => {
+                      const code = Number(r.value);
+                      const active = workRegions.includes(code);
+                      return (
+                        <button type="button" key={r.value} onClick={() => toggleWorkRegion(code)}
+                          className={active ? 'btn' : 'btn secondary'} style={{ padding: '5px 11px', fontSize: 12.5 }}>
+                          {r.label}
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
               )}
 
@@ -526,11 +916,27 @@ export default function NewWaybillPage() {
                     </select>
                   </div>
                   <div>
+                    <label>{tt('wb.f.loadcity')}</label>
+                    <input list="loadCities" value={intl.loadCity} placeholder={tt('wb.ph.city')}
+                      onChange={e => setIntl({ ...intl, loadCity: e.target.value })} />
+                    <datalist id="loadCities">
+                      {loadCities.map(c => <option key={c} value={c} />)}
+                    </datalist>
+                  </div>
+                  <div>
                     <label>{tt('wb.f.unloadcountry')}</label>
                     <select required value={intl.unloadCountry} onChange={e => setIntl({ ...intl, unloadCountry: e.target.value })}>
                       <option value="">{tt('wb.opt.country')}</option>
                       {countries.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
                     </select>
+                  </div>
+                  <div>
+                    <label>{tt('wb.f.unloadcity')}</label>
+                    <input list="unloadCities" value={intl.unloadCity} placeholder={tt('wb.ph.city')}
+                      onChange={e => setIntl({ ...intl, unloadCity: e.target.value })} />
+                    <datalist id="unloadCities">
+                      {unloadCities.map(c => <option key={c} value={c} />)}
+                    </datalist>
                   </div>
                   <div>
                     <label>{tt('wb.f.transitcountries')}</label>
@@ -632,6 +1038,9 @@ export default function NewWaybillPage() {
                 <dt>{tt('wb.schedule')}</dt><dd>{form.schedule || '—'}</dd>
                 {isCar && (<><dt>{tt('wb.svc.label')}</dt><dd>{tt(({ TAXI: 'wb.svc.taxi', ROUTE: 'wb.svc.route', HOURLY: 'wb.svc.hourly' } as Record<string, string>)[serviceKind])}</dd></>)}
                 {isTruck && (<><dt>{tt('wb.ship.label')}</dt><dd>{shipmentKind === 'HOURLY' ? tt('wb.ship.hourly') : tt('wb.ship.piecework')}{trailers.length ? ` · ${tt('wb.trailerscount')}: ${trailers.length}` : ''}</dd></>)}
+                {isTruck && (directionId || client) && (<><dt>{tt('wbf.samt')} / {tt('wbf.client')}</dt><dd>{directions.find(d => String(d.id) === directionId)?.title || '—'} · {client?.name || '—'}</dd></>)}
+                {(isTruck || isCar) && workRegions.length > 0 && (<><dt>{tt('wbf.workzones')}</dt><dd>{workRegions.join(', ')}</dd></>)}
+                {isBus && (bus.columnNumber || bus.brigadeNumber) && (<><dt>{tt('wbf.column')} / {tt('wbf.brigade')}</dt><dd>{bus.columnNumber || '—'} / {bus.brigadeNumber || '—'}</dd></>)}
                 {isIntl && (<><dt>{tt('wb.intl.trip')}</dt><dd>{intl.loadCountry || '—'} → {intl.unloadCountry || '—'} · {tt('wb.permit.short')} {intl.permitNumber || '—'}{intl.secondDriverRma ? tt('wb.withsecond') : ''}</dd></>)}
                 {isSpecial && (<><dt>{tt('wb.spec.label')}</dt><dd>{special.workType || '—'}{special.motorHoursExit ? ` · ${tt('wb.f.motorhours')}: ${special.motorHoursExit}` : ''}{special.workObject ? ` · ${special.workObject}` : ''}</dd></>)}
               </dl>

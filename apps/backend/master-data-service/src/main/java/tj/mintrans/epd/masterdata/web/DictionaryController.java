@@ -18,11 +18,13 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 import tj.mintrans.epd.masterdata.config.CurrentUser;
+import tj.mintrans.epd.masterdata.domain.Cargo;
 import tj.mintrans.epd.masterdata.domain.Client;
 import tj.mintrans.epd.masterdata.domain.Coefficient;
 import tj.mintrans.epd.masterdata.domain.FuelNorm;
 import tj.mintrans.epd.masterdata.domain.Route;
 import tj.mintrans.epd.masterdata.domain.Tariff;
+import tj.mintrans.epd.masterdata.repository.CargoRepository;
 import tj.mintrans.epd.masterdata.repository.ClientRepository;
 import tj.mintrans.epd.masterdata.repository.CoefficientRepository;
 import tj.mintrans.epd.masterdata.repository.FuelNormRepository;
@@ -49,17 +51,20 @@ public class DictionaryController {
     private final FuelNormRepository fuelNorms;
     private final CoefficientRepository coefficients;
     private final TariffRepository tariffs;
+    private final CargoRepository cargos;
     private final CurrentUser currentUser;
     private final AuditService audit;
 
     public DictionaryController(RouteRepository routes, ClientRepository clients,
                                 FuelNormRepository fuelNorms, CoefficientRepository coefficients,
-                                TariffRepository tariffs, CurrentUser currentUser, AuditService audit) {
+                                TariffRepository tariffs, CargoRepository cargos,
+                                CurrentUser currentUser, AuditService audit) {
         this.routes = routes;
         this.clients = clients;
         this.fuelNorms = fuelNorms;
         this.coefficients = coefficients;
         this.tariffs = tariffs;
+        this.cargos = cargos;
         this.currentUser = currentUser;
         this.audit = audit;
     }
@@ -88,7 +93,28 @@ public class DictionaryController {
             @NotBlank String name,
             Short transportType,
             Short regionId,
-            String organizationRma) {
+            // Тип маршрута — «мягкий» код справочника RouteType (V63); nullable.
+            Short routeTypeCode,
+            String organizationRma,
+            // Коэффициентные и путевые поля (V28, перенос routes из ИС «Роҳхат»).
+            // mountainCoefValue / inCityCoefValue — ЗНАЧЕНИЯ коэффициентов, не ключи справочника.
+            Long winterCoefId,
+            Short mountainCoefValue,
+            Short inCityCoefValue,
+            Short stationCoef,
+            Short roadQuality,
+            Boolean excludingCoef,
+            Double additionalFuel100,
+            Double additionalFuel,
+            Double condFuel,
+            Double heatingFuel,
+            Double distanceA,
+            Double distanceB,
+            Double beginPathA,
+            Double beginPathB,
+            Short plannedLap,
+            Double coeUseCapacity,
+            Double averageLengthPassSeat) {
     }
 
     @GetMapping("/routes")
@@ -112,6 +138,24 @@ public class DictionaryController {
         route.setName(req.name());
         route.setTransportType(req.transportType());
         route.setRegionId(req.regionId());
+        route.setRouteTypeCode(req.routeTypeCode());
+        route.setWinterCoefId(req.winterCoefId());
+        route.setMountainCoefValue(req.mountainCoefValue());
+        route.setInCityCoefValue(req.inCityCoefValue());
+        route.setStationCoef(req.stationCoef());
+        route.setRoadQuality(req.roadQuality());
+        route.setExcludingCoef(Boolean.TRUE.equals(req.excludingCoef()));
+        route.setAdditionalFuel100(req.additionalFuel100());
+        route.setAdditionalFuel(req.additionalFuel());
+        route.setCondFuel(req.condFuel());
+        route.setHeatingFuel(req.heatingFuel());
+        route.setDistanceA(req.distanceA());
+        route.setDistanceB(req.distanceB());
+        route.setBeginPathA(req.beginPathA());
+        route.setBeginPathB(req.beginPathB());
+        route.setPlannedLap(req.plannedLap());
+        route.setCoeUseCapacity(req.coeUseCapacity());
+        route.setAverageLengthPassSeat(req.averageLengthPassSeat());
         var savedRoute = routes.save(route);
         audit.record(existing.isPresent() ? AuditService.UPDATE : AuditService.CREATE,
                 "ROUTE", org + "/" + req.number(), oldValue, req.name());
@@ -254,6 +298,44 @@ public class DictionaryController {
                 "TARIFF", req.transportType() + "/" + (req.fuelType() == null ? "*" : req.fuelType()),
                 oldValue, String.valueOf(req.pricePerKm()));
         return saved(existing, savedTariff);
+    }
+
+    // ------------------------------------------------------------------------- грузы
+
+    /**
+     * Груз (бор) — перенос {@code cargos} из ИС «Роҳхат» (2022_06_24_204806_create_cargo_table.php).
+     * Платформенный справочник (НЕ организация-скоуп): в эталоне cargos не имеет колонки
+     * компании — один общий список грузов для всех перевозчиков, правят COMPANY_ADMIN/SYSTEM_ADMIN
+     * (как Client), апсерт по названию (регистронезависимо).
+     */
+    public record CargoRequest(
+            @NotBlank String name,
+            String type,
+            String unit,
+            BigDecimal price,
+            Short cargoClass) {
+    }
+
+    @GetMapping("/cargos")
+    public List<Cargo> listCargos() {
+        return cargos.findAll();
+    }
+
+    @PostMapping("/cargos")
+    @PreAuthorize("hasAnyRole('COMPANY_ADMIN','SYSTEM_ADMIN')")
+    public ResponseEntity<Cargo> upsertCargo(@Valid @RequestBody CargoRequest req) {
+        var existing = cargos.findFirstByNameIgnoreCase(req.name());
+        String oldValue = existing.map(c -> String.valueOf(c.getPrice())).orElse(null); // до мутации
+        var cargo = existing.orElseGet(Cargo::new);
+        cargo.setName(req.name());
+        cargo.setType(req.type());
+        cargo.setUnit(req.unit());
+        cargo.setPrice(req.price());
+        cargo.setCargoClass(req.cargoClass());
+        var savedCargo = cargos.save(cargo);
+        audit.record(existing.isPresent() ? AuditService.UPDATE : AuditService.CREATE,
+                "CARGO", req.name(), oldValue, String.valueOf(req.price()));
+        return saved(existing, savedCargo);
     }
 
     // ------------------------------------------------------------------ вспомогательное

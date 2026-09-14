@@ -8,6 +8,7 @@ import { useT } from '@/lib/i18n';
 import { Icon, P } from '../../icons';
 
 const CATEGORIES = ['COUNTRY', 'ADR_CLASS', 'PERMIT_TYPE'] as const;
+const PER_PAGE = 20;
 
 export default function ClassifiersSettingsPage() {
   const { t } = useT();
@@ -19,6 +20,7 @@ export default function ClassifiersSettingsPage() {
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [form, setForm] = useState({ code: '', nameRu: '', nameTj: '' });
+  const [page, setPage] = useState(1);
 
   const reload = useCallback(async () => {
     try { setRows(await md.classifiers(cat, true)); setError(''); }
@@ -40,6 +42,9 @@ export default function ClassifiersSettingsPage() {
     finally { setBusy(false); }
   }
 
+  const pages = Math.max(1, Math.ceil(rows.length / PER_PAGE));
+  const view = rows.slice((page - 1) * PER_PAGE, page * PER_PAGE);
+
   return (
     <>
       <div className="toolbar">
@@ -58,7 +63,7 @@ export default function ClassifiersSettingsPage() {
       {/* Категории */}
       <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
         {CATEGORIES.map(c => (
-          <button key={c} onClick={() => setCat(c)}
+          <button key={c} onClick={() => { setCat(c); setPage(1); }}
             className={`badge ${c === cat ? 'blue' : 'gray'}`}
             style={{ cursor: 'pointer', border: 'none', padding: '8px 14px', fontSize: 13 }}>
             {t(`cls.cat.${c}`)}
@@ -79,7 +84,7 @@ export default function ClassifiersSettingsPage() {
           </thead>
           <tbody>
             {rows.length === 0 && <tr><td colSpan={5} style={{ color: 'var(--muted)' }}>{t('cls.empty')}</td></tr>}
-            {rows.map(r => (
+            {view.map(r => (
               <tr key={r.id} style={{ opacity: r.active ? 1 : 0.5 }}>
                 <td><span className="number">{r.code}</span></td>
                 <td style={{ fontWeight: 600 }}>{r.nameRu}</td>
@@ -104,6 +109,15 @@ export default function ClassifiersSettingsPage() {
             ))}
           </tbody>
         </table>
+
+        {/* Пагинация */}
+        <div style={{ display: 'flex', alignItems: 'center', marginTop: 14, fontSize: 13, color: 'var(--muted)' }}>
+          <span>{t('dict.totalrecords')}: <b style={{ color: 'var(--ink)' }}>{rows.length}</b></span>
+          <span style={{ flex: 1 }} />
+          <button className="btn secondary" disabled={page <= 1} onClick={() => setPage(p => p - 1)} style={{ padding: '6px 12px' }}>‹</button>
+          <span style={{ margin: '0 12px' }}>{page} / {pages}</span>
+          <button className="btn secondary" disabled={page >= pages} onClick={() => setPage(p => p + 1)} style={{ padding: '6px 12px' }}>›</button>
+        </div>
 
         {isSysAdmin && (
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end', marginTop: 14, paddingTop: 14, borderTop: '1px solid var(--line)' }}>

@@ -109,11 +109,18 @@ services:
       DB_URL: jdbc:postgresql://postgres:5432/masterdata
       DB_USER: ${DB_USER:-epd}
       DB_PASSWORD: ${DB_PASSWORD:-epd_dev_password}
+      # Redis для кэша справочников/политик (сервис redis в этой же сети compose)
+      SPRING_DATA_REDIS_HOST: redis
       KEYCLOAK_ISSUER_URI: http://keycloak:8180/realms/epd
       # Единая платформа Минтранса (субъекты из налоговой, ТС из ГАИ).
       # stub — имитация; при подключении реальной платформы: http + UNIFIED_PLATFORM_URL
       UNIFIED_PLATFORM_MODE: ${UNIFIED_PLATFORM_MODE:-stub}
       UNIFIED_PLATFORM_URL: ${UNIFIED_PLATFORM_URL:-http://unified-platform:8090}
+      # OpenAPI/Swagger UI закрыты: приложение по умолчанию (dev) отдаёт их без токена
+      # (docs-open=true в application.yml) — здесь безопасный дефолт для этого файла.
+      DOCS_OPEN: ${DOCS_OPEN:-false}
+    ports:
+      - "8081:8081"   # прямой доступ к API для dev/скриптов (в проде — только через reverse-proxy)
     depends_on:
       postgres:
         condition: service_healthy
@@ -134,6 +141,9 @@ services:
       DB_USER: ${DB_USER:-epd}
       DB_PASSWORD: ${DB_PASSWORD:-epd_dev_password}
       KEYCLOAK_ISSUER_URI: http://keycloak:8180/realms/epd
+      # Сервисный client-credentials токен (межсервисные вызовы master-data без
+      # пользователя): адрес Keycloak — ВНУТРЕННИЙ (docker-сеть), не localhost.
+      SERVICE_TOKEN_URI: http://keycloak:8180/realms/epd/protocol/openid-connect/token
       MASTER_DATA_URL: http://master-data:8081
       # Оплата ПЛ включена (AWAITING_PAYMENT → PAID; агрегаторские ПЛ покрыты абонементом)
       PAYMENT_ENABLED: ${PAYMENT_ENABLED:-true}
@@ -141,8 +151,17 @@ services:
       PAYMENT_WEBHOOK_SECRET: ${PAYMENT_WEBHOOK_SECRET:-epd_webhook_dev_secret}   # в проде заменить
       # API агрегаторов закрыт: нужен client-credentials токен epd-aggregator (роль API_INTEGRATOR)
       AGGREGATOR_OPEN: ${AGGREGATOR_OPEN:-false}
+      # OpenAPI/Swagger UI закрыты (см. тот же комментарий у master-data выше)
+      DOCS_OPEN: ${DOCS_OPEN:-false}
       # Статусные события ПЛ → Kafka (внутренний listener) для единого кабинета/аналитики
       KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      # Постоянный ключ подписи QR (JWS ES256, ИБ-13.4.3) — из infra/.env, единый для всех
+      # рестартов/пересборок. Без него ранее выданные QR перестают проверяться после передеплоя.
+      QR_SIGNING_KEY: '${QR_SIGNING_KEY:-}'
+      # Ключ шифрования медицинских показателей (AES-256-GCM, ИБ-13.1.3) — из infra/.env.
+      MEDDATA_ENCRYPTION_KEY: '${MEDDATA_ENCRYPTION_KEY:-}'
+    ports:
+      - "8082:8082"   # прямой доступ к API для dev/скриптов (в проде — только через reverse-proxy)
     depends_on:
       postgres:
         condition: service_healthy
@@ -152,16 +171,23 @@ services:
         condition: service_started
     restart: unless-stopped
 
+  # Веб-консоль. По умолчанию — единый монолит (все роли, профиль 'all'), поведение до
+  # разделения. Профильные сборки (кабинет перевозчика / платформа надзора) — ниже, под
+  # opt-in compose-профилем `split` (docker compose --profile split up), чтобы дефолтный
+  # запуск и регресс-скрипты не менялись.
+  # ВАЖНО: контекст сборки — корень репо (нужен workspace-пакет packages/shared).
   web:
     build:
-      context: ../apps/web
-      dockerfile: Dockerfile
+      context: ..
+      dockerfile: apps/web/Dockerfile
       args:
         # rewrites Next.js вычисляются на этапе сборки → адреса сервисов передаём как build-arg.
         MD_API_URL: http://master-data:8081
         WB_API_URL: http://waybill:8082
         # Публичный адрес Keycloak для браузера (в проде — внешний https-домен).
         NEXT_PUBLIC_KEYCLOAK_URL: ${NEXT_PUBLIC_KEYCLOAK_URL:-http://localhost:8180}
+        # QR-коды ведут на публичный портал проверки (сервис public, браузерный адрес).
+        NEXT_PUBLIC_VERIFY_BASE_URL: ${NEXT_PUBLIC_VERIFY_BASE_URL:-http://localhost:3002}
     image: epd/web:0.1.0
     container_name: epd-prod-web
     environment:
@@ -170,6 +196,76 @@ services:
       WB_API_URL: http://waybill:8082
     ports:
       - "3000:3000"
+    depends_on:
+      - master-data
+      - waybill
+    restart: unless-stopped
+
+  # Публичный портал проверки ПЛ по QR (интернет, аноним). Единственная функция —
+  # /verify/{jws}; обращается только к публичному эндпоинту waybill (/wb-api/.../verify).
+  # Отдельное приложение = минимальная поверхность атаки в публичном контуре.
+  public:
+    build:
+      context: ..
+      dockerfile: apps/public/Dockerfile
+      args:
+        WB_API_URL: http://waybill:8082
+    image: epd/public:0.1.0
+    container_name: epd-prod-public
+    ports:
+      - "3002:3002"
+    depends_on:
+      - waybill
+    restart: unless-stopped
+
+  # --- Профильные сборки web (opt-in: docker compose --profile split up --build) ---
+  # Тот же код web в двух профилях на отдельных хостах/портах. В проде каждый — за своим
+  # доменом через reverse-proxy; здесь для наглядности разнесены по портам 3010/3011.
+  web-waybill:
+    profiles: ["split"]
+    build:
+      context: ..
+      dockerfile: apps/web/Dockerfile
+      args:
+        NEXT_PUBLIC_APP_PROFILE: waybill
+        MD_API_URL: http://master-data:8081
+        WB_API_URL: http://waybill:8082
+        NEXT_PUBLIC_KEYCLOAK_URL: ${NEXT_PUBLIC_KEYCLOAK_URL:-http://localhost:8180}
+        NEXT_PUBLIC_VERIFY_BASE_URL: ${NEXT_PUBLIC_VERIFY_BASE_URL:-http://localhost:3002}
+        # Ссылка на «соседний» кабинет надзора (экран «Это не ваш кабинет»).
+        NEXT_PUBLIC_OVERSIGHT_URL: ${NEXT_PUBLIC_OVERSIGHT_URL:-http://localhost:3011}
+    image: epd/web-waybill:0.1.0
+    container_name: epd-prod-web-waybill
+    environment:
+      MD_API_URL: http://master-data:8081
+      WB_API_URL: http://waybill:8082
+    ports:
+      - "3010:3000"
+    depends_on:
+      - master-data
+      - waybill
+    restart: unless-stopped
+
+  web-oversight:
+    profiles: ["split"]
+    build:
+      context: ..
+      dockerfile: apps/web/Dockerfile
+      args:
+        NEXT_PUBLIC_APP_PROFILE: oversight
+        MD_API_URL: http://master-data:8081
+        WB_API_URL: http://waybill:8082
+        NEXT_PUBLIC_KEYCLOAK_URL: ${NEXT_PUBLIC_KEYCLOAK_URL:-http://localhost:8180}
+        NEXT_PUBLIC_VERIFY_BASE_URL: ${NEXT_PUBLIC_VERIFY_BASE_URL:-http://localhost:3002}
+        # Ссылка на «соседний» кабинет перевозчика.
+        NEXT_PUBLIC_WAYBILL_URL: ${NEXT_PUBLIC_WAYBILL_URL:-http://localhost:3010}
+    image: epd/web-oversight:0.1.0
+    container_name: epd-prod-web-oversight
+    environment:
+      MD_API_URL: http://master-data:8081
+      WB_API_URL: http://waybill:8082
+    ports:
+      - "3011:3000"
     depends_on:
       - master-data
       - waybill

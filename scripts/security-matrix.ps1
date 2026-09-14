@@ -6,6 +6,7 @@
 #          пользователи admin/dispatcher/doctor/mechanic/accountant/driver/inspector.
 # =====================================================================
 $ErrorActionPreference = 'Stop'
+. "$PSScriptRoot\demo-credentials.ps1"
 $md = 'http://localhost:8081'; $wb = 'http://localhost:8082'; $kc = 'http://localhost:8180'
 $pass = 0; $fail = 0
 
@@ -17,7 +18,7 @@ function Chk($name, $cond) {
 $tokens = @{}
 function Hdr($user) {
     if (-not $tokens.ContainsKey($user)) {
-        $body = "client_id=epd-web&grant_type=password&username=$user&password=$user"
+        $body = "client_id=epd-web&grant_type=password&username=$user&password=$(Get-DemoPassword $user)"
         $tokens[$user] = (Invoke-RestMethod -Method Post -Uri "$kc/realms/epd/protocol/openid-connect/token" -Body $body -ContentType 'application/x-www-form-urlencoded').access_token
     }
     return @{ Authorization = "Bearer $($tokens[$user])" }
@@ -45,41 +46,41 @@ Write-Output '=== МАТРИЦА АВТОРИЗАЦИИ ЭПД РТ ==='
 
 # --- Neru /active-by-plate: только INSPECTOR/API_INTEGRATOR/SYSTEM_ADMIN/MINTRANS_ANALYST ---
 $nu = "$wb/api/v1/neru/active-by-plate?plate=0114TJ01"
-Chk 'Neru: admin — доступ (не 403)'      ((Status GET $nu (Hdr 'admin') $null) -ne 403)
-Chk 'Neru: inspector — доступ (не 403)'  ((Status GET $nu (Hdr 'inspector') $null) -ne 403)
+Chk 'Neru: admin — доступ (не 403)'      ((Status GET $nu (Hdr 'admin-automation') $null) -ne 403)
+Chk 'Neru: inspector — доступ (не 403)'  ((Status GET $nu (Hdr 'inspector-automation') $null) -ne 403)
 Chk 'Neru: dispatcher — 403'             (& $forbidden (Status GET $nu (Hdr 'dispatcher') $null))
 Chk 'Neru: doctor — 403'                 (& $forbidden (Status GET $nu (Hdr 'doctor') $null))
 Chk 'Neru: driver — 403'                 (& $forbidden (Status GET $nu (Hdr 'driver') $null))
 
 # --- GPS приём: только API_INTEGRATOR/SYSTEM_ADMIN ---
 $gp = "$wb/api/v1/gps"; $ping = @{ vehicleRegNumber = '0114TJ01'; lat = 38.5; lon = 68.7 }
-Chk 'GPS ingest: admin — доступ'         (& $allowed (Status POST $gp (Hdr 'admin') $ping))
+Chk 'GPS ingest: admin — доступ'         (& $allowed (Status POST $gp (Hdr 'admin-automation') $ping))
 Chk 'GPS ingest: dispatcher — 403'       (& $forbidden (Status POST $gp (Hdr 'dispatcher') $ping))
-Chk 'GPS ingest: inspector — 403'        (& $forbidden (Status POST $gp (Hdr 'inspector') $ping))
+Chk 'GPS ingest: inspector — 403'        (& $forbidden (Status POST $gp (Hdr 'inspector-automation') $ping))
 
 # --- GPS чтение /last: тенант — только своя орг ---
 Chk 'GPS last: dispatcher своё ТС — доступ'      (& $allowed (Status GET "$wb/api/v1/gps/last?vehicleRegNumber=0114TJ01" (Hdr 'dispatcher') $null))
 Chk 'GPS last: dispatcher чужое/нет ТС — 404'    ((Status GET "$wb/api/v1/gps/last?vehicleRegNumber=ZZ9999XX" (Hdr 'dispatcher') $null) -eq 404)
-Chk 'GPS last: admin (платформа) — доступ'       (& $allowed (Status GET "$wb/api/v1/gps/last?vehicleRegNumber=0114TJ01" (Hdr 'admin') $null))
+Chk 'GPS last: admin (платформа) — доступ'       (& $allowed (Status GET "$wb/api/v1/gps/last?vehicleRegNumber=0114TJ01" (Hdr 'admin-automation') $null))
 
 # --- master-data PATCH одометра: только API_INTEGRATOR/SYSTEM_ADMIN ---
 $odo = "$md/api/v1/vehicles/00000000-0000-0000-0000-000000000000/odometer"
 $odoBody = @{ odometer = 999999 }
 Chk 'Одометр PATCH: dispatcher — 403'    (& $forbidden (Status PATCH $odo (Hdr 'dispatcher') $odoBody))
-Chk 'Одометр PATCH: admin — не 403 (404 из-за id ок)' ((Status PATCH $odo (Hdr 'admin') $odoBody) -ne 403)
+Chk 'Одометр PATCH: admin — не 403 (404 из-за id ок)' ((Status PATCH $odo (Hdr 'admin-automation') $odoBody) -ne 403)
 
 # --- master-data GET /audit: только SYSTEM_ADMIN ---
 $auditUrl = "$md/api/v1/audit?limit=1"
-Chk 'Аудит: admin — доступ'              (& $allowed (Status GET $auditUrl (Hdr 'admin') $null))
+Chk 'Аудит: admin — доступ'              (& $allowed (Status GET $auditUrl (Hdr 'admin-automation') $null))
 Chk 'Аудит: dispatcher — 403'            (& $forbidden (Status GET $auditUrl (Hdr 'dispatcher') $null))
-Chk 'Аудит: inspector — 403'             (& $forbidden (Status GET $auditUrl (Hdr 'inspector') $null))
+Chk 'Аудит: inspector — 403'             (& $forbidden (Status GET $auditUrl (Hdr 'inspector-automation') $null))
 
 # --- master-data POST конфигурации (field-definitions/classifiers): SYSTEM_ADMIN ---
 $fdUrl = "$md/api/v1/field-definitions"
 $fdAdmin = @{ waybillType = 'WB_SPECIAL'; fieldKey = 'secTest'; labelRu = 'т'; dataType = 'STRING' }
 $fdDisp = @{ waybillType = 'WB_SPECIAL'; fieldKey = 'x'; labelRu = 'x'; dataType = 'STRING' }
 $clsDisp = @{ category = 'COUNTRY'; code = 'XX'; nameRu = 'X' }
-Chk 'Field-def POST: admin — доступ'     (& $allowed (Status POST $fdUrl (Hdr 'admin') $fdAdmin))
+Chk 'Field-def POST: admin — доступ'     (& $allowed (Status POST $fdUrl (Hdr 'admin-automation') $fdAdmin))
 Chk 'Field-def POST: dispatcher — 403'   (& $forbidden (Status POST $fdUrl (Hdr 'dispatcher') $fdDisp))
 Chk 'Classifier POST: dispatcher — 403'  (& $forbidden (Status POST "$md/api/v1/classifiers" (Hdr 'dispatcher') $clsDisp))
 
@@ -93,6 +94,16 @@ Chk 'Master-data GET vehicles: анонимно — 401' ((Status GET "$md/api/v
 # --- waybill create: врач не создаёт ПЛ (403) ---
 $cr = @{ waybillType = 'WB_BUS'; organizationRma = '025680800'; vehicleRegNumber = '0114TJ01'; driverRma = '461930031' }
 Chk 'Create ПЛ: doctor — 403'            (& $forbidden (Status POST "$wb/api/v1/waybills" (Hdr 'doctor') $cr))
+
+# --- Удаление документа субъекта: DISPATCHER больше нельзя (только SYSTEM_ADMIN/COMPANY_ADMIN) ---
+$docDel = "$md/api/v1/vehicles/0114TJ01/documents/00000000-0000-0000-0000-000000000000"
+Chk 'SubjectDoc delete: dispatcher — 403'                 (& $forbidden (Status DELETE $docDel (Hdr 'dispatcher') $null))
+Chk 'SubjectDoc delete: admin — не 403 (404 из-за id ок)' ((Status DELETE $docDel (Hdr 'admin-automation') $null) -ne 403)
+
+# --- E-PERMIT просмотр дозвола /sync/permit: закрыт open-by-default (sync-роли — да, прочие — 403) ---
+$permit = "$md/api/v1/sync/permit/TEST-000"
+Chk 'Permit: dispatcher — не 403 (sync-роль)' ((Status GET $permit (Hdr 'dispatcher') $null) -ne 403)
+Chk 'Permit: doctor — 403'                    (& $forbidden (Status GET $permit (Hdr 'doctor') $null))
 
 # --- Мультиарендность ПЛ: чужой по id → 404, свой → доступ (нужен dispatcher2, org 990000001) ---
 try {
@@ -112,7 +123,7 @@ try {
 
 # --- Очистка тестовой конфигурации (идемпотентность) ---
 try {
-    $ha = Hdr 'admin'
+    $ha = Hdr 'admin-automation'
     $defs = Invoke-RestMethod "$fdUrl?waybillType=WB_SPECIAL&all=true" -Headers $ha
     foreach ($d in $defs) { if ($d.fieldKey -eq 'secTest') { Invoke-RestMethod -Method Delete -Uri "$fdUrl/$($d.id)" -Headers $ha | Out-Null } }
 } catch {}

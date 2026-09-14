@@ -25,6 +25,13 @@ public class Waybill {
     @Column(unique = true)
     private String number;
 
+    /** Журнальный номер в пределах организации за год ({@code branchSerialYear}). */
+    @Column(name = "branch_serial")
+    private Integer branchSerial;
+
+    @Column(name = "branch_serial_year")
+    private Short branchSerialYear;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "waybill_type", nullable = false)
     private WaybillType waybillType;
@@ -92,6 +99,10 @@ public class Waybill {
     @Column(name = "special_mark")
     private String specialMark;
 
+    /** Счётчик печати бланка — 0 до первой печати; со 2-го раза печатный бланк помечается «КОПИЯ». */
+    @Column(name = "print_count", nullable = false)
+    private int printCount;
+
     @Column(name = "cancel_reason")
     private String cancelReason;
 
@@ -125,6 +136,12 @@ public class Waybill {
     public UUID getId() { return id; }
     public String getNumber() { return number; }
     public void setNumber(String number) { this.number = number; }
+    public Integer getBranchSerial() { return branchSerial; }
+    public void setBranchSerial(Integer branchSerial) { this.branchSerial = branchSerial; }
+    public int getPrintCount() { return printCount; }
+    public void setPrintCount(int printCount) { this.printCount = printCount; }
+    public Short getBranchSerialYear() { return branchSerialYear; }
+    public void setBranchSerialYear(Short branchSerialYear) { this.branchSerialYear = branchSerialYear; }
     public WaybillType getWaybillType() { return waybillType; }
     public void setWaybillType(WaybillType waybillType) { this.waybillType = waybillType; }
     public String getCommunicationType() { return communicationType; }

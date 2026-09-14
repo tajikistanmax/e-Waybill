@@ -6,18 +6,31 @@
 #          сид-данные (ТС 0114TJ01, водитель 461930031, орг 025680800, диспетчер 333333333).
 # =====================================================================
 $ErrorActionPreference = 'Stop'
-$wb = 'http://localhost:8082'; $kc = 'http://localhost:8180'; $pg = 'epd-postgres'
+. "$PSScriptRoot\demo-credentials.ps1"
+$wb = 'http://localhost:8082'; $kc = 'http://localhost:8180'
+# Контейнер Postgres называется по-разному в dev (epd-postgres) и прод-подобном (epd-prod-postgres)
+# стеке compose — определяем по факту, что реально запущено, вместо хардкода одного имени.
+# Матчер сужен до "epd*postgres": на машине разработчика параллельно может крутиться Postgres
+# ДРУГОГО проекта (напр. dts-postgres) — широкий матч 'postgres' мог случайно выбрать чужой
+# контейнер и DbCount тихо проваливался бы в сентинел -1, который Chk трактует как «<=1» (найдено
+# 2026-09-04 при регрессии после исправлений УАТ: рядом оказался поднят dts-postgres).
+$pg = docker ps --format '{{.Names}}' | Where-Object { $_ -match '^epd.*postgres' } | Select-Object -First 1
+if (-not $pg) { throw 'Контейнер Postgres платформы ЭПД не найден среди запущенных (docker ps) — проверьте, не выбран ли контейнер другого проекта' }
 $pass = 0; $fail = 0
 function Chk($name, $cond) {
     if ($cond) { $script:pass++; Write-Output "  [PASS] $name" }
     else { $script:fail++; Write-Output "  [FAIL] $name" }
 }
-$hd = @{ Authorization = "Bearer $((Invoke-RestMethod -Method Post -Uri "$kc/realms/epd/protocol/openid-connect/token" -Body 'client_id=epd-web&grant_type=password&username=dispatcher&password=dispatcher' -ContentType 'application/x-www-form-urlencoded').access_token)" }
+$hd = @{ Authorization = "Bearer $((Invoke-RestMethod -Method Post -Uri "$kc/realms/epd/protocol/openid-connect/token" -Body "client_id=epd-web&grant_type=password&username=dispatcher&password=$(Get-DemoPassword 'dispatcher')" -ContentType 'application/x-www-form-urlencoded').access_token)" }
 function Cancel($obj) { Invoke-RestMethod -Method Post -Uri "$wb/api/v1/waybills/$($obj.id)/cancel" -Headers $hd -Body ([Text.Encoding]::UTF8.GetBytes((@{ reason = 'test'; actor = 'test' } | ConvertTo-Json))) -ContentType 'application/json; charset=utf-8' | Out-Null }
 function DbCount($sql) {
     $out = docker exec $pg psql -U epd -d waybill -t -A -c $sql
     $line = @($out) | Where-Object { $_ -match '^\s*\d+\s*$' } | Select-Object -First 1
-    if ($line) { [int]($line.Trim()) } else { -1 }
+    # -1 раньше означал и «запрос не вернул строку», и «psql упал с ошибкой» — Chk (<= 1)
+    # трактовал оба случая как PASS, тихо маскируя реальный сбой проверки. Явно бросаем
+    # при ошибке psql, чтобы сломанная проверка не выглядела пройденной.
+    if ($line) { return [int]($line.Trim()) }
+    throw "DbCount: psql не вернул число строк. Вывод: $($out -join ' | ')"
 }
 $openStat = "'CREATED','AWAITING_PAYMENT','PAID','READY','ISSUED','ACTIVE'"
 $openLocal = @('DRAFT', 'CREATED', 'AWAITING_PAYMENT', 'PAID', 'READY', 'ISSUED', 'ACTIVE')
@@ -28,15 +41,22 @@ Write-Output '=== ТЕСТ КОНКУРЕНТНОСТИ: один действу
 $open = Invoke-RestMethod "$wb/api/v1/waybills" -Headers $hd
 foreach ($o in $open) { if ($o.vehicleRegNumber -eq '0114TJ01' -and $openLocal -contains $o.status) { try { Cancel $o } catch {} } }
 
-# N конкурентных агрегаторских create (каждый доходит до CREATED=OPEN за одну транзакцию)
+# N конкурентных агрегаторских create (каждый доходит до CREATED=OPEN за одну транзакцию).
+# AGGREGATOR_OPEN управляет режимом: true (dev) — без токена; false (прод-стек по умолчанию,
+# см. docker-compose.prod.yml) — обязателен client-credentials токен epd-aggregator (роль
+# API_INTEGRATOR). Токен безвреден и в открытом режиме (лишний валидный Authorization не мешает
+# permitAll), поэтому просто всегда берём его — без пробного запроса с побочным эффектом.
 $exit = (Get-Date -Format 'yyyy-MM-dd HH:mm')
+$aggToken = (Invoke-RestMethod -Method Post -Uri "$kc/realms/epd/protocol/openid-connect/token" -Body 'client_id=epd-aggregator&client_secret=epd_aggregator_dev_secret&grant_type=client_credentials' -ContentType 'application/x-www-form-urlencoded').access_token
+
 $jobs = 1..8 | ForEach-Object {
     Start-Job -ScriptBlock {
-        param($wb, $exit)
+        param($wb, $exit, $aggToken)
         $b = @{ organization_rma = '025680800'; transport_registration_number = '0114TJ01'; driver_rma = '461930031'; employee_rma = '333333333'; exit_date = $exit; distance = 50 } | ConvertTo-Json
-        try { [int](Invoke-WebRequest -Method Post -Uri "$wb/api/v1/aggregator/waybills" -Body ([Text.Encoding]::UTF8.GetBytes($b)) -ContentType 'application/json; charset=utf-8' -UseBasicParsing).StatusCode }
+        $h = if ($aggToken) { @{ Authorization = "Bearer $aggToken" } } else { @{} }
+        try { [int](Invoke-WebRequest -Method Post -Uri "$wb/api/v1/aggregator/waybills" -Headers $h -Body ([Text.Encoding]::UTF8.GetBytes($b)) -ContentType 'application/json; charset=utf-8' -UseBasicParsing).StatusCode }
         catch { if ($_.Exception.Response) { [int]$_.Exception.Response.StatusCode.value__ } else { -1 } }
-    } -ArgumentList $wb, $exit
+    } -ArgumentList $wb, $exit, $aggToken
 }
 $codes = $jobs | Wait-Job | Receive-Job
 $jobs | Remove-Job
@@ -55,10 +75,12 @@ foreach ($o in $open2) { if ($o.vehicleRegNumber -eq '0114TJ01' -and $openLocal 
 
 # --- Гонка confirmMed || confirmTech: без блокировки строки (findByIdForUpdate) JPA терял
 # --- один из флагов medPassed/techPassed (last-writer-wins по всем колонкам) и ПЛ застревал
-# --- в CREATED. С блокировкой итог детерминирован: оба флага + статус READY.
+# --- в CREATED. С блокировкой итог детерминирован: оба флага выставлены и статус ушёл дальше —
+# --- READY (PAYMENT_ENABLED=false, dev-стек) либо AWAITING_PAYMENT (PAYMENT_ENABLED=true,
+# --- прод-стек по умолчанию — см. docker-compose.prod.yml); оба варианта корректны.
 Write-Output ''
 Write-Output '=== ГОНКА Т2 || Т3: параллельные медосмотр и техконтроль одного ПЛ ==='
-function TokenOf($user) { (Invoke-RestMethod -Method Post -Uri "$kc/realms/epd/protocol/openid-connect/token" -Body "client_id=epd-web&grant_type=password&username=$user&password=$user" -ContentType 'application/x-www-form-urlencoded').access_token }
+function TokenOf($user) { (Invoke-RestMethod -Method Post -Uri "$kc/realms/epd/protocol/openid-connect/token" -Body "client_id=epd-web&grant_type=password&username=$user&password=$(Get-DemoPassword $user)" -ContentType 'application/x-www-form-urlencoded').access_token }
 function PostJ($url, $obj, $h) { Invoke-RestMethod -Method Post -Uri $url -Headers $h -Body ([Text.Encoding]::UTF8.GetBytes(($obj | ConvertTo-Json -Depth 8))) -ContentType 'application/json; charset=utf-8' }
 $w = PostJ "$wb/api/v1/waybills" @{ waybillType = 'WB_BUS'; organizationRma = '025680800'; vehicleRegNumber = '0114TJ01'; driverRma = '461930031'; route = 'concurrency-race' } $hd
 $w = PostJ "$wb/api/v1/waybills/$($w.id)/titles/t1" @{ dispatcherRma = '333333333'; validityDays = 1 } $hd
@@ -74,7 +96,7 @@ $raceJobs | Wait-Job | Out-Null; $raceJobs | Remove-Job
 Start-Sleep -Seconds 1
 $after = Invoke-RestMethod "$wb/api/v1/waybills/$($w.id)" -Headers $hd
 Chk "Оба осмотра учтены (med+tech, без lost update)" ($after.medPassed -and $after.techPassed)
-Chk "Статус READY после гонки (факт: $($after.status))" ($after.status -eq 'READY')
+Chk "Статус ушёл дальше после гонки, без застревания в CREATED (факт: $($after.status))" ($after.status -in @('READY', 'AWAITING_PAYMENT'))
 try { Cancel $after } catch {}
 
 Write-Output ''

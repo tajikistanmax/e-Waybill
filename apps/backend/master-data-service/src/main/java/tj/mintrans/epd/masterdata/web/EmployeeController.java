@@ -19,13 +19,14 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
-import tj.mintrans.epd.masterdata.config.CurrentUser;
+import tj.mintrans.epd.masterdata.config.TenantScope;
 import tj.mintrans.epd.masterdata.domain.Employee;
 import tj.mintrans.epd.masterdata.repository.EmployeeRepository;
 import tj.mintrans.epd.masterdata.repository.OrganizationRepository;
 import tj.mintrans.epd.masterdata.service.AuditService;
 import tj.mintrans.epd.masterdata.web.error.NotFoundException;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 
@@ -38,14 +39,14 @@ public class EmployeeController {
 
     private final EmployeeRepository employees;
     private final OrganizationRepository organizations;
-    private final CurrentUser currentUser;
+    private final TenantScope tenantScope;
     private final AuditService audit;
 
     public EmployeeController(EmployeeRepository employees, OrganizationRepository organizations,
-                              CurrentUser currentUser, AuditService audit) {
+                              TenantScope tenantScope, AuditService audit) {
         this.employees = employees;
         this.organizations = organizations;
-        this.currentUser = currentUser;
+        this.tenantScope = tenantScope;
         this.audit = audit;
     }
 
@@ -55,7 +56,12 @@ public class EmployeeController {
             String tabNumber,
             @NotBlank String name,
             @NotNull @Min(1) @Max(3) Short type,
-            String phone) {
+            String phone,
+            String address,
+            // Сертификат врача (§8 QA). Актуален для type=1; у механика/диспетчера обычно пуст.
+            // certValidTo — ISO-дата (yyyy-MM-dd); некорректный формат отклоняется на десериализации.
+            String certNumber,
+            LocalDate certValidTo) {
     }
 
     /**
@@ -64,9 +70,9 @@ public class EmployeeController {
      * и сисадмин — любых. Тенант не пишет в чужую организацию (403), не «захватывает» по РМА (409).
      */
     @PostMapping
-    @PreAuthorize("hasAnyRole('API_INTEGRATOR','SYSTEM_ADMIN','COMPANY_ADMIN')")
+    @PreAuthorize("hasAnyRole('API_INTEGRATOR','SYSTEM_ADMIN','COMPANY_ADMIN','BRANCH_ADMIN','DISPATCHER')")
     public ResponseEntity<Employee> upsert(@Valid @RequestBody EmployeeRequest req) {
-        requireOwnOrganization(req.organizationRma());
+        requireWritable(req.organizationRma());
         var org = organizations.findByRma(req.organizationRma())
                 .orElseThrow(() -> new NotFoundException("Организация не найдена"));
         var existing = employees.findByRma(req.rma());
@@ -79,6 +85,9 @@ public class EmployeeController {
         employee.setName(req.name());
         employee.setType(req.type());
         employee.setPhone(req.phone());
+        employee.setAddress(req.address());
+        employee.setCertNumber(req.certNumber());
+        employee.setCertValidTo(req.certValidTo());
         var saved = employees.save(employee);
         audit.record(existing.isPresent() ? AuditService.UPDATE : AuditService.CREATE,
                 "EMPLOYEE", req.rma(), oldName, saved.getName());
@@ -88,19 +97,19 @@ public class EmployeeController {
     @GetMapping
     public List<Employee> list(@RequestParam(required = false) String rma,
                                @RequestParam(required = false) String organizationRma) {
-        // Мультиарендность: не-админ видит только сотрудников своей организации.
-        // Анонимные (внутренние) вызовы не фильтруются.
-        if (currentUser.isTenantScoped()) {
-            var org = currentUser.organizationRma().flatMap(organizations::findByRma).orElse(null);
-            if (org == null) {
+        // Мультиарендность: тенант видит сотрудников своей организации и (для
+        // администратора компании) всех её филиалов. Анонимные (внутренние) вызовы не фильтруются.
+        if (tenantScope.isBounded()) {
+            var ids = tenantScope.organizationIds();
+            if (ids.isEmpty()) {
                 return List.of();
             }
             if (rma != null) {
                 return employees.findByRma(rma)
-                        .filter(e -> org.getId().equals(e.getOrganizationId()))
+                        .filter(e -> ids.contains(e.getOrganizationId()))
                         .map(List::of).orElseGet(List::of);
             }
-            return employees.findByOrganizationId(org.getId());
+            return employees.findByOrganizationIdIn(ids);
         }
         if (rma != null) {
             return employees.findByRma(rma).map(List::of).orElseGet(List::of);
@@ -116,19 +125,16 @@ public class EmployeeController {
     @GetMapping("/{id}")
     public Employee get(@PathVariable UUID id) {
         var employee = employees.findById(id).orElseThrow(() -> new NotFoundException("Сотрудник не найден"));
-        // Мультиарендность: не-админ не может прочитать сотрудника чужой организации по прямому id.
-        if (currentUser.isTenantScoped()) {
-            var org = currentUser.organizationRma().flatMap(organizations::findByRma).orElse(null);
-            if (org == null || !org.getId().equals(employee.getOrganizationId())) {
-                throw new NotFoundException("Сотрудник не найден");
-            }
+        // Мультиарендность: тенант не может прочитать сотрудника вне своей области по прямому id.
+        if (tenantScope.isBounded() && !tenantScope.organizationIds().contains(employee.getOrganizationId())) {
+            throw new NotFoundException("Сотрудник не найден");
         }
         return employee;
     }
 
-    /** Удаление сотрудника своей организации (COMPANY_ADMIN/SYSTEM_ADMIN). */
+    /** Открепление (удаление) сотрудника от организации (диспетчер/админ компании/филиала/сисадмин). */
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasAnyRole('SYSTEM_ADMIN','COMPANY_ADMIN')")
+    @PreAuthorize("hasAnyRole('SYSTEM_ADMIN','COMPANY_ADMIN','BRANCH_ADMIN','DISPATCHER')")
     public ResponseEntity<Void> delete(@PathVariable UUID id) {
         var employee = employees.findById(id).orElseThrow(() -> new NotFoundException("Сотрудник не найден"));
         requireOwnEntity(employee.getOrganizationId());
@@ -139,27 +145,22 @@ public class EmployeeController {
 
     // ------------------------------------------------------------ тенант-защита записи
 
-    private void requireOwnOrganization(String organizationRma) {
-        if (currentUser.isTenantScoped()) {
-            var own = currentUser.organizationRma();
-            if (own.isEmpty() || !own.get().equals(organizationRma)) {
-                throw new AccessDeniedException("Доступ только к своей организации");
-            }
+    /** Тенант пишет в свою организацию либо (администратор компании) в её филиал; иначе 403. */
+    private void requireWritable(String organizationRma) {
+        if (tenantScope.isBounded() && !tenantScope.canWrite(organizationRma)) {
+            throw new AccessDeniedException("Доступ только к своим организациям");
         }
     }
 
     private void assertNotForeign(UUID existingOrgId, UUID targetOrgId, String what) {
-        if (currentUser.isTenantScoped() && existingOrgId != null && !existingOrgId.equals(targetOrgId)) {
+        if (tenantScope.isBounded() && existingOrgId != null && !existingOrgId.equals(targetOrgId)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, what + " уже закреплён(а) за другой организацией");
         }
     }
 
     private void requireOwnEntity(UUID entityOrgId) {
-        if (currentUser.isTenantScoped()) {
-            var own = currentUser.organizationRma().flatMap(organizations::findByRma).orElse(null);
-            if (own == null || !own.getId().equals(entityOrgId)) {
-                throw new AccessDeniedException("Доступ только к своей организации");
-            }
+        if (tenantScope.isBounded() && !tenantScope.organizationIds().contains(entityOrgId)) {
+            throw new AccessDeniedException("Доступ только к своим организациям");
         }
     }
 }

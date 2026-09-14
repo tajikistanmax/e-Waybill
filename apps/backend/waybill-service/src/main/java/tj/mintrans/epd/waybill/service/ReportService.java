@@ -2,7 +2,7 @@ package tj.mintrans.epd.waybill.service;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import tj.mintrans.epd.waybill.config.CurrentUser;
+import tj.mintrans.epd.waybill.config.TenantScope;
 import tj.mintrans.epd.waybill.domain.FuelRecord;
 import tj.mintrans.epd.waybill.domain.Waybill;
 import tj.mintrans.epd.waybill.domain.WaybillStatus;
@@ -40,14 +40,14 @@ public class ReportService {
     private final WaybillRepository waybills;
     private final WorkDayRepository workDays;
     private final FuelRecordRepository fuelRecords;
-    private final CurrentUser currentUser;
+    private final TenantScope tenantScope;
 
     public ReportService(WaybillRepository waybills, WorkDayRepository workDays,
-                         FuelRecordRepository fuelRecords, CurrentUser currentUser) {
+                         FuelRecordRepository fuelRecords, TenantScope tenantScope) {
         this.waybills = waybills;
         this.workDays = workDays;
         this.fuelRecords = fuelRecords;
-        this.currentUser = currentUser;
+        this.tenantScope = tenantScope;
     }
 
     // ------------------------------------------------------------------ DTO
@@ -186,17 +186,18 @@ public class ReportService {
      * нет claim — пустой список).
      */
     private List<Waybill> load(LocalDate from, LocalDate to, String requestedOrganizationRma) {
-        String org;
-        if (currentUser.isTenantScoped()) {
-            org = currentUser.organizationRma().orElse(null);
-            if (org == null) {
+        final Set<String> scope;
+        if (tenantScope.isBounded()) {
+            scope = tenantScope.rmas();
+            if (scope.isEmpty() || scope.contains("__none__")) {
                 return List.of();
             }
         } else {
-            org = requestedOrganizationRma;
+            scope = requestedOrganizationRma == null || requestedOrganizationRma.isBlank()
+                    ? null : Set.of(requestedOrganizationRma);
         }
         return waybills.findAll().stream()
-                .filter(wb -> org == null || org.equals(wb.getOrganizationRma()))
+                .filter(wb -> scope == null || scope.contains(wb.getOrganizationRma()))
                 .filter(wb -> {
                     var created = wb.getCreatedAt().toLocalDate();
                     return !created.isBefore(from) && !created.isAfter(to);

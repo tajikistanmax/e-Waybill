@@ -7,7 +7,7 @@ import { useT } from '@/lib/i18n';
 import { Icon, P } from '../icons';
 
 const KIND_BADGE: Record<string, string> = {
-  MED_REJECTED: 'red', TECH_REJECTED: 'red', BLOCKED: 'red', EXPIRED: 'amber', READY: 'green',
+  MED_REJECTED: 'red', TECH_REJECTED: 'red', BLOCKED: 'red', EXPIRED: 'amber', READY: 'green', CREATED: 'blue', DRIVER_ISSUE: 'amber',
 };
 
 export default function NotificationsPage() {

@@ -1,0 +1,24 @@
+title = "e-Waybill gitleaks config"
+
+# Наследуем стандартный набор правил gitleaks (ключи AWS/GCP, приватные ключи,
+# JWT-подобные токены и т.п.).
+[extend]
+useDefault = true
+
+# Сознательно допущенные случаи:
+# 1) dev-секреты клиентов Keycloak в демо-реалме локального стенда (не боевой, не
+#    интернет-доступный; в реальном развёртывании — через Vault/секреты окружения,
+#    см. docker-compose.prod.yml TODO(prod)). Явно поименованы «_dev_secret».
+# 2) docs/Путевой лист/... — легаси-дамп прототипа сторонней сборки (не часть
+#    прод-кодовой базы apps/backend|apps/web), содержит публичный Mapbox-токен
+#    (pk.*, по конструкции клиентский/публичный, не приватный ключ) и случайный
+#    UUID, ошибочно распознанный как generic-api-key.
+[allowlist]
+description = "Dev-only Keycloak client secrets and legacy prototype dump"
+paths = [
+  '''infra/keycloak/epd-realm\.json''',
+  '''docs/Путевой лист/.*''',
+]
+regexes = [
+  '''epd_(aggregator|provisioner)_dev_secret''',
+]

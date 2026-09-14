@@ -75,6 +75,33 @@ public class MasterDataClient {
         return first("/api/v1/employees?rma={rma}", rma);
     }
 
+    /** Все ТС организации (для норматива выдачи листов count_waybills_type2). */
+    public List<Map<String, Object>> listVehicles(String organizationRma) {
+        return list("/api/v1/vehicles?organizationRma={o}", organizationRma);
+    }
+
+    public List<Map<String, Object>> listOrganizations() {
+        return list("/api/v1/organizations");
+    }
+
+    /**
+     * РМА организаций, видимых текущему пользователю (token relay → master-data сам
+     * применяет тенант-скоуп: своя организация + её филиалы для администратора компании).
+     * Ошибка/недоступность master-data → пустой список (вызывающий откатывается на claim).
+     */
+    public List<String> scopedOrganizationRmas() {
+        try {
+            return listOrganizations().stream()
+                    .map(o -> o.get("rma"))
+                    .filter(java.util.Objects::nonNull)
+                    .map(String::valueOf)
+                    .filter(s -> !s.isBlank())
+                    .toList();
+        } catch (RuntimeException e) {
+            return List.of();
+        }
+    }
+
     /** Онлайн-проверка дозвола E-PERMIT через единую платформу (404 → empty). */
     public Optional<Map<String, Object>> findPermit(String permitNumber) {
         try {
@@ -86,6 +113,21 @@ public class MasterDataClient {
         } catch (org.springframework.web.client.HttpClientErrorException.NotFound e) {
             return Optional.empty();
         }
+    }
+
+    /**
+     * Фиксирует в аудите master-data-service факт доступа к расшифрованным медицинским
+     * показателям (ИБ-13.1.3). Токен текущего пользователя ретранслируется (см. authorize())
+     * — актор в аудите master-data будет реальным инициатором, не сервисной учёткой.
+     * Намеренно БЕЗ try/catch: сбой аудита должен блокировать выдачу показателей
+     * (fail-closed) — иначе «доступ только с фиксацией в аудите» не гарантия, а пожелание.
+     */
+    public void recordMedicalAccess(String waybillId, String titleType) {
+        client.post()
+                .uri("/api/v1/audit/medical-access")
+                .body(Map.of("waybillId", waybillId, "titleType", titleType))
+                .retrieve()
+                .toBodilessEntity();
     }
 
     public void updateVehicleOdometer(String vehicleId, int odometer) {
@@ -127,9 +169,22 @@ public class MasterDataClient {
      * При недоступности — пустая карта (вызывающий трактует отсутствие как «уведомление включено»).
      */
     public Map<String, String> notificationSettings() {
+        return settingsByCategory("notifications");
+    }
+
+    /**
+     * Настройки печати (master-data, категория {@code print}): опции бланка ПЛ и реквизиты
+     * приказа об утверждении нархномы для справки маълумотнома (`malumotnoma_tariff_order`).
+     * При недоступности — пустая карта (печать бланка не должна падать из-за настроек).
+     */
+    public Map<String, String> printSettings() {
+        return settingsByCategory("print");
+    }
+
+    private Map<String, String> settingsByCategory(String category) {
         try {
             List<Map<String, Object>> rows = client.get()
-                    .uri("/api/v1/settings?category=notifications")
+                    .uri("/api/v1/settings?category=" + category)
                     .retrieve()
                     .body(LIST_OF_MAPS);
             if (rows == null) {
@@ -161,6 +216,88 @@ public class MasterDataClient {
 
     public List<Map<String, Object>> listTariffs() {
         return list("/api/v1/dictionaries/tariffs");
+    }
+
+    // --------------------------- справочники расчётного ядра (перенос ИС «Роҳхат»)
+
+    public List<Map<String, Object>> listWinterCoefs() {
+        return list("/api/v1/legacy-ref/winter-coefs");
+    }
+
+    public List<Map<String, Object>> listMountainCoefs() {
+        return list("/api/v1/legacy-ref/mountain-coefs");
+    }
+
+    public List<Map<String, Object>> listCityCoefs() {
+        return list("/api/v1/legacy-ref/city-coefs");
+    }
+
+    public List<Map<String, Object>> listUsedCoefs() {
+        return list("/api/v1/legacy-ref/used-coefs");
+    }
+
+    public List<Map<String, Object>> listDriveClasses() {
+        return list("/api/v1/legacy-ref/drive-classes");
+    }
+
+    public List<Map<String, Object>> listBrands() {
+        return list("/api/v1/legacy-ref/brands");
+    }
+
+    public List<Map<String, Object>> listDirections() {
+        return list("/api/v1/legacy-ref/directions");
+    }
+
+    /** Направление грузовой перевозки по id; 404 → empty. */
+    public Optional<Map<String, Object>> findDirection(long id) {
+        try {
+            Map<String, Object> direction = client.get()
+                    .uri("/api/v1/legacy-ref/directions/{id}", id)
+                    .retrieve()
+                    .body(new ParameterizedTypeReference<Map<String, Object>>() {});
+            return Optional.ofNullable(direction);
+        } catch (org.springframework.web.client.HttpClientErrorException.NotFound e) {
+            return Optional.empty();
+        }
+    }
+
+    /** Тарифы конкретного маршрута (нархнома). */
+    public List<Map<String, Object>> listRouteTariffs(String routeId) {
+        return list("/api/v1/legacy-ref/route-tariffs?routeId={id}", routeId);
+    }
+
+    /** Маршруты (с коэффициентными и путевыми полями V28). */
+    public List<Map<String, Object>> listRoutes() {
+        return list("/api/v1/dictionaries/routes");
+    }
+
+    /** Маршрут по номеру или названию (регистронезависимо); из маршрутов организации токена. */
+    public Optional<Map<String, Object>> findRoute(String numberOrName) {
+        if (numberOrName == null || numberOrName.isBlank()) {
+            return Optional.empty();
+        }
+        String q = numberOrName.trim();
+        List<Map<String, Object>> routes = listRoutes();
+        return routes.stream()
+                .filter(r -> q.equalsIgnoreCase(str(r.get("number"))) || q.equalsIgnoreCase(str(r.get("name"))))
+                .findFirst();
+    }
+
+    private static String str(Object o) {
+        return o == null ? "" : o.toString();
+    }
+
+    /** Марка ТС по названию (регистронезависимо); 404 → empty. */
+    public Optional<Map<String, Object>> findBrandByName(String name) {
+        try {
+            Map<String, Object> brand = client.get()
+                    .uri("/api/v1/legacy-ref/brands?name={n}", name)
+                    .retrieve()
+                    .body(new ParameterizedTypeReference<Map<String, Object>>() {});
+            return Optional.ofNullable(brand);
+        } catch (org.springframework.web.client.HttpClientErrorException.NotFound e) {
+            return Optional.empty();
+        }
     }
 
     /** Активные определения доп.полей (конструктор полей) для типа ПЛ — для серверной валидации обязательных. */

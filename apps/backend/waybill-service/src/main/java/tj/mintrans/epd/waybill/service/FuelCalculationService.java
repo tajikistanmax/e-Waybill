@@ -159,7 +159,21 @@ public class FuelCalculationService {
 
         // Тариф (сомони/км) — только для км-нормирования; спецтехника по моточасам не тарифицируется здесь.
         if (!special) {
-            Short fuelType = records.stream().map(FuelRecord::getFuelType).findFirst().orElse(null);
+            // Вид топлива для тарифа: сначала паспортный из карточки ТС (снимок мастер-данных),
+            // и только потом — из первой заправки. Заправка вводится вручную и её может не быть
+            // вовсе; тогда раньше тариф молча падал на «общий для типа ТС» (fuelType = NULL),
+            // хотя вид топлива у машины известен заведомо.
+            Integer vehicleFuel = intOrNull(vehicle == null ? null : vehicle.get("fuelType"));
+            // ВНИМАНИЕ: тернарник с примитивом short и boxed Short распаковывает Short-ветку
+            // (бинарное числовое промоушение) → NPE, когда orElse(null) вернул null. fuelType
+            // здесь штатно может быть null (нет вида топлива ни в карточке ТС, ни в заправках) —
+            // ниже фильтр тарифа это учитывает. Поэтому явный if/else без распаковки.
+            Short fuelType;
+            if (vehicleFuel != null) {
+                fuelType = vehicleFuel.shortValue();
+            } else {
+                fuelType = records.stream().map(FuelRecord::getFuelType).findFirst().orElse(null);
+            }
             List<Map<String, Object>> tariffs = masterData.listTariffs();
             Map<String, Object> tariff = tariffs.stream()
                     .filter(t -> transportType == intValue(t.get("transportType")))

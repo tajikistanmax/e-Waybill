@@ -4,6 +4,8 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.PositiveOrZero;
+import jakarta.validation.constraints.Size;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -15,6 +17,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import tj.mintrans.epd.waybill.config.CurrentUser;
+import tj.mintrans.epd.waybill.config.TenantScope;
 import tj.mintrans.epd.waybill.domain.Waybill;
 import tj.mintrans.epd.waybill.domain.WaybillStatus;
 import tj.mintrans.epd.waybill.domain.WaybillStatusEvent;
@@ -23,10 +26,12 @@ import tj.mintrans.epd.waybill.domain.WaybillType;
 import tj.mintrans.epd.waybill.repository.WaybillRepository;
 import tj.mintrans.epd.waybill.repository.WaybillStatusEventRepository;
 import tj.mintrans.epd.waybill.repository.WaybillTitleRepository;
+import tj.mintrans.epd.waybill.calc.WaybillCalcAssembler;
 import tj.mintrans.epd.waybill.service.FuelCalculationService;
 import tj.mintrans.epd.waybill.service.QrTokenService;
 import tj.mintrans.epd.waybill.service.WaybillService;
 
+import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Map;
@@ -42,19 +47,24 @@ public class WaybillController {
     private final WaybillStatusEventRepository events;
     private final QrTokenService qr;
     private final FuelCalculationService fuelCalculation;
+    private final WaybillCalcAssembler waybillCalc;
     private final CurrentUser currentUser;
+    private final TenantScope tenantScope;
 
     public WaybillController(WaybillService service, WaybillRepository waybills,
                              WaybillTitleRepository titles, WaybillStatusEventRepository events,
                              QrTokenService qr, FuelCalculationService fuelCalculation,
-                             CurrentUser currentUser) {
+                             WaybillCalcAssembler waybillCalc, CurrentUser currentUser,
+                             TenantScope tenantScope) {
         this.service = service;
         this.waybills = waybills;
         this.titles = titles;
         this.events = events;
         this.qr = qr;
         this.fuelCalculation = fuelCalculation;
+        this.waybillCalc = waybillCalc;
         this.currentUser = currentUser;
+        this.tenantScope = tenantScope;
     }
 
     // ------------------------------------------------------------- запросы
@@ -87,7 +97,8 @@ public class WaybillController {
     public record TechRequest(
             @NotBlank @Pattern(regexp = "\\d{9,10}") String employeeRma,
             @NotNull Boolean passed,
-            Map<String, Object> checklist) {
+            Map<String, Object> checklist,
+            @PositiveOrZero Integer odometerExit) {
     }
 
     public record IssueRequest(String driverConfirmation) {
@@ -101,7 +112,12 @@ public class WaybillController {
     public record ReturnRequest(
             @NotBlank @Pattern(regexp = "\\d{9,10}") String dispatcherRma,
             @NotNull Integer odometerEntry,
-            Double motorHoursEntry) { // моточасы возврата — только для спецтехники (иначе null)
+            Double motorHoursEntry, // моточасы возврата — только для спецтехники (иначе null)
+            // Фактические показатели рейса для расчёта и сводных отчётов (все необязательны):
+            Double transportWork,      // грузовая: транспортная работа P, т·км
+            Double trips,              // грузовая: число ездок Z
+            Double conditionerHours,   // пассажирская: часы работы кондиционера
+            Integer airConditionerPercent) {
     }
 
     public record CloseRequest(String actor) {
@@ -120,13 +136,47 @@ public class WaybillController {
             @NotBlank @Pattern(regexp = "\\d{9,10}") String dispatcherRma) {
     }
 
-    public record BlockRequest(@NotBlank String reason, String actor) {
+    /**
+     * Акт дорожной проверки. {@code reasonCode} — основание из классификатора
+     * {@link tj.mintrans.epd.waybill.domain.InspectionReason} (обязательно при блокировке);
+     * место, координаты и № бумажного акта фиксируются вместе с ним.
+     */
+    public record InspectionRequest(
+            tj.mintrans.epd.waybill.domain.InspectionReason reasonCode,
+            String description,
+            String place,
+            java.math.BigDecimal lat,
+            java.math.BigDecimal lon,
+            String protocolNumber,
+            String actor) {
+
+        WaybillService.InspectionAct toAct() {
+            return new WaybillService.InspectionAct(reasonCode, description, place, lat, lon, protocolNumber);
+        }
     }
 
-    public record UnblockRequest(@NotBlank String reason, String actor) {
+    public record UnblockRequest(@NotBlank String reason) {
     }
 
-    public record ConfirmPaymentRequest(String method, String externalRef, String actor) {
+    public record ConfirmPaymentRequest(String method, String externalRef) {
+    }
+
+    /** Возврат оплаты (§16 QA): причина обязательна; сумма опциональна (null = полная уплаченная). */
+    public record RefundRequest(@NotBlank @Size(max = 500) String reason, BigDecimal amount) {
+    }
+
+    /** Данные накладной (приложение к 2-Б / CMR к 5Б-БМ) — см. WaybillService.ConsignmentUpdate. */
+    public record ConsignmentRequest(
+            String senderName, String senderAddress,
+            String receiverName, String receiverAddress,
+            String forwarderName,
+            Double cargoVolume, String cargoStatCode, String submittedDocuments,
+            String customsOfficerName, String customsConfirmedAt,
+            List<Map<String, Object>> cargoOperations,
+            // Справочники Client (стороны)/Cargo (груз) — id для прослеживаемости, имя уже
+            // снято в *Name полях выше (см. WaybillService.ConsignmentUpdate).
+            String senderId, String receiverId, String forwarderId, String cargoId,
+            String cargoName) {
     }
 
     // ------------------------------------------------------------- жизненный цикл
@@ -155,7 +205,7 @@ public class WaybillController {
     @PostMapping("/{id}/confirm-tech")
     @PreAuthorize("hasAnyRole('MECHANIC','SYSTEM_ADMIN')")
     public Waybill confirmTech(@PathVariable UUID id, @Valid @RequestBody TechRequest req) {
-        return service.confirmTech(id, req.employeeRma(), req.passed(), req.checklist());
+        return service.confirmTech(id, req.employeeRma(), req.passed(), req.checklist(), req.odometerExit());
     }
 
     @PostMapping("/{id}/issue")
@@ -173,7 +223,9 @@ public class WaybillController {
     @PostMapping("/{id}/return")
     @PreAuthorize("hasAnyRole('DISPATCHER','SYSTEM_ADMIN')")
     public Waybill returnTrip(@PathVariable UUID id, @Valid @RequestBody ReturnRequest req) {
-        return service.returnTrip(id, req.dispatcherRma(), req.odometerEntry(), req.motorHoursEntry());
+        return service.returnTrip(id, req.dispatcherRma(), req.odometerEntry(), req.motorHoursEntry(),
+                new WaybillService.ReturnMetrics(req.transportWork(), req.trips(),
+                        req.conditionerHours(), req.airConditionerPercent()));
     }
 
     @PostMapping("/{id}/close")
@@ -186,6 +238,21 @@ public class WaybillController {
     @PreAuthorize("hasAnyRole('DISPATCHER','SYSTEM_ADMIN')")
     public Waybill cancel(@PathVariable UUID id, @Valid @RequestBody CancelRequest req) {
         return service.cancel(id, req.reason(), req.actor());
+    }
+
+    /**
+     * Данные накладной (приложение к 2-Б / CMR к 5Б-БМ): стороны, груз, операции
+     * погрузки-разгрузки — используются печатными формами {@code print-attachment.pdf}/
+     * {@code print-cmr.pdf}. Не титул и не переход статуса — описательные данные документа.
+     */
+    @PostMapping("/{id}/consignment")
+    @PreAuthorize("hasAnyRole('DISPATCHER','COMPANY_ADMIN','SYSTEM_ADMIN')")
+    public Waybill updateConsignment(@PathVariable UUID id, @RequestBody ConsignmentRequest req) {
+        return service.updateConsignment(id, new WaybillService.ConsignmentUpdate(
+                req.senderName(), req.senderAddress(), req.receiverName(), req.receiverAddress(),
+                req.forwarderName(), req.cargoVolume(), req.cargoStatCode(), req.submittedDocuments(),
+                req.customsOfficerName(), req.customsConfirmedAt(), req.cargoOperations(),
+                req.senderId(), req.receiverId(), req.forwarderId(), req.cargoId(), req.cargoName()));
     }
 
     /** Замена водителя после недопуска (MED_REJECTED → CREATED, титул CORRECTION). */
@@ -202,31 +269,62 @@ public class WaybillController {
         return service.replaceVehicle(id, req.newVehicleRegNumber(), req.dispatcherRma());
     }
 
-    /** Блокировка инспектором при нарушении на дорожном контроле (ACTIVE → BLOCKED). */
+    /**
+     * Блокировка инспектором при нарушении на дорожном контроле (документ на линии → BLOCKED).
+     * Основание обязательно и берётся из классификатора — свободного текста недостаточно:
+     * блокировка юридически значима, её обжалуют и снимает только Минтранс.
+     */
     @PostMapping("/{id}/block")
     @PreAuthorize("hasAnyRole('INSPECTOR','SYSTEM_ADMIN')")
-    public Waybill block(@PathVariable UUID id, @Valid @RequestBody BlockRequest req) {
-        return service.block(id, req.reason(), req.actor() == null ? "inspector" : req.actor());
+    public Waybill block(@PathVariable UUID id, @Valid @RequestBody InspectionRequest req) {
+        return service.block(id, req.toAct(), req.actor() == null ? "inspector" : req.actor());
+    }
+
+    /** Проверка на дороге без нарушений: фиксируем факт контроля, статус листа не меняем. */
+    @PostMapping("/{id}/inspection")
+    @PreAuthorize("hasAnyRole('INSPECTOR','SYSTEM_ADMIN')")
+    public tj.mintrans.epd.waybill.domain.WaybillInspection inspect(
+            @PathVariable UUID id, @RequestBody(required = false) InspectionRequest req) {
+        return service.inspect(id, req == null ? null : req.toAct());
+    }
+
+    /** История дорожных проверок путевого листа (кто, когда, где, с каким результатом). */
+    @GetMapping("/{id}/inspections")
+    public List<tj.mintrans.epd.waybill.domain.WaybillInspection> inspections(@PathVariable UUID id) {
+        return service.inspections(id);
+    }
+
+    /** Справочник оснований блокировки — для выпадающего списка в кабинете инспектора. */
+    @GetMapping("/inspection-reasons")
+    public List<Map<String, String>> inspectionReasons() {
+        return java.util.Arrays.stream(tj.mintrans.epd.waybill.domain.InspectionReason.values())
+                .map(r -> Map.of("code", r.name(), "label", r.label()))
+                .toList();
     }
 
     /** Разблокировка администратором Минтранса с обоснованием (BLOCKED → ACTIVE). */
     @PostMapping("/{id}/unblock")
     @PreAuthorize("hasRole('SYSTEM_ADMIN')")
     public Waybill unblock(@PathVariable UUID id, @Valid @RequestBody UnblockRequest req) {
-        return service.unblock(id, req.reason(), req.actor() == null ? "mintrans-admin" : req.actor());
+        return service.unblock(id, req.reason(), currentUser.username().orElse("mintrans-admin"));
     }
 
     // ------------------------------------------------------------- оплата
 
     /** Карточка оплаты (сумма, статус, реквизиты подтверждения). */
     @GetMapping("/{id}/payment")
+    @PreAuthorize(READ_ROLES)
     public tj.mintrans.epd.waybill.domain.WaybillPayment payment(@PathVariable UUID id) {
         return service.getPayment(id);
     }
 
     /**
      * Подтверждение оплаты бухгалтером/админом: AWAITING_PAYMENT → PAID → READY (номер + QR).
-     * Платёжный шлюз (webhook) — этап 1б, будет вызывать этот же сервисный метод.
+     * Платёжный шлюз (webhook) — отдельный {@code PaymentWebhookController}, тот же сервисный
+     * метод, свой актор ("payment-gateway"). Актор здесь — ТОЛЬКО из JWT (preferred_username),
+     * не из тела запроса: иначе бухгалтер мог указать в теле произвольную строку вместо своего
+     * реального логина, и запись «кто подтвердил оплату» в аудите была бы недостоверна (в
+     * отличие от Т1/Т2/Т3, где подписант дополнительно сверяется со штатом организации).
      */
     @PostMapping("/{id}/confirm-payment")
     @PreAuthorize("hasAnyRole('ACCOUNTANT','COMPANY_ADMIN','SYSTEM_ADMIN')")
@@ -234,7 +332,22 @@ public class WaybillController {
         return service.confirmPayment(id,
                 req == null ? null : req.method(),
                 req == null ? null : req.externalRef(),
-                req == null || req.actor() == null ? "accountant" : req.actor());
+                currentUser.username().orElse("accountant"));
+    }
+
+    /**
+     * Возврат оплаты бухгалтером/админом (§16 QA): CONFIRMED (PAID) → REFUNDED. Возможен только
+     * для подтверждённой оплаты; повторный возврат уже возвращённой → 409. Причина обязательна,
+     * сумма опциональна (по умолчанию — полная уплаченная; частичный возврат пока → 422).
+     * Актор — ТОЛЬКО из JWT (preferred_username), не из тела, как и в confirm-payment: запись
+     * «кто оформил возврат» в аудите должна быть достоверна. Реальное движение денег — внешнее
+     * (банк-шлюз/агрегатор); здесь фиксируется платформенное состояние возврата.
+     */
+    @PostMapping("/{id}/refund")
+    @PreAuthorize("hasAnyRole('ACCOUNTANT','COMPANY_ADMIN','SYSTEM_ADMIN')")
+    public Waybill refund(@PathVariable UUID id, @Valid @RequestBody RefundRequest req) {
+        return service.refundPayment(id, req.reason(), req.amount(),
+                currentUser.username().orElse("accountant"));
     }
 
     // ------------------------------------------------------------- пригодность (preflight)
@@ -258,35 +371,45 @@ public class WaybillController {
     }
 
     // ------------------------------------------------------------- чтение
+    //
+    // ВАЖНО: явно исключаем API_INTEGRATOR из ролей ниже (в отличие от общей политики
+    // CurrentUser.isPlatformAdmin(), где у него безграничная область — это нужно
+    // ТОЛЬКО для внутреннего переиспользования WaybillService.get() сервисом
+    // AggregatorService при вызовах через /api/v1/aggregator/**, не для прямого HTTP-доступа
+    // к общим read-эндпоинтам). Без этого ограничения client-credentials токен агрегатора
+    // (ЧУРА/НЕРУ) получал бы доступ на чтение ко ВСЕЙ базе путевых листов страны — реальная
+    // находка приёмочного тестирования 2026-09-04 (см. spec/notes/05).
+    private static final String READ_ROLES = "hasAnyRole('DISPATCHER','DOCTOR','MECHANIC','ACCOUNTANT',"
+            + "'COMPANY_ADMIN','BRANCH_ADMIN','DRIVER','SYSTEM_ADMIN','MINTRANS_ANALYST','INSPECTOR')";
 
     @GetMapping("/{id}")
+    @PreAuthorize(READ_ROLES)
     public Waybill get(@PathVariable UUID id) {
         return service.get(id);
     }
 
     @GetMapping
+    @PreAuthorize(READ_ROLES)
     public List<Waybill> list(@RequestParam(required = false) String organizationRma,
                               @RequestParam(required = false) WaybillStatus status,
                               @RequestParam(required = false) String number) {
-        // Мультиарендность: не-админ видит только свою организацию —
-        // пришедший organizationRma игнорируется, берётся claim из токена.
-        if (currentUser.isTenantScoped()) {
-            var own = currentUser.organizationRma();
-            if (own.isEmpty()) {
+        // Мультиарендность: тенант видит свою организацию (администратор компании — и все
+        // её филиалы); пришедший organizationRma игнорируется, область берётся из токена.
+        if (tenantScope.isBounded()) {
+            var scoped = tenantScope.rmas();
+            if (scoped.isEmpty() || scoped.contains("__none__")) {
                 return List.of();
             }
-            organizationRma = own.get();
             // Водитель (роль DRIVER) видит только СВОИ путевые листы (свои рейсы как основной
             // или второй водитель), а не всей организации — иначе он видел бы чужие рейсы и QR.
             final String driverRma = currentUser.hasRole("DRIVER") ? currentUser.rma().orElse("") : null;
             if (number != null) {
-                final String orgRma = organizationRma;
                 return waybills.findByNumber(number)
-                        .filter(wb -> orgRma.equals(wb.getOrganizationRma()))
+                        .filter(wb -> scoped.contains(wb.getOrganizationRma()))
                         .filter(wb -> driverRma == null || driverRma.equals(wb.getDriverRma()) || driverRma.equals(wb.getSecondDriverRma()))
                         .map(List::of).orElseGet(List::of);
             }
-            var result = waybills.findByOrganizationRmaOrderByCreatedAtDesc(organizationRma);
+            var result = waybills.findByOrganizationRmaInOrderByCreatedAtDesc(scoped);
             if (driverRma != null) {
                 result = result.stream()
                         .filter(wb -> driverRma.equals(wb.getDriverRma()) || driverRma.equals(wb.getSecondDriverRma()))
@@ -311,12 +434,26 @@ public class WaybillController {
     }
 
     @GetMapping("/{id}/titles")
+    @PreAuthorize(READ_ROLES)
     public List<WaybillTitle> titles(@PathVariable UUID id) {
         service.get(id);
         return titles.findByWaybillIdOrderBySignedAt(id);
     }
 
+    /**
+     * Регламентированная расшифровка медпоказателей осмотра (ИБ-13.1.3) — отдельно от
+     * {@link #titles}, который отдаёт только зашифрованный blob. Доступ уже гораздо у́же
+     * READ_ROLES: медработник своей организации либо администратор платформы, и только
+     * с фиксацией факта доступа в аудите (см. WaybillService.decryptMedicalIndicators).
+     */
+    @GetMapping("/{id}/titles/{titleType}/indicators")
+    @PreAuthorize("hasAnyRole('DOCTOR','SYSTEM_ADMIN')")
+    public Map<String, Object> medicalIndicators(@PathVariable UUID id, @PathVariable String titleType) {
+        return service.decryptMedicalIndicators(id, titleType);
+    }
+
     @GetMapping("/{id}/status-history")
+    @PreAuthorize(READ_ROLES)
     public List<WaybillStatusEvent> statusHistory(@PathVariable UUID id) {
         service.get(id);
         return events.findByWaybillIdOrderByCreatedAt(id);
@@ -324,12 +461,30 @@ public class WaybillController {
 
     /** Нормативный расход топлива и стоимость рейса (доступно после возврата, Т5). */
     @GetMapping("/{id}/fuel-calculation")
+    @PreAuthorize(READ_ROLES)
     public FuelCalculationService.FuelCalculation fuelCalculation(@PathVariable UUID id) {
         return fuelCalculation.calculate(service.get(id));
     }
 
+    /**
+     * Полный расчёт путевого листа движком «Роҳхат» (пакет calc): сводный коэффициент,
+     * нормативный расход по видам топлива, остатки, заработок водителя, пассажирские
+     * показатели / грузовые формулы, тариф маршрута.
+     *
+     * <p>Величины, которых нет в модели e-Waybill (кондиционер, транспортная работа P,
+     * число ездок Z, доля дохода компании), передаются в теле-дополнении (всё необязательно).</p>
+     */
+    @PostMapping("/{id}/calculation")
+    @PreAuthorize("hasAnyRole('DISPATCHER','COMPANY_ADMIN','ACCOUNTANT','SYSTEM_ADMIN')")
+    public WaybillCalcAssembler.View calculation(
+            @PathVariable UUID id,
+            @RequestBody(required = false) WaybillCalcAssembler.Supplement supplement) {
+        return waybillCalc.calculate(service.get(id), supplement);
+    }
+
     /** Подписанная QR-нагрузка (JWS) — её кодирует в QR мобильное приложение водителя. */
     @GetMapping("/{id}/qr")
+    @PreAuthorize(READ_ROLES)
     public Map<String, String> qr(@PathVariable UUID id) {
         var wb = service.get(id);
         if (wb.getNumber() == null) {

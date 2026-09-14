@@ -68,7 +68,10 @@ public class StubUnifiedPlatformClient implements UnifiedPlatformClient {
                 legal ? "info@" + inn + ".tj" : null,
                 legal ? PERSON_NAMES.get((h / 3) % PERSON_NAMES.size()) : null,
                 today.minusYears(1),
-                today.plusYears(2))); // лицензия действует — блокирующие проверки проходят
+                today.plusYears(2), // лицензия действует — блокирующие проверки проходят
+                legal ? "ЛП-%06d".formatted(h % 1_000_000) : null, // № лицензии перевозчика (только юрлицо)
+                // Дата рождения — только для физлица/ИП (у юрлица нет): детерминированно 21–60 лет назад.
+                legal ? null : today.minusYears(21 + h % 40).minusDays(h % 365)));
     }
 
     @Override
@@ -99,8 +102,12 @@ public class StubUnifiedPlatformClient implements UnifiedPlatformClient {
                 (short) (2012 + h % 13),
                 capacity,
                 transportType >= 5 ? BigDecimal.valueOf(h % 15 + 5) : null,
-                today.plusMonths(6),   // техосмотр действует
-                today.plusMonths(12))); // контрольная карточка действует
+                today.plusMonths(6),    // техосмотр действует
+                today.plusMonths(12),   // контрольная карточка действует
+                "КК%06d".formatted(h % 1_000_000),
+                transportType == 6 ? "INT-%04d-%04d".formatted(today.getYear(), h % 10_000) : null, // сертификат — только межд. грузовые
+                today.plusMonths(9),    // страховка действует
+                today.plusYears(1)));   // допуск ADR действует
     }
 
     @Override
@@ -135,6 +142,10 @@ public class StubUnifiedPlatformClient implements UnifiedPlatformClient {
                 h % 2 == 0 ? "B, C, D" : "B, D",
                 today.plusYears(3),
                 "MC%06d".formatted(h % 1_000_000),
-                today.plusYears(1)));
+                today.plusYears(1),
+                "БДД-%06d".formatted(h % 1_000_000),
+                today.plusYears(2),   // курс БДД действует
+                today.plusYears(1),   // допуск ADR действует
+                (short) (h % 30 + 1))); // общий стаж вождения, лет (1..30)
     }
 }

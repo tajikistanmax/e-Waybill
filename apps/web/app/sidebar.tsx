@@ -8,6 +8,7 @@ import { useAuth } from '@/lib/auth';
 import { useT } from '@/lib/i18n';
 import { useBrand, BrandLogo } from '@/lib/brand';
 import { useRoleAccess } from '@/lib/roleaccess';
+import { canCreateWaybill } from '@/lib/roles';
 
 export function Sidebar() {
   const pathname = usePathname();
@@ -20,13 +21,16 @@ export function Sidebar() {
 
   const active = (h: string) => pathname === h || pathname.startsWith(h + '/');
   const wbActive = pathname === '/waybills' || (pathname.startsWith('/waybills/') && pathname !== '/waybills/new');
-  const showWorkplaces = nav.has('med') || nav.has('tech') || nav.has('driver') || nav.has('inspector') || nav.has('fleet');
+  const showWorkplaces = nav.has('med') || nav.has('tech') || nav.has('fuel') || nav.has('driver') || nav.has('inspector') || nav.has('fleet');
+  // Мониторинг переехал в «Управление» — но у ролей без управленческих разделов (инспектор)
+  // он единственный, поэтому заголовок группы показываем и ради него.
   // «Транспорт и водители» ролево: врач осматривает водителей → «Водители», механик ТС → «Транспорт».
-  const manages = roles.includes('DISPATCHER') || roles.includes('COMPANY_ADMIN') || roles.includes('SYSTEM_ADMIN');
+  const manages = roles.includes('DISPATCHER') || roles.includes('COMPANY_ADMIN') || roles.includes('BRANCH_ADMIN') || roles.includes('SYSTEM_ADMIN');
   const fleetLabel = !manages && roles.includes('DOCTOR') ? t('fleet.tab.drivers')
     : !manages && roles.includes('MECHANIC') ? t('fleet.tab.vehicles') : t('nav.fleet');
   const fleetIcon = !manages && roles.includes('DOCTOR') ? P.user : P.car;
-  const showManagement = nav.has('company') || nav.has('registry') || nav.has('violations') || nav.has('reports') || nav.has('dictionaries') || nav.has('settings');
+  const showManagement = nav.has('company') || nav.has('access') || nav.has('registry') || nav.has('violations') || nav.has('reports') || nav.has('dictionaries') || nav.has('monitoring') || nav.has('settings');
+  const canCreate = canCreateWaybill(roles);
 
   return (
     <aside className="sidebar no-print">
@@ -59,7 +63,9 @@ export function Sidebar() {
             </button>
             {open && (
               <div className="subnav">
-                <Link href="/waybills/new" className={pathname === '/waybills/new' ? 'active' : ''}>{t('nav.waybill.new')}</Link>
+                {/* Выписывает ПЛ только диспетчер: бухгалтеру/аналитику пункт не показываем —
+                    сервер всё равно вернёт 403 на создании (см. canCreateWaybill). */}
+                {canCreate && <Link href="/waybills/new" className={pathname === '/waybills/new' ? 'active' : ''}>{t('nav.waybill.new')}</Link>}
                 <Link href="/waybills" className={wbActive ? 'active' : ''}>{t('nav.waybill.registry')}</Link>
               </div>
             )}
@@ -67,8 +73,11 @@ export function Sidebar() {
         )}
 
         {showWorkplaces && <div className="group-label">{t('nav.group.workplaces')}</div>}
-        {nav.has('med') && <Link href="/med" className={`snav ${active('/med') ? 'active' : ''}`}><Icon d={P.med} /> {t('nav.med')}</Link>}
-        {nav.has('tech') && <Link href="/tech" className={`snav ${active('/tech') ? 'active' : ''}`}><Icon d={P.wrench} /> {t('nav.tech')}</Link>}
+        {nav.has('med') && <Link href="/med" className={`snav ${pathname === '/med' ? 'active' : ''}`}><Icon d={P.med} /> {t('nav.med')}</Link>}
+        {nav.has('med') && <Link href="/med/journal" className={`snav ${active('/med/journal') ? 'active' : ''}`}><Icon d={P.book} /> {t('med.history')}</Link>}
+        {nav.has('tech') && <Link href="/tech" className={`snav ${pathname === '/tech' ? 'active' : ''}`}><Icon d={P.wrench} /> {t('nav.tech')}</Link>}
+        {nav.has('tech') && <Link href="/tech/journal" className={`snav ${active('/tech/journal') ? 'active' : ''}`}><Icon d={P.book} /> {t('tech.journal.link')}</Link>}
+        {nav.has('fuel') && <Link href="/fuel" className={`snav ${active('/fuel') ? 'active' : ''}`}><Icon d={P.route} /> {t('nav.fuel')}</Link>}
         {nav.has('driver') && (
           <>
             <Link href="/driver" className={`snav ${pathname === '/driver' ? 'active' : ''}`}><Icon d={P.car} /> {t('nav.driver')}</Link>
@@ -76,15 +85,18 @@ export function Sidebar() {
           </>
         )}
         {nav.has('inspector') && <Link href="/inspector" className={`snav ${active('/inspector') ? 'active' : ''}`}><Icon d={P.shield} /> {t('nav.inspector')}</Link>}
-        {nav.has('fleet') && <Link href="/fleet" className={`snav ${active('/fleet') ? 'active' : ''}`}><Icon d={fleetIcon} /> {fleetLabel}</Link>}
-        {nav.has('monitoring') && <Link href="/monitoring" className={`snav ${active('/monitoring') ? 'active' : ''}`}><Icon d={P.route} /> {t('nav.monitoring')}</Link>}
+        {nav.has('fleet') && <Link href="/fleet/vehicles" className={`snav ${active('/fleet') ? 'active' : ''}`}><Icon d={fleetIcon} /> {fleetLabel}</Link>}
 
         {showManagement && <div className="group-label">{t('nav.group.management')}</div>}
-        {nav.has('company') && <Link href="/company" className={`snav ${active('/company') ? 'active' : ''}`}><Icon d={P.building} /> {t('nav.company')}</Link>}
-        {nav.has('registry') && <Link href="/registry" className={`snav ${active('/registry') ? 'active' : ''}`}><Icon d={P.users} /> {t('nav.registry')}</Link>}
+        {nav.has('company') && <Link href="/company" className={`snav ${active('/company') && !active('/company/access') ? 'active' : ''}`}><Icon d={P.building} /> {t('nav.company')}</Link>}
+        {nav.has('access') && <Link href="/company/access" className={`snav ${active('/company/access') ? 'active' : ''}`}><Icon d={P.users} /> {t('nav.access')}</Link>}
+        {nav.has('registry') && <Link href="/registry/vehicles" className={`snav ${active('/registry') ? 'active' : ''}`}><Icon d={P.users} /> {t('nav.registry')}</Link>}
         {nav.has('violations') && <Link href="/violations" className={`snav ${active('/violations') ? 'active' : ''}`}><Icon d={P.shield} /> {t('nav.violations')}</Link>}
-        {nav.has('reports') && <Link href="/reports" className={`snav ${active('/reports') ? 'active' : ''}`}><Icon d={P.chart} /> {t('nav.reports')}</Link>}
-        {nav.has('dictionaries') && <Link href="/dictionaries" className={`snav ${active('/dictionaries') ? 'active' : ''}`}><Icon d={P.book} /> {t('nav.dictionaries')}</Link>}
+        {nav.has('reports') && <Link href="/reports/summary" className={`snav ${active('/reports') ? 'active' : ''}`}><Icon d={P.chart} /> {t('nav.reports')}</Link>}
+        {nav.has('dictionaries') && <Link href="/dictionaries/routes" className={`snav ${active('/dictionaries') ? 'active' : ''}`}><Icon d={P.book} /> {t('nav.dictionaries')}</Link>}
+        {/* GPS-мониторинг — надзорный раздел (наблюдение за парком на линии), а не рабочее
+            место: место в «Управлении», между справочниками и настройками. */}
+        {nav.has('monitoring') && <Link href="/monitoring" className={`snav ${active('/monitoring') ? 'active' : ''}`}><Icon d={P.route} /> {t('nav.monitoring')}</Link>}
         {nav.has('settings') && <Link href="/settings" className={`snav ${active('/settings') ? 'active' : ''}`}><Icon d={P.settings} /> {t('nav.settings')}</Link>}
       </nav>
 

@@ -4,9 +4,11 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.dao.IncorrectResultSizeDataAccessException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
 import java.util.Map;
@@ -16,6 +18,35 @@ import java.util.Map;
  */
 @RestControllerAdvice
 public class ApiExceptionHandler {
+
+    /**
+     * Отказ @PreAuthorize/hasRole без этого обработчика уходит клиенту ПУСТЫМ телом (дефолт
+     * Spring Security) — фронтенд, ожидающий {@code error.detail}, показывает пользователю
+     * пустое сообщение вместо причины (найдено УАТ 2026-09-04, компакт-находка «Тела ошибок
+     * непоследовательны»).
+     */
+    @ExceptionHandler(AccessDeniedException.class)
+    public ProblemDetail forbidden(AccessDeniedException e) {
+        var problem = ProblemDetail.forStatus(HttpStatus.FORBIDDEN);
+        problem.setTitle("Доступ запрещён");
+        problem.setDetail(e.getMessage() != null && !e.getMessage().isBlank()
+                ? e.getMessage() : "Недостаточно прав для этого действия");
+        return problem;
+    }
+
+    /**
+     * Многие контроллеры бросают {@link ResponseStatusException} напрямую (409/422/400) —
+     * без явного обработчика тело ответа собирает стандартный {@code BasicErrorController}
+     * Spring Boot (поле {@code message}, не RFC 7807 {@code detail}), которое фронтенд не читает.
+     * Приводим к тому же виду {@link ProblemDetail}, что и у остальных ошибок этого сервиса.
+     */
+    @ExceptionHandler(ResponseStatusException.class)
+    public ProblemDetail responseStatus(ResponseStatusException e) {
+        var problem = ProblemDetail.forStatus(e.getStatusCode());
+        problem.setTitle(e.getStatusCode().toString());
+        problem.setDetail(e.getReason() != null ? e.getReason() : e.getMessage());
+        return problem;
+    }
 
     @ExceptionHandler(NotFoundException.class)
     public ProblemDetail notFound(NotFoundException e) {

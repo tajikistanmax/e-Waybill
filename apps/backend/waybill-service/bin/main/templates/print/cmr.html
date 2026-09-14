@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="tg">
+<!--
+  CMR — международная товарно-транспортная накладная к путевому листу 5Б-БМ
+  (Конвенция о договоре международной дорожной перевозки грузов, КДПГ).
+  Перенос bill5bm_cargo.blade.php оригинала. Рендерер (openhtmltopdf) не умеет
+  flexbox — оригинал на div/flex, здесь та же структура таблицами.
+  Графы 19-30 (тариф/оплата фрахта) в оригинале пустые для ручного заполнения —
+  печатаются как поля бланка, без данных платформы (тарификация рейса не входит
+  в объём этапа 1).
+-->
+<head>
+    <meta charset="UTF-8"/>
+    <title th:text="'CMR № ' + ${attachmentNumber}">CMR</title>
+    <th:block th:replace="~{print/styles :: styles}"/>
+    <style>
+        .cmr-badge { border: 1pt solid #000; border-radius: 50%; display: inline-block;
+            width: 16pt; height: 16pt; text-align: center; font-weight: bold; }
+        .field-num { font-weight: bold; font-size: 8pt; }
+    </style>
+</head>
+<body>
+
+<!-- Коды гос. статистической отчётности — обязательная шапка бланка Замима 7 в оригинале. -->
+<table class="bordered">
+    <tr>
+        <th>Шакли ҳуҷҷат аз рӯи КУХР</th>
+        <th>Ташкилоти мураттиби ҳуҷҷат аз рӯи КУКТ</th>
+        <th>Вазорат (идора) аз рӯи КУМХДИ</th>
+        <th>Ҳудуд аз рӯи КУТОМХ</th>
+        <th>Шакли моликият аз рӯи КШМ</th>
+        <th>Соҳа аз рӯи КУРСХ</th>
+        <th>Шакли фаъолият аз рӯи КУФИ</th>
+    </tr>
+    <tr><td>&#160;</td><td>&#160;</td><td>&#160;</td><td>&#160;</td><td>&#160;</td><td>&#160;</td><td>&#160;</td></tr>
+</table>
+
+<table class="bordered">
+    <tr>
+        <td style="width: 33%">
+            <div><span class="field-num">1.</span> Отправитель / Absender</div>
+            <div class="line" th:text="${senderName}"></div>
+            <div class="line" th:text="${senderAddress}"></div>
+        </td>
+        <td rowspan="3" style="width: 34%; text-align: center">
+            <div class="bold">Международная товарно-транспортная накладная</div>
+            <div>Internationaler Frachtbrief</div>
+            <div class="cmr-badge">CMR</div>
+            <div class="bold" th:text="'№ ' + ${attachmentNumber}"></div>
+        </td>
+        <td style="width: 33%">
+            <div><span class="field-num">16.</span> Перевозчик / Frachtführer</div>
+            <div class="line" th:text="${companyName}"></div>
+            <div class="line" th:text="${companyAddress}"></div>
+        </td>
+    </tr>
+    <tr>
+        <td>
+            <div><span class="field-num">2.</span> Получатель / Empfänger</div>
+            <div class="line" th:text="${receiverName}"></div>
+            <div class="line" th:text="${receiverAddress}"></div>
+        </td>
+        <td>
+            <div><span class="field-num">17.</span> Последующий перевозчик / Nachfolgende Frachtführer</div>
+            <div class="line">&#160;</div>
+        </td>
+    </tr>
+    <tr>
+        <td>
+            <div><span class="field-num">3.</span> Место разгрузки / Auslieferungsort</div>
+            <div>Место: <span th:text="${unloadCity}"></span> · Страна: <span th:text="${unloadCountry}"></span></div>
+        </td>
+        <td>
+            <div><span class="field-num">18.</span> Оговорки и замечания перевозчика / Vorbehalte des Frachtführers</div>
+            <div class="line">&#160;</div>
+        </td>
+    </tr>
+    <tr>
+        <td>
+            <div><span class="field-num">4.</span> Место и дата погрузки / Ort und Tag der Übernahme</div>
+            <div>Место: <span th:text="${loadCity}"></span> · Страна: <span th:text="${loadCountry}"></span></div>
+            <div>Дата: <span th:text="${exitDate}"></span></div>
+        </td>
+        <td rowspan="2">
+            <div><span class="field-num">19.</span> Подлежит оплате / Zu zahlen vom</div>
+            <div class="caption">Тарификация рейса — вне объёма электронного бланка,
+                заполняется вручную согласно договору перевозки.</div>
+        </td>
+    </tr>
+    <tr>
+        <td>
+            <div><span class="field-num">5.</span> Прилагаемые документы / Beigefügte Dokumente</div>
+            <div class="line" th:text="${submittedDocuments}"></div>
+        </td>
+    </tr>
+</table>
+
+<div class="section">
+    <table class="bordered">
+        <tr>
+            <th style="width: 40%">6-9. Знаки и номера / Количество мест / Род упаковки / Наименование груза</th>
+            <th style="width: 15%">10. Статист. / Statistik-Nr.</th>
+            <th style="width: 15%">11. Вес брутто, кг / Bruttogew.</th>
+            <th style="width: 15%">12. Объём, м³ / Umfang</th>
+            <th style="width: 15%">Класс ДОПОГ / ADR</th>
+        </tr>
+        <tr>
+            <td th:text="${cargoName}"></td>
+            <td class="center" th:text="${cargoStatCode}"></td>
+            <td class="center" th:text="${cargoWeight}"></td>
+            <td class="center" th:text="${cargoVolume}"></td>
+            <td class="center" th:text="${adrClass}"></td>
+        </tr>
+    </table>
+</div>
+
+<div class="section">
+    <table class="bordered">
+        <tr>
+            <th style="width: 50%">13. Указания отправителя (таможенная обработка) / Anweisungen des Absenders</th>
+            <th style="width: 50%">20. Особые согласованные условия / Besondere Vereinbarungen</th>
+        </tr>
+        <tr>
+            <td>&#160;</td>
+            <td th:text="${specialMark}"></td>
+        </tr>
+    </table>
+</div>
+
+<div class="section">
+    <table class="bordered">
+        <tr>
+            <th style="width: 50%">21. Составлена в / Ausgefertigt in · Дата / am</th>
+            <th style="width: 50%">24. Груз получен / Gut empfangen · Дата / Datum</th>
+        </tr>
+        <tr>
+            <td th:text="${companyAddress} + ' · ' + ${exitDate}"></td>
+            <td>&#160;</td>
+        </tr>
+        <tr>
+            <th>22. Подпись и штамп отправителя / Unterschrift des Absenders</th>
+            <th>Подпись и штамп получателя / Unterschrift des Empfängers</th>
+        </tr>
+        <tr>
+            <td th:text="${senderName}"></td>
+            <td th:text="${receiverName}"></td>
+        </tr>
+        <tr>
+            <th colspan="2">23. Путевой лист / Перевозчик — подпись и штамп</th>
+        </tr>
+        <tr>
+            <td colspan="2">
+                <span th:text="'Роҳхат № ' + ${number} + ' аз ' + ${exitDate}"></span> ·
+                Ронанда: <span th:text="${driverName}"></span>
+                <span th:if="${secondDriverName != '—'}"> · <span th:text="${secondDriverName}"></span></span>
+            </td>
+        </tr>
+    </table>
+</div>
+
+<div class="section">
+    <table class="bordered">
+        <tr>
+            <th style="width: 33%">25. Регистрационный номер / Amtl. Kennzeichen</th>
+            <th style="width: 33%">26. Марка / Typ</th>
+            <th style="width: 34%">Таможенное подтверждение</th>
+        </tr>
+        <tr>
+            <td th:text="${registrationNumber}"></td>
+            <td th:text="${brandName}"></td>
+            <td>
+                <span th:text="${customsOfficerName}"></span> ·
+                <span th:text="${customsConfirmedAt}"></span>
+            </td>
+        </tr>
+    </table>
+</div>
+
+<div class="section">
+    <table>
+        <tr>
+            <td style="width: 90px"><img th:if="${qr}" th:src="${qr}" alt="QR" class="qr"/></td>
+            <td class="caption" style="text-align:left; vertical-align: middle">
+                Ҳуҷҷат аз низоми иттилоотии «е-Роҳхат» бароварда шудааст. Тафтиш — аз рӯи QR-код.
+                Санаи чоп: <span th:text="${printedAt}"></span>.
+            </td>
+        </tr>
+    </table>
+</div>
+
+</body>
+</html>

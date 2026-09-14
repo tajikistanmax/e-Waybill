@@ -110,7 +110,7 @@ public class PolicyController {
         policy.setEnabled(req.enabled() == null || req.enabled());
         policy.setUpdatedBy(currentUser.organizationRma().orElse("platform"));
         policy.setUpdatedAt(OffsetDateTime.now());
-        var saved = policies.save(policy);
+        var saved = resolver.save(policy); // @CacheEvict сбрасывает кэш эффективных политик
         audit.record(existing.isPresent() ? AuditService.UPDATE : AuditService.CREATE,
                 "POLICY", auditKey(req.scopeLevel(), scopeKey, req.ruleKey()), oldValue, req.ruleValue());
         return ResponseEntity.status(existing.isPresent() ? HttpStatus.OK : HttpStatus.CREATED).body(saved);
@@ -120,7 +120,7 @@ public class PolicyController {
     public ResponseEntity<Void> delete(@PathVariable UUID id) {
         var policy = policies.findById(id).orElseThrow(() -> new NotFoundException("Политика не найдена"));
         assertCanWrite(policy.getScopeLevel(), policy.getScopeKey());
-        policies.delete(policy);
+        resolver.delete(policy); // @CacheEvict сбрасывает кэш эффективных политик
         audit.record(AuditService.DELETE, "POLICY",
                 auditKey(policy.getScopeLevel(), policy.getScopeKey(), policy.getRuleKey()),
                 policy.getRuleValue(), null);

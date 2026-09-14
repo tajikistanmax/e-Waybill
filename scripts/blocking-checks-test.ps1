@@ -5,20 +5,23 @@
 # Запуск: powershell -File scripts\blocking-checks-test.ps1
 # Идемпотентен: временно меняет категорию сид-водителя и возвращает её,
 # созданные тестовые ПЛ аннулирует (одометр ТС не трогает — close не вызывается).
-# Требует: waybill :8082, Keycloak :8180, docker epd-postgres, сид-данные
-#          (ТС 0114TJ01 тип 1 автобус, водитель 461930031 кат.D, диспетчер/врач/механик).
+# Требует: waybill :8082, Keycloak :8180, docker epd-prod-postgres (контейнер прод-compose,
+#          project epd-rt-prod), сид-данные
+#          (ТС 0114TJ01 тип 1 автобус, водитель 461930031 кат.D, диспетчер/врач/механик/бухгалтер).
 # =====================================================================
 $ErrorActionPreference = 'Stop'
-$wb = 'http://localhost:8082'; $kc = 'http://localhost:8180'; $pg = 'epd-postgres'
+. "$PSScriptRoot\demo-credentials.ps1"
+$wb = 'http://localhost:8082'; $kc = 'http://localhost:8180'; $pg = 'epd-prod-postgres'
 $pass = 0; $fail = 0
 function Chk($name, $cond) {
     if ($cond) { $script:pass++; Write-Output "  [PASS] $name" }
     else { $script:fail++; Write-Output "  [FAIL] $name" }
 }
-function Tok($u) { (Invoke-RestMethod -Method Post -Uri "$kc/realms/epd/protocol/openid-connect/token" -Body "client_id=epd-web&grant_type=password&username=$u&password=$u" -ContentType 'application/x-www-form-urlencoded').access_token }
+function Tok($u) { (Invoke-RestMethod -Method Post -Uri "$kc/realms/epd/protocol/openid-connect/token" -Body "client_id=epd-web&grant_type=password&username=$u&password=$(Get-DemoPassword $u)" -ContentType 'application/x-www-form-urlencoded').access_token }
 $hd = @{ Authorization = "Bearer $(Tok 'dispatcher')" }
 $hdoc = @{ Authorization = "Bearer $(Tok 'doctor')" }
 $hm = @{ Authorization = "Bearer $(Tok 'mechanic')" }
+$hacc = @{ Authorization = "Bearer $(Tok 'accountant')" }  # подтверждение оплаты (AWAITING_PAYMENT -> READY)
 function PJ($path, $body, $h) { Invoke-RestMethod -Method Post -Uri "$wb$path" -Headers $h -Body ([Text.Encoding]::UTF8.GetBytes(($body | ConvertTo-Json -Depth 6))) -ContentType 'application/json; charset=utf-8' }
 function Code($path, $body, $h) {
     try { $r = Invoke-WebRequest -Method Post -Uri "$wb$path" -Headers $h -Body ([Text.Encoding]::UTF8.GetBytes(($body | ConvertTo-Json -Depth 6))) -ContentType 'application/json; charset=utf-8' -UseBasicParsing; [int]$r.StatusCode }
@@ -55,6 +58,7 @@ $w = PJ "/api/v1/waybills" $create $hd
 $w = PJ "/api/v1/waybills/$($w.id)/titles/t1" @{ dispatcherRma = '333333333'; validityDays = 1 } $hd
 $w = PJ "/api/v1/waybills/$($w.id)/confirm-med" @{ employeeRma = '111111111'; passed = $true; indicators = @{ pulse = 70; alcotest = 0 } } $hdoc
 $w = PJ "/api/v1/waybills/$($w.id)/confirm-tech" @{ employeeRma = '222222222'; passed = $true; checklist = @{ brakes = 'OK' } } $hm
+$w = PJ "/api/v1/waybills/$($w.id)/confirm-payment" @{ method = 'CASH'; actor = '444444444' } $hacc
 $w = PJ "/api/v1/waybills/$($w.id)/issue" @{ driverConfirmation = 'PIN' } $hd
 $odoNeg = Code "/api/v1/waybills/$($w.id)/activate" @{ dispatcherRma = '333333333'; odometerExit = 1 } $hd
 Chk "Одометр выезда 1 < пробег $last -> 422 (скрутка)" ($odoNeg -eq 422)

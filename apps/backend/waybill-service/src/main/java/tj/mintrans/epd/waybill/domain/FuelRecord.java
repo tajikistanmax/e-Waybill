@@ -40,6 +40,13 @@ public class FuelRecord {
     @Column(name = "remain_entry")
     private BigDecimal remainEntry;
 
+    /** Довыдано в пути (дозаправка сверх первоначальной выдачи), «Иловагӣ» бланка. */
+    @Column(name = "additional_given")
+    private BigDecimal additionalGiven;
+
+    /** Возвращено на базу неиспользованное топливо, «Баргардонида шуд» бланка. */
+    private BigDecimal returned;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private OffsetDateTime createdAt;
 
@@ -62,5 +69,9 @@ public class FuelRecord {
     public void setRemainBeforeExit(BigDecimal remainBeforeExit) { this.remainBeforeExit = remainBeforeExit; }
     public BigDecimal getRemainEntry() { return remainEntry; }
     public void setRemainEntry(BigDecimal remainEntry) { this.remainEntry = remainEntry; }
+    public BigDecimal getAdditionalGiven() { return additionalGiven; }
+    public void setAdditionalGiven(BigDecimal additionalGiven) { this.additionalGiven = additionalGiven; }
+    public BigDecimal getReturned() { return returned; }
+    public void setReturned(BigDecimal returned) { this.returned = returned; }
     public OffsetDateTime getCreatedAt() { return createdAt; }
 }

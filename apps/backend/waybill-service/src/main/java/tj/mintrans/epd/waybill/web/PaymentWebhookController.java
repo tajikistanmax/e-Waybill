@@ -28,7 +28,12 @@ import java.util.UUID;
 @RequestMapping("/api/v1/payments")
 public class PaymentWebhookController {
 
-    private static final String DEV_SECRET = "dev_webhook_secret";
+    // Оба известных дефолта — из application.yml (dev_webhook_secret) и из
+    // infra/docker-compose.prod.yml (epd_webhook_dev_secret, git-опубликован открытым текстом).
+    // Раньше проверялся только первый — вторым можно было тихо запустить "прод"-compose
+    // с публично известным секретом, минуя этот же самый fail-fast.
+    private static final java.util.Set<String> DEV_SECRETS = java.util.Set.of(
+            "dev_webhook_secret", "epd_webhook_dev_secret");
 
     private final WaybillService service;
     private final String webhookSecret;
@@ -46,7 +51,7 @@ public class PaymentWebhookController {
      *  любой мог бы пометить ПЛ оплаченным. В dev (payment.enabled=false) — пропускается. */
     @PostConstruct
     void validateSecret() {
-        if (paymentEnabled && (webhookSecret == null || webhookSecret.isBlank() || DEV_SECRET.equals(webhookSecret))) {
+        if (paymentEnabled && (webhookSecret == null || webhookSecret.isBlank() || DEV_SECRETS.contains(webhookSecret))) {
             throw new IllegalStateException(
                     "PAYMENT_WEBHOOK_SECRET не задан или дефолтный при включённой оплате — задайте сильный секрет.");
         }

@@ -1,6 +1,7 @@
 package tj.mintrans.epd.waybill.service;
 
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import tj.mintrans.epd.waybill.client.MasterDataClient;
 import tj.mintrans.epd.waybill.domain.Waybill;
@@ -12,7 +13,13 @@ import tj.mintrans.epd.waybill.repository.WaybillRepository;
 import tj.mintrans.epd.waybill.repository.WaybillStatusEventRepository;
 import tj.mintrans.epd.waybill.repository.WaybillTitleRepository;
 import tj.mintrans.epd.waybill.config.CurrentUser;
+import tj.mintrans.epd.waybill.config.CurrentUser;
+import tj.mintrans.epd.waybill.config.TenantScope;
+import tj.mintrans.epd.waybill.domain.InspectionReason;
+import tj.mintrans.epd.waybill.domain.WaybillInspection;
+import tj.mintrans.epd.waybill.repository.WaybillInspectionRepository;
 import tj.mintrans.epd.waybill.signing.TitleSigner;
+import tj.mintrans.epd.waybill.crypto.MedicalDataCrypto;
 import tj.mintrans.epd.waybill.web.error.ApiErrors.ConflictException;
 import tj.mintrans.epd.waybill.web.error.ApiErrors.ForbiddenException;
 import tj.mintrans.epd.waybill.web.error.ApiErrors.NotFoundException;
@@ -36,9 +43,13 @@ public class WaybillService {
     private final tj.mintrans.epd.waybill.repository.WaybillPaymentRepository payments;
     private final MasterDataClient masterData;
     private final WaybillNumberGenerator numberGenerator;
+    private final BranchSerialGenerator branchSerial;
     private final org.springframework.context.ApplicationEventPublisher eventPublisher;
+    private final TenantScope tenantScope;
     private final CurrentUser currentUser;
+    private final WaybillInspectionRepository inspections;
     private final TitleSigner titleSigner;
+    private final MedicalDataCrypto medicalCrypto;
     /** Оплата выключена по умолчанию (dev/этап 1а); в проде — PAYMENT_ENABLED=true. */
     private final boolean paymentEnabled;
     private final java.math.BigDecimal paymentFee;
@@ -49,9 +60,13 @@ public class WaybillService {
                           tj.mintrans.epd.waybill.repository.WaybillPaymentRepository payments,
                           MasterDataClient masterData,
                           WaybillNumberGenerator numberGenerator,
+                          BranchSerialGenerator branchSerial,
                           org.springframework.context.ApplicationEventPublisher eventPublisher,
+                          TenantScope tenantScope,
                           CurrentUser currentUser,
+                          WaybillInspectionRepository inspections,
                           TitleSigner titleSigner,
+                          MedicalDataCrypto medicalCrypto,
                           @org.springframework.beans.factory.annotation.Value("${epd.payment.enabled:false}") boolean paymentEnabled,
                           @org.springframework.beans.factory.annotation.Value("${epd.payment.fee-somoni:10.00}") java.math.BigDecimal paymentFee) {
         this.waybills = waybills;
@@ -60,9 +75,13 @@ public class WaybillService {
         this.payments = payments;
         this.masterData = masterData;
         this.numberGenerator = numberGenerator;
+        this.branchSerial = branchSerial;
         this.eventPublisher = eventPublisher;
+        this.tenantScope = tenantScope;
         this.currentUser = currentUser;
+        this.inspections = inspections;
         this.titleSigner = titleSigner;
+        this.medicalCrypto = medicalCrypto;
         this.paymentEnabled = paymentEnabled;
         this.paymentFee = paymentFee;
     }
@@ -74,9 +93,9 @@ public class WaybillService {
                           String driverRma, String secondDriverRma, String communicationType,
                           String route, String schedule, String specialMark,
                           Map<String, Object> typeData) {
-        // Мультиарендность: tenant-scoped пользователь оформляет ПЛ только за свою организацию.
-        if (currentUser.isTenantScoped()
-                && !currentUser.organizationRma().map(rma -> rma.equals(organizationRma)).orElse(false)) {
+        // Мультиарендность: тенант оформляет ПЛ за свою организацию либо (администратор
+        // компании) за её филиал.
+        if (tenantScope.isBounded() && !tenantScope.canWrite(organizationRma)) {
             throw new ForbiddenException("Оформление путевого листа за другую организацию запрещено");
         }
         var org = masterData.findOrganization(organizationRma)
@@ -87,7 +106,9 @@ public class WaybillService {
                 .orElseThrow(() -> new NotFoundException("Транспорт не найден"));
 
         runBlockingChecks(org, driver, vehicle);
+        assertTypeAllowed(org, type);
         assertDriverRested(driverRma, organizationRma, type);
+        assertDriverEligible(driver, organizationRma, type);
 
         var wb = new Waybill();
         wb.setWaybillType(type);
@@ -126,6 +147,9 @@ public class WaybillService {
                     throw new UnprocessableException("Недопустимый вид перевозки «%s»: ожидается PIECEWORK (корбайъ) или HOURLY (соатбайъ)".formatted(shipmentKind));
                 }
                 validateTrailers(data.get("trailers"));
+                // Ходуди фаъолият (зоны работы, 1=Душанбе..7=Ҳисор) — как в легаси, необязательный
+                // многозначный признак; если указан — каждое значение должно быть в диапазоне 1–7.
+                validateWorkRegions(data.get("workRegions"));
                 // Опасный груз (ДОПОГ) — режим грузового ПЛ, а не отдельный тип: при отметке
                 // dangerous обязателен класс ADR (1–9). Свидетельства ADR (водитель/ТС) проверяются
                 // мягко в preflight (как и раньше) — жёсткая блокировка появится с наполнением данных.
@@ -222,6 +246,7 @@ public class WaybillService {
                 if ("ROUTE".equals(serviceKind) && (wb.getRoute() == null || wb.getRoute().isBlank())) {
                     throw new UnprocessableException("Для маршрутной услуги укажите маршрут");
                 }
+                validateWorkRegions(data.get("workRegions"));
             }
             case WB_DANGEROUS -> { // опасные грузы (ADR)
                 String adrClass = str(data.get("adrClass"));
@@ -309,13 +334,78 @@ public class WaybillService {
         }
     }
 
+    /**
+     * Ходуди фаъолият (зоны работы 2-Б/3-С, legacy 7 именованных зон, 1=Душанбе..7=Ҳисор,
+     * spec/data/dictionaries.yaml). Отдельного справочника зон в проекте намеренно нет —
+     * это лёгкий числовой код, как {@code Organization.regionId}/{@code Route.regionId}.
+     * Необязательное поле; если указано — каждое значение обязано быть в диапазоне 1–7.
+     */
+    private static void validateWorkRegions(Object workRegions) {
+        if (workRegions == null) return;
+        if (!(workRegions instanceof java.util.List<?> list)) {
+            throw new UnprocessableException("Ходуди фаъолият (workRegions): ожидается массив чисел 1–7");
+        }
+        for (Object item : list) {
+            int code;
+            try {
+                code = Integer.parseInt(String.valueOf(item).trim());
+            } catch (NumberFormatException e) {
+                throw new UnprocessableException("Ходуди фаъолият (workRegions): значение «%s» не число".formatted(item));
+            }
+            if (code < 1 || code > 7) {
+                throw new UnprocessableException("Ходуди фаъолият (workRegions): значение «%d» вне диапазона 1–7".formatted(code));
+            }
+        }
+    }
+
     private static void requireText(Map<String, Object> data, String field, String message) {
         if (str(data.get(field)).isBlank()) {
             throw new UnprocessableException(message);
         }
     }
 
+    /** Множество разрешённых организации типов ПЛ из CSV {@code allowedWaybillTypes} ({@code null} — без ограничения). */
+    private static java.util.Set<String> allowedTypeSet(Map<String, Object> org) {
+        String csv = str(org.get("allowedWaybillTypes"));
+        if (csv == null || csv.isBlank()) {
+            return null;
+        }
+        return java.util.Arrays.stream(csv.split("[,;\\s]+"))
+                .map(String::trim).filter(s -> !s.isEmpty())
+                .collect(java.util.stream.Collectors.toSet());
+    }
+
+    /**
+     * Право организации на тип ПЛ (аналог per-user permissions «Роҳхат»): если у организации
+     * задан список {@code allowedWaybillTypes} и тип в него не входит — выписка запрещена.
+     */
+    void assertTypeAllowed(Map<String, Object> org, WaybillType type) {
+        var allowed = allowedTypeSet(org);
+        if (allowed != null && !allowed.contains(type.name())) {
+            throw new UnprocessableException(
+                    "Организация не имеет права выписывать путевые листы этого типа (%s)".formatted(type.legacyForm()));
+        }
+    }
+
     /** Блокирующие проверки перед выдачей (checks.yaml, подмножество этапа 1а). Package-private: переиспользуется AggregatorService. */
+    /**
+     * Один активный ПЛ на ТС и на водителя — прикладная проверка с понятным сообщением.
+     * DRAFT намеренно не входит в OPEN_STATUSES (см. миграцию V7): черновик ещё не «действует»
+     * и не блокирует создание других черновиков на то же ТС/водителя. Но ИМЕННО поэтому этот
+     * же метод обязателен и в {@link #signT1} — тот самый момент, когда черновик становится
+     * действующим документом: без него единственной защитой остаётся частичный уникальный
+     * индекс БД (uq_active_waybill_vehicle/driver), и диспетчер видел бы вместо понятного 409
+     * сырую ошибку нарушения ограничения СУБД.
+     */
+    private void assertNoOpenWaybill(String vehicleRegNumber, String driverRma) {
+        if (!waybills.findByVehicleRegNumberAndStatusIn(vehicleRegNumber, WaybillStatus.OPEN_STATUSES).isEmpty()) {
+            throw new ConflictException("На это транспортное средство уже оформлен действующий путевой лист");
+        }
+        if (!waybills.findByDriverRmaAndStatusIn(driverRma, WaybillStatus.OPEN_STATUSES).isEmpty()) {
+            throw new ConflictException("На этого водителя уже оформлен действующий путевой лист");
+        }
+    }
+
     void runBlockingChecks(Map<String, Object> org, Map<String, Object> driver, Map<String, Object> vehicle) {
         String orgId = str(org.get("id"));
         if (!orgId.equals(str(driver.get("organizationId")))) {
@@ -365,12 +455,7 @@ public class WaybillService {
             throw new UnprocessableException("Срок действия страхового полиса ТС истёк");
         }
         // Один активный ПЛ на ТС и на водителя
-        if (!waybills.findByVehicleRegNumberAndStatusIn(str(vehicle.get("registrationNumber")), WaybillStatus.OPEN_STATUSES).isEmpty()) {
-            throw new ConflictException("На это транспортное средство уже оформлен действующий путевой лист");
-        }
-        if (!waybills.findByDriverRmaAndStatusIn(str(driver.get("rma")), WaybillStatus.OPEN_STATUSES).isEmpty()) {
-            throw new ConflictException("На этого водителя уже оформлен действующий путевой лист");
-        }
+        assertNoOpenWaybill(str(vehicle.get("registrationNumber")), str(driver.get("rma")));
         // Заблокированный инспектором документ не даёт оформить новый: требуется решение
         // администратора Минтранса (разблокировка или аннулирование). Нарочно НЕ в OPEN_STATUSES,
         // чтобы агрегатор не мог автоматически «закрыть» заблокированный ПЛ.
@@ -388,6 +473,52 @@ public class WaybillService {
      * min_rest_hours после планового окончания последнего состоявшегося рейса (RETURNED/COMPLETED).
      * Правило из движка политик; 0/отсутствует — выключено (пробел не блокирует легальный рейс).
      */
+    /**
+     * Возрастной ценз и минимальный стаж водителя — из движка политик
+     * ({@code block_minor_driver}, {@code min_driver_experience_years}, уровни
+     * NATIONAL/ORGANIZATION/VEHICLE_TYPE). Оба по умолчанию выключены (false / 0):
+     * так же, как {@code min_rest_hours}, пробел в настройке не блокирует легальный рейс.
+     *
+     * <p>Но если правило ВКЛЮЧЕНО, а данных в справочнике нет — это отказ, а не пропуск:
+     * иначе требование обходится незаполненным полем, и включённое правило ничего не значит.
+     * Сообщение прямо называет, чего не хватает, чтобы диспетчер понял, что чинить.</p>
+     */
+    private void assertDriverEligible(Map<String, Object> driver, String organizationRma, WaybillType type) {
+        var policies = masterData.effectivePolicies(organizationRma, type.name());
+
+        if (Boolean.parseBoolean(String.valueOf(policies.getOrDefault("block_minor_driver", "false")).trim())) {
+            var birth = dateOrNull(driver.get("birthDate"));
+            if (birth == null) {
+                throw new UnprocessableException(
+                        "Включён возрастной ценз, но у водителя не заполнена дата рождения");
+            }
+            if (birth.plusYears(18).isAfter(java.time.LocalDate.now())) {
+                throw new UnprocessableException(
+                        "Водитель несовершеннолетний — выпуск путевого листа запрещён");
+            }
+        }
+
+        int minYears;
+        try {
+            minYears = Integer.parseInt(String.valueOf(
+                    policies.getOrDefault("min_driver_experience_years", "0")).trim());
+        } catch (NumberFormatException e) {
+            minYears = 0;
+        }
+        if (minYears <= 0) {
+            return;
+        }
+        Integer years = intOrNull(driver.get("experienceYears"));
+        if (years == null) {
+            throw new UnprocessableException(
+                    "Требуется стаж не менее %d лет, но у водителя стаж не заполнен".formatted(minYears));
+        }
+        if (years < minYears) {
+            throw new UnprocessableException(
+                    "Стаж водителя %d лет — меньше требуемых %d".formatted(years, minYears));
+        }
+    }
+
     private void assertDriverRested(String driverRma, String organizationRma, WaybillType type) {
         int minRest;
         try {
@@ -492,8 +623,7 @@ public class WaybillService {
      */
     public EligibilityResult preflight(WaybillType type, String organizationRma,
                                        String vehicleRegNumber, String driverRma) {
-        if (currentUser.isTenantScoped()
-                && !currentUser.organizationRma().map(rma -> rma.equals(organizationRma)).orElse(false)) {
+        if (tenantScope.isBounded() && !tenantScope.canWrite(organizationRma)) {
             throw new ForbiddenException("Проверка пригодности за другую организацию запрещена");
         }
         var org = masterData.findOrganization(organizationRma).orElse(null);
@@ -511,8 +641,7 @@ public class WaybillService {
      * диспетчер видит, какие путевые листы может дать исходя из лицензии организации.
      */
     public java.util.List<TypeAvailability> availableTypes(String organizationRma) {
-        if (currentUser.isTenantScoped()
-                && !currentUser.organizationRma().map(rma -> rma.equals(organizationRma)).orElse(false)) {
+        if (tenantScope.isBounded() && !tenantScope.canWrite(organizationRma)) {
             throw new ForbiddenException("Просмотр типов за другую организацию запрещён");
         }
         var org = masterData.findOrganization(organizationRma).orElse(null);
@@ -557,6 +686,12 @@ public class WaybillService {
             if (licenseTo == null || licenseTo.isBefore(today)) {
                 out.add(new CheckResult("LICENSE_EXPIRED", "ERROR", "Лицензия организации отсутствует или истекла"));
             }
+        }
+        // Разрешённые организации типы ПЛ (per-org permissions, аналог «Роҳхат»).
+        var allowedTypes = allowedTypeSet(org);
+        if (allowedTypes != null && !allowedTypes.contains(type.name())) {
+            out.add(new CheckResult("TYPE_NOT_LICENSED", "ERROR",
+                    "Организация не имеет права выписывать путевые листы этого типа"));
         }
         if (vehicle != null) {
             if (!orgId.equals(str(vehicle.get("organizationId")))) {
@@ -662,6 +797,11 @@ public class WaybillService {
         var wb = getForUpdate(id);
         requireStatus(wb, WaybillStatus.DRAFT);
         var dispatcher = requireEmployee(wb, dispatcherRma, 3, "Диспетчер");
+        // Черновик становится действующим документом именно здесь — если на это ТС/водителя
+        // уже выпущен другой действующий ПЛ (например, ещё один параллельный черновик того же
+        // ТС был подписан раньше), явная проверка даёт понятный 409 вместо сырой ошибки
+        // уникального индекса БД (uq_active_waybill_vehicle/driver, миграция V7).
+        assertNoOpenWaybill(wb.getVehicleRegNumber(), wb.getDriverRma());
         var from = validFrom != null ? validFrom : OffsetDateTime.now();
         // Лимит срока действия: легальный максимум типа ПЛ, который политика max_validity_days
         // (уровни NATIONAL/ORGANIZATION/VEHICLE_TYPE) может только УЖЕСТОЧИТЬ, но не превысить.
@@ -705,11 +845,21 @@ public class WaybillService {
     public Waybill confirmMed(UUID id, String doctorRma, boolean passed, Map<String, Object> indicators) {
         var wb = getForUpdate(id);
         var doctor = requireEmployee(wb, doctorRma, 1, "Врач");
+        // §8 QA: сертификат врача, проводящего медосмотр, не должен быть просрочен на дату осмотра.
+        // Врач сопоставляется с Employee master-data по его РМА из тела запроса (requireEmployee →
+        // masterData.findEmployee), поэтому certValidTo врача доступен прямо здесь. Проверка МЯГКАЯ:
+        // незаполненный срок (NULL — пробел в справочнике) НЕ блокирует, ровно как медсправка
+        // водителя (medCertValidTo) и страховой полис ТС (insuranceValidTo); блокирует только явно
+        // истёкший сертификат. Действует и для Т2 (предрейсовый), и для Т6 (послерейсовый) осмотра.
+        var doctorCertValidTo = dateOrNull(doctor.get("certValidTo"));
+        if (doctorCertValidTo != null && doctorCertValidTo.isBefore(LocalDate.now())) {
+            throw new UnprocessableException("Срок действия сертификата врача истёк");
+        }
         if (wb.getStatus() == WaybillStatus.CREATED || wb.getStatus() == WaybillStatus.TECH_REJECTED) {
             if (titles.existsByWaybillIdAndTitleTypeAndSignerRma(id, "T2", doctorRma) && wb.isMedPassed()) {
                 throw new ConflictException("Этот сотрудник уже подтвердил данный путевой лист");
             }
-            addTitle(wb, "T2", doctorRma, "DOCTOR", withVerdict(indicators, passed, doctor));
+            addTitle(wb, "T2", doctorRma, "DOCTOR", withMedicalVerdict(indicators, passed, doctor));
             if (passed) {
                 wb.setMedPassed(true);
                 maybeReady(wb, doctorRma);
@@ -720,15 +870,28 @@ public class WaybillService {
             return waybills.save(wb);
         }
         if (wb.getStatus() == WaybillStatus.RETURNED) { // послерейсовый (Т6)
-            addTitle(wb, "T6", doctorRma, "DOCTOR", withVerdict(indicators, passed, doctor));
+            addTitle(wb, "T6", doctorRma, "DOCTOR", withMedicalVerdict(indicators, passed, doctor));
             return waybills.save(wb);
         }
         throw new ConflictException("Медосмотр невозможен в статусе " + wb.getStatus());
     }
 
-    /** Т3 — предрейсовый технический контроль. */
+    /** Т3 — предрейсовый технический контроль (без показаний одометра). */
     @Transactional
     public Waybill confirmTech(UUID id, String mechanicRma, boolean passed, Map<String, Object> checklist) {
+        return confirmTech(id, mechanicRma, passed, checklist, null);
+    }
+
+    /**
+     * Т3 — предрейсовый технический контроль.
+     *
+     * <p>{@code odometerExit} — показания спидометра при выезде: реквизит бланка ПЛ, который
+     * снимает механик у машины (он единственный видит одометр до рейса). Пишется только при
+     * допуске: у отклонённого ПЛ выезда не будет.</p>
+     */
+    @Transactional
+    public Waybill confirmTech(UUID id, String mechanicRma, boolean passed, Map<String, Object> checklist,
+                               Integer odometerExit) {
         var wb = getForUpdate(id);
         if (wb.getStatus() != WaybillStatus.CREATED && wb.getStatus() != WaybillStatus.MED_REJECTED) {
             throw new ConflictException("Техконтроль невозможен в статусе " + wb.getStatus());
@@ -736,6 +899,9 @@ public class WaybillService {
         var mechanic = requireEmployee(wb, mechanicRma, 2, "Механик");
         if (titles.existsByWaybillIdAndTitleTypeAndSignerRma(id, "T3", mechanicRma) && wb.isTechPassed()) {
             throw new ConflictException("Этот сотрудник уже подтвердил данный путевой лист");
+        }
+        if (passed && odometerExit != null) {
+            wb.setOdometerExit(odometerExit);
         }
         addTitle(wb, "T3", mechanicRma, "MECHANIC", withVerdict(checklist, passed, mechanic));
         if (passed) {
@@ -783,11 +949,16 @@ public class WaybillService {
         assignNumberAndReady(wb, actor);
     }
 
-    /** Присвоение национального номера и переход в READY (номер → доступен QR). */
+    /** Присвоение национального номера + журнального номера филиала и переход в READY. */
     private void assignNumberAndReady(Waybill wb, String actor) {
         Short regionId = wb.getOrganizationSnapshot() != null
                 ? shortOrNull(wb.getOrganizationSnapshot().get("regionId")) : null;
         wb.setNumber(numberGenerator.next(regionId, wb.getWaybillType()));
+        if (wb.getBranchSerial() == null) {
+            int year = java.time.Year.now().getValue();
+            wb.setBranchSerial(branchSerial.next(wb.getOrganizationRma(), year));
+            wb.setBranchSerialYear((short) year);
+        }
         transition(wb, WaybillStatus.READY, actor, "Медосмотр и техконтроль пройдены; номер присвоен");
     }
 
@@ -826,6 +997,62 @@ public class WaybillService {
         return waybills.save(wb);
     }
 
+    /**
+     * Возврат оплаты (§16 QA), бухгалтер/админ: CONFIRMED (PAID) → REFUNDED.
+     * Симметрично {@link #confirmPayment}: фиксирует, кто/когда оформил возврат, причину и
+     * сумму. Возврат ПОЛНЫЙ — на всю уплаченную сумму (частичный не поддерживается, см. ниже).
+     *
+     * <p>Статус самого путевого листа НЕ меняется: к моменту возврата ПЛ уже прошёл PAID→READY
+     * (и мог уйти дальше — ISSUED/ACTIVE/COMPLETED), возврат денег не отменяет его жизненный цикл.
+     * Аннулирование ПЛ — отдельное действие (CANCELLED) и здесь не выполняется.</p>
+     *
+     * <p>ДОПУЩЕНИЕ: фактическое движение денег — ВНЕШНЕЕ (банк-шлюз/агрегатор). Здесь
+     * фиксируется только платформенное состояние возврата; реальный вызов шлюза — вне области
+     * (stub-хук ниже, ср. с входящим {@code PaymentWebhookController} для подтверждения).</p>
+     *
+     * @param amount запрошенная сумма возврата; {@code null} = полная уплаченная сумма. Если
+     *               передана и не равна уплаченной — частичный возврат, пока не поддерживается (422).
+     */
+    @Transactional
+    public Waybill refundPayment(UUID id, String reason, java.math.BigDecimal amount, String actor) {
+        if (reason == null || reason.isBlank()) {
+            throw new UnprocessableException("Причина возврата обязательна");
+        }
+        var wb = getForUpdate(id);
+        // Блокирующая загрузка платежа: сериализует одновременные возвраты (идемпотентность),
+        // как и в confirmPayment — второй параллельный refund после коммита первого видит REFUNDED → 409.
+        var payment = payments.findByWaybillIdForUpdate(id)
+                .orElseThrow(() -> new NotFoundException("Запись об оплате не найдена"));
+        if (tj.mintrans.epd.waybill.domain.WaybillPayment.STATUS_REFUNDED.equals(payment.getStatus())) {
+            throw new ConflictException("Оплата уже возвращена");
+        }
+        if (!tj.mintrans.epd.waybill.domain.WaybillPayment.STATUS_CONFIRMED.equals(payment.getStatus())) {
+            throw new ConflictException("Возврат возможен только для подтверждённой (оплаченной) записи; текущий статус: "
+                    + payment.getStatus());
+        }
+        // Полный возврат: сумма фиксируется по факту уплаты. Частичный возврат не решаем молча.
+        if (amount != null && amount.compareTo(payment.getAmount()) != 0) {
+            throw new UnprocessableException("Поддерживается только полный возврат на уплаченную сумму "
+                    + payment.getAmount() + " " + payment.getCurrency());
+        }
+        // TODO(payment-gateway): инициировать фактический возврат во внешнем шлюзе/агрегаторе и
+        // сохранить № возвратной транзакции в refundExternalRef. Пока — платформенный stub (no-op),
+        // симметрично тому, что подтверждение денег приходит извне через PaymentWebhookController.
+        payment.setRefundExternalRef(null);
+        payment.setStatus(tj.mintrans.epd.waybill.domain.WaybillPayment.STATUS_REFUNDED);
+        payment.setRefundAmount(payment.getAmount());
+        payment.setRefundReason(reason);
+        payment.setRefundedBy(actor);
+        payment.setRefundedAt(OffsetDateTime.now());
+        payments.save(payment);
+        // Аудит: append-only журнал ПЛ (как рядом), но БЕЗ смены статуса — from == to, чтобы
+        // не публиковать в Kafka ложный переход статуса (возврат денег не меняет статус ПЛ).
+        events.save(tj.mintrans.epd.waybill.domain.WaybillStatusEvent.of(
+                wb.getId(), wb.getStatus(), wb.getStatus(), actor,
+                "Возврат оплаты %s %s (%s)".formatted(payment.getRefundAmount(), payment.getCurrency(), reason)));
+        return wb;
+    }
+
     /** Выдача: водитель подтверждает получение (Face ID/PIN в мобильном кабинете). */
     @Transactional
     public Waybill issue(UUID id, String driverConfirmation) {
@@ -833,6 +1060,24 @@ public class WaybillService {
         requireStatus(wb, WaybillStatus.READY);
         transition(wb, WaybillStatus.ISSUED, wb.getDriverRma(),
                 "Водитель подтвердил получение (" + (driverConfirmation == null ? "PIN" : driverConfirmation) + ")");
+        return waybills.save(wb);
+    }
+
+    /**
+     * Приём ПЛ водителем из мобильного приложения: разрешён только водителю (основному
+     * или второму), на которого выписан лист, и только в статусе READY.
+     */
+    @Transactional
+    public Waybill acceptByDriver(UUID id, String driverRma) {
+        // Область видимости мобильного водителя — по РМА водителя, а не по организации:
+        // токен DRIVER не несёт claim organization_rma, поэтому checkTenant неприменим.
+        var wb = waybills.findByIdForUpdate(id)
+                .orElseThrow(() -> new NotFoundException("Путевой лист не найден"));
+        if (!driverRma.equals(wb.getDriverRma()) && !driverRma.equals(wb.getSecondDriverRma())) {
+            throw new ForbiddenException("Путевой лист выписан на другого водителя");
+        }
+        requireStatus(wb, WaybillStatus.READY);
+        transition(wb, WaybillStatus.ISSUED, driverRma, "Водитель подтвердил получение (мобильное приложение)");
         return waybills.save(wb);
     }
 
@@ -870,9 +1115,25 @@ public class WaybillService {
         return returnTrip(id, dispatcherRma, odometerEntry, null);
     }
 
+    /** Фактические показатели рейса, вносимые при возврате (для расчёта и сводных отчётов). */
+    public record ReturnMetrics(Double transportWork, Double trips,
+                                Double conditionerHours, Integer airConditionerPercent) {
+        public static final ReturnMetrics EMPTY = new ReturnMetrics(null, null, null, null);
+
+        boolean any() {
+            return transportWork != null || trips != null || conditionerHours != null || airConditionerPercent != null;
+        }
+    }
+
     /** Возврат (Т5). Для спецтехники дополнительно фиксируются моточасы возврата (motorHoursEntry). */
     @Transactional
     public Waybill returnTrip(UUID id, String dispatcherRma, int odometerEntry, Double motorHoursEntry) {
+        return returnTrip(id, dispatcherRma, odometerEntry, motorHoursEntry, ReturnMetrics.EMPTY);
+    }
+
+    @Transactional
+    public Waybill returnTrip(UUID id, String dispatcherRma, int odometerEntry, Double motorHoursEntry,
+                              ReturnMetrics metrics) {
         var wb = getForUpdate(id);
         requireStatus(wb, WaybillStatus.ACTIVE);
         requireEmployee(wb, dispatcherRma, 3, "Диспетчер");
@@ -880,6 +1141,16 @@ public class WaybillService {
             throw new UnprocessableException("Одометр возврата меньше одометра выезда");
         }
         wb.setOdometerEntry(odometerEntry);
+        if (metrics != null && metrics.any()) {
+            var td = wb.getTypeData() != null
+                    ? new java.util.LinkedHashMap<String, Object>(wb.getTypeData())
+                    : new java.util.LinkedHashMap<String, Object>();
+            if (metrics.transportWork() != null) td.put("transportWork", metrics.transportWork());
+            if (metrics.trips() != null) td.put("trips", metrics.trips());
+            if (metrics.conditionerHours() != null) td.put("conditionerHours", metrics.conditionerHours());
+            if (metrics.airConditionerPercent() != null) td.put("airConditionerPercent", metrics.airConditionerPercent());
+            wb.setTypeData(td);
+        }
         // Спецтехника: учёт по моточасам — фиксируем моточасы возврата в type_data,
         // отработано = возврат − выезд (проверяем непрерывность, как у одометра).
         if (wb.getWaybillType() == WaybillType.WB_SPECIAL && motorHoursEntry != null) {
@@ -902,6 +1173,62 @@ public class WaybillService {
                 "distance", wb.getOdometerExit() != null ? odometerEntry - wb.getOdometerExit() : 0));
         transition(wb, WaybillStatus.RETURNED, dispatcherRma, "Возвращение");
         return waybills.save(wb);
+    }
+
+    /**
+     * Данные накладной (приложение к 2-Б / CMR к 5Б-БМ) — стороны, груз, операции
+     * погрузки-разгрузки. Заполняются диспетчером по ходу рейса, не участвуют в статусной
+     * машине и не требуют титула: это описательные данные документа, а не подписываемое
+     * действие. Не переданные (null) поля не затирают уже сохранённые значения.
+     */
+    public record ConsignmentUpdate(
+            String senderName, String senderAddress,
+            String receiverName, String receiverAddress,
+            String forwarderName,
+            Double cargoVolume, String cargoStatCode, String submittedDocuments,
+            String customsOfficerName, String customsConfirmedAt,
+            java.util.List<Map<String, Object>> cargoOperations,
+            // Идентификаторы справочников Client (senderId/receiverId/forwarderId) и Cargo
+            // (cargoId) — снимок имени остаётся в *Name полях (иммутабельность истории),
+            // id хранится ДОПОЛНИТЕЛЬНО, только для прослеживаемости/отчётности, без live-join.
+            String senderId, String receiverId, String forwarderId, String cargoId,
+            // Наименование груза — снимок из справочника Cargo (или свободный текст), тот же
+            // typeData.cargoName, что читает печатная форма (см. WaybillPrintService.model()).
+            String cargoName) {
+    }
+
+    @Transactional
+    public Waybill updateConsignment(UUID id, ConsignmentUpdate data) {
+        var wb = getForUpdate(id);
+        var td = wb.getTypeData() != null
+                ? new java.util.LinkedHashMap<String, Object>(wb.getTypeData())
+                : new java.util.LinkedHashMap<String, Object>();
+        putIfPresent(td, "senderName", data.senderName());
+        putIfPresent(td, "senderAddress", data.senderAddress());
+        putIfPresent(td, "receiverName", data.receiverName());
+        putIfPresent(td, "receiverAddress", data.receiverAddress());
+        putIfPresent(td, "forwarderName", data.forwarderName());
+        putIfPresent(td, "cargoVolume", data.cargoVolume());
+        putIfPresent(td, "cargoStatCode", data.cargoStatCode());
+        putIfPresent(td, "submittedDocuments", data.submittedDocuments());
+        putIfPresent(td, "customsOfficerName", data.customsOfficerName());
+        putIfPresent(td, "customsConfirmedAt", data.customsConfirmedAt());
+        putIfPresent(td, "senderId", data.senderId());
+        putIfPresent(td, "receiverId", data.receiverId());
+        putIfPresent(td, "forwarderId", data.forwarderId());
+        putIfPresent(td, "cargoId", data.cargoId());
+        putIfPresent(td, "cargoName", data.cargoName());
+        if (data.cargoOperations() != null) {
+            td.put("cargoOperations", data.cargoOperations());
+        }
+        wb.setTypeData(td);
+        return waybills.save(wb);
+    }
+
+    private static void putIfPresent(Map<String, Object> td, String key, Object value) {
+        if (value != null) {
+            td.put(key, value);
+        }
     }
 
     /**
@@ -1059,13 +1386,101 @@ public class WaybillService {
 
     // -------------------------------------------- дорожный контроль (инспектор)
 
-    /** Блокировка при нарушении на дорожном контроле: ACTIVE → BLOCKED (роль INSPECTOR). */
+    /** Данные акта дорожной проверки: что записал инспектор при остановке. */
+    public record InspectionAct(InspectionReason reasonCode, String description, String place,
+                                java.math.BigDecimal lat, java.math.BigDecimal lon,
+                                String protocolNumber) {
+    }
+
+    /**
+     * Документ уже на линии — инспектор может встретить машину и до активации (лист выдан
+     * водителю), и после возврата, пока рейс не закрыт. Проверять и блокировать разрешаем во
+     * всех этих состояниях; из завершённого/аннулированного блокировать нечего.
+     */
+    private static final java.util.EnumSet<WaybillStatus> ON_ROAD =
+            java.util.EnumSet.of(WaybillStatus.ISSUED, WaybillStatus.ACTIVE, WaybillStatus.RETURNED);
+
+    /**
+     * Проверка без нарушений: факт контроля фиксируется, статус листа не меняется.
+     * Нужен и для статистики надзора, и как защита перевозчика — «этот рейс уже проверен».
+     */
     @Transactional
-    public Waybill block(UUID id, String reason, String actor) {
+    public WaybillInspection inspect(UUID id, InspectionAct act) {
         var wb = getForUpdate(id);
-        requireStatus(wb, WaybillStatus.ACTIVE);
-        transition(wb, WaybillStatus.BLOCKED, actor, reason);
+        if (!ON_ROAD.contains(wb.getStatus())) {
+            throw new ConflictException(
+                    "Проверка на дороге возможна только по документу на линии (текущий статус: %s)"
+                            .formatted(wb.getStatus()));
+        }
+        return saveInspection(wb, WaybillInspection.PASSED, act);
+    }
+
+    /**
+     * Блокировка при нарушении на дорожном контроле → BLOCKED (роль INSPECTOR).
+     * Основание обязательно и берётся из классификатора {@link InspectionReason}: блокировка —
+     * юридическое действие, её нужно уметь сопоставлять, обжаловать и снимать. Свободное
+     * описание дополняет основание; для {@code OTHER} оно обязательно.
+     */
+    @Transactional
+    public Waybill block(UUID id, InspectionAct act, String actor) {
+        if (act == null || act.reasonCode() == null) {
+            throw new UnprocessableException("Укажите основание блокировки из классификатора нарушений.");
+        }
+        if (act.reasonCode() == InspectionReason.OTHER
+                && (act.description() == null || act.description().isBlank())) {
+            throw new UnprocessableException("Для основания «Иное» описание нарушения обязательно.");
+        }
+        var wb = getForUpdate(id);
+        if (!ON_ROAD.contains(wb.getStatus())) {
+            throw new ConflictException(
+                    "Заблокировать можно только документ на линии (текущий статус: %s)".formatted(wb.getStatus()));
+        }
+        var saved = saveInspection(wb, WaybillInspection.BLOCKED, act);
+        transition(wb, WaybillStatus.BLOCKED, actor, blockReasonText(saved));
         return waybills.save(wb);
+    }
+
+    /** Акт проверки: личность инспектора — из токена, не из формы (подделать нельзя). */
+    private WaybillInspection saveInspection(Waybill wb, String action, InspectionAct act) {
+        var rec = new WaybillInspection();
+        rec.setWaybillId(wb.getId());
+        rec.setAction(action);
+        if (act != null) {
+            rec.setReasonCode(act.reasonCode());
+            rec.setDescription(blankToNull(act.description()));
+            rec.setPlace(blankToNull(act.place()));
+            rec.setLat(act.lat());
+            rec.setLon(act.lon());
+            rec.setProtocolNumber(blankToNull(act.protocolNumber()));
+        }
+        rec.setInspectorRma(currentUser.rma().orElse("—"));
+        rec.setInspectorName(currentUser.username().orElse(null));
+        return inspections.save(rec);
+    }
+
+    /** Читаемое обоснование для журнала статусов: основание + место + № акта. */
+    private static String blockReasonText(WaybillInspection rec) {
+        var sb = new StringBuilder(rec.getReasonCode().label());
+        if (rec.getDescription() != null) {
+            sb.append(": ").append(rec.getDescription());
+        }
+        if (rec.getPlace() != null) {
+            sb.append(" · место: ").append(rec.getPlace());
+        }
+        if (rec.getProtocolNumber() != null) {
+            sb.append(" · акт № ").append(rec.getProtocolNumber());
+        }
+        return sb.toString();
+    }
+
+    private static String blankToNull(String s) {
+        return s == null || s.isBlank() ? null : s.trim();
+    }
+
+    /** История дорожных проверок путевого листа (область видимости — как у get()). */
+    public java.util.List<WaybillInspection> inspections(UUID id) {
+        get(id);
+        return inspections.findByWaybillIdOrderByCreatedAtDesc(id);
     }
 
     /** Разблокировка администратором Минтранса (с обоснованием, аудит): BLOCKED → ACTIVE. */
@@ -1084,6 +1499,45 @@ public class WaybillService {
     }
 
     /**
+     * Регламентированная расшифровка медпоказателей (ИБ-13.1.3): доступ — только
+     * SYSTEM_ADMIN и DOCTOR в пределах своей организации (уже гарантирует {@link #get},
+     * применяющий {@link #checkTenant}), обязательная фиксация в аудите master-data
+     * ДО расшифровки (fail-closed — см. {@link MasterDataClient#recordMedicalAccess}).
+     */
+    public Map<String, Object> decryptMedicalIndicators(UUID id, String titleType) {
+        if (!"T2".equals(titleType) && !"T6".equals(titleType)) {
+            throw new UnprocessableException("Показатели доступны только для титулов Т2/Т6");
+        }
+        var wb = get(id); // тенант-проверка: DOCTOR — только своя организация, SYSTEM_ADMIN — любая
+        var title = titles.findByWaybillIdAndTitleType(wb.getId(), titleType)
+                .orElseThrow(() -> new NotFoundException("Титул " + titleType + " не найден"));
+        masterData.recordMedicalAccess(wb.getId().toString(), titleType);
+        Map<String, Object> data = title.getData();
+        Object enc = data == null ? null : data.get("indicatorsEnc");
+        if (!(enc instanceof String encStr) || encStr.isBlank()) {
+            return Map.of();
+        }
+        return medicalCrypto.decryptFromBase64(encStr);
+    }
+
+    /**
+     * Отметка «Копия» на печатном бланке (QA §17): каждый вызов печати увеличивает счётчик;
+     * первая печать — «оригинал» (без отметки), начиная со второй — «КОПИЯ». REQUIRES_NEW —
+     * вызывающая сторона (рендер PDF) читает данные в readOnly-транзакции; если бы эта запись
+     * присоединилась к ней, попытка записи внутри readOnly-транзакции могла бы не сохраниться.
+     *
+     * @return true, если это уже НЕ первая печать (бланк нужно пометить «КОПИЯ»)
+     */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public boolean registerPrint(UUID id) {
+        var wb = getForUpdate(id);
+        boolean isCopy = wb.getPrintCount() > 0;
+        wb.setPrintCount(wb.getPrintCount() + 1);
+        waybills.save(wb);
+        return isCopy;
+    }
+
+    /**
      * Как get(), но с блокировкой строки (FOR UPDATE) — все мутации ПЛ идут через этот
      * метод и сериализуются: конкурентные confirmMed/confirmTech не теряют флаги
      * medPassed/techPassed (lost update), двойные issue/transition не задваивают события.
@@ -1096,11 +1550,22 @@ public class WaybillService {
      * Мультиарендность: tenant-scoped пользователь (не-админ) видит и меняет только ПЛ
      * своей организации. Все чтения и мутации проходят через get()/getForUpdate(),
      * поэтому проверка одна. 404 (а не 403) — чтобы не раскрывать существование чужого документа.
+     *
+     * <p>Роль DRIVER дополнительно сужается до СВОИХ рейсов (основной/второй водитель) —
+     * иначе водитель видел бы карточку, титулы, QR и оплату чужого рейса своей организации
+     * по прямому GET /{id}, даже притом что список (GET /waybills) уже фильтрует это
+     * (см. WaybillController.list()). Тот же принцип, что применяет мобильный API
+     * (MobileController.ownWaybill()) — здесь распространён на веб-эндпоинты.</p>
      */
     private Waybill checkTenant(Waybill wb) {
-        if (currentUser.isTenantScoped()
-                && !currentUser.organizationRma().map(rma -> rma.equals(wb.getOrganizationRma())).orElse(false)) {
+        if (tenantScope.isBounded() && !tenantScope.contains(wb.getOrganizationRma())) {
             throw new NotFoundException("Путевой лист не найден");
+        }
+        if (currentUser.hasRole("DRIVER")) {
+            String driverRma = currentUser.rma().orElse("");
+            if (!driverRma.equals(wb.getDriverRma()) && !driverRma.equals(wb.getSecondDriverRma())) {
+                throw new NotFoundException("Путевой лист не найден");
+            }
         }
         return wb;
     }
@@ -1165,6 +1630,26 @@ public class WaybillService {
         if (data != null) result.putAll(data);
         result.put("verdict", passed ? "ДОПУЩЕН" : "НЕ ДОПУЩЕН");
         result.put("employeeName", employee.get("name"));
+        return result;
+    }
+
+    /**
+     * Т2/Т6 (медосмотр): в отличие от {@link #withVerdict}, сырые показатели
+     * (пульс, давление, алкотест — особая категория ПДн, ИБ-13.1.2/13.1.3) в {@code data}
+     * НЕ попадают — только их зашифрованный blob под ключом {@code indicatorsEnc}
+     * (см. {@link MedicalDataCrypto}). Печать/мобильный кабинет/журналы читают только
+     * verdict/employeeName и никогда indicatorsEnc — раскрытие показателей инспектору
+     * и другим ролям исключено уже на уровне отсутствия читаемых данных, не только контролем
+     * доступа (см. ИБ-13.7.2, InspectionJournalService.META).
+     */
+    private Map<String, Object> withMedicalVerdict(Map<String, Object> indicators, boolean passed, Map<String, Object> employee) {
+        var result = new java.util.LinkedHashMap<String, Object>();
+        result.put("verdict", passed ? "ДОПУЩЕН" : "НЕ ДОПУЩЕН");
+        result.put("employeeName", employee.get("name"));
+        String enc = medicalCrypto.encryptToBase64(indicators);
+        if (enc != null) {
+            result.put("indicatorsEnc", enc);
+        }
         return result;
     }
 

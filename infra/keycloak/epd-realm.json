@@ -3,19 +3,48 @@
   "enabled": true,
   "registrationAllowed": false,
   "sslRequired": "external",
+  "passwordPolicy": "length(12) and notUsername and notEmail and passwordHistory(3)",
+  "bruteForceProtected": true,
+  "eventsEnabled": true,
+  "eventsExpiration": 2592000,
+  "enabledEventTypes": ["LOGIN", "LOGIN_ERROR", "LOGOUT", "LOGOUT_ERROR"],
+  "adminEventsEnabled": true,
+  "adminEventsDetailsEnabled": false,
+  "permanentLockout": false,
+  "maxFailureWaitSeconds": 900,
+  "minimumQuickLoginWaitSeconds": 60,
+  "waitIncrementSeconds": 60,
+  "quickLoginCheckMilliSeconds": 1000,
+  "maxDeltaTimeSeconds": 43200,
+  "failureFactor": 5,
   "attributes": {
     "frontendUrl": "http://localhost:8180"
+  },
+  "components": {
+    "org.keycloak.userprofile.UserProfileProvider": [
+      {
+        "providerId": "declarative-user-profile",
+        "config": {
+          "kc.user.profile.config": [
+            "{\"attributes\":[{\"name\":\"username\",\"displayName\":\"${username}\",\"permissions\":{\"view\":[\"admin\",\"user\"],\"edit\":[\"admin\",\"user\"]}},{\"name\":\"email\",\"displayName\":\"${email}\",\"permissions\":{\"view\":[\"admin\",\"user\"],\"edit\":[\"admin\",\"user\"]}},{\"name\":\"firstName\",\"displayName\":\"${firstName}\",\"permissions\":{\"view\":[\"admin\",\"user\"],\"edit\":[\"admin\",\"user\"]}},{\"name\":\"lastName\",\"displayName\":\"${lastName}\",\"permissions\":{\"view\":[\"admin\",\"user\"],\"edit\":[\"admin\",\"user\"]}},{\"name\":\"rma\",\"displayName\":\"РМА\",\"permissions\":{\"view\":[\"admin\",\"user\"],\"edit\":[\"admin\"]}},{\"name\":\"organizationRma\",\"displayName\":\"РМА организации\",\"permissions\":{\"view\":[\"admin\",\"user\"],\"edit\":[\"admin\"]}}],\"unmanagedAttributePolicy\":\"ADMIN_EDIT\"}"
+          ]
+        }
+      }
+    ]
   },
   "roles": {
     "realm": [
       { "name": "DISPATCHER", "description": "Диспетчер (Танзимгар)" },
       { "name": "DOCTOR", "description": "Медицинский работник (Духтур)" },
       { "name": "MECHANIC", "description": "Механик — контролёр техсостояния" },
-      { "name": "COMPANY_ADMIN", "description": "Администратор перевозчика" },
+      { "name": "COMPANY_ADMIN", "description": "Администратор перевозчика — компания и все её филиалы" },
+      { "name": "BRANCH_ADMIN", "description": "Администратор филиала перевозчика — только свой филиал" },
       { "name": "SYSTEM_ADMIN", "description": "Администратор системы (ГУП ЦЦТО)" },
+      { "name": "MINTRANS_ANALYST", "description": "Аналитик Минтранса — надзор по всем организациям (только чтение)" },
       { "name": "INSPECTOR", "description": "Инспектор дорожного контроля" },
       { "name": "ACCOUNTANT", "description": "Бухгалтер (Муҳосиб) — подтверждение оплаты" },
       { "name": "DRIVER", "description": "Водитель (Ронанда) — просмотр своих ПЛ и предъявление QR" },
+      { "name": "FUEL_STATION", "description": "Пункт выдачи топлива (Нуқтаи додани сӯзишворӣ) — учёт фактической выдачи" },
       { "name": "API_INTEGRATOR", "description": "Агрегатор/интегратор (ЧУРА, НЕРУ) — scoped API-доступ" }
     ]
   },
@@ -30,8 +59,8 @@
       "directAccessGrantsEnabled": true,
       "serviceAccountsEnabled": false,
       "fullScopeAllowed": true,
-      "redirectUris": ["http://localhost:3000/*"],
-      "webOrigins": ["http://localhost:3000"],
+      "redirectUris": ["http://localhost:3000/*", "http://localhost:3001/*", "http://localhost:3002/*", "http://10.10.22.81:3000/*"],
+      "webOrigins": ["http://localhost:3000", "http://localhost:3001", "http://localhost:3002", "http://10.10.22.81:3000"],
       "attributes": {
         "pkce.code.challenge.method": "S256"
       },
@@ -87,9 +116,28 @@
           }
         }
       ]
+    },
+    {
+      "clientId": "epd-provisioner",
+      "name": "ЭПД РТ — провижининг логинов сотрудников (master-data → Keycloak Admin API)",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "secret": "epd_provisioner_dev_secret"
     }
   ],
   "users": [
+    {
+      "username": "service-account-epd-provisioner",
+      "enabled": true,
+      "serviceAccountClientId": "epd-provisioner",
+      "clientRoles": {
+        "realm-management": ["manage-users", "view-users", "query-users", "query-groups", "view-realm", "view-events"]
+      }
+    },
     {
       "username": "dispatcher",
       "email": "dispatcher@epd.tj",
@@ -98,7 +146,7 @@
       "enabled": true,
       "emailVerified": true,
       "credentials": [
-        { "type": "password", "value": "dispatcher", "temporary": false }
+        { "type": "password", "value": "Epd-Qa-Tanzim-2026", "temporary": false }
       ],
       "realmRoles": ["DISPATCHER"],
       "attributes": {
@@ -114,7 +162,7 @@
       "enabled": true,
       "emailVerified": true,
       "credentials": [
-        { "type": "password", "value": "doctor", "temporary": false }
+        { "type": "password", "value": "Epd-Qa-Duxtur-2026", "temporary": false }
       ],
       "realmRoles": ["DOCTOR"],
       "attributes": {
@@ -130,7 +178,7 @@
       "enabled": true,
       "emailVerified": true,
       "credentials": [
-        { "type": "password", "value": "mechanic", "temporary": false }
+        { "type": "password", "value": "Epd-Qa-Mexanik-2026", "temporary": false }
       ],
       "realmRoles": ["MECHANIC"],
       "attributes": {
@@ -146,7 +194,7 @@
       "enabled": true,
       "emailVerified": true,
       "credentials": [
-        { "type": "password", "value": "accountant", "temporary": false }
+        { "type": "password", "value": "Epd-Qa-Buxgalter-2026", "temporary": false }
       ],
       "realmRoles": ["ACCOUNTANT"],
       "attributes": {
@@ -162,7 +210,20 @@
       "enabled": true,
       "emailVerified": true,
       "credentials": [
-        { "type": "password", "value": "admin", "temporary": false }
+        { "type": "password", "value": "Epd-Qa-AdminRoot-2026", "temporary": false }
+      ],
+      "requiredActions": ["CONFIGURE_TOTP"],
+      "realmRoles": ["SYSTEM_ADMIN"]
+    },
+    {
+      "username": "admin-automation",
+      "email": "admin-automation@epd.tj",
+      "firstName": "Автоматизация",
+      "lastName": "SYSTEM_ADMIN (без 2FA, для QA-скриптов)",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        { "type": "password", "value": "Epd-Qa-Automation-Admin-2026", "temporary": false }
       ],
       "realmRoles": ["SYSTEM_ADMIN"]
     },
@@ -174,13 +235,54 @@
       "enabled": true,
       "emailVerified": true,
       "credentials": [
-        { "type": "password", "value": "company", "temporary": false }
+        { "type": "password", "value": "Epd-Qa-CompanyAdm-2026", "temporary": false }
       ],
       "realmRoles": ["COMPANY_ADMIN"],
       "attributes": {
         "rma": ["025680800"],
         "organizationRma": ["025680800"]
       }
+    },
+    {
+      "username": "branch",
+      "email": "branch@epd.tj",
+      "firstName": "Админ",
+      "lastName": "Филиала",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        { "type": "password", "value": "Epd-Qa-BranchAdm-2026", "temporary": false }
+      ],
+      "realmRoles": ["BRANCH_ADMIN"],
+      "attributes": {
+        "rma": ["100002091"],
+        "organizationRma": ["100002091"]
+      }
+    },
+    {
+      "username": "analyst",
+      "email": "analyst@epd.tj",
+      "firstName": "Аналитик",
+      "lastName": "Минтранса",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        { "type": "password", "value": "Epd-Qa-Analyst-2026", "temporary": false }
+      ],
+      "requiredActions": ["CONFIGURE_TOTP"],
+      "realmRoles": ["MINTRANS_ANALYST"]
+    },
+    {
+      "username": "analyst-automation",
+      "email": "analyst-automation@epd.tj",
+      "firstName": "Автоматизация",
+      "lastName": "MINTRANS_ANALYST (без 2FA, для QA-скриптов)",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        { "type": "password", "value": "Epd-Qa-Automation-Analyst-2026", "temporary": false }
+      ],
+      "realmRoles": ["MINTRANS_ANALYST"]
     },
     {
       "username": "driver",
@@ -190,7 +292,7 @@
       "enabled": true,
       "emailVerified": true,
       "credentials": [
-        { "type": "password", "value": "driver", "temporary": false }
+        { "type": "password", "value": "Epd-Qa-Ronanda-2026", "temporary": false }
       ],
       "realmRoles": ["DRIVER"],
       "attributes": {
@@ -206,12 +308,45 @@
       "enabled": true,
       "emailVerified": true,
       "credentials": [
-        { "type": "password", "value": "inspector", "temporary": false }
+        { "type": "password", "value": "Epd-Qa-Nozir-2026", "temporary": false }
+      ],
+      "requiredActions": ["CONFIGURE_TOTP"],
+      "realmRoles": ["INSPECTOR"],
+      "attributes": {
+        "rma": ["666666666"],
+        "organizationRma": ["025680800"]
+      }
+    },
+    {
+      "username": "inspector-automation",
+      "email": "inspector-automation@epd.tj",
+      "firstName": "Автоматизация",
+      "lastName": "INSPECTOR (без 2FA, для QA-скриптов)",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        { "type": "password", "value": "Epd-Qa-Automation-Inspector-2026", "temporary": false }
       ],
       "realmRoles": ["INSPECTOR"],
       "attributes": {
         "rma": ["666666666"],
         "organizationRma": ["025680800"]
+      }
+    },
+    {
+      "username": "fuel",
+      "email": "fuel@epd.tj",
+      "firstName": "Нуқтаи",
+      "lastName": "Сӯзишворӣ",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        { "type": "password", "value": "Epd-Qa-FuelStation-2026", "temporary": false }
+      ],
+      "realmRoles": ["FUEL_STATION"],
+      "attributes": {
+        "rma": ["777777777"],
+        "organizationRma": ["100002000"]
       }
     }
   ]

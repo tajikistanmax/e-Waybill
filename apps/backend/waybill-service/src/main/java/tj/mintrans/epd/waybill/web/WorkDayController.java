@@ -43,7 +43,12 @@ public class WorkDayController {
             Integer odometerExit,
             Integer odometerEntry,
             Integer laps,
-            BigDecimal revenue) {
+            BigDecimal revenue,
+            // Посуточные данные для многодневных пассажирских ПЛ (1-А, 3-С) — пока только
+            // хранение, движок расчёта их не читает (см. spec/notes/04-гэп-анализ §2.2).
+            BigDecimal conditionerHours,
+            UUID clientId,
+            LocalTime clientTime) {
     }
 
     public record FuelRequest(
@@ -51,7 +56,9 @@ public class WorkDayController {
             UUID workDayId,
             BigDecimal fuelGiven,
             BigDecimal remainBeforeExit,
-            BigDecimal remainEntry) {
+            BigDecimal remainEntry,
+            BigDecimal additionalGiven,
+            BigDecimal returned) {
     }
 
     /** Рабочий день вместе с записями топлива этого дня. */
@@ -68,7 +75,8 @@ public class WorkDayController {
     @PreAuthorize("hasAnyRole('DISPATCHER','SYSTEM_ADMIN')")
     public ResponseEntity<WorkDay> addWorkDay(@PathVariable UUID id, @Valid @RequestBody WorkDayRequest req) {
         var day = service.addWorkDay(id, req.workDate(), req.exitTime(), req.entryTime(),
-                req.odometerExit(), req.odometerEntry(), req.laps(), req.revenue());
+                req.odometerExit(), req.odometerEntry(), req.laps(), req.revenue(),
+                req.conditionerHours(), req.clientId(), req.clientTime());
         return ResponseEntity.status(HttpStatus.CREATED).body(day);
     }
 
@@ -85,10 +93,11 @@ public class WorkDayController {
     }
 
     @PostMapping("/fuel")
-    @PreAuthorize("hasAnyRole('DISPATCHER','SYSTEM_ADMIN')")
+    @PreAuthorize("hasAnyRole('DISPATCHER','SYSTEM_ADMIN','FUEL_STATION')")
     public ResponseEntity<FuelRecord> addFuel(@PathVariable UUID id, @Valid @RequestBody FuelRequest req) {
         var record = service.addFuel(id, req.workDayId(), req.fuelType().shortValue(),
-                req.fuelGiven(), req.remainBeforeExit(), req.remainEntry());
+                req.fuelGiven(), req.remainBeforeExit(), req.remainEntry(),
+                req.additionalGiven(), req.returned());
         return ResponseEntity.status(HttpStatus.CREATED).body(record);
     }
 }

@@ -6,6 +6,7 @@ apps/backend/.gradle/
 # Node / Next.js
 node_modules/
 .next/
+.next-*/
 out/
 
 # IDE
@@ -25,8 +26,17 @@ Thumbs.db
 # Docker volumes
 infra/.data/
 
+# Резервные копии БД (scripts/backup-postgres.ps1) — бинарные дампы, могут содержать ПДн
+backups/
+
 # Временные
 *.log
 *.tmp
+
+# Playwright E2E (apps/web)
+apps/web/e2e-report/
+apps/web/test-results/
+apps/web/playwright-report/
+apps/web/playwright/.cache/
 
 apps/backend/crypto-service-mock/*.class

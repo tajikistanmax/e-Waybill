@@ -4,16 +4,27 @@ import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
 import tj.mintrans.epd.masterdata.config.CurrentUser;
 import tj.mintrans.epd.masterdata.domain.AuditLog;
 import tj.mintrans.epd.masterdata.repository.AuditLogRepository;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.HexFormat;
+
 /**
  * Запись событий в журнал аудита. Актор берётся из текущего JWT.
  * Сбой записи аудита не должен рушить основную операцию, но обязан быть ЗАМЕТЕН
  * (лог ERROR) — иначе пробел в append-only следе остаётся незамеченным.
+ *
+ * <p>Каждая запись зашита в hash-chain (ИБ-13.6.3): {@code record_hash = SHA256(prev_hash
+ * || поля_записи)}. {@link #record} сериализован через Postgres advisory-lock на время
+ * транзакции — без этого конкурентные записи могли бы прочитать один и тот же «последний»
+ * хеш и создать разветвление цепочки вместо линейной последовательности.</p>
  */
 @Service
 public class AuditService {
@@ -21,6 +32,11 @@ public class AuditService {
     public static final String CREATE = "CREATE";
     public static final String UPDATE = "UPDATE";
     public static final String DELETE = "DELETE";
+    /** Доступ на чтение особой категории данных (ИБ-13.1.3) — сам факт просмотра, не изменение. */
+    public static final String ACCESS = "ACCESS";
+
+    /** Хеш «нулевой» записи — с него начинается цепочка. */
+    public static final String GENESIS = "GENESIS";
 
     private static final Logger log = LoggerFactory.getLogger(AuditService.class);
 
@@ -32,21 +48,40 @@ public class AuditService {
         this.currentUser = currentUser;
     }
 
+    @Transactional
     public void record(String action, String entityType, String entityKey, String oldValue, String newValue) {
+        HttpServletRequest request = currentRequest();
+        String clientIp = request != null ? trim(clientIp(request), 64) : null;
+        String userAgent = request != null ? trim(request.getHeader("User-Agent"), 512) : null;
+        recordAs(currentUser.username().orElse("system"), currentUser.organizationRma().orElse(null),
+                action, entityType, entityKey, oldValue, newValue, clientIp, userAgent);
+    }
+
+    /**
+     * Вариант для вызовов без HTTP-контекста текущего пользователя (фоновые задачи —
+     * например, приём событий входа из Keycloak {@code KeycloakEventAuditSync}, где
+     * «актор» записи — не тот, кто вызвал этот метод, а субъект самого события).
+     */
+    @Transactional
+    public void recordAs(String actor, String actorOrg, String action, String entityType, String entityKey,
+                         String oldValue, String newValue, String clientIp, String userAgent) {
         try {
             var entry = new AuditLog();
-            entry.setActor(currentUser.username().orElse("system"));
-            entry.setActorOrg(currentUser.organizationRma().orElse(null));
+            entry.setActor(actor == null || actor.isBlank() ? "system" : actor);
+            entry.setActorOrg(actorOrg);
             entry.setAction(action);
             entry.setEntityType(entityType);
             entry.setEntityKey(entityKey);
             entry.setOldValue(oldValue);
             entry.setNewValue(newValue);
-            HttpServletRequest request = currentRequest();
-            if (request != null) {
-                entry.setClientIp(trim(clientIp(request), 64));
-                entry.setUserAgent(trim(request.getHeader("User-Agent"), 512));
-            }
+            entry.setClientIp(clientIp);
+            entry.setUserAgent(userAgent);
+            // Advisory-lock держится до конца транзакции — сериализует read-last-hash +
+            // insert между конкурентными вызовами record()/recordAs() (в т.ч. из разных потоков/запросов).
+            repository.acquireHashChainLock();
+            String prevHash = repository.findTopByOrderBySeqDesc().map(AuditLog::getRecordHash).orElse(GENESIS);
+            entry.setPrevHash(prevHash);
+            entry.setRecordHash(computeHash(prevHash, entry));
             repository.save(entry);
         } catch (RuntimeException e) {
             // Аудит не должен ломать бизнес-операцию, но потеря записи ДОЛЖНА быть заметна
@@ -54,6 +89,24 @@ public class AuditService {
             log.error("Не удалось записать аудит: action={} entityType={} entityKey={} — запись потеряна: {}",
                     action, entityType, entityKey, e.toString());
         }
+    }
+
+    /** Каноническое представление записи для хеширования — используется и при записи, и при проверке. */
+    public static String computeHash(String prevHash, AuditLog e) {
+        String canonical = String.join("",
+                nullToEmpty(prevHash), nullToEmpty(e.getActor()), nullToEmpty(e.getActorOrg()),
+                nullToEmpty(e.getAction()), nullToEmpty(e.getEntityType()), nullToEmpty(e.getEntityKey()),
+                nullToEmpty(e.getOldValue()), nullToEmpty(e.getNewValue()));
+        try {
+            MessageDigest sha256 = MessageDigest.getInstance("SHA-256");
+            return HexFormat.of().formatHex(sha256.digest(canonical.getBytes(StandardCharsets.UTF_8)));
+        } catch (NoSuchAlgorithmException e2) {
+            throw new IllegalStateException("SHA-256 недоступен", e2);
+        }
+    }
+
+    private static String nullToEmpty(String s) {
+        return s == null ? "" : s;
     }
 
     /** HTTP-запрос текущего потока или null (внутренний межсервисный вызов без веб-контекста). */

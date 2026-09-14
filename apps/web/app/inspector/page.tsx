@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { wb, Waybill, STATUS_LABELS, type NeruView } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 import { Icon, P } from '../icons';
+import { QrScanner } from '../QrScanner';
 
 function fmtDateTime(iso: string | null) {
   return iso
@@ -25,6 +26,8 @@ function verdict(w: Waybill): { tone: 'ok' | 'warn' | 'stop'; title: string; not
 const TONE_BG: Record<string, string> = { ok: 'var(--green-050)', warn: 'var(--amber-050)', stop: 'var(--red-050)' };
 const TONE_FG: Record<string, string> = { ok: 'var(--green)', warn: '#a9700a', stop: 'var(--red)' };
 
+const PER_PAGE = 10;
+
 /**
  * Кабинет инспектора — дорожный контроль: проверка путевого листа по госномеру
  * или номеру ПЛ, вердикт о допуске, и перечень проблемных листов (заблокированные,
@@ -41,7 +44,18 @@ export default function InspectorCabinet() {
   const [neruPlate, setNeruPlate] = useState('');
   const [neru, setNeru] = useState<NeruView | 'none' | null>(null);
   const [neruBusy, setNeruBusy] = useState(false);
+  const [pFrom, setPFrom] = useState('');
+  const [pTo, setPTo] = useState('');
+  const [page, setPage] = useState(1);
+  const [scanning, setScanning] = useState(false);
   const router = useRouter();
+
+  // Скан QR камерой ведёт на ту же публичную страницу проверки подписи, что и
+  // сканирование телефоном (офлайн-совместимая, отдельная от архива выше consolе).
+  function onQrScanned(jws: string) {
+    setScanning(false);
+    router.push(`/verify/${jws}`);
+  }
 
   async function neruCheck(e: React.FormEvent) {
     e.preventDefault();
@@ -70,13 +84,38 @@ export default function InspectorCabinet() {
     if (pick) setChecked(pick); else setNotFound(true);
   }
 
-  // Проблемные листы — заблокированные и просроченные (новые сверху).
+  // Проблемные листы — заблокированные и просроченные (новые сверху), с фильтром по периоду:
+  // это рабочий отчёт инспектора «что выявлено за смену/месяц», его можно выгрузить.
   const problems = useMemo(
     () => items
       .filter(w => ['BLOCKED', 'EXPIRED'].includes(w.status))
+      .filter(w => {
+        const d = (w.createdAt ?? '').slice(0, 10);
+        if (pFrom && d && d < pFrom) return false;
+        if (pTo && d && d > pTo) return false;
+        return true;
+      })
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
-    [items],
+    [items, pFrom, pTo],
   );
+
+  function exportProblems() {
+    const head = ['Номер ПЛ', 'Тип', 'Госномер', 'Водитель', 'Организация', 'Создан', 'Статус'];
+    const rows = problems.map(w => [
+      w.number ?? '', tType(w.waybillType), w.vehicleRegNumber ?? '',
+      String(w.driverSnapshot?.fullName ?? w.driverRma ?? ''),
+      String(w.organizationSnapshot?.name ?? w.organizationRma ?? ''),
+      fmtDateTime(w.createdAt), tStatus(w.status),
+    ]);
+    const esc = (v: string) => `"${String(v).replace(/"/g, '""')}"`;
+    const csv = '﻿' + [head, ...rows].map(r => r.map(esc).join(';')).join('\r\n');
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `inspector_violations_${pFrom || 'all'}_${pTo || 'all'}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
 
   const stats = useMemo(() => ({
     onLine: items.filter(w => ['ISSUED', 'ACTIVE', 'RETURNED'].includes(w.status)).length,
@@ -86,8 +125,12 @@ export default function InspectorCabinet() {
 
   const v = checked ? verdict(checked) : null;
 
+  const pages = Math.max(1, Math.ceil(problems.length / PER_PAGE));
+  const view = problems.slice((page - 1) * PER_PAGE, page * PER_PAGE);
+
   return (
     <>
+      {scanning && <QrScanner onScan={onQrScanned} onClose={() => setScanning(false)} />}
       <div className="toolbar">
         <div>
           <h1>{t('nav.inspector')}</h1>
@@ -111,6 +154,9 @@ export default function InspectorCabinet() {
             />
           </div>
           <button className="btn" type="submit"><Icon d={P.eye} cls="" /> {t('btn.check')}</button>
+          <button className="btn secondary" type="button" onClick={() => setScanning(true)}>
+            <Icon d={P.scan} cls="" /> {t('insp.scan.btn')}
+          </button>
         </form>
         <div className="hint" style={{ marginTop: 14, marginBottom: 0 }}>
           {t('insp.hint')}
@@ -132,7 +178,8 @@ export default function InspectorCabinet() {
             <dl className="kv">
               <dt>{t('insp.wbnum')}</dt><dd><span className="number">{checked.number ?? t('common.draft')}</span></dd>
               <dt>{t('col.type')}</dt><dd>{tType(checked.waybillType)}</dd>
-              <dt>{t('col.transport')}</dt><dd>{String(checked.vehicleSnapshot?.brand ?? '')} {checked.vehicleRegNumber}</dd>
+              <dt>{t('col.transport')}</dt><dd>{String(checked.vehicleSnapshot?.brand ?? '')} {checked.vehicleRegNumber || '—'}</dd>
+              <dt>{t('col.org')}</dt><dd>{String(checked.organizationSnapshot?.name ?? checked.organizationRma ?? '—')}</dd>
               <dt>{t('col.driver')}</dt><dd>{String(checked.driverSnapshot?.fullName ?? checked.driverRma ?? '—')}</dd>
               <dt>{t('drv.validity')}</dt><dd>{fmtDateTime(checked.validFrom)} → {fmtDateTime(checked.validTo)}</dd>
               <dt>{t('insp.medtech')}</dt>
@@ -153,9 +200,12 @@ export default function InspectorCabinet() {
         )}
       </div>
 
-      {/* Neru: серверная проверка по госномеру (по всем организациям) */}
+      {/* Серверная проверка по госномеру — основной инструмент на дороге: отвечает,
+          есть ли у ТС действующий лист ПРЯМО СЕЙЧАС (та же сверка, что у дорожных камер).
+          В отличие от консоли выше, которая ищет по уже загруженному списку, включая архив. */}
       <div className="card">
         <div className="card-h"><h2>{t('neru.title')}</h2></div>
+        <p style={{ color: 'var(--muted)', fontSize: 13, margin: '0 0 12px', maxWidth: 620 }}>{t('neru.lead')}</p>
         <form onSubmit={neruCheck} style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
           <div style={{ flex: 1, minWidth: 260 }}>
             <input value={neruPlate} onChange={e => setNeruPlate(e.target.value)} placeholder={t('neru.ph')} style={{ width: '100%' }} />
@@ -179,6 +229,10 @@ export default function InspectorCabinet() {
               <dt>{t('col.driver')}</dt><dd>{neru.driverName ?? '—'}</dd>
               <dt>{t('drv.validity')}</dt><dd>{fmtDateTime(neru.validFrom)} → {fmtDateTime(neru.validTo)}</dd>
             </dl>
+            {/* Найденный лист сразу открываем — там оформляется акт проверки или блокировка. */}
+            <button className="btn secondary" style={{ marginTop: 12 }} onClick={() => router.push(`/waybills/${neru.id}`)}>
+              {t('neru.open')}
+            </button>
           </div>
         )}
       </div>
@@ -192,13 +246,29 @@ export default function InspectorCabinet() {
 
       {/* Проблемные листы */}
       <div className="card">
-        <div className="card-h"><h2>{t('insp.problems.h')}</h2></div>
+        <div className="card-h">
+          <h2>{t('insp.problems.h')}</h2>
+          <span style={{ marginLeft: 'auto', display: 'inline-flex', gap: 8, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+            <span>
+              <label style={{ fontSize: 12, color: 'var(--muted)' }}>{t('insp.period.from')}</label>
+              <input type="date" value={pFrom} onChange={e => { setPFrom(e.target.value); setPage(1); }} style={{ display: 'block' }} />
+            </span>
+            <span>
+              <label style={{ fontSize: 12, color: 'var(--muted)' }}>{t('insp.period.to')}</label>
+              <input type="date" value={pTo} onChange={e => { setPTo(e.target.value); setPage(1); }} style={{ display: 'block' }} />
+            </span>
+            <button className="btn secondary" onClick={() => { setPFrom(''); setPTo(''); setPage(1); }}>{t('wb.resetfilters')}</button>
+            <button className="btn secondary" onClick={exportProblems} disabled={problems.length === 0}>
+              <Icon d={P.chart} cls="" style={{ width: 15, height: 15 }} /> {t('insp.export')}
+            </button>
+          </span>
+        </div>
         <table>
           <thead>
             <tr><th>{t('col.number')}</th><th>{t('col.type')}</th><th>{t('col.transport')}</th><th>{t('col.driver')}</th><th>{t('col.created')}</th><th>{t('col.status')}</th></tr>
           </thead>
           <tbody>
-            {problems.map(w => {
+            {view.map(w => {
               const s = STATUS_LABELS[w.status] ?? { label: w.status, color: 'gray' };
               return (
                 <tr key={w.id} className="clickable" onClick={() => router.push(`/waybills/${w.id}`)}>
@@ -216,6 +286,14 @@ export default function InspectorCabinet() {
             )}
           </tbody>
         </table>
+        {/* Пагинация */}
+        <div style={{ display: 'flex', alignItems: 'center', marginTop: 14, fontSize: 12.5, color: 'var(--muted)' }}>
+          <span>{t('dict.totalrecords')}: <b style={{ color: 'var(--ink)' }}>{problems.length}</b></span>
+          <span style={{ flex: 1 }} />
+          <button className="btn secondary" disabled={page <= 1} onClick={() => setPage(p => p - 1)} style={{ padding: '6px 12px' }}>‹</button>
+          <span style={{ margin: '0 12px' }}>{page} / {pages}</span>
+          <button className="btn secondary" disabled={page >= pages} onClick={() => setPage(p => p + 1)} style={{ padding: '6px 12px' }}>›</button>
+        </div>
       </div>
     </>
   );

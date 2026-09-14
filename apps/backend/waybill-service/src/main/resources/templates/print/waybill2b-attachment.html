@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="tg">
+<!--
+  Борхат — накладная, приложение к путевому листу 2-Б (грузовой).
+  Перенос bill2b_attachment1.blade.php (тип 1, корбай/сдельно) и
+  bill2b_attachment2.blade.php (тип 2, соатбай/повременно, + экспедитор) оригинала.
+  Один шаблон для обоих типов: строка «Экспедитор» печатается только для типа 2.
+-->
+<head>
+    <meta charset="UTF-8"/>
+    <title th:text="'Борхат № ' + ${attachmentNumber}">Борхат</title>
+    <th:block th:replace="~{print/styles :: styles}"/>
+</head>
+<body>
+<th:block th:replace="~{print/blocks :: watermark}"/>
+
+<!-- Коды гос. статистической отчётности — обязательная шапка бланка Замима 7 в оригинале. -->
+<table class="bordered">
+    <tr>
+        <th>Шакли ҳуҷҷат аз рӯи КУХР</th>
+        <th>Ташкилоти мураттиби ҳуҷҷат аз рӯи КУКТ</th>
+        <th>Вазорат (идора) аз рӯи КУМХДИ</th>
+        <th>Ҳудуд аз рӯи КУТОМХ</th>
+        <th>Шакли моликият аз рӯи КШМ</th>
+        <th>Соҳа аз рӯи КУРСХ</th>
+        <th>Шакли фаъолият аз рӯи КУФИ</th>
+    </tr>
+    <tr><td>&#160;</td><td>&#160;</td><td>&#160;</td><td>&#160;</td><td>&#160;</td><td>&#160;</td><td>&#160;</td></tr>
+</table>
+
+<table>
+    <tr>
+        <td style="width: 58%">
+            <div class="title" style="text-align:left"
+                 th:text="'БОРХАТИ НАҚЛИЁТИ АВТОМОБИЛӢ № ' + ${attachmentNumber}">Борхат</div>
+            <div class="caption" style="text-align:left" th:if="${shipmentKind == 'HOURLY'}">
+                Замима 2 — намуди боркашонӣ: соатбайъ (повременно)
+            </div>
+            <div class="caption" style="text-align:left" th:unless="${shipmentKind == 'HOURLY'}">
+                Замима 1 — намуди боркашонӣ: корбайъ (сдельно)
+            </div>
+        </td>
+        <td class="form-reference">
+            Замима ба роҳхати 2-Б<br/>ба Қоидаи нақлиёти автомобилӣ<br/>
+            <span th:text="'Роҳхат № ' + ${number}">Роҳхат №</span>
+        </td>
+        <td style="width: 90px; text-align: right; vertical-align: top">
+            <img th:if="${qr}" th:src="${qr}" alt="QR" class="qr"/>
+        </td>
+    </tr>
+</table>
+
+<div class="section">
+    <table class="bordered">
+        <tr><th style="width: 25%">Заказчик</th><th style="width: 25%">Отправитель</th>
+            <th style="width: 25%">Получатель</th><th th:if="${shipmentKind == 'HOURLY'}">Экспедитор</th></tr>
+        <tr>
+            <td th:text="${consignorName}"></td>
+            <td th:text="${senderName}"></td>
+            <td th:text="${receiverName}"></td>
+            <td th:if="${shipmentKind == 'HOURLY'}" th:text="${forwarderName}"></td>
+        </tr>
+        <tr>
+            <td class="caption" th:text="${companyAddress}"></td>
+            <td class="caption" th:text="${senderAddress}"></td>
+            <td class="caption" th:text="${receiverAddress}"></td>
+            <td class="caption" th:if="${shipmentKind == 'HOURLY'}"></td>
+        </tr>
+    </table>
+</div>
+
+<div class="section">
+    <table>
+        <tr>
+            <td style="width: 50%">
+                <table>
+                    <tr><td class="nowrap" style="width: 30%">Автомобил</td><td class="line" th:text="${vehicle}"></td></tr>
+                    <tr><td class="nowrap">Ронанда</td><td class="line" th:text="${driverName}"></td></tr>
+                </table>
+            </td>
+            <td style="width: 50%">
+                <table>
+                    <tr><td class="nowrap" style="width: 30%">Ядаккаш 1</td><td class="line" th:text="${trailer1}"></td></tr>
+                    <tr><td class="nowrap">Ядаккаш 2</td><td class="line" th:text="${trailer2}"></td></tr>
+                </table>
+            </td>
+        </tr>
+    </table>
+</div>
+
+<div class="section">
+    <table class="bordered">
+        <tr><th style="width: 25%">Номгӯи бор</th><th>Воҳид</th><th>Синфи бор</th>
+            <th>Массаи брутто (т)</th><th>Синфи ADR</th></tr>
+        <tr>
+            <td th:text="${cargoName}"></td>
+            <td class="center" th:text="${cargoUnit}"></td>
+            <td class="center" th:text="${cargoClass}"></td>
+            <td class="center" th:text="${cargoWeight}"></td>
+            <td class="center" th:text="${adrClass}"></td>
+        </tr>
+    </table>
+</div>
+
+<div class="section">
+    <div class="bold" style="text-align:center">АМАЛИЁТИ БОРКУНӢ ВА БОРФАРОРӢ</div>
+    <table class="bordered">
+        <tr>
+            <th rowspan="2" style="width: 12%">Амалиёт</th>
+            <th rowspan="2" style="width: 20%">Иҷрокунанда (МНА, интиқолдиҳанда, борқабулкунанда)</th>
+            <th colspan="2">Вақт (соат, дақ.)</th>
+            <th rowspan="2" style="width: 10%">Бекористӣ (дақ.)</th>
+            <th rowspan="2" style="width: 18%">Амалиётҳои иловагӣ (номгӯй, миқдор)</th>
+            <th rowspan="2" style="width: 14%">Имзои шахси мутасаддӣ</th>
+        </tr>
+        <tr><th>Расид</th><th>Рафт</th></tr>
+        <tr th:each="op : ${cargoOperations}">
+            <td th:text="${op.operation}"></td>
+            <td th:text="${op.executorName}"></td>
+            <td class="center" th:text="${op.arrival}"></td>
+            <td class="center" th:text="${op.departure}"></td>
+            <td class="center" th:text="${op.downtimeMinutes}"></td>
+            <td th:text="${op.additionalOps}"></td>
+            <td th:text="${op.signature}"></td>
+        </tr>
+    </table>
+</div>
+
+<div class="section">
+    <table>
+        <tr>
+            <td style="width: 33%"><div class="line" th:text="${dispatcherName}"></div><div class="caption">Танзимгар (имзо)</div></td>
+            <td style="width: 33%"><div class="line" th:text="${senderName}"></div><div class="caption">Отправитель (имзо, штамп)</div></td>
+            <td style="width: 34%"><div class="line" th:text="${receiverName}"></div><div class="caption">Получатель (имзо, штамп)</div></td>
+        </tr>
+    </table>
+</div>
+
+<div class="section caption" style="text-align:left">
+    Ҳуҷҷат аз низоми иттилоотии «е-Роҳхат» бароварда шудааст. Тафтиш — аз рӯи QR-код.
+    Санаи чоп: <span th:text="${printedAt}"></span>.
+</div>
+
+<div th:replace="~{print/blocks :: footer}"></div>
+</body>
+</html>

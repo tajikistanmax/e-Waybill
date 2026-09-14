@@ -42,7 +42,12 @@ public interface UnifiedPlatformClient {
             String email,
             String headName,        // руководитель (для юрлица)
             LocalDate licenseFrom,  // лицензия перевозчика — из платформы лицензирования
-            LocalDate licenseTo) {
+            LocalDate licenseTo,
+            // № лицензии перевозчика — из платформы лицензирования (обязателен для печати 5Б-БМ).
+            String carrierLicenseNumber,
+            // Дата рождения физлица/ИП — из налоговой. Опционально (nullable): у юрлица её нет,
+            // да и платформа может её не отдать. Нужна для проверки несовершеннолетия водителя (ТЗ §6.3).
+            LocalDate birthDate) {
     }
 
     /** Объект единой платформы: транспортное средство из базы ГАИ. */
@@ -55,7 +60,16 @@ public interface UnifiedPlatformClient {
             Integer capacity,
             BigDecimal carrying,
             LocalDate techInspectionValidTo,
-            LocalDate controlCardValidTo) {
+            LocalDate controlCardValidTo,
+            // № контрольной карточки (не только срок) — печатается на бланке как «Иҷозатнома».
+            String controlCardNumber,
+            // № сертификата для международных перевозок (бланк 5Б-БМ/CMR).
+            String intlCertificateNumber,
+            // Полис ОСАГО/КАСКО ТС — WaybillService.checkPreflight блокирует выдачу при истечении.
+            LocalDate insuranceValidTo,
+            // Допуск ТС к перевозке опасных грузов (ADR) — WaybillService.checkPreflight,
+            // чек №19 checks.yaml («Опасные грузы: свидетельства о допуске ТС и водителя»).
+            LocalDate adrApprovalValidTo) {
     }
 
     record DriverLicense(
@@ -63,7 +77,16 @@ public interface UnifiedPlatformClient {
             String categories,
             LocalDate validTo,
             String medCertNumber,   // медсправка (реестр Минздрава через единую платформу)
-            LocalDate medCertValidTo) {
+            LocalDate medCertValidTo,
+            // № талона 20-часового курса БДД — печатается на бланках 1-А/1-АД/3-С.
+            String safetyCourseNumber,
+            LocalDate safetyCourseValidTo,
+            // Допуск водителя к перевозке опасных грузов (ADR) — WaybillService.checkPreflight,
+            // чек №19 checks.yaml.
+            LocalDate adrCertValidTo,
+            // Общий стаж вождения, лет — из ГАИ. Опционально (nullable): платформа может не отдать.
+            // Поле правила «не менее N лет» для перевозки детей.
+            Short experienceYears) {
     }
 
     record PermitInfo(

@@ -22,6 +22,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 import tj.mintrans.epd.masterdata.config.CurrentUser;
+import tj.mintrans.epd.masterdata.config.TenantScope;
 import tj.mintrans.epd.masterdata.domain.Vehicle;
 import tj.mintrans.epd.masterdata.repository.OrganizationRepository;
 import tj.mintrans.epd.masterdata.repository.VehicleRepository;
@@ -43,13 +44,15 @@ public class VehicleController {
     private final VehicleRepository vehicles;
     private final OrganizationRepository organizations;
     private final CurrentUser currentUser;
+    private final TenantScope tenantScope;
     private final AuditService audit;
 
     public VehicleController(VehicleRepository vehicles, OrganizationRepository organizations,
-                             CurrentUser currentUser, AuditService audit) {
+                             CurrentUser currentUser, TenantScope tenantScope, AuditService audit) {
         this.vehicles = vehicles;
         this.organizations = organizations;
         this.currentUser = currentUser;
+        this.tenantScope = tenantScope;
         this.audit = audit;
     }
 
@@ -63,11 +66,30 @@ public class VehicleController {
             BigDecimal carrying,
             Integer odometer,
             String vincode,
+            @Min(value = 1, message = "Вид топлива: 1–5") @Max(value = 5, message = "Вид топлива: 1–5") Short fuelType,
+            @Min(value = 0, message = "Мощность: 0–3000 л.с.") @Max(value = 3000, message = "Мощность: 0–3000 л.с.") Integer enginePower,
             Short yearManufacture,
             LocalDate techInspectionValidTo,
             LocalDate controlCardValidTo,
+            String controlCardNumber,
+            String intlCertificateNumber,
             LocalDate insuranceValidTo,
             LocalDate adrApprovalValidTo,
+            // Реквизиты для паритета с боевой формой parking/create (MinTransRT):
+            String techInspectionNumber,
+            String techPassportNumber,
+            String certificateNumber,
+            @Min(value = 0, message = "Кондиционер: 0–100%") @Max(value = 100, message = "Кондиционер: 0–100%") Integer airConditioner,
+            String intlControlCardNumber,
+            LocalDate intlControlCardValidTo,
+            String trailer1Number,
+            String trailer1Brand,
+            BigDecimal trailer1Carrying,
+            BigDecimal trailer1Weight,
+            String trailer2Number,
+            String trailer2Brand,
+            BigDecimal trailer2Carrying,
+            BigDecimal trailer2Weight,
             Boolean blocked) {
     }
 
@@ -80,9 +102,9 @@ public class VehicleController {
      * Тенант не пишет в чужую организацию (403) и не «захватывает» ТС по госномеру (409).
      */
     @PostMapping
-    @PreAuthorize("hasAnyRole('API_INTEGRATOR','SYSTEM_ADMIN','COMPANY_ADMIN','DISPATCHER')")
+    @PreAuthorize("hasAnyRole('API_INTEGRATOR','SYSTEM_ADMIN','COMPANY_ADMIN','BRANCH_ADMIN','DISPATCHER')")
     public ResponseEntity<Vehicle> upsert(@Valid @RequestBody VehicleRequest req) {
-        requireOwnOrganization(req.organizationRma());
+        requireWritable(req.organizationRma());
         var org = organizations.findByRma(req.organizationRma())
                 .orElseThrow(() -> new NotFoundException("Организация не найдена"));
         // Госномер канонизируется (обрезка пробелов + верхний регистр), иначе "0114TJ01"
@@ -100,12 +122,40 @@ public class VehicleController {
         vehicle.setCapacity(req.capacity());
         vehicle.setCarrying(req.carrying());
         if (req.odometer() != null) vehicle.setOdometer(req.odometer());
-        vehicle.setVincode(req.vincode());
+        // VIN канонизируется симметрично госномеру (trim + верхний регистр; пустой → NULL) и, если
+        // задан, обязан быть уникальным (частичный индекс uq_vehicle_vincode, V49). Проверяем ДО save,
+        // чтобы вернуть внятный 409, а не generic «конфликт целостности» из обработчика БД.
+        var canonicalVin = canonicalVin(req.vincode());
+        assertVinUnique(canonicalVin, vehicle);
+        vehicle.setVincode(canonicalVin);
+        vehicle.setFuelType(req.fuelType());
+        vehicle.setEnginePower(req.enginePower());
         vehicle.setYearManufacture(req.yearManufacture());
         vehicle.setTechInspectionValidTo(req.techInspectionValidTo());
         vehicle.setControlCardValidTo(req.controlCardValidTo());
+        if (req.controlCardNumber() != null) {
+            vehicle.setControlCardNumber(req.controlCardNumber().isBlank() ? null : req.controlCardNumber().trim());
+        }
+        if (req.intlCertificateNumber() != null) {
+            vehicle.setIntlCertificateNumber(req.intlCertificateNumber().isBlank() ? null : req.intlCertificateNumber().trim());
+        }
         vehicle.setInsuranceValidTo(req.insuranceValidTo());
         vehicle.setAdrApprovalValidTo(req.adrApprovalValidTo());
+        // Реквизиты паритета с боевой формой (parking/create): номера документов, кондиционер, прицепы.
+        vehicle.setTechInspectionNumber(trimToNull(req.techInspectionNumber()));
+        vehicle.setTechPassportNumber(trimToNull(req.techPassportNumber()));
+        vehicle.setCertificateNumber(trimToNull(req.certificateNumber()));
+        vehicle.setAirConditioner(req.airConditioner());
+        vehicle.setIntlControlCardNumber(trimToNull(req.intlControlCardNumber()));
+        vehicle.setIntlControlCardValidTo(req.intlControlCardValidTo());
+        vehicle.setTrailer1Number(trimToNull(req.trailer1Number()));
+        vehicle.setTrailer1Brand(trimToNull(req.trailer1Brand()));
+        vehicle.setTrailer1Carrying(req.trailer1Carrying());
+        vehicle.setTrailer1Weight(req.trailer1Weight());
+        vehicle.setTrailer2Number(trimToNull(req.trailer2Number()));
+        vehicle.setTrailer2Brand(trimToNull(req.trailer2Brand()));
+        vehicle.setTrailer2Carrying(req.trailer2Carrying());
+        vehicle.setTrailer2Weight(req.trailer2Weight());
         // Блокировку ТС ставит/снимает только платформенный админ (Минтранс); перевозчик — нет.
         if (currentUser.isPlatformAdmin() && req.blocked() != null) vehicle.setBlocked(req.blocked());
         var saved = vehicles.save(vehicle);
@@ -141,23 +191,23 @@ public class VehicleController {
         // Поиск по госномеру — в той же канонической форме, что и хранение (регистронезависимо).
         registrationNumber = canonical(registrationNumber);
         int cap = Math.min(Math.max(limit, 1), 100);
-        // Мультиарендность: не-админ видит только транспорт своей организации.
-        // Анонимные (внутренние) вызовы не фильтруются.
-        if (currentUser.isTenantScoped()) {
-            var org = currentUser.organizationRma().flatMap(organizations::findByRma).orElse(null);
-            if (org == null) {
+        // Мультиарендность: тенант видит транспорт своей организации и (для
+        // администратора компании) всех её филиалов. Анонимные вызовы не фильтруются.
+        if (tenantScope.isBounded()) {
+            var ids = tenantScope.organizationIds();
+            if (ids.isEmpty()) {
                 return List.of();
             }
             // q — подстрочный поиск по госномеру с лимитом (автопарки в тысячи ТС).
             if (q != null) {
-                return vehicles.searchByOrg(org.getId(), q.trim(), PageRequest.of(0, cap));
+                return vehicles.searchByOrgs(ids, q.trim(), PageRequest.of(0, cap));
             }
             if (registrationNumber != null) {
                 return vehicles.findByRegistrationNumber(registrationNumber)
-                        .filter(v -> org.getId().equals(v.getOrganizationId()))
+                        .filter(v -> ids.contains(v.getOrganizationId()))
                         .map(List::of).orElseGet(List::of);
             }
-            return vehicles.findByOrganizationId(org.getId());
+            return vehicles.findByOrganizationIdIn(ids);
         }
         // Платформенная роль: подстрочный поиск в пределах указанной организации.
         if (q != null && organizationRma != null) {
@@ -178,19 +228,17 @@ public class VehicleController {
     @GetMapping("/{id}")
     public Vehicle get(@PathVariable UUID id) {
         var vehicle = vehicles.findById(id).orElseThrow(() -> new NotFoundException("Транспорт не найден"));
-        // Мультиарендность: не-админ не может прочитать ТС чужой организации по прямому id.
-        if (currentUser.isTenantScoped()) {
-            var org = currentUser.organizationRma().flatMap(organizations::findByRma).orElse(null);
-            if (org == null || !org.getId().equals(vehicle.getOrganizationId())) {
-                throw new NotFoundException("Транспорт не найден");
-            }
+        // Мультиарендность: тенант не может прочитать ТС вне своей области по прямому id.
+        if (tenantScope.isBounded() && !tenantScope.organizationIds().contains(vehicle.getOrganizationId())) {
+            throw new NotFoundException("Транспорт не найден");
         }
         return vehicle;
     }
 
-    /** Удаление ТС своей организации. Историю ПЛ не рушит — путевые листы хранят снимок ТС. */
+    /** Открепление (удаление) ТС от организации. Историю ПЛ не рушит — путевые листы хранят
+     *  снимок ТС. Доступно диспетчеру — ведение состава парка его повседневная задача. */
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasAnyRole('SYSTEM_ADMIN','COMPANY_ADMIN')")
+    @PreAuthorize("hasAnyRole('SYSTEM_ADMIN','COMPANY_ADMIN','BRANCH_ADMIN','DISPATCHER')")
     public ResponseEntity<Void> delete(@PathVariable UUID id) {
         var vehicle = vehicles.findById(id).orElseThrow(() -> new NotFoundException("Транспорт не найден"));
         requireOwnEntity(vehicle.getOrganizationId());
@@ -201,32 +249,54 @@ public class VehicleController {
 
     // ------------------------------------------------------------ тенант-защита записи
 
-    private void requireOwnOrganization(String organizationRma) {
-        if (currentUser.isTenantScoped()) {
-            var own = currentUser.organizationRma();
-            if (own.isEmpty() || !own.get().equals(organizationRma)) {
-                throw new AccessDeniedException("Доступ только к своей организации");
-            }
+    /** Тенант пишет в свою организацию либо (администратор компании) в её филиал; иначе 403. */
+    private void requireWritable(String organizationRma) {
+        if (tenantScope.isBounded() && !tenantScope.canWrite(organizationRma)) {
+            throw new AccessDeniedException("Доступ только к своим организациям");
         }
     }
 
     private void assertNotForeign(UUID existingOrgId, UUID targetOrgId, String what) {
-        if (currentUser.isTenantScoped() && existingOrgId != null && !existingOrgId.equals(targetOrgId)) {
+        if (tenantScope.isBounded() && existingOrgId != null && !existingOrgId.equals(targetOrgId)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, what + " уже закреплён(а) за другой организацией");
         }
     }
 
     private void requireOwnEntity(UUID entityOrgId) {
-        if (currentUser.isTenantScoped()) {
-            var own = currentUser.organizationRma().flatMap(organizations::findByRma).orElse(null);
-            if (own == null || !own.getId().equals(entityOrgId)) {
-                throw new AccessDeniedException("Доступ только к своей организации");
-            }
+        if (tenantScope.isBounded() && !tenantScope.organizationIds().contains(entityOrgId)) {
+            throw new AccessDeniedException("Доступ только к своим организациям");
         }
     }
 
     /** Каноническая форма госномера: обрезка пробелов + верхний регистр (null → null). */
     private static String canonical(String registrationNumber) {
         return registrationNumber == null ? null : registrationNumber.trim().toUpperCase();
+    }
+
+    /** Обрезка пробелов; пустая/только пробелы строка → NULL (чтобы не хранить ""). */
+    private static String trimToNull(String s) {
+        if (s == null) return null;
+        var t = s.trim();
+        return t.isEmpty() ? null : t;
+    }
+
+    /** Каноническая форма VIN: обрезка пробелов + верхний регистр; пустой/только пробелы → NULL
+     *  (пустой VIN разрешён и не участвует в проверке уникальности). */
+    private static String canonicalVin(String vincode) {
+        if (vincode == null) return null;
+        var trimmed = vincode.trim();
+        return trimmed.isEmpty() ? null : trimmed.toUpperCase();
+    }
+
+    /** Уникальность VIN (симметрично госномеру): если канонический VIN задан и уже принадлежит
+     *  ДРУГОМУ ТС — 409, а не 500 от нарушения индекса uq_vehicle_vincode. Пустой VIN не проверяем. */
+    private void assertVinUnique(String canonicalVin, Vehicle current) {
+        if (canonicalVin == null) return;
+        boolean takenByOther = vehicles.findByCanonicalVincode(canonicalVin).stream()
+                .anyMatch(v -> !v.getId().equals(current.getId()));
+        if (takenByOther) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "ТС с таким VIN уже зарегистрирован в системе");
+        }
     }
 }

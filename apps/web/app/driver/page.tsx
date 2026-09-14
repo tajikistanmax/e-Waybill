@@ -1,12 +1,21 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { wb, md, Waybill, STATUS_LABELS, authHeaders, TYPE_LABELS, type WaybillRequest } from '@/lib/api';
+import { wb, md, Waybill, STATUS_LABELS, authHeaders, TYPE_LABELS, type WaybillRequest, type LivePosition, type GpsPing } from '@/lib/api';
 import { useT } from '@/lib/i18n';
+import { verifyLink } from '@/lib/verify';
 import { Icon, P } from '../icons';
 import QRCode from 'qrcode';
+
+// Карта рейса (Leaflet) — только на клиенте (обращается к window), поэтому ssr:false. Общий
+// компонент с монитором диспетчера — с компактной высотой через проп height.
+const LeafletMap = dynamic(() => import('../monitoring/LeafletMap'), {
+  ssr: false,
+  loading: () => <div style={{ height: 240, display: 'grid', placeItems: 'center', color: 'var(--muted)', border: '1px solid var(--line)', borderRadius: 14 }}>Загрузка карты…</div>,
+});
 
 /** Статус заявки на путевой лист → ключ i18n + цвет бейджа. */
 const REQ_STATUS: Record<string, { k: string; color: string }> = {
@@ -47,7 +56,7 @@ export default function DriverCabinet() {
   // Заявка на путевой лист (водитель подаёт сам; личность — из входа, госномер вписывает вручную).
   const [reqs, setReqs] = useState<WaybillRequest[]>([]);
   const [showReqForm, setShowReqForm] = useState(false);
-  const [reqForm, setReqForm] = useState({ vehicleRegNumber: '', waybillType: 'WB_BUS', requestedFrom: '', odometer: '', route: '', notes: '' });
+  const [reqForm, setReqForm] = useState({ vehicleRegNumber: '', waybillType: 'WB_BUS', requestedFrom: '', odometer: '', communicationType: 'URBAN', route: '', schedule: '', notes: '' });
   const [reqBusy, setReqBusy] = useState(false);
   const [reqMsg, setReqMsg] = useState('');
   const [reqErr, setReqErr] = useState('');
@@ -57,6 +66,16 @@ export default function DriverCabinet() {
   const [plateOpts, setPlateOpts] = useState<{ reg: string; brand: string }[]>([]);
   const [plateOpen, setPlateOpen] = useState(false);
   const pickedRef = useRef(false); // подавляет повторное открытие списка сразу после выбора
+  // Живая позиция ТС текущего рейса (водителю доступен /gps/last по своему ТС).
+  const [pos, setPos] = useState<GpsPing | null>(null);
+  // Реквизиты закреплённого ТС (сроки техосмотра/страховки) — из справочника парка.
+  const [vehInfo, setVehInfo] = useState<Record<string, unknown> | null>(null);
+  // «Сообщить о проблеме» — сообщение диспетчеру.
+  const [reportOpen, setReportOpen] = useState(false);
+  const [reportForm, setReportForm] = useState({ issueType: '', message: '' });
+  const [reportBusy, setReportBusy] = useState(false);
+  const [reportMsg, setReportMsg] = useState('');
+  const [reportErr, setReportErr] = useState('');
 
   useEffect(() => {
     wb.list().then(setItems).catch((e: Error) => setError(e.message)).finally(() => setLoading(false));
@@ -95,7 +114,7 @@ export default function DriverCabinet() {
         const res = await fetch(`/wb-api/api/v1/waybills/${current.id}/qr`, { headers: authHeaders() });
         if (!res.ok) return;
         const { jws } = (await res.json()) as { jws: string };
-        const dataUrl = await QRCode.toDataURL(`${window.location.origin}/verify/${jws}`, { width: 220, margin: 1 });
+        const dataUrl = await QRCode.toDataURL(verifyLink(jws), { width: 220, margin: 1 });
         if (!cancelled) setQr(dataUrl);
       } catch {
         /* QR доступен только с готового путевого листа */
@@ -103,6 +122,46 @@ export default function DriverCabinet() {
     })();
     return () => { cancelled = true; };
   }, [current]);
+
+  // Живая позиция ТС текущего рейса — только своё ТС (обновление 15 с).
+  useEffect(() => {
+    if (!current) { setPos(null); return; }
+    let alive = true;
+    const load = () => wb.gpsLast(current.vehicleRegNumber).then(p => { if (alive) setPos(p); }).catch(() => {});
+    load();
+    const h = window.setInterval(load, 15000);
+    return () => { alive = false; window.clearInterval(h); };
+  }, [current]);
+
+  // Реквизиты закреплённого ТС (сроки техосмотра/страховки) из справочника парка.
+  useEffect(() => {
+    if (!current) { setVehInfo(null); return; }
+    let alive = true;
+    md.searchVehicles(orgRma, current.vehicleRegNumber, 3)
+      .then(list => {
+        if (!alive) return;
+        const reg = current.vehicleRegNumber.trim().toUpperCase();
+        setVehInfo(list.find(v => String(v.registrationNumber ?? '').toUpperCase() === reg) ?? list[0] ?? null);
+      })
+      .catch(() => { if (alive) setVehInfo(null); });
+    return () => { alive = false; };
+  }, [current, orgRma]);
+
+  async function submitReport() {
+    if (!reportForm.message.trim()) return;
+    setReportBusy(true); setReportErr('');
+    try {
+      await wb.reportIssue({
+        issueType: reportForm.issueType || t('drv.report.t.other'),
+        message: reportForm.message.trim(),
+        waybillId: current?.id ?? null,
+      });
+      setReportMsg(t('drv.report.sent'));
+      setReportOpen(false);
+      setReportForm({ issueType: '', message: '' });
+    } catch (err) { setReportErr((err as Error).message); }
+    finally { setReportBusy(false); }
+  }
 
   function loadReqs() { wb.requests.mine().then(setReqs).catch(() => {}); }
   useEffect(() => {
@@ -154,11 +213,13 @@ export default function DriverCabinet() {
         vehicleRegNumber: reqForm.vehicleRegNumber.trim(),
         requestedFrom: reqForm.requestedFrom || null,
         odometer: reqForm.odometer ? Number(reqForm.odometer) : null,
+        communicationType: reqForm.communicationType || null,
         route: reqForm.route || null,
+        schedule: reqForm.schedule || null,
         notes: reqForm.notes || null,
       });
       setReqMsg(t('drvreq.sent'));
-      setReqForm({ vehicleRegNumber: '', waybillType: 'WB_BUS', requestedFrom: '', odometer: '', route: '', notes: '' });
+      setReqForm({ vehicleRegNumber: '', waybillType: 'WB_BUS', requestedFrom: '', odometer: '', communicationType: 'URBAN', route: '', schedule: '', notes: '' });
       setShowReqForm(false);
       loadReqs();
     } catch (err) { setReqErr((err as Error).message); }
@@ -178,6 +239,27 @@ export default function DriverCabinet() {
 
   const cs = current ? STATUS_LABELS[current.status] ?? { label: current.status, color: 'gray' } : null;
   const company = orgName || String(current?.organizationSnapshot?.name ?? '');
+
+  // Строка для карты рейса (единый компонент с монитором диспетчера).
+  const mapRow: LivePosition | null = current ? {
+    vehicleRegNumber: current.vehicleRegNumber,
+    number: current.number,
+    driver: String(current.driverSnapshot?.fullName ?? current.driverRma),
+    status: current.status,
+    waybillType: current.waybillType,
+    organizationRma: current.organizationRma,
+    organizationName: String(current.organizationSnapshot?.name ?? ''),
+    lat: pos?.lat ?? null, lon: pos?.lon ?? null,
+    speedKmh: pos?.speedKmh ?? null, recordedAt: pos?.recordedAt ?? null,
+  } : null;
+  const vehBrand = String(current?.vehicleSnapshot?.brand ?? vehInfo?.brand ?? '');
+  const techTo = vehInfo?.techInspectionValidTo ? String(vehInfo.techInspectionValidTo) : null;
+  const insTo = vehInfo?.insuranceValidTo ? String(vehInfo.insuranceValidTo) : null;
+  const validColor = (d: string | null) => {
+    if (!d) return 'gray';
+    const days = (new Date(d).getTime() - Date.now()) / 86400000;
+    return isNaN(days) ? 'gray' : days < 0 ? 'red' : days <= 30 ? 'amber' : 'green';
+  };
 
   return (
     <>
@@ -205,6 +287,7 @@ export default function DriverCabinet() {
       {error && <div className="error">{error}</div>}
       {reqErr && <div className="error">{reqErr}</div>}
       {reqMsg && <div className="success">{reqMsg}</div>}
+      {reportMsg && <div className="success">{reportMsg}</div>}
       {hasPending && <div className="hint">{t('drvreq.onlyone')}</div>}
 
       {/* Заявка на путевой лист (водитель подаёт сам) */}
@@ -252,20 +335,36 @@ export default function DriverCabinet() {
               <input type="date" min={todayStr} value={reqForm.requestedFrom} onChange={e => setReqForm({ ...reqForm, requestedFrom: e.target.value })} style={{ width: '100%', marginTop: 4 }} />
             </div>
             <div>
-              <label style={{ fontSize: 12.5, color: 'var(--muted)' }}>{t('drvreq.f.odometer')}</label>
-              <input type="number" min={0} placeholder={t('drvreq.f.odometer.ph')} value={reqForm.odometer}
+              {/* Одометр обязателен: диспетчер выпускает лист от текущих показаний (Т4),
+                  непрерывность пробега — антифрод-инвариант. Сервер тоже это проверяет. */}
+              <label style={{ fontSize: 12.5, color: 'var(--muted)' }}>{t('drvreq.f.odometer')} *</label>
+              <input type="number" min={0} required placeholder={t('drvreq.f.odometer.ph')} value={reqForm.odometer}
                 onChange={e => setReqForm({ ...reqForm, odometer: e.target.value })} style={{ width: '100%', marginTop: 4 }} />
+            </div>
+            <div>
+              <label style={{ fontSize: 12.5, color: 'var(--muted)' }}>{t('drvreq.f.comm')}</label>
+              <select value={reqForm.communicationType} onChange={e => setReqForm({ ...reqForm, communicationType: e.target.value })} style={{ width: '100%', marginTop: 4 }}>
+                <option value="URBAN">{t('comm.URBAN')}</option>
+                <option value="SUBURBAN">{t('comm.SUBURBAN')}</option>
+                <option value="INTERCITY">{t('comm.INTERCITY')}</option>
+                <option value="INTERNATIONAL">{t('comm.INTERNATIONAL')}</option>
+              </select>
             </div>
             <div>
               <label style={{ fontSize: 12.5, color: 'var(--muted)' }}>{t('drvreq.f.route')}</label>
               <input value={reqForm.route} onChange={e => setReqForm({ ...reqForm, route: e.target.value })} style={{ width: '100%', marginTop: 4 }} />
             </div>
             <div>
+              <label style={{ fontSize: 12.5, color: 'var(--muted)' }}>{t('drvreq.f.schedule')}</label>
+              <input value={reqForm.schedule} placeholder={t('drvreq.f.schedule.ph')}
+                onChange={e => setReqForm({ ...reqForm, schedule: e.target.value })} style={{ width: '100%', marginTop: 4 }} />
+            </div>
+            <div style={{ gridColumn: '1 / -1' }}>
               <label style={{ fontSize: 12.5, color: 'var(--muted)' }}>{t('drvreq.f.notes')}</label>
               <input value={reqForm.notes} onChange={e => setReqForm({ ...reqForm, notes: e.target.value })} style={{ width: '100%', marginTop: 4 }} />
             </div>
             <div style={{ gridColumn: '1 / -1', display: 'flex', gap: 10, marginTop: 4 }}>
-              <button className="btn primary" type="submit" disabled={reqBusy || hasPending || !reqForm.vehicleRegNumber.trim()}>{reqBusy ? '…' : t('drvreq.send')}</button>
+              <button className="btn primary" type="submit" disabled={reqBusy || hasPending || !reqForm.vehicleRegNumber.trim() || !reqForm.odometer.trim()}>{reqBusy ? '…' : t('drvreq.send')}</button>
               <button type="button" className="btn secondary" onClick={() => setShowReqForm(false)}>{t('fleet.cancel')}</button>
             </div>
           </form>
@@ -364,6 +463,27 @@ export default function DriverCabinet() {
               )}
             </div>
           </div>
+
+          {/* Положение ТС на карте — живой GPS текущего рейса */}
+          <div style={{ marginTop: 18 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+              <span style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--ink-soft)', display: 'inline-flex', alignItems: 'center', gap: 7 }}>
+                <Icon d={P.route} cls="" style={{ width: 16, height: 16, color: 'var(--blue-600)' }} /> {t('drv.trip.map')}
+              </span>
+              {pos && (
+                <span style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--muted)' }}>
+                  {pos.speedKmh != null ? `${pos.speedKmh} ${t('mon.kmh')} · ` : ''}{t('drv.trip.updated')} {fmtDateTime(pos.recordedAt)}
+                </span>
+              )}
+            </div>
+            {pos && mapRow ? (
+              <LeafletMap rows={[mapRow]} t={t} tStatus={tStatus} height={240} />
+            ) : (
+              <div style={{ height: 160, display: 'grid', placeItems: 'center', textAlign: 'center', color: 'var(--muted)', fontSize: 13, background: 'var(--line-soft)', borderRadius: 14, border: '1px solid var(--line)' }}>
+                {t('drv.trip.nosignal')}
+              </div>
+            )}
+          </div>
         </div>
       ) : (
         <div className="card" style={{ textAlign: 'center', padding: '38px 20px' }}>
@@ -374,6 +494,73 @@ export default function DriverCabinet() {
           </div>
         </div>
       )}
+
+      {/* Закреплённый транспорт + быстрые действия */}
+      <div className="grid-2" style={{ alignItems: 'start' }}>
+        <div className="card" style={{ marginBottom: 0 }}>
+          <div className="card-h">
+            <h2 style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+              <Icon d={P.car} cls="" style={{ width: 18, height: 18, color: 'var(--blue-600)' }} /> {t('drv.vehicle.h')}
+            </h2>
+          </div>
+          {current ? (
+            <>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 16 }}>
+                <span className="k-ic ic-blue" style={{ width: 48, height: 48 }}><Icon d={P.car} cls="" /></span>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: 12, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.03em', fontWeight: 600 }}>{vehBrand || '—'}</div>
+                  <div className="number" style={{ fontSize: 18 }}>{current.vehicleRegNumber}</div>
+                </div>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <div>
+                  <div style={{ fontSize: 11.5, color: 'var(--muted)', marginBottom: 4 }}>{t('drv.vehicle.tech')}</div>
+                  <span className={`badge ${validColor(techTo)}`}>{techTo ?? '—'}</span>
+                </div>
+                <div>
+                  <div style={{ fontSize: 11.5, color: 'var(--muted)', marginBottom: 4 }}>{t('drv.vehicle.ins')}</div>
+                  <span className={`badge ${validColor(insTo)}`}>{insTo ?? '—'}</span>
+                </div>
+              </div>
+              <Link href={`/waybills/${current.id}`} className="btn secondary" style={{ marginTop: 16, textDecoration: 'none' }}>
+                <Icon d={P.eye} cls="" style={{ width: 15, height: 15 }} /> {t('btn.open')}
+              </Link>
+            </>
+          ) : (
+            <p style={{ color: 'var(--muted)', fontSize: 13, margin: 0 }}>{t('drv.vehicle.none')}</p>
+          )}
+        </div>
+
+        <div className="card" style={{ marginBottom: 0 }}>
+          <div className="card-h"><h2>{t('drv.quick.h')}</h2></div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <Link href="/driver/waybills" className="quick-tile">
+              <span className="k-ic ic-blue"><Icon d={P.doc} cls="" /></span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontWeight: 600, fontSize: 13.5, color: 'var(--ink)' }}>{t('drv.mywaybills')}</div>
+                <div style={{ fontSize: 12, color: 'var(--muted)' }}>{t('drv.quick.waybills.s')}</div>
+              </div>
+              <Icon d={P.chevron} cls="" style={{ width: 16, height: 16, color: 'var(--faint)' }} />
+            </Link>
+            <Link href="/notifications" className="quick-tile">
+              <span className="k-ic ic-amber"><Icon d={P.bell} cls="" /></span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontWeight: 600, fontSize: 13.5, color: 'var(--ink)' }}>{t('drv.quick.notif')}</div>
+                <div style={{ fontSize: 12, color: 'var(--muted)' }}>{t('drv.quick.notif.s')}</div>
+              </div>
+              <Icon d={P.chevron} cls="" style={{ width: 16, height: 16, color: 'var(--faint)' }} />
+            </Link>
+            <button type="button" className="quick-tile alert" onClick={() => { setReportOpen(true); setReportErr(''); setReportMsg(''); }}>
+              <span className="k-ic ic-red"><Icon d={P.alert} cls="" /></span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontWeight: 600, fontSize: 13.5, color: 'var(--red)' }}>{t('drv.report.btn')}</div>
+                <div style={{ fontSize: 12, color: 'var(--muted)' }}>{t('drv.report.sub')}</div>
+              </div>
+              <Icon d={P.chevron} cls="" style={{ width: 16, height: 16, color: 'var(--faint)' }} />
+            </button>
+          </div>
+        </div>
+      </div>
 
       {/* KPI */}
       <div className="kpi-row" style={{ gridTemplateColumns: 'repeat(4, 1fr)' }}>
@@ -421,6 +608,42 @@ export default function DriverCabinet() {
           </tbody>
         </table>
       </div>
+
+      {/* Модалка «Сообщить о проблеме» */}
+      {reportOpen && (
+        <div onClick={() => setReportOpen(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(15,27,52,.45)', display: 'grid', placeItems: 'center', zIndex: 60, padding: 20 }}>
+          <div className="card" onClick={e => e.stopPropagation()} style={{ width: 460, maxWidth: '100%', margin: 0, borderColor: 'var(--red)', boxShadow: 'var(--shadow-lg)' }}>
+            <div className="card-h">
+              <h2 style={{ display: 'inline-flex', alignItems: 'center', gap: 8, color: 'var(--red)', margin: 0 }}>
+                <Icon d={P.alert} cls="" style={{ width: 18, height: 18 }} /> {t('drv.report.h')}
+              </h2>
+              <button onClick={() => setReportOpen(false)} aria-label={t('btn.close')} style={{ marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)', fontSize: 16 }}>✕</button>
+            </div>
+            <p className="hint">{t('drv.report.note')}</p>
+            {reportErr && <div className="error">{reportErr}</div>}
+            <div style={{ marginBottom: 12 }}>
+              <label>{t('drv.report.type')}</label>
+              <select value={reportForm.issueType} onChange={e => setReportForm({ ...reportForm, issueType: e.target.value })}>
+                <option value="">—</option>
+                <option value={t('drv.report.t.breakdown')}>{t('drv.report.t.breakdown')}</option>
+                <option value={t('drv.report.t.road')}>{t('drv.report.t.road')}</option>
+                <option value={t('drv.report.t.waybill')}>{t('drv.report.t.waybill')}</option>
+                <option value={t('drv.report.t.delay')}>{t('drv.report.t.delay')}</option>
+                <option value={t('drv.report.t.other')}>{t('drv.report.t.other')}</option>
+              </select>
+            </div>
+            <div style={{ marginBottom: 14 }}>
+              <label>{t('drv.report.msg')}</label>
+              <textarea value={reportForm.message} onChange={e => setReportForm({ ...reportForm, message: e.target.value })} placeholder={t('drv.report.msg.ph')} maxLength={500}
+                style={{ width: '100%', minHeight: 110, padding: '10px 13px', border: '1px solid var(--line)', borderRadius: 'var(--radius-sm)', fontSize: 13.5, fontFamily: 'var(--sans)', color: 'var(--ink)', resize: 'vertical' }} />
+            </div>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button className="btn secondary" onClick={() => setReportOpen(false)}>{t('fleet.cancel')}</button>
+              <button className="btn danger" disabled={reportBusy || !reportForm.message.trim()} onClick={submitReport}>{reportBusy ? '…' : t('drv.report.send')}</button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }

@@ -1,8 +1,9 @@
 'use client';
 
 import { use, useEffect, useState } from 'react';
-import { wb, md, Waybill, Title } from '@/lib/api';
+import { wb, md, Waybill, Title, type RouteType } from '@/lib/api';
 import { useT } from '@/lib/i18n';
+import { verifyLink } from '@/lib/verify';
 import QRCode from 'qrcode';
 
 /**
@@ -25,9 +26,10 @@ export default function PrintWaybill({ params }: { params: Promise<{ id: string 
   const [w, setW] = useState<Waybill | null>(null);
   const [titles, setTitles] = useState<Title[]>([]);
   const [qrUrl, setQrUrl] = useState('');
+  const [routeTypes, setRouteTypes] = useState<RouteType[]>([]);
   const [error, setError] = useState('');
   // Опции бланка из настроек платформы (§29, /settings/print). Дефолт — полный бланк A4.
-  const [opt, setOpt] = useState({ showQr: true, showStamp: true, paperSize: 'A4' });
+  const [opt, setOpt] = useState({ showQr: true, showStamp: true, paperSize: 'A4', showWatermark: false, watermarkText: '' });
   const [landscape, setLandscape] = useState(false); // §17: альбомная ориентация
   const [copy, setCopy] = useState(false);           // §17: отметка «КОПИЯ»
   const { tType } = useT();
@@ -37,6 +39,17 @@ export default function PrintWaybill({ params }: { params: Promise<{ id: string 
     setTimeout(() => { window.print(); setTimeout(() => setCopy(false), 400); }, 60);
   }
 
+  async function downloadPdf() {
+    try {
+      const blob = await wb.printPdf(id);
+      const url = URL.createObjectURL(blob);
+      window.open(url, '_blank');
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  }
+
   useEffect(() => {
     (async () => {
       const data = await wb.get(id);
@@ -44,7 +57,7 @@ export default function PrintWaybill({ params }: { params: Promise<{ id: string 
       setTitles(await wb.titles(id));
       if (data.number) {
         const { jws } = await wb.qr(id);
-        setQrUrl(await QRCode.toDataURL(`${window.location.origin}/verify/${jws}`, { width: 150, margin: 0 }));
+        setQrUrl(await QRCode.toDataURL(verifyLink(jws), { width: 150, margin: 0 }));
       }
     })().catch(e => setError(e.message));
   }, [id]);
@@ -53,9 +66,17 @@ export default function PrintWaybill({ params }: { params: Promise<{ id: string 
     md.settings('print')
       .then(rows => {
         const v = (k: string) => rows.find(r => r.settingKey === k)?.settingValue;
-        setOpt({ showQr: v('show_qr') !== 'false', showStamp: v('show_stamp') !== 'false', paperSize: v('paper_size') ?? 'A4' });
+        setOpt({
+          showQr: v('show_qr') !== 'false', showStamp: v('show_stamp') !== 'false', paperSize: v('paper_size') ?? 'A4',
+          showWatermark: v('show_watermark') === 'true', watermarkText: v('watermark_text') ?? '',
+        });
       })
       .catch(() => { /* нет настроек — остаётся полный бланк A4 */ });
+  }, []);
+
+  // Справочник типов маршрутов — для расшифровки td.routeTypeCode в подпись.
+  useEffect(() => {
+    md.routeTypes().then(setRouteTypes).catch(() => setRouteTypes([]));
   }, []);
 
   if (error) return <div className="error">{error}</div>;
@@ -84,7 +105,13 @@ export default function PrintWaybill({ params }: { params: Promise<{ id: string 
   push('Страна визы', td.visaCountry);
   push('Виза действительна до', td.visaValidTo);
   push('Страна погрузки', td.loadCountry);
+  push('Город погрузки', td.loadCity);
   push('Страна разгрузки', td.unloadCountry);
+  push('Город разгрузки', td.unloadCity);
+  if (td.routeTypeCode != null && s(td.routeTypeCode) !== '') {
+    const rt = routeTypes.find(x => String(x.code) === String(td.routeTypeCode));
+    push('Тип маршрута', rt ? rt.nameRu : `код ${s(td.routeTypeCode)}`);
+  }
   push('Номер дозвола (E-PERMIT)', td.permitNumber);
   if (Array.isArray(td.transitCountries) && td.transitCountries.length) push('Транзит', (td.transitCountries as unknown[]).join(', '));
   if (Array.isArray(td.trailers) && td.trailers.length) {
@@ -117,6 +144,13 @@ export default function PrintWaybill({ params }: { params: Promise<{ id: string 
           color: rgba(220, 38, 38, 0.18); transform: rotate(-32deg); white-space: nowrap;
           -webkit-print-color-adjust: exact; print-color-adjust: exact;
         }
+        .sheet .wm-mark {
+          position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+          pointer-events: none; z-index: 0;
+          font-size: ${landscape ? 68 : 52}px; font-weight: 800; letter-spacing: 6px;
+          color: rgba(0, 0, 0, 0.07); transform: rotate(-30deg); white-space: nowrap;
+          -webkit-print-color-adjust: exact; print-color-adjust: exact;
+        }
         .sheet table { font-size: 12.5px; }
         .sheet th, .sheet td { border: 1px solid #cbd5e1; padding: 4px 8px; }
         .sheet .head { display: flex; justify-content: space-between; align-items: flex-start; gap: 14px; }
@@ -134,6 +168,7 @@ export default function PrintWaybill({ params }: { params: Promise<{ id: string 
       <div className="no-print toolbar" style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
         <button className="btn" onClick={() => window.print()}>🖨 Печать / сохранить в PDF</button>
         <button className="btn secondary" onClick={printCopy}>📄 Печать копии</button>
+        <button className="btn secondary" onClick={downloadPdf}>⬇ PDF (серверный бланк)</button>
         <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, color: 'var(--muted)' }}>
           <input type="checkbox" checked={landscape} onChange={e => setLandscape(e.target.checked)} />
           Альбомная ориентация
@@ -143,6 +178,7 @@ export default function PrintWaybill({ params }: { params: Promise<{ id: string 
 
       <div className="sheet">
         {copy && <div className="copy-wm">КОПИЯ</div>}
+        {!copy && opt.showWatermark && opt.watermarkText && <div className="wm-mark">{opt.watermarkText}</div>}
         <div className="head">
           <div className="stat">
             <b>ВАЗОРАТИ НАҚЛИЁТИ ҶУМҲУРИИ ТОҶИКИСТОН</b><br />

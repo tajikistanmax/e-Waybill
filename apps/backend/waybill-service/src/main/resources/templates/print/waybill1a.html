@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="tg">
+<!--
+  Путевой лист формы 1-А — микроавтобус, многодневный.
+  Бланк утверждён приложением 7 (Замима 7) к Қоидаи нақлиёти автомобилӣ.
+-->
+<head>
+    <meta charset="UTF-8"/>
+    <title th:text="'Роҳхати автобус № ' + ${number}">Роҳхат</title>
+    <th:block th:replace="~{print/styles :: styles}"/>
+</head>
+<body>
+<div class="copy-stamp" th:if="${isCopy}">КОПИЯ</div>
+<th:block th:replace="~{print/blocks :: watermark}"/>
+
+<table>
+    <tr>
+        <td style="width: 58%"><div class="subtitle" style="text-align:left">Ҳисоботи давлатии оморӣ</div></td>
+        <td class="form-reference">
+            Замима 7<br/>ба Қоидаи нақлиёти автомобилӣ<br/>
+            оид ба шакли роҳхатҳо, тартиби баровардан, пур кардан ва коркарди онҳо<br/>
+            <span th:text="${formTitle}">Шакли E-варақаи роҳхат</span>
+        </td>
+        <td style="width: 90px; text-align: right; vertical-align: top">
+            <img th:if="${qr}" th:src="${qr}" alt="QR" class="qr"/>
+        </td>
+    </tr>
+</table>
+
+<!-- Коды гос. статистической отчётности — обязательная шапка бланка Замима 7 в оригинале. -->
+<table class="bordered" style="margin-top: 1mm">
+    <tr>
+        <th>Шакли ҳуҷҷат аз рӯи КУХР</th>
+        <th>Ташкилоти мураттиби ҳуҷҷат аз рӯи КУКТ</th>
+        <th>Вазорат (идора) аз рӯи КУМХДИ</th>
+        <th>Ҳудуд аз рӯи КУТОМХ</th>
+        <th>Шакли моликият аз рӯи КШМ</th>
+        <th>Соҳа аз рӯи КУРСХ</th>
+        <th>Шакли фаъолият аз рӯи КУФИ</th>
+    </tr>
+    <tr><td>&#160;</td><td>&#160;</td><td>&#160;</td><td>&#160;</td><td>&#160;</td><td>&#160;</td><td>&#160;</td></tr>
+</table>
+
+<div class="section">
+    <table>
+        <tr>
+            <td style="width: 40%">
+                <div class="line" th:text="${companyName}">Корхона</div>
+                <div class="caption">(ҷои мӯҳри корхона)</div>
+                <table>
+                    <tr><td class="nowrap" style="width: 30%">Суроға</td><td class="line" th:text="${companyAddress}"></td></tr>
+                    <tr><td class="nowrap">Шакли моликият</td><td class="line" th:text="${ownershipName}"></td></tr>
+                </table>
+            </td>
+            <td class="center" style="width: 60%">
+                <div class="title" th:text="'РОҲХАТИ АВТОБУС № ' + ${number}">РОҲХАТИ АВТОБУС №</div>
+                <div>аз «<span th:text="${fromDay}">__</span>» то «<span th:text="${toDay}">__</span>»
+                    <span th:text="${toMonthName}">____</span> <span th:text="${toYear}">20__</span> с.</div>
+            </td>
+        </tr>
+    </table>
+</div>
+
+<div class="section">
+    <table>
+        <tr>
+            <td style="width: 50%">
+                <table>
+                    <tr><td class="nowrap" style="width: 42%">Рақами давлатии автомобил</td><td class="line" th:text="${registrationNumber}"></td>
+                        <td class="nowrap" style="width: 12%">Рақ. тав.</td><td class="line" style="width: 12%" th:text="${parkingNumber}"></td></tr>
+                    <tr><td class="nowrap">Ном ва насаби ронанда</td><td class="line" th:text="${driverName}"></td>
+                        <td class="nowrap">Рақ. таб.</td><td class="line" th:text="${driverNumber}"></td></tr>
+                </table>
+            </td>
+            <td style="width: 50%">
+                <table>
+                    <tr><td class="nowrap" style="width: 46%">Тамғаи автомобил</td><td class="line" th:text="${brandName}"></td></tr>
+                    <tr><td class="nowrap">Силсила ва рақами шаҳодатнома</td><td class="line" th:text="${driverLicense}"></td></tr>
+                    <tr><td class="nowrap">Иҷозатнома (варақаи назоратӣ)</td><td class="line" th:text="${checklistNumber}"></td></tr>
+                    <tr><td class="nowrap">Талони курси 20-соатаи ҚҲР ва МО</td><td class="line" th:text="${driverLessons20Hours}"></td></tr>
+                </table>
+            </td>
+        </tr>
+    </table>
+</div>
+
+<div class="section">
+    <table class="bordered">
+        <tr>
+            <th style="width: 12%">Сана</th>
+            <th style="width: 10%">Баромад (соат)</th>
+            <th style="width: 10%">Даромад (соат)</th>
+            <th style="width: 12%">Суръатнигор баромад</th>
+            <th style="width: 12%">Суръатнигор даромад</th>
+            <th style="width: 8%">Гашт (км)</th>
+            <th style="width: 8%">Рейсҳо</th>
+            <th style="width: 10%">Вақти корӣ</th>
+            <th style="width: 8%">Ҳолати саломатии ронанда</th>
+            <th style="width: 8%">Ҳолати техникии автомобил</th>
+        </tr>
+        <tr th:each="d : ${days}">
+            <td class="center" th:text="${d.date}"></td>
+            <td class="center" th:text="${d.exitTime}"></td>
+            <td class="center" th:text="${d.entryTime}"></td>
+            <td class="center" th:text="${d.counterExit}"></td>
+            <td class="center" th:text="${d.counterEntry}"></td>
+            <td class="center" th:text="${d.distance}"></td>
+            <td class="center" th:text="${d.laps}"></td>
+            <td class="center" th:text="${d.workTime}"></td>
+            <td></td>
+            <td></td>
+        </tr>
+        <tr th:if="${#lists.isEmpty(days)}"><td colspan="10" class="center">Рӯзҳои корӣ ворид нашудаанд</td></tr>
+        <tr>
+            <td class="bold" colspan="5">Ҳамагӣ</td>
+            <td class="center bold" th:text="${totalDistance}"></td>
+            <td class="center bold" th:text="${totalLaps}"></td>
+            <td class="center bold" th:text="${totalWorkTime}"></td>
+            <td></td>
+            <td></td>
+        </tr>
+    </table>
+</div>
+
+<div class="section">
+    <table class="bordered">
+        <tr>
+            <th style="width: 25%">Намуди сӯзишворӣ</th><th>Дода шуд</th>
+            <th>Бақия баромад</th><th>Бақия даромад</th><th>Меъёр</th><th>Иловагӣ</th>
+        </tr>
+        <tr th:each="f : ${fuels}">
+            <td th:text="${f.name}"></td>
+            <td class="center" th:text="${f.given}"></td>
+            <td class="center" th:text="${f.remainBeforeExit}"></td>
+            <td class="center" th:text="${f.remainEntry}"></td>
+            <td class="center" th:text="${f.norm}"></td>
+            <td class="center" th:text="${f.additional}"></td>
+        </tr>
+        <tr th:if="${#lists.isEmpty(fuels)}"><td colspan="6" class="center">Сӯзишворӣ дода нашудааст</td></tr>
+    </table>
+</div>
+
+<div th:replace="~{print/blocks :: expenses}"></div>
+
+<div class="section">
+    Ҳудуди фаъолият / хатсайр: <span th:text="${routeNumber}"></span> · <span th:text="${routeName}"></span>
+    &#160;&#160; Қайди махсус: <span th:text="${specialMark}"></span>
+</div>
+
+<div class="section">
+    <table>
+        <tr>
+            <td style="width: 33%"><div class="line" th:text="${mechanicName}"></div><div class="caption">Механик (имзо)</div></td>
+            <td style="width: 33%"><div class="line" th:text="${doctorName}"></div><div class="caption">Духтур (имзо, сикка)</div></td>
+            <td style="width: 34%"><div class="line" th:text="${dispatcherName}"></div><div class="caption">Танзимгар (имзо)</div></td>
+        </tr>
+    </table>
+</div>
+
+<div class="section">
+    <table>
+        <tr>
+            <td style="width: 70%">
+                Барои гирифтани маълумоти бештар ва тафтиши роҳхат аз QR-code истифода баред.
+            </td>
+            <td class="caption" style="text-align:left; width: 30%">
+                <b>Web-site:</b> logistic.tj<br/>
+                <b>Email:</b> info@logistic.tj<br/>
+                <b>Телефони бовари:</b> [+992] 2222 057
+            </td>
+        </tr>
+    </table>
+</div>
+
+<div class="section caption" style="text-align:left">
+    Ҳуҷҷат аз низоми иттилоотии «е-Роҳхат» бароварда шудааст. Тафтиш — аз рӯи QR-код.
+    Санаи чоп: <span th:text="${printedAt}"></span>.
+</div>
+
+<!-- Страница 2 — «ИҶРОИШИ КОР» (исполнение работы по дням) -->
+<div class="page-break"></div>
+<div class="title">ИҶРОИШИ КОР</div>
+<div class="section">
+    <table class="bordered">
+        <tr>
+            <th rowspan="2" style="width: 6%">Сана</th>
+            <th rowspan="2" style="width: 12%">Номи хатсайр</th>
+            <th rowspan="2" style="width: 5%">Рақ. хатсайр</th>
+            <th rowspan="2" style="width: 8%">Рақами ҳуҷҷатҳои хазинавӣ</th>
+            <th colspan="2">Вақти сафар</th>
+            <th colspan="4">Рейсҳои иҷрошуда</th>
+            <th rowspan="2" style="width: 7%">Шумораи мусофирон</th>
+            <th rowspan="2" style="width: 8%">Гардиши мусофирон (мус.·км)</th>
+            <th colspan="2">Маблағ (сомонӣ)</th>
+            <th rowspan="2" style="width: 7%">Имзои танзимгар</th>
+        </tr>
+        <tr>
+            <th style="width: 7%">аз аввали хатсайр</th>
+            <th style="width: 7%">аз охири хатсайр</th>
+            <th style="width: 5%">ҳамагӣ</th>
+            <th style="width: 6%">аз он ҷумла: мунтазам</th>
+            <th style="width: 6%">масофаи тайкарда</th>
+            <th style="width: 6%">вақти корӣ</th>
+            <th style="width: 6%">аз хазина</th>
+            <th style="width: 6%">аз фурӯши чиптаҳо</th>
+        </tr>
+        <tr th:each="d : ${days}">
+            <td class="center" th:text="${d.date}"></td>
+            <td th:text="${routeName}"></td>
+            <td class="center" th:text="${routeNumber}"></td>
+            <td></td>
+            <td class="center" th:text="${d.exitTime}"></td>
+            <td class="center" th:text="${d.entryTime}"></td>
+            <td class="center" th:text="${d.laps}"></td>
+            <td></td>
+            <td class="center" th:text="${d.distance}"></td>
+            <td class="center" th:text="${d.workTime}"></td>
+            <td></td><td></td><td></td><td></td><td></td>
+        </tr>
+        <tr th:if="${#lists.isEmpty(days)}"><td colspan="15" class="center">Рӯзҳои корӣ ворид нашудаанд</td></tr>
+        <tr>
+            <td class="bold" colspan="6">Ҳамагӣ</td>
+            <td class="center bold" th:text="${totalLaps}"></td>
+            <td></td>
+            <td class="center bold" th:text="${totalDistance}"></td>
+            <td class="center bold" th:text="${totalWorkTime}"></td>
+            <td></td><td></td><td></td><td></td><td></td>
+        </tr>
+    </table>
+</div>
+<div class="section">
+    <table>
+        <tr>
+            <td style="width: 45%; vertical-align: top">
+                Бекористӣ дар хати сафар
+                <table class="bordered">
+                    <tr><th style="width: 42%">Номгӯй</th><th style="width: 14%">Рамз</th><th style="width: 24%">Вақт (соат, дақ.)</th><th style="width: 20%">Имзо</th></tr>
+                    <tr th:each="i : ${#numbers.sequence(1, 4)}"><td>&#160;</td><td></td><td></td><td></td></tr>
+                </table>
+            </td>
+            <td style="width: 55%; vertical-align: top">
+                Қайди махсус
+                <div class="line" th:text="${specialMark}"></div>
+                <div class="line">&#160;</div>
+                <div class="line">&#160;</div>
+            </td>
+        </tr>
+    </table>
+</div>
+
+<div th:replace="~{print/blocks :: footer}"></div>
+</body>
+</html>

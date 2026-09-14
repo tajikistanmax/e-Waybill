@@ -45,6 +45,18 @@ public class WorkDay {
 
     private BigDecimal revenue;
 
+    /** Часы работы кондиционера за этот конкретный день (не агрегат на весь ПЛ). */
+    @Column(name = "conditioner_hours")
+    private BigDecimal conditionerHours;
+
+    /** Заказчик/клиент, у которого был этот рабочий день (справочник Client в master-data). */
+    @Column(name = "client_id")
+    private UUID clientId;
+
+    /** Время, проведённое у клиента за этот день. */
+    @Column(name = "client_time")
+    private LocalTime clientTime;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private OffsetDateTime createdAt;
 
@@ -71,5 +83,11 @@ public class WorkDay {
     public void setLaps(Integer laps) { this.laps = laps; }
     public BigDecimal getRevenue() { return revenue; }
     public void setRevenue(BigDecimal revenue) { this.revenue = revenue; }
+    public BigDecimal getConditionerHours() { return conditionerHours; }
+    public void setConditionerHours(BigDecimal conditionerHours) { this.conditionerHours = conditionerHours; }
+    public UUID getClientId() { return clientId; }
+    public void setClientId(UUID clientId) { this.clientId = clientId; }
+    public LocalTime getClientTime() { return clientTime; }
+    public void setClientTime(LocalTime clientTime) { this.clientTime = clientTime; }
     public OffsetDateTime getCreatedAt() { return createdAt; }
 }
