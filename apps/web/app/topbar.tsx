@@ -6,6 +6,7 @@ import { usePathname } from 'next/navigation';
 import { Icon, P } from './icons';
 import { useAuth } from '@/lib/auth';
 import { useT } from '@/lib/i18n';
+import { useOrgScope } from '@/lib/orgscope';
 import { wb, md, type PlatformSetting } from '@/lib/api';
 
 const TITLES: Record<string, { t: string; c: string }> = {
@@ -15,9 +16,14 @@ const TITLES: Record<string, { t: string; c: string }> = {
   '/dispatcher': { t: 'nav.dispatcher', c: 'nav.group.workplaces' },
   '/med': { t: 'nav.med', c: 'nav.group.workplaces' },
   '/tech': { t: 'nav.tech', c: 'nav.group.workplaces' },
+  '/fuel': { t: 'nav.fuel', c: 'nav.group.workplaces' },
   '/driver': { t: 'nav.driver', c: 'nav.group.workplaces' },
+  '/driver/waybills': { t: 'drv.mywaybills', c: 'nav.group.workplaces' },
   '/inspector': { t: 'nav.inspector', c: 'nav.group.workplaces' },
+  '/fleet': { t: 'nav.fleet', c: 'nav.group.workplaces' },
   '/company': { t: 'nav.company', c: 'nav.group.management' },
+  '/company/access': { t: 'nav.access', c: 'nav.group.management' },
+  '/monitoring': { t: 'nav.monitoring', c: 'nav.group.workplaces' },
   '/registry': { t: 'nav.registry', c: 'nav.group.management' },
   '/violations': { t: 'nav.violations', c: 'nav.group.management' },
   '/reports': { t: 'nav.reports', c: 'nav.group.management' },
@@ -29,6 +35,7 @@ export function Topbar() {
   const pathname = usePathname();
   const { username, roles, logout, authenticated } = useAuth();
   const { t, lang, setLang } = useT();
+  const { branches, selected, setSelected, hasBranches } = useOrgScope();
   const [unread, setUnread] = useState(0);
   const [helpOpen, setHelpOpen] = useState(false);
   const [contacts, setContacts] = useState<Record<string, string>>({});
@@ -54,8 +61,12 @@ export function Topbar() {
   const meta = TITLES[pathname]
     ?? (pathname.startsWith('/waybills/') ? { t: 'nav.waybills', c: 'nav.waybills' }
       : pathname.startsWith('/settings/') ? { t: 'nav.settings', c: 'nav.group.management' }
+      : pathname.startsWith('/registry/') ? { t: 'nav.registry', c: 'nav.group.management' }
+      : pathname.startsWith('/fleet/') ? { t: 'nav.fleet', c: 'nav.group.workplaces' }
+      : pathname.startsWith('/reports/') ? { t: 'nav.reports', c: 'nav.group.management' }
+      : pathname.startsWith('/dictionaries/') ? { t: 'nav.dictionaries', c: 'nav.group.management' }
       : { t: 'app.title', c: '' });
-  const roleKey = roles.find(r => ['SYSTEM_ADMIN', 'COMPANY_ADMIN', 'MINTRANS_ANALYST', 'DISPATCHER', 'DOCTOR', 'MECHANIC', 'ACCOUNTANT', 'INSPECTOR', 'DRIVER', 'API_INTEGRATOR'].includes(r));
+  const roleKey = roles.find(r => ['SYSTEM_ADMIN', 'COMPANY_ADMIN', 'BRANCH_ADMIN', 'MINTRANS_ANALYST', 'DISPATCHER', 'DOCTOR', 'MECHANIC', 'ACCOUNTANT', 'INSPECTOR', 'DRIVER', 'FUEL_STATION', 'API_INTEGRATOR'].includes(r));
   const roleLabel = roleKey ? t('role.' + roleKey) : '';
   const initials = (username || 'ЭП').slice(0, 2).toUpperCase();
   const now = new Date().toLocaleDateString(lang === 'tj' ? 'tg-TJ' : 'ru-RU', { day: 'numeric', month: 'long', year: 'numeric' });
@@ -67,6 +78,20 @@ export function Topbar() {
         <div className="tb-crumb">{t(meta.c)}</div>
       </div>
       <div className="sp" />
+      {hasBranches && (
+        <select
+          className="branch-switch"
+          value={selected}
+          onChange={e => setSelected(e.target.value)}
+          title={t('branch.switch.title')}
+          style={{ fontSize: 12.5, padding: '5px 8px', borderRadius: 8, border: '1px solid var(--line)', background: '#fff', color: 'var(--ink)', maxWidth: 220 }}
+        >
+          <option value="">{t('branch.switch.all')}</option>
+          {branches.map(b => (
+            <option key={b.rma} value={b.rma}>{b.isCompany ? `${b.name} (${t('topbar.headoffice')})` : b.name}</option>
+          ))}
+        </select>
+      )}
       <span className="lang-switch">
         <button className={lang === 'ru' ? 'on' : ''} onClick={() => setLang('ru')}>RU</button>
         <button className={lang === 'tj' ? 'on' : ''} onClick={() => setLang('tj')}>TJ</button>
@@ -77,8 +102,8 @@ export function Topbar() {
         {unread > 0 && <span className="tb-badge">{unread > 99 ? '99+' : unread}</span>}
       </Link>
       <div style={{ position: 'relative', display: 'inline-flex' }}>
-        <button type="button" className="tb-icon" aria-label={t('help.title')} onClick={() => setHelpOpen(o => !o)}>
-          <Icon d={P.help} />
+        <button type="button" className="tb-icon" aria-label={t('help.title')} title={t('help.title')} onClick={() => setHelpOpen(o => !o)}>
+          <Icon d={P.headset} />
         </button>
         {helpOpen && (
           <>
@@ -88,7 +113,7 @@ export function Topbar() {
               <div style={{ fontSize: 12, color: 'var(--muted)', margin: '4px 0 10px' }}>{t('help.lead')}</div>
               {contacts.support_phone && (
                 <a href={`tel:${contacts.support_phone.replace(/[^\d+]/g, '')}`} style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '5px 0', fontSize: 13, color: 'var(--ink)', textDecoration: 'none' }}>
-                  <Icon d={P.route} cls="" style={{ width: 15, height: 15, color: 'var(--blue-600)' }} /> {contacts.support_phone}
+                  <Icon d={P.phone} cls="" style={{ width: 15, height: 15, color: 'var(--blue-600)' }} /> {contacts.support_phone}
                 </a>
               )}
               {contacts.support_email && (
@@ -112,7 +137,7 @@ export function Topbar() {
           <div className="u-name">{username}</div>
           <div className="u-role">{roleLabel}</div>
         </div>
-        <button className="u-logout" onClick={logout}>{lang === 'tj' ? 'Баромад' : 'Выход'}</button>
+        <button className="u-logout" onClick={logout}>{t('sys.logout')}</button>
       </div>
     </header>
   );

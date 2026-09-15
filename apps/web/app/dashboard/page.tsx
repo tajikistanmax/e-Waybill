@@ -7,9 +7,11 @@ import {
   ResponsiveContainer, AreaChart, Area, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   PieChart, Pie, Cell,
 } from 'recharts';
-import { wb, Waybill, STATUS_LABELS } from '@/lib/api';
+import { wb, md, Waybill, STATUS_LABELS } from '@/lib/api';
 import { Icon, P } from '../icons';
 import { useT } from '@/lib/i18n';
+import { useAuth } from '@/lib/auth';
+import { canCreateWaybill } from '@/lib/roles';
 
 const TYPE_COLORS = ['#2563eb', '#16a34a', '#ea9615', '#f97316', '#ef4444', '#7c5cdb', '#0ea5c4', '#64748b', '#db2777', '#0891b2'];
 
@@ -27,8 +29,38 @@ export default function DashboardPage() {
   const [error, setError] = useState('');
   const router = useRouter();
   const { t, tType, tStatus } = useT();
+  const { roles } = useAuth();
+
+  // Оператор платформы: только ему показываем здоровье бэкенд-служб — для перевозчика
+  // это чужая эксплуатационная информация, а не показатель его работы.
+  const isPlatformOperator = roles.includes('SYSTEM_ADMIN');
+  // Кто вправе выписать ПЛ (иначе кнопка вела бы к 403 на создании).
+  const canCreate = canCreateWaybill(roles);
+  // Область данных: платформенные роли видят все организации, остальные — только свою.
+  const isPlatformWide = ['SYSTEM_ADMIN', 'MINTRANS_ANALYST', 'INSPECTOR'].some(r => roles.includes(r));
+  const [scopeName, setScopeName] = useState('');
 
   useEffect(() => { wb.list().then(setItems).catch((e: Error) => setError(e.message)).finally(() => setLoading(false)); }, []);
+
+  // Пассажирооборот (млн пасс-км) автобус/троллейбус по месяцам — перенос легаси-графика
+  // Admin\Charts\Ebus\PassengerVolumeController, единственного содержательного KPI старой панели.
+  const [volumeTrend, setVolumeTrend] = useState<{ name: string; value: number }[]>([]);
+  useEffect(() => {
+    wb.passengerVolumeTrend(7)
+      .then(r => setVolumeTrend(r.points.map(p => {
+        const [y, m] = p.month.split('-').map(Number);
+        return { name: new Date(y, m - 1, 1).toLocaleDateString('ru-RU', { month: 'short', year: '2-digit' }), value: p.turnoverMillion };
+      })))
+      .catch(() => setVolumeTrend([]));
+  }, []);
+
+  // Подпись области: название своей организации (для тенанта) — чтобы было видно, чьи это цифры.
+  useEffect(() => {
+    if (isPlatformWide) { setScopeName(''); return; }
+    md.organizations()
+      .then(l => setScopeName(l.length === 1 ? String(l[0].name ?? '') : l.length > 1 ? `${l.length} ${t('dash.orgscount')}` : ''))
+      .catch(() => setScopeName(''));
+  }, [isPlatformWide]);
 
   const stats = useMemo(() => {
     const total = items.length;
@@ -78,12 +110,13 @@ export default function DashboardPage() {
   // Состояние систем — реальная проверка здоровья бэкенд-служб (actuator/health), не заглушка.
   const [health, setHealth] = useState<Record<string, Svc>>({ wb: 'checking', md: 'checking' });
   useEffect(() => {
+    if (!isPlatformOperator) return; // карточка скрыта — не дёргаем actuator без нужды
     const set = (k: string, s: Svc) => setHealth(h => ({ ...h, [k]: s }));
     const check = (k: string, url: string) => fetch(url)
       .then(r => set(k, r.ok ? 'up' : 'down')).catch(() => set(k, 'down'));
     check('wb', '/wb-api/actuator/health');
     check('md', '/md-api/actuator/health');
-  }, []);
+  }, [isPlatformOperator]);
   const services: { key: string; status: Svc }[] = [
     { key: 'sys.svc.app', status: 'up' },
     { key: 'sys.svc.waybill', status: health.wb },
@@ -94,9 +127,14 @@ export default function DashboardPage() {
   return (
     <>
       <div className="toolbar">
-        <div><h1>{t('dash.h')}</h1><div className="page-lead" style={{ margin: 0 }}>{t('dash.lead')}</div></div>
+        <div>
+          <h1>{t('dash.h')}</h1>
+          <div className="page-lead" style={{ margin: 0 }}>
+            {isPlatformWide ? t('dash.lead.all') : t('dash.lead.own')}
+            {scopeName && <> · <b style={{ color: 'var(--ink)' }}>{scopeName}</b></>}
+          </div>
+        </div>
         <span className="spacer" />
-        <Link className="btn" href="/waybills/new"><Icon d={P.doc} cls="" style={{ width: 17, height: 17 }} /> {t('dash.new')}</Link>
       </div>
 
       {error && <div className="error">{error}</div>}
@@ -124,8 +162,8 @@ export default function DashboardPage() {
         ))}
       </div>
 
-      {/* Динамика · Типы · Состояние */}
-      <div className="grid-3">
+      {/* Динамика · Типы · (Состояние служб — только оператору платформы) */}
+      <div className={isPlatformOperator ? 'grid-3' : 'grid-2'}>
         <div className="card">
           <div className="card-h"><h2>{t('dash.dynamics')}</h2><span className="badge blue" style={{ marginLeft: 'auto' }}>7</span></div>
           <div style={{ height: 240 }}>
@@ -135,8 +173,8 @@ export default function DashboardPage() {
                 <XAxis dataKey="d" tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
                 <YAxis tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} allowDecimals={false} />
                 <Tooltip contentStyle={{ borderRadius: 10, border: '1px solid #e4e9f0', fontSize: 12 }} />
-                <Line type="monotone" dataKey="Создано" stroke="#2563eb" strokeWidth={2.5} dot={{ r: 3 }} />
-                <Line type="monotone" dataKey="Завершено" stroke="#7c5cdb" strokeWidth={2.5} dot={{ r: 3 }} />
+                <Line type="monotone" dataKey="Создано" name={t('dash.created')} stroke="#2563eb" strokeWidth={2.5} dot={{ r: 3 }} />
+                <Line type="monotone" dataKey="Завершено" name={t('dash.completed')} stroke="#7c5cdb" strokeWidth={2.5} dot={{ r: 3 }} />
               </LineChart>
             </ResponsiveContainer>
           </div>
@@ -174,6 +212,7 @@ export default function DashboardPage() {
           )}
         </div>
 
+        {isPlatformOperator && (
         <div className="card">
           <h2>{t('dash.sysstate')}</h2>
           <div className="sys-list">
@@ -189,6 +228,24 @@ export default function DashboardPage() {
           {anyDown
             ? <div className="sys-ok" style={{ color: 'var(--red)' }}><Icon d={P.alert} cls="" style={{ width: 16, height: 16 }} /> {t('dash.sysdown')}</div>
             : <div className="sys-ok"><Icon d={P.check} cls="" style={{ width: 16, height: 16 }} /> {t('dash.sysok')}</div>}
+        </div>
+        )}
+      </div>
+
+      {/* Пассажирооборот автобус/троллейбус — реальный KPI (перенос легаси Ebus\PassengerVolumeController) */}
+      <div className="card">
+        <div className="card-h"><h2>{t('dash.paxturnover')}</h2><span className="badge blue" style={{ marginLeft: 'auto' }}>{volumeTrend.length} {t('dash.months')}</span></div>
+        <div style={{ height: 220 }}>
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={volumeTrend} margin={{ top: 8, right: 8, left: -18, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#eef2f7" vertical={false} />
+              <XAxis dataKey="name" tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
+              <YAxis tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
+              <Tooltip contentStyle={{ borderRadius: 10, border: '1px solid #e4e9f0', fontSize: 12 }}
+                formatter={(v) => [`${Number(v).toLocaleString('ru-RU')} ${t('dash.mlnpaxkm')}`, t('dash.turnover')]} />
+              <Line type="monotone" dataKey="value" name={t('dash.turnover')} stroke="#7c5cdb" strokeWidth={2.5} dot={{ r: 3 }} />
+            </LineChart>
+          </ResponsiveContainer>
         </div>
       </div>
 
@@ -213,7 +270,9 @@ export default function DashboardPage() {
               })}
               {recent.length === 0 && !loading && (
                 <tr><td colSpan={5} style={{ textAlign: 'center', color: 'var(--muted)', padding: 26 }}>
-                  {t('dash.recent.emptypre')}<Link href="/waybills/new" style={{ color: 'var(--blue-600)' }}>{t('dash.recent.emptylink')}</Link>
+                  {canCreate
+                    ? <>{t('dash.recent.emptypre')}<Link href="/waybills/new" style={{ color: 'var(--blue-600)' }}>{t('dash.recent.emptylink')}</Link></>
+                    : t('dash.recent.empty')}
                 </td></tr>
               )}
             </tbody>

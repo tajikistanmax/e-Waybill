@@ -1,0 +1,15 @@
+{
+  "name": "@epd/shared",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Общий код фронтенда e-Waybill: lib (api/auth/i18n/roles/…), общий UI, стили.",
+  "peerDependencies": {
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22",
+    "@types/react": "^19",
+    "@types/react-dom": "^19"
+  }
+}

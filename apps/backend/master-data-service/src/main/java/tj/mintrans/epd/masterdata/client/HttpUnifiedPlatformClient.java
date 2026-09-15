@@ -11,11 +11,17 @@ import java.util.Optional;
 /**
  * Продакшн-клиент единой платформы транспорта Минтранса (UNIFIED_PLATFORM_MODE=http).
  * Ожидаемый контракт API единой платформы:
- *   GET {base-url}/api/v1/subjects/{inn}            → Subject (данные налоговой)
- *   GET {base-url}/api/v1/vehicles/{regNumber}      → VehicleInfo (база ГАИ)
- *   GET {base-url}/api/v1/driver-licenses/{inn}     → DriverLicense (ГАИ + Минздрав)
+ *   GET {base-url}/api/v1/subjects/{inn}            → Subject (данные налоговой + лицензия перевозчика)
+ *   GET {base-url}/api/v1/vehicles/{regNumber}      → VehicleInfo (база ГАИ + страховка + допуск ADR)
+ *   GET {base-url}/api/v1/driver-licenses/{inn}     → DriverLicense (ГАИ + Минздрав + курс БДД + допуск ADR)
  * 404 → Optional.empty(). Авторизация — сервисный токен (TODO: client-credentials
  * при подключении к реальной единой платформе).
+ *
+ * <p>Поля записей {@link Subject}/{@link VehicleInfo}/{@link DriverLicense} — это полный
+ * список того, что нужно от единой платформы: команда е-Транспорт должна отдавать JSON
+ * с точно такими именами полей (Jackson маппит по имени). Расширять контракт — только
+ * добавлением новых полей в записи {@link UnifiedPlatformClient}, не переименованием
+ * существующих (иначе ломается уже согласованный формат).</p>
  */
 @Component
 @ConditionalOnProperty(name = "epd.unified-platform.mode", havingValue = "http")

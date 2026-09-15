@@ -30,9 +30,11 @@ type Props = {
   rows: LivePosition[];
   t: (k: string) => string;
   tStatus: (s: string) => string;
+  /** Высота карты (px). По умолчанию 560 — полноэкранный монитор; в карточках задают меньше. */
+  height?: number;
 };
 
-export default function LeafletMap({ rows, t, tStatus }: Props) {
+export default function LeafletMap({ rows, t, tStatus, height = 560 }: Props) {
   const boxRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
   const layerRef = useRef<L.LayerGroup | null>(null);
@@ -99,5 +101,5 @@ export default function LeafletMap({ rows, t, tStatus }: Props) {
     }
   }, [rows, t, tStatus]);
 
-  return <div ref={boxRef} style={{ height: 560, width: '100%', borderRadius: 14, overflow: 'hidden', border: '1px solid var(--line)', zIndex: 0 }} />;
+  return <div ref={boxRef} style={{ height, width: '100%', borderRadius: 14, overflow: 'hidden', border: '1px solid var(--line)', zIndex: 0 }} />;
 }

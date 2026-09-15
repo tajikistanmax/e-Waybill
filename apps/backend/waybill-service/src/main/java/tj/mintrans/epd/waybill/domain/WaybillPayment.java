@@ -20,6 +20,8 @@ public class WaybillPayment {
 
     public static final String STATUS_PENDING = "PENDING";
     public static final String STATUS_CONFIRMED = "CONFIRMED";
+    /** Оплата возвращена (§16 QA): CONFIRMED → REFUNDED, бухгалтером (роль ACCOUNTANT). */
+    public static final String STATUS_REFUNDED = "REFUNDED";
 
     @Id
     private UUID id;
@@ -51,6 +53,24 @@ public class WaybillPayment {
     @Column(name = "confirmed_by")
     private String confirmedBy;
 
+    // -------- возврат оплаты (CONFIRMED → REFUNDED), симметрично полям подтверждения --------
+
+    @Column(name = "refund_reason")
+    private String refundReason;
+
+    @Column(name = "refund_amount")
+    private BigDecimal refundAmount;
+
+    @Column(name = "refunded_by")
+    private String refundedBy;
+
+    @Column(name = "refunded_at")
+    private OffsetDateTime refundedAt;
+
+    /** № возвратной транзакции внешнего шлюза (заполняется, когда подключат интеграцию). */
+    @Column(name = "refund_external_ref")
+    private String refundExternalRef;
+
     @PrePersist
     void prePersist() {
         if (id == null) id = UUID.randomUUID();
@@ -75,4 +95,14 @@ public class WaybillPayment {
     public void setConfirmedAt(OffsetDateTime confirmedAt) { this.confirmedAt = confirmedAt; }
     public String getConfirmedBy() { return confirmedBy; }
     public void setConfirmedBy(String confirmedBy) { this.confirmedBy = confirmedBy; }
+    public String getRefundReason() { return refundReason; }
+    public void setRefundReason(String refundReason) { this.refundReason = refundReason; }
+    public BigDecimal getRefundAmount() { return refundAmount; }
+    public void setRefundAmount(BigDecimal refundAmount) { this.refundAmount = refundAmount; }
+    public String getRefundedBy() { return refundedBy; }
+    public void setRefundedBy(String refundedBy) { this.refundedBy = refundedBy; }
+    public OffsetDateTime getRefundedAt() { return refundedAt; }
+    public void setRefundedAt(OffsetDateTime refundedAt) { this.refundedAt = refundedAt; }
+    public String getRefundExternalRef() { return refundExternalRef; }
+    public void setRefundExternalRef(String refundExternalRef) { this.refundExternalRef = refundExternalRef; }
 }

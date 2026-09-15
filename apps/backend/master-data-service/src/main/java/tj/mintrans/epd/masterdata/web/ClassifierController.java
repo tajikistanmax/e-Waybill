@@ -14,8 +14,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import tj.mintrans.epd.masterdata.domain.Classifier;
-import tj.mintrans.epd.masterdata.repository.ClassifierRepository;
 import tj.mintrans.epd.masterdata.service.AuditService;
+import tj.mintrans.epd.masterdata.service.ClassifierService;
 import tj.mintrans.epd.masterdata.web.error.NotFoundException;
 
 import java.util.List;
@@ -29,11 +29,11 @@ import java.util.UUID;
 @RequestMapping("/api/v1/classifiers")
 public class ClassifierController {
 
-    private final ClassifierRepository repository;
+    private final ClassifierService service;
     private final AuditService audit;
 
-    public ClassifierController(ClassifierRepository repository, AuditService audit) {
-        this.repository = repository;
+    public ClassifierController(ClassifierService service, AuditService audit) {
+        this.service = service;
         this.audit = audit;
     }
 
@@ -51,8 +51,8 @@ public class ClassifierController {
     public List<Classifier> list(@RequestParam String category,
                                  @RequestParam(defaultValue = "false") boolean all) {
         return all
-                ? repository.findByCategoryOrderBySortOrderAscCodeAsc(category)
-                : repository.findByCategoryAndActiveTrueOrderBySortOrderAscCodeAsc(category);
+                ? service.listAllByCategory(category)
+                : service.listActiveByCategory(category);
     }
 
     /**
@@ -79,7 +79,7 @@ public class ClassifierController {
     @PostMapping
     @PreAuthorize("hasRole('SYSTEM_ADMIN')")
     public ResponseEntity<Classifier> upsert(@Valid @RequestBody ClassifierRequest req) {
-        var existing = repository.findByCategoryAndCode(req.category(), req.code());
+        var existing = service.findByCategoryAndCode(req.category(), req.code());
         String oldValue = existing.map(Classifier::getNameRu).orElse(null); // до мутации
         var c = existing.orElseGet(Classifier::new);
         c.setCategory(req.category());
@@ -88,7 +88,7 @@ public class ClassifierController {
         c.setNameTj(req.nameTj());
         if (req.sortOrder() != null) c.setSortOrder(req.sortOrder());
         c.setActive(req.active() == null || req.active());
-        var saved = repository.save(c);
+        var saved = service.save(c); // @CacheEvict сбрасывает кэш классификаторов
         audit.record(existing.isPresent() ? AuditService.UPDATE : AuditService.CREATE,
                 "CLASSIFIER", req.category() + ":" + req.code(), oldValue, saved.getNameRu());
         return ResponseEntity.status(existing.isPresent() ? HttpStatus.OK : HttpStatus.CREATED).body(saved);
@@ -97,8 +97,8 @@ public class ClassifierController {
     @DeleteMapping("/{id}")
     @PreAuthorize("hasRole('SYSTEM_ADMIN')")
     public ResponseEntity<Void> delete(@PathVariable UUID id) {
-        var c = repository.findById(id).orElseThrow(() -> new NotFoundException("Элемент классификатора не найден"));
-        repository.delete(c);
+        var c = service.findById(id).orElseThrow(() -> new NotFoundException("Элемент классификатора не найден"));
+        service.delete(c); // @CacheEvict сбрасывает кэш классификаторов
         audit.record(AuditService.DELETE, "CLASSIFIER", c.getCategory() + ":" + c.getCode(), c.getNameRu(), null);
         return ResponseEntity.noContent().build();
     }

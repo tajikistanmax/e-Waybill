@@ -22,13 +22,19 @@ spring:
     open-in-view: false
   flyway:
     enabled: true
-  security:
-    oauth2:
-      resourceserver:
-        jwt:
-          issuer-uri: ${KEYCLOAK_ISSUER_URI:http://localhost:8180/realms/epd}
-
+    # БД развёрнутого стенда может опережать этот checkout на служебные миграции,
+    # отсутствующие в коде (V10 waybill_request_one_pending). Их отсутствие в
+    # classpath — future/missing — не должно останавливать старт.
+    ignore-migration-patterns: "*:missing,*:future"
+  servlet:
+    multipart:
+      # Вложения к ПЛ (CMR / накладные / фото груза) — скан-копии до ~12 МБ.
+      max-file-size: 15MB
+      max-request-size: 16MB
 epd:
+  # Публичный адрес веб-кабинета — в него ведёт ссылка QR-кода печатного бланка ПЛ
+  # ({base}/verify/{jws}, страница офлайн-проверки инспектором).
+  public-base-url: ${PUBLIC_BASE_URL:http://localhost:3000}
   master-data:
     base-url: ${MASTER_DATA_URL:http://localhost:8081}
   service-account:
@@ -49,9 +55,14 @@ epd:
     # Kafka-topic статусных событий ПЛ — читают единый кабинет, аналитика, антифрод
     topic: ${EVENTS_TOPIC:epd.waybill.status}
   security:
-    # Legacy-агрегаторы (ЧУРА/НЕРУ) в dev ходят без токена. В проде — false:
-    # требуется client-credentials токен клиента epd-aggregator (роль API_INTEGRATOR).
-    aggregator-open: ${AGGREGATOR_OPEN:true}
+    # Проверка JWT (split-horizon Keycloak): ключи тянутся по ВНУТРЕННЕМУ адресу
+    # (docker-сеть), claim iss сверяется с ВНЕШНИМ issuer'ом (realm frontendUrl).
+    jwk-set-uri: ${KEYCLOAK_JWK_SET_URI:http://keycloak:8180/realms/epd/protocol/openid-connect/certs}
+    expected-issuer: ${KEYCLOAK_EXPECTED_ISSUER:http://localhost:8180/realms/epd}
+    # Legacy-агрегаторы (ЧУРА/НЕРУ): по умолчанию ЗАКРЫТ (fail-closed) — нужен
+    # client-credentials токен клиента epd-aggregator (роль API_INTEGRATOR). Для локального
+    # запуска без Keycloak/compose явно задайте AGGREGATOR_OPEN=true.
+    aggregator-open: ${AGGREGATOR_OPEN:false}
     # OpenAPI/Swagger UI: dev открыт, прод (DOCS_OPEN=false) — под аутентификацией.
     docs-open: ${DOCS_OPEN:true}
     # Проверка audience JWT: пусто (dev) — только issuer+exp; задан (напр. epd-waybill) —
@@ -70,6 +81,11 @@ epd:
     # общий для всех реплик, иначе рестарт/масштабирование ломают проверку. При
     # epd.signing.mode!=stub пустой ключ запрещён (fail-fast на старте).
     signing-key: ${QR_SIGNING_KEY:}
+  meddata:
+    # Ключ шифрования медицинских показателей (AES-256-GCM, ИБ-13.1.3) — 256 бит, Base64.
+    # Обязателен всегда (нет dev-заглушки — см. MedicalDataCrypto): отсутствие шифрования
+    # особой категории ПДн не приемлемо ни в какой среде, включая локальный стенд.
+    encryption-key: ${MEDDATA_ENCRYPTION_KEY:}
 
 springdoc:
   swagger-ui:

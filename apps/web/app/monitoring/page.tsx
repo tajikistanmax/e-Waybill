@@ -2,11 +2,14 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import dynamic from 'next/dynamic';
-import { wb, type LivePosition } from '@/lib/api';
+import { md, wb, TYPE_LABELS, type LivePosition } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 import { Icon, P } from '../icons';
 
 const REFRESH_MS = 10000;
+// «Онлайн» — свежий GPS-пинг не старше этого порога (согласовано с зелёным/жёлтым сигналом);
+// иначе (нет сигнала или старее) — «офлайн».
+const ONLINE_MAX_SEC = 900;
 const SIG_HEX: Record<string, string> = { green: '#16a34a', amber: '#ea9615', red: '#dc2626', gray: '#94a3b8' };
 
 // Настоящая карта (Leaflet) — только на клиенте (обращается к window), поэтому ssr:false.
@@ -28,7 +31,22 @@ export default function MonitoringPage() {
   const [error, setError] = useState('');
   const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
   const [q, setQ] = useState('');
+  const [orgFilter, setOrgFilter] = useState('');
+  const [typeFilter, setTypeFilter] = useState('');
+  const [onlineFilter, setOnlineFilter] = useState<'' | 'online' | 'offline'>('');
+  const [orgs, setOrgs] = useState<{ rma: string; name: string }[]>([]);
   const [view, setView] = useState<'list' | 'map'>('map');
+
+  // Организации для фильтра — весь справочник (а не только ТС на линии), чтобы можно было выбрать
+  // любую фирму и увидеть её ТС на карте, даже если сейчас онлайн их немного. Тенант видит только
+  // свою организацию → тогда фильтр не нужен (условие рендера ниже: показываем при orgs.length > 1).
+  const orgOptions = Array.from(
+    new Map(orgs.map(o => [o.rma, o.name])).entries(),
+  ).sort((a, b) => a[1].localeCompare(b[1], 'ru'));
+
+  // Типы транспорта — полный список (грузовой/легковой/автобус/…), а не только присутствующие сейчас
+  // на линии: пользователь должен мочь выбрать тип, даже если таких ТС пока нет онлайн.
+  const typeOptions = Object.keys(TYPE_LABELS);
 
   const load = useCallback(async () => {
     try { setRows(await wb.gpsLive()); setUpdatedAt(new Date()); setError(''); }
@@ -42,6 +60,13 @@ export default function MonitoringPage() {
     return () => window.clearInterval(h);
   }, [load]);
 
+  // Справочник организаций для фильтра по компании (один раз).
+  useEffect(() => {
+    md.organizations()
+      .then(list => setOrgs(list.map(o => ({ rma: String(o.rma), name: String(o.name ?? o.rma) }))))
+      .catch(() => { /* справочник недоступен — фильтр по компании просто не покажем */ });
+  }, []);
+
   const ago = (sec: number | null) => {
     if (sec == null) return t('mon.nosignal');
     if (sec < 60) return `${sec} ${t('mon.sec')}`;
@@ -51,18 +76,25 @@ export default function MonitoringPage() {
   const sigColor = (sec: number | null) => sec == null ? 'gray' : sec < 120 ? 'green' : sec < 900 ? 'amber' : 'red';
 
   const shown = rows.filter(r => {
+    if (orgFilter && r.organizationRma !== orgFilter) return false;
+    if (typeFilter && r.waybillType !== typeFilter) return false;
+    if (onlineFilter) {
+      const sec = agoSec(r.recordedAt);
+      const online = sec != null && sec < ONLINE_MAX_SEC;
+      if (onlineFilter === 'online' ? !online : online) return false;
+    }
     const s = q.trim().toLowerCase();
     if (!s) return true;
-    return [r.vehicleRegNumber, r.number, r.driver].map(x => String(x ?? '').toLowerCase()).join(' ').includes(s);
+    return [r.vehicleRegNumber, r.number, r.driver, r.organizationName].map(x => String(x ?? '').toLowerCase()).join(' ').includes(s);
   });
-  const withGps = rows.filter(r => r.lat != null).length;
-  const moving = rows.filter(r => (r.speedKmh ?? 0) > 3).length;
+  const withGps = shown.filter(r => r.lat != null).length;
+  const moving = shown.filter(r => (r.speedKmh ?? 0) > 3).length;
 
   const kpis = [
-    { label: t('mon.kpi.online'), value: rows.length, icon: P.car, cls: 'ic-blue' },
+    { label: t('mon.kpi.online'), value: shown.length, icon: P.car, cls: 'ic-blue' },
     { label: t('mon.kpi.gps'), value: withGps, icon: P.route, cls: 'ic-green' },
     { label: t('mon.moving'), value: moving, icon: P.route, cls: 'ic-cyan' },
-    { label: t('mon.kpi.nosignal'), value: rows.length - withGps, icon: P.alert, cls: 'ic-amber' },
+    { label: t('mon.kpi.nosignal'), value: shown.length - withGps, icon: P.alert, cls: 'ic-amber' },
   ];
 
   return (
@@ -97,7 +129,22 @@ export default function MonitoringPage() {
             <button className={`btn ${view === 'map' ? '' : 'secondary'}`} style={{ borderTopRightRadius: 0, borderBottomRightRadius: 0 }} onClick={() => setView('map')}>{t('mon.view.map')}</button>
             <button className={`btn ${view === 'list' ? '' : 'secondary'}`} style={{ borderTopLeftRadius: 0, borderBottomLeftRadius: 0 }} onClick={() => setView('list')}>{t('mon.view.list')}</button>
           </div>
-          <input value={q} onChange={e => setQ(e.target.value)} placeholder={t('mon.search')} style={{ maxWidth: 280 }} />
+          {orgOptions.length > 1 && (
+            <select value={orgFilter} onChange={e => setOrgFilter(e.target.value)} style={{ maxWidth: 220 }}>
+              <option value="">{t('reg.allorgs')}</option>
+              {orgOptions.map(([rma, name]) => <option key={rma} value={rma}>{name}</option>)}
+            </select>
+          )}
+          <select value={typeFilter} onChange={e => setTypeFilter(e.target.value)} style={{ maxWidth: 220 }}>
+            <option value="">{t('flt.alltransporttypes')}</option>
+            {typeOptions.map(type => <option key={type} value={type}>{TYPE_LABELS[type] ?? type}</option>)}
+          </select>
+          <select value={onlineFilter} onChange={e => setOnlineFilter(e.target.value as '' | 'online' | 'offline')} style={{ maxWidth: 150 }}>
+            <option value="">{t('flt.allvehstatus')}</option>
+            <option value="online">{t('flt.online')}</option>
+            <option value="offline">{t('flt.offline')}</option>
+          </select>
+          <input value={q} onChange={e => setQ(e.target.value)} placeholder={t('mon.search')} style={{ maxWidth: 240 }} />
         </div>
 
         {view === 'map' ? (

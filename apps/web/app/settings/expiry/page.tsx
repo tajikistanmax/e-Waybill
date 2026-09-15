@@ -4,24 +4,55 @@ import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { md, type ExpiryItem } from '@/lib/api';
 import { useT } from '@/lib/i18n';
+import { useAuth } from '@/lib/auth';
 import { downloadCsv } from '@/lib/csv';
 import { Icon, P } from '../../icons';
 
 const WINDOWS = [30, 90, 365];
+// Платформенные роли не привязаны к организации — им нужно выбрать её вручную,
+// иначе бэкенд монитора вернёт пусто (он работает в рамках одной организации).
+const PLATFORM_ROLES = ['SYSTEM_ADMIN', 'MINTRANS_ANALYST', 'API_INTEGRATOR'];
 
 export default function ExpirySettingsPage() {
   const { t } = useT();
+  const { roles } = useAuth();
+  const isPlatform = PLATFORM_ROLES.some(r => roles.includes(r));
   const [days, setDays] = useState(90);
+  const [org, setOrg] = useState('');
+  const [orgs, setOrgs] = useState<Record<string, unknown>[]>([]);
   const [rows, setRows] = useState<ExpiryItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
+  // Список организаций для выбора (только платформенным ролям; тенант видит свою по токену).
+  // Сразу подставляем организацию — последний выбор (localStorage) или первую из списка,
+  // чтобы монитор показывал данные, а не пустой экран с просьбой выбрать (UX-улучшение).
+  useEffect(() => {
+    if (!isPlatform) return;
+    md.organizations().then(list => {
+      setOrgs(list);
+      setOrg(prev => {
+        if (prev) return prev;
+        const codes = list.map(o => String(o.rma));
+        const saved = typeof window !== 'undefined' ? window.localStorage.getItem('expiryOrg') : null;
+        return (saved && codes.includes(saved)) ? saved : (codes[0] ?? '');
+      });
+    }).catch(() => setOrgs([]));
+  }, [isPlatform]);
+
+  // Запоминаем выбор, чтобы при следующем заходе подставился он же.
+  useEffect(() => {
+    if (isPlatform && org && typeof window !== 'undefined') window.localStorage.setItem('expiryOrg', org);
+  }, [isPlatform, org]);
+
   const reload = useCallback(async () => {
+    // Платформенная роль без выбранной организации — запрос бессмыслен (вернёт пусто), не дёргаем.
+    if (isPlatform && !org) { setRows([]); setLoading(false); return; }
     setLoading(true);
-    try { setRows(await md.documentExpiry(days)); setError(''); }
+    try { setRows(await md.documentExpiry(days, org || undefined)); setError(''); }
     catch (e) { setError(e instanceof Error ? e.message : String(e)); }
     finally { setLoading(false); }
-  }, [days]);
+  }, [days, org, isPlatform]);
 
   useEffect(() => { reload(); }, [reload]);
 
@@ -60,7 +91,13 @@ export default function ExpirySettingsPage() {
       <div className="hint" style={{ marginBottom: 18 }}>{t('exp.note')}</div>
       {error && <div className="error" style={{ marginBottom: 14 }}>{error}</div>}
 
-      <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 16 }}>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 16, flexWrap: 'wrap' }}>
+        {isPlatform && (
+          <select value={org} onChange={e => setOrg(e.target.value)} style={{ minWidth: 240 }}>
+            <option value="">{t('exp.selectorg')}</option>
+            {orgs.map(o => <option key={String(o.rma)} value={String(o.rma)}>{String(o.name ?? o.rma)}</option>)}
+          </select>
+        )}
         <span style={{ fontSize: 12.5, color: 'var(--muted)' }}>{t('exp.window')}:</span>
         {WINDOWS.map(w => (
           <button key={w} onClick={() => setDays(w)}
@@ -84,7 +121,11 @@ export default function ExpirySettingsPage() {
             </tr>
           </thead>
           <tbody>
-            {rows.length === 0 && !loading && <tr><td colSpan={5} style={{ color: 'var(--muted)' }}>{t('exp.empty')}</td></tr>}
+            {rows.length === 0 && !loading && (
+              <tr><td colSpan={5} style={{ color: 'var(--muted)' }}>
+                {isPlatform && !org ? t('exp.selectorg.hint') : t('exp.empty')}
+              </td></tr>
+            )}
             {rows.map((r, i) => {
               const overdue = r.daysLeft < 0;
               const soon = r.daysLeft >= 0 && r.daysLeft <= 14;

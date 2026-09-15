@@ -17,6 +17,7 @@ import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.jwt.JwtValidators;
 import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
+import org.springframework.security.oauth2.server.resource.web.authentication.BearerTokenAuthenticationFilter;
 import org.springframework.security.web.SecurityFilterChain;
 
 import java.util.ArrayList;
@@ -35,9 +36,10 @@ public class SecurityConfig {
 
     @Bean
     public SecurityFilterChain securityFilterChain(
-            HttpSecurity http,
+            HttpSecurity http, RateLimitFilter rateLimitFilter,
             @org.springframework.beans.factory.annotation.Value("${epd.security.docs-open:true}") boolean docsOpen) throws Exception {
         http
+                .addFilterBefore(rateLimitFilter, BearerTokenAuthenticationFilter.class)
                 .csrf(csrf -> csrf.disable()) // stateless API — CSRF не нужен
                 .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> {
@@ -78,18 +80,23 @@ public class SecurityConfig {
     }
 
     /**
-     * JWT-декодер: подпись + issuer (Keycloak realm epd) всегда; audience — опционально.
-     * epd.security.required-audience задан (прод) → токен обязан нести этот aud (защита от
-     * приёма токена, выпущенного для другого клиента/цели того же realm). Пусто (dev) →
-     * поведение как у автоконфигурации (issuer+exp), регресс не меняется.
+     * JWT-декодер: подпись по JWK Set + проверка claim iss + exp; audience — опционально.
+     *
+     * <p>Split-horizon Keycloak: браузер обращается к Keycloak по внешнему адресу
+     * ({@code http://localhost:8180}), а сервисы внутри docker-сети — по {@code http://keycloak:8180}.
+     * Ключи (JWK Set) тянутся по ВНУТРЕННЕМУ адресу (всегда доступен), а claim {@code iss}
+     * сверяется с ВНЕШНИМ issuer'ом — именно он попадает в токен (realm frontendUrl).</p>
+     *
+     * <p>{@code epd.security.required-audience} задан (прод) → токен обязан нести этот aud.</p>
      */
     @Bean
     public JwtDecoder jwtDecoder(
-            @org.springframework.beans.factory.annotation.Value("${spring.security.oauth2.resourceserver.jwt.issuer-uri}") String issuer,
+            @org.springframework.beans.factory.annotation.Value("${epd.security.jwk-set-uri:http://keycloak:8180/realms/epd/protocol/openid-connect/certs}") String jwkSetUri,
+            @org.springframework.beans.factory.annotation.Value("${epd.security.expected-issuer:http://localhost:8180/realms/epd}") String expectedIssuer,
             @org.springframework.beans.factory.annotation.Value("${epd.security.required-audience:}") String requiredAudience) {
-        NimbusJwtDecoder decoder = NimbusJwtDecoder.withIssuerLocation(issuer).build();
+        NimbusJwtDecoder decoder = NimbusJwtDecoder.withJwkSetUri(jwkSetUri).build();
         var validators = new ArrayList<OAuth2TokenValidator<Jwt>>();
-        validators.add(JwtValidators.createDefaultWithIssuer(issuer));
+        validators.add(JwtValidators.createDefaultWithIssuer(expectedIssuer));
         if (requiredAudience != null && !requiredAudience.isBlank()) {
             validators.add(new JwtClaimValidator<List<String>>("aud",
                     aud -> aud != null && aud.contains(requiredAudience)));

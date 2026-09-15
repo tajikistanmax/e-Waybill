@@ -3,6 +3,7 @@
 import { use, useEffect, useState } from 'react';
 import { wb, md, Waybill, Title, type FieldDefinition } from '@/lib/api';
 import { useT } from '@/lib/i18n';
+import { verifyLink } from '@/lib/verify';
 import QRCode from 'qrcode';
 
 /**
@@ -28,6 +29,7 @@ export default function PrintWaybill({ params }: { params: Promise<{ id: string 
   const [w, setW] = useState<Waybill | null>(null);
   const [titles, setTitles] = useState<Title[]>([]);
   const [qrUrl, setQrUrl] = useState('');
+  const [routeTypes, setRouteTypes] = useState<RouteType[]>([]);
   const [error, setError] = useState('');
   const [opt, setOpt] = useState({ showQr: true, showStamp: true, paperSize: 'A4' });
   const [landscape, setLandscape] = useState(false);
@@ -41,6 +43,17 @@ export default function PrintWaybill({ params }: { params: Promise<{ id: string 
     setTimeout(() => { window.print(); setTimeout(() => setCopy(false), 400); }, 60);
   }
 
+  async function downloadPdf() {
+    try {
+      const blob = await wb.printPdf(id);
+      const url = URL.createObjectURL(blob);
+      window.open(url, '_blank');
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  }
+
   useEffect(() => {
     (async () => {
       const data = await wb.get(id);
@@ -49,7 +62,7 @@ export default function PrintWaybill({ params }: { params: Promise<{ id: string 
       md.fieldDefinitions(data.waybillType, true).then(setFieldDefs).catch(() => setFieldDefs([]));
       if (data.number) {
         const { jws } = await wb.qr(id);
-        setQrUrl(await QRCode.toDataURL(`${window.location.origin}/verify/${jws}`, { width: 150, margin: 0 }));
+        setQrUrl(await QRCode.toDataURL(verifyLink(jws), { width: 150, margin: 0 }));
       }
     })().catch(e => setError(e.message));
   }, [id]);
@@ -58,7 +71,10 @@ export default function PrintWaybill({ params }: { params: Promise<{ id: string 
     md.settings('print')
       .then(rows => {
         const v = (k: string) => rows.find(r => r.settingKey === k)?.settingValue;
-        setOpt({ showQr: v('show_qr') !== 'false', showStamp: v('show_stamp') !== 'false', paperSize: v('paper_size') ?? 'A4' });
+        setOpt({
+          showQr: v('show_qr') !== 'false', showStamp: v('show_stamp') !== 'false', paperSize: v('paper_size') ?? 'A4',
+          showWatermark: v('show_watermark') === 'true', watermarkText: v('watermark_text') ?? '',
+        });
       })
       .catch(() => { /* нет настроек — остаётся полный бланк A4 */ });
   }, []);
@@ -94,7 +110,13 @@ export default function PrintWaybill({ params }: { params: Promise<{ id: string 
   push('Страна визы', td.visaCountry);
   push('Виза действительна до', td.visaValidTo);
   push('Страна погрузки', td.loadCountry);
+  push('Город погрузки', td.loadCity);
   push('Страна разгрузки', td.unloadCountry);
+  push('Город разгрузки', td.unloadCity);
+  if (td.routeTypeCode != null && s(td.routeTypeCode) !== '') {
+    const rt = routeTypes.find(x => String(x.code) === String(td.routeTypeCode));
+    push('Тип маршрута', rt ? rt.nameRu : `код ${s(td.routeTypeCode)}`);
+  }
   push('Номер дозвола (E-PERMIT)', td.permitNumber);
   if (Array.isArray(td.transitCountries) && td.transitCountries.length) push('Транзит', (td.transitCountries as unknown[]).join(', '));
   if (Array.isArray(td.trailers) && td.trailers.length) {

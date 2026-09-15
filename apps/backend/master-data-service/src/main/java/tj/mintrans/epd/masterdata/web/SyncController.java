@@ -16,6 +16,7 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 import tj.mintrans.epd.masterdata.client.UnifiedPlatformClient;
 import tj.mintrans.epd.masterdata.config.CurrentUser;
+import tj.mintrans.epd.masterdata.config.TenantScope;
 import tj.mintrans.epd.masterdata.domain.Driver;
 import tj.mintrans.epd.masterdata.domain.Employee;
 import tj.mintrans.epd.masterdata.domain.Organization;
@@ -53,6 +54,7 @@ public class SyncController {
     private final VehicleRepository vehicles;
     private final EmployeeRepository employees;
     private final CurrentUser currentUser;
+    private final TenantScope tenantScope;
     private final AuditService audit;
 
     private static final java.util.Set<String> SUBJECT_TYPES = java.util.Set.of("PHYSICAL", "IP", "LEGAL");
@@ -63,6 +65,7 @@ public class SyncController {
                           VehicleRepository vehicles,
                           EmployeeRepository employees,
                           CurrentUser currentUser,
+                          TenantScope tenantScope,
                           AuditService audit) {
         this.unifiedPlatform = unifiedPlatform;
         this.organizations = organizations;
@@ -70,13 +73,17 @@ public class SyncController {
         this.vehicles = vehicles;
         this.employees = employees;
         this.currentUser = currentUser;
+        this.tenantScope = tenantScope;
         this.audit = audit;
     }
 
     // ------------------------------------------------------------ запросы
 
     public record SyncOrganizationRequest(
-            @NotBlank @Pattern(regexp = "\\d{9,10}", message = "ИНН должен содержать 9–10 цифр") String inn) {
+            @NotBlank @Pattern(regexp = "\\d{9,10}", message = "ИНН должен содержать 9–10 цифр") String inn,
+            // ИНН головной компании — если синхронизируется филиал. Учитывается только
+            // для платформенной роли (структуру «компания → филиал» ведёт e-Transport).
+            @Pattern(regexp = "\\d{9,10}", message = "ИНН головной компании: 9–10 цифр") String parentInn) {
     }
 
     public record SyncDriverRequest(
@@ -112,6 +119,13 @@ public class SyncController {
         String oldName = existing.map(Organization::getName).orElse(null); // до мутации (existing и org — один объект)
         var org = existing.orElseGet(Organization::new);
         org.setRma(subject.inn());
+        // Иерархия «компания → филиал» ведётся в e-Transport: parent принимаем только
+        // от платформенной роли и только если такая головная компания уже есть в модуле.
+        if (!currentUser.isTenantScoped() && req.parentInn() != null && !req.parentInn().isBlank()
+                && !req.parentInn().equals(subject.inn())
+                && organizations.findByRma(req.parentInn()).isPresent()) {
+            org.setParentRma(req.parentInn());
+        }
         org.setName(subject.name());
         org.setSubjectType(subject.subjectType());
         org.setRegionId(subject.regionId());
@@ -122,6 +136,7 @@ public class SyncController {
         org.setNameHead(subject.headName());
         org.setLicenseFrom(subject.licenseFrom());
         org.setLicenseTo(subject.licenseTo());
+        org.setCarrierLicenseNumber(subject.carrierLicenseNumber());
         org.setSource("UNIFIED");
         org.setSyncedAt(OffsetDateTime.now());
         var savedOrg = organizations.save(org);
@@ -133,13 +148,14 @@ public class SyncController {
     /** Водитель по ИНН — ФИО из налоговой, ВУ и медсправка из ГАИ/Минздрава.
      *  Добавлять водителя своей организации может и диспетчер (tenant-скоуп по своей орг). */
     @PostMapping("/driver")
-    @PreAuthorize("hasAnyRole('DISPATCHER','COMPANY_ADMIN','SYSTEM_ADMIN')")
+    @PreAuthorize("hasAnyRole('DISPATCHER','BRANCH_ADMIN','COMPANY_ADMIN','SYSTEM_ADMIN')")
     public ResponseEntity<Driver> syncDriver(@Valid @RequestBody SyncDriverRequest req) {
-        requireOwnOrganization(req.organizationRma());
+        requireWritable(req.organizationRma());
         var org = requireOrganization(req.organizationRma());
         var subject = unifiedPlatform.findSubject(req.inn())
                 .orElseThrow(() -> new NotFoundException("Субъект с ИНН %s не найден в единой платформе (налоговая)".formatted(req.inn())));
         assertPlatformSubject(subject, req.inn());
+        assertIndividual(subject, "Водитель");
         var license = unifiedPlatform.findDriverLicense(req.inn())
                 .orElseThrow(() -> new NotFoundException("Водительское удостоверение для ИНН %s не найдено в базе ГАИ".formatted(req.inn())));
         var existing = drivers.findByRma(subject.inn());
@@ -150,11 +166,18 @@ public class SyncController {
         driver.setOrganizationId(org.getId());
         driver.setFullName(subject.name());
         driver.setPhone(subject.phone());
+        // Дата рождения приходит из налоговой (Subject), стаж — из ГАИ (DriverLicense).
+        // Оба поля опциональны в контракте: если платформа их не отдала (null) — не перетираем.
+        if (subject.birthDate() != null) driver.setBirthDate(subject.birthDate());
+        if (license.experienceYears() != null) driver.setExperienceYears(license.experienceYears());
         driver.setLicenseNumber(license.licenseNumber());
         driver.setLicenseCategories(license.categories());
         driver.setLicenseValidTo(license.validTo());
         driver.setMedCertNumber(license.medCertNumber());
         driver.setMedCertValidTo(license.medCertValidTo());
+        driver.setSafetyCourseNumber(license.safetyCourseNumber());
+        driver.setSafetyCourseValidTo(license.safetyCourseValidTo());
+        driver.setAdrCertValidTo(license.adrCertValidTo());
         if (req.tabNumber() != null && !req.tabNumber().isBlank()) driver.setTabNumber(req.tabNumber());
         driver.setSource("UNIFIED");
         driver.setSyncedAt(OffsetDateTime.now());
@@ -166,13 +189,14 @@ public class SyncController {
 
     /** Сотрудник (врач/механик/диспетчер) по ИНН — ФИО из налоговой, роль локальная. */
     @PostMapping("/employee")
-    @PreAuthorize("hasAnyRole('COMPANY_ADMIN','SYSTEM_ADMIN')")
+    @PreAuthorize("hasAnyRole('BRANCH_ADMIN','COMPANY_ADMIN','SYSTEM_ADMIN')")
     public ResponseEntity<Employee> syncEmployee(@Valid @RequestBody SyncEmployeeRequest req) {
-        requireOwnOrganization(req.organizationRma());
+        requireWritable(req.organizationRma());
         var org = requireOrganization(req.organizationRma());
         var subject = unifiedPlatform.findSubject(req.inn())
                 .orElseThrow(() -> new NotFoundException("Субъект с ИНН %s не найден в единой платформе (налоговая)".formatted(req.inn())));
         assertPlatformSubject(subject, req.inn());
+        assertIndividual(subject, "Сотрудник");
         var existing = employees.findByRma(subject.inn());
         existing.ifPresent(e -> assertNotForeign(e.getOrganizationId(), org.getId(), "Сотрудник"));
         String oldName = existing.map(Employee::getName).orElse(null); // до мутации
@@ -196,9 +220,9 @@ public class SyncController {
     /** ТС по госномеру — марка, VIN, год, вместимость, техосмотр из базы ГАИ.
      *  Добавлять ТС своей организации может и диспетчер (tenant-скоуп по своей орг). */
     @PostMapping("/vehicle")
-    @PreAuthorize("hasAnyRole('DISPATCHER','COMPANY_ADMIN','SYSTEM_ADMIN')")
+    @PreAuthorize("hasAnyRole('DISPATCHER','BRANCH_ADMIN','COMPANY_ADMIN','SYSTEM_ADMIN')")
     public ResponseEntity<Vehicle> syncVehicle(@Valid @RequestBody SyncVehicleRequest req) {
-        requireOwnOrganization(req.organizationRma());
+        requireWritable(req.organizationRma());
         var org = requireOrganization(req.organizationRma());
         var info = unifiedPlatform.findVehicle(req.registrationNumber())
                 .orElseThrow(() -> new NotFoundException("ТС %s не найдено в базе ГАИ".formatted(req.registrationNumber())));
@@ -225,12 +249,21 @@ public class SyncController {
         vehicle.setOrganizationId(org.getId());
         vehicle.setTransportType(info.transportType());
         vehicle.setBrand(info.brand());
-        vehicle.setVincode(info.vincode());
+        // VIN канонизируем (trim + верхний регистр; пустой → NULL) и проверяем уникальность так же,
+        // как госномер: непустой VIN из базы ГАИ не должен коллидировать с другим ТС (индекс
+        // uq_vehicle_vincode, V49) — иначе 409 вместо 500. Пустой VIN проверку не проходит.
+        var canonicalVin = canonicalVin(info.vincode());
+        assertVinUnique(canonicalVin, vehicle);
+        vehicle.setVincode(canonicalVin);
         vehicle.setYearManufacture(info.yearManufacture());
         vehicle.setCapacity(info.capacity());
         vehicle.setCarrying(info.carrying());
         vehicle.setTechInspectionValidTo(info.techInspectionValidTo());
         vehicle.setControlCardValidTo(info.controlCardValidTo());
+        vehicle.setControlCardNumber(info.controlCardNumber());
+        vehicle.setIntlCertificateNumber(info.intlCertificateNumber());
+        vehicle.setInsuranceValidTo(info.insuranceValidTo());
+        vehicle.setAdrApprovalValidTo(info.adrApprovalValidTo());
         if (req.parkingNumber() != null && !req.parkingNumber().isBlank()) vehicle.setParkingNumber(req.parkingNumber());
         vehicle.setSource("UNIFIED");
         vehicle.setSyncedAt(OffsetDateTime.now());
@@ -248,6 +281,7 @@ public class SyncController {
      *  любой аутентифицированный мог бы перебирать номера дозволов и нагружать upstream. */
     @PreAuthorize("hasAnyRole('DISPATCHER','COMPANY_ADMIN','SYSTEM_ADMIN','API_INTEGRATOR')")
     @org.springframework.web.bind.annotation.GetMapping("/permit/{number}")
+    @PreAuthorize("hasAnyRole('DISPATCHER','BRANCH_ADMIN','COMPANY_ADMIN','SYSTEM_ADMIN')")
     public UnifiedPlatformClient.PermitInfo permit(@org.springframework.web.bind.annotation.PathVariable String number) {
         return unifiedPlatform.findPermit(number)
                 .orElseThrow(() -> new NotFoundException("Дозвол %s не найден в системе E-PERMIT".formatted(number)));
@@ -261,13 +295,13 @@ public class SyncController {
      * Для platform-admin (не tenant-scoped) разрешено.
      */
     private void assertNotForeign(java.util.UUID existingOrgId, java.util.UUID targetOrgId, String what) {
-        if (currentUser.isTenantScoped() && existingOrgId != null && !existingOrgId.equals(targetOrgId)) {
+        if (tenantScope.isBounded() && existingOrgId != null && !existingOrgId.equals(targetOrgId)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     what + " уже закреплён(а) за другой организацией");
         }
     }
 
-    /** Мультиарендность: администратор компании синхронизирует только свою организацию. */
+    /** Мультиарендность: администратор компании синхронизирует реквизиты только своей компании. */
     private void requireOwnOrganization(String organizationRma) {
         if (currentUser.isTenantScoped()) {
             var own = currentUser.organizationRma();
@@ -275,6 +309,14 @@ public class SyncController {
                 throw new org.springframework.security.access.AccessDeniedException(
                         "Доступ только к своей организации");
             }
+        }
+    }
+
+    /** Тенант подключает субъекты/ТС в свою организацию либо (администратор компании) в её филиал. */
+    private void requireWritable(String organizationRma) {
+        if (tenantScope.isBounded() && !tenantScope.canWrite(organizationRma)) {
+            throw new org.springframework.security.access.AccessDeniedException(
+                    "Доступ только к своим организациям");
         }
     }
 
@@ -296,6 +338,19 @@ public class SyncController {
         }
     }
 
+    /**
+     * Водитель/сотрудник — всегда физлицо (в т.ч. ИП), не юрлицо. Без этой проверки опечатка
+     * (ИНН организации вместо ИНН человека) молча создавала бы «водителя» с названием компании
+     * вместо ФИО — единая платформа не запрещает такой запрос, у неё нет понятия «роль ИНН».
+     */
+    private static void assertIndividual(UnifiedPlatformClient.Subject s, String roleName) {
+        if ("LEGAL".equals(s.subjectType())) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                    "%s: ИНН %s принадлежит юридическому лицу («%s»), а не физлицу — проверьте ИНН"
+                            .formatted(roleName, s.inn(), s.name()));
+        }
+    }
+
     private Organization requireOrganization(String rma) {
         return organizations.findByRma(rma)
                 .orElseThrow(() -> new NotFoundException(
@@ -304,5 +359,25 @@ public class SyncController {
 
     private static <T> ResponseEntity<T> saved(boolean existed, T body) {
         return ResponseEntity.status(existed ? HttpStatus.OK : HttpStatus.CREATED).body(body);
+    }
+
+    /** Каноническая форма VIN: обрезка пробелов + верхний регистр; пустой/только пробелы → NULL
+     *  (симметрично госномеру; пустой VIN не участвует в проверке уникальности). */
+    private static String canonicalVin(String vincode) {
+        if (vincode == null) return null;
+        var trimmed = vincode.trim();
+        return trimmed.isEmpty() ? null : trimmed.toUpperCase();
+    }
+
+    /** Уникальность VIN (как у госномера): непустой VIN, уже принадлежащий ДРУГОМУ ТС → 409,
+     *  а не 500 от нарушения частичного индекса uq_vehicle_vincode (V49). */
+    private void assertVinUnique(String canonicalVin, Vehicle current) {
+        if (canonicalVin == null) return;
+        boolean takenByOther = vehicles.findByCanonicalVincode(canonicalVin).stream()
+                .anyMatch(v -> !v.getId().equals(current.getId()));
+        if (takenByOther) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "ТС с таким VIN уже зарегистрирован в системе");
+        }
     }
 }

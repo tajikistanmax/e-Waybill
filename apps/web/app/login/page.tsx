@@ -8,13 +8,14 @@ import { useT } from '@/lib/i18n';
 import { md, type PlatformSetting } from '@/lib/api';
 import { useBrand, BrandLogo } from '@/lib/brand';
 import { useRoleAccess } from '@/lib/roleaccess';
+import { appProfile, PROFILE_META } from '@/lib/profile';
 
 // Английский — только для страницы входа (остальная платформа RU/TJ, фолбэк на RU).
 const EN: Record<string, string> = {
   'login.h': 'Electronic Waybill',
   'app.subtitle': 'Digital management of transport and waybills',
-  'login.user': 'Phone or TIN',
-  'login.user.ph': 'Enter phone or TIN',
+  'login.user': 'Login',
+  'login.user.ph': 'Enter login',
   'login.pass': 'Password',
   'login.pass.ph': 'Enter password',
   'login.remember': 'Remember me',
@@ -28,19 +29,20 @@ const EN: Record<string, string> = {
   'login.secure': 'Your data is protected under the security requirements of the Republic of Tajikistan',
   'login.support': 'Support',
   'login.err': 'Invalid login or password',
-  'login.p.h': 'Control panel',
-  'login.p.dynamics': 'Trip dynamics',
-  'login.today': 'Today',
-  'col.transport': 'Vehicles',
+  'login.p.h': 'Platform capabilities',
   'nav.waybills': 'Waybills',
-  'login.p.activetrips': 'Active trips',
-  'nav.violations': 'Violations',
-  'login.p.vehstatus': 'Vehicle status',
-  'kpi.online': 'On line',
-  'login.p.intrip': 'In trip',
-  'login.p.parked': 'Parked',
+  'login.f.transport': 'Vehicle registry',
+  'login.f.waybills': 'Electronic waybills',
+  'login.f.gps': 'GPS monitoring',
+  'login.f.oversight': 'Road oversight',
+  'login.p.analytics': 'Reporting & analytics',
+  'login.p.precontrol': 'Pre-trip control',
+  'login.p.lifecycle': 'Waybill lifecycle',
+  'login.p.medexam': 'Medical check (T2)',
+  'login.p.techexam': 'Technical check (T3)',
+  'login.p.admission': 'Trip admission',
   'login.p.issued': 'Issued',
-  'login.p.valid': 'Valid',
+  'login.p.valid': 'Active',
   'kpi.done': 'Completed',
   'login.caption': 'Digital platform for efficient and secure transport management',
 };
@@ -84,20 +86,28 @@ export default function LoginPage() {
     setError(''); setBusy(true);
     try {
       await login(username.trim(), password, remember);
-    } catch {
-      setError(L('login.err'));
+    } catch (err) {
+      // Показываем настоящую причину: auth.login бросает разные сообщения — «Сервер
+      // аутентификации недоступен…» (нет связи с Keycloak) vs «Неверный логин или пароль»
+      // (401). Раньше здесь всегда выводился login.err, из-за чего недоступность KC
+      // выглядела как ошибка пароля.
+      setError(err instanceof Error && err.message ? err.message : L('login.err'));
       setBusy(false);
     }
   }
 
-  const stat = (label: string, value: string, icon: string, color?: string) => (
-    <div style={{ background: '#fff', border: '1px solid var(--line-soft)', borderRadius: 11, padding: '9px 11px' }}>
-      <div style={{ fontSize: 10.5, color: 'var(--muted)', marginBottom: 3 }}>{label}</div>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
-        <div style={{ fontSize: 19, fontWeight: 800, color: color ?? 'var(--ink)' }}>{value}</div>
-        <Icon d={icon} cls="" style={{ width: 15, height: 15, color: color ?? 'var(--blue-600)' }} />
-      </div>
+  // Витрина на странице входа — иллюстрация назначения платформы, а НЕ живая статистика.
+  // Реальные показатели доступны только после входа (защищённый /dashboard): страница входа
+  // публичная, показывать оперативные данные госсистемы анониму нельзя. Поэтому — не числа,
+  // а перечень возможностей (не вводит в заблуждение).
+  const feature = (label: string, icon: string, color?: string) => (
+    <div style={{ background: '#fff', border: '1px solid var(--line-soft)', borderRadius: 11, padding: '11px', display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'flex-start' }}>
+      <Icon d={icon} cls="" style={{ width: 18, height: 18, color: color ?? 'var(--blue-600)' }} />
+      <div style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--ink)', lineHeight: 1.25 }}>{label}</div>
     </div>
+  );
+  const capRow = (label: string, icon: string, color: string) => (
+    <div className="row"><Icon d={icon} cls="" style={{ width: 13, height: 13, color }} />{label}</div>
   );
 
   return (
@@ -108,6 +118,16 @@ export default function LoginPage() {
           <span className="mark"><BrandLogo /></span>
           <span className="lt">{brand.name}</span>
         </div>
+
+        {appProfile() !== 'all' && (
+          <div style={{
+            display: 'inline-flex', alignItems: 'center', gap: 6, alignSelf: 'flex-start',
+            margin: '2px 0 6px', padding: '3px 11px', borderRadius: 999,
+            background: 'var(--blue-050)', color: 'var(--blue-700)', fontSize: 12, fontWeight: 700,
+          }}>
+            {PROFILE_META[appProfile()].title}
+          </div>
+        )}
 
         <h1>{L('login.h')}</h1>
         <div className="sub">{L('app.subtitle')}</div>
@@ -188,53 +208,46 @@ export default function LoginPage() {
 
         {/* Кластер «дашборд» — верхняя правая часть, поверх изображения */}
         <div style={{ position: 'absolute', top: 82, right: 40, width: 'min(560px, 58%)', display: 'flex', flexDirection: 'column', gap: 13 }}>
-          {/* Панель управления */}
+          {/* Витрина возможностей платформы (не живая статистика — см. комментарий к feature) */}
           <div style={{ ...card, padding: '14px 16px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
               <Icon d={P.chart} cls="" style={{ width: 16, height: 16, color: 'var(--blue-600)' }} />
               <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--ink)' }}>{L('login.p.h')}</span>
-              <span style={{ marginLeft: 'auto', fontSize: 10.5, color: 'var(--muted)', border: '1px solid var(--line)', borderRadius: 7, padding: '3px 9px' }}>{L('login.today')} ▾</span>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 9 }}>
-              {stat(L('col.transport'), '128', P.car)}
-              {stat(L('nav.waybills'), '3 246', P.doc)}
-              {stat(L('login.p.activetrips'), '86', P.route)}
-              {stat(L('nav.violations'), '3', P.alert, 'var(--red)')}
+              {feature(L('login.f.transport'), P.car)}
+              {feature(L('login.f.waybills'), P.doc)}
+              {feature(L('login.f.gps'), P.route)}
+              {feature(L('login.f.oversight'), P.shield)}
             </div>
           </div>
 
-          {/* Ряд из трёх: динамика · статус · путевые листы */}
+          {/* Ряд из трёх: аналитика · предрейсовый контроль · жизненный цикл ПЛ (иллюстративно) */}
           <div style={{ display: 'grid', gridTemplateColumns: '1.15fr 1fr 1fr', gap: 12 }}>
             <div style={{ ...card, padding: '12px 13px' }}>
-              <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--ink)', marginBottom: 8 }}>{L('login.p.dynamics')}</div>
-              <svg viewBox="0 0 120 46" width="100%" height="46" preserveAspectRatio="none">
+              <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--ink)', marginBottom: 8 }}>{L('login.p.analytics')}</div>
+              {/* Абстрактная линия «роста» — декоративная иллюстрация, не данные */}
+              <svg viewBox="0 0 120 46" width="100%" height="46" preserveAspectRatio="none" aria-hidden="true">
                 <polyline points="2,38 20,30 38,33 56,20 74,24 92,10 118,6" fill="none" stroke="#2563eb" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
                 {[[2,38],[20,30],[38,33],[56,20],[74,24],[92,10],[118,6]].map(([x, y], i) => <circle key={i} cx={x} cy={y} r="2" fill="#2563eb" />)}
               </svg>
             </div>
 
             <div style={{ ...card, padding: '12px 13px' }}>
-              <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--ink)', marginBottom: 8 }}>{L('login.p.vehstatus')}</div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <svg width="56" height="56" viewBox="0 0 42 42">
-                  <circle cx="21" cy="21" r="15.9" fill="none" stroke="#e4e9f0" strokeWidth="6" />
-                  <circle cx="21" cy="21" r="15.9" fill="none" stroke="#2563eb" strokeWidth="6" strokeDasharray="62 38" strokeDashoffset="25" strokeLinecap="round" />
-                  <circle cx="21" cy="21" r="15.9" fill="none" stroke="#16a34a" strokeWidth="6" strokeDasharray="24 76" strokeDashoffset="-37" strokeLinecap="round" />
-                </svg>
-                <div className="donut-legend" style={{ fontSize: 10.5 }}>
-                  <div className="row"><span className="dot" style={{ background: '#2563eb' }} />{L('kpi.online')}<span className="pc">86</span></div>
-                  <div className="row"><span className="dot" style={{ background: '#16a34a' }} />{L('login.p.intrip')}<span className="pc">28</span></div>
-                  <div className="row"><span className="dot" style={{ background: '#e4e9f0' }} />{L('login.p.parked')}<span className="pc">14</span></div>
-                </div>
+              <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--ink)', marginBottom: 8 }}>{L('login.p.precontrol')}</div>
+              <div className="donut-legend" style={{ fontSize: 10.5 }}>
+                {capRow(L('login.p.medexam'), P.med, 'var(--blue-600)')}
+                {capRow(L('login.p.techexam'), P.wrench, 'var(--green)')}
+                {capRow(L('login.p.admission'), P.check, 'var(--muted)')}
               </div>
             </div>
 
             <div style={{ ...card, padding: '12px 13px' }}>
-              <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--ink)', marginBottom: 8 }}>{L('nav.waybills')}</div>
+              <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--ink)', marginBottom: 8 }}>{L('login.p.lifecycle')}</div>
               <div className="donut-legend" style={{ fontSize: 11 }}>
-                <div className="row"><Icon d={P.check} cls="" style={{ width: 13, height: 13, color: 'var(--green)' }} />{L('login.p.issued')}<span className="pc">2 156</span></div>
-                <div className="row"><Icon d={P.check} cls="" style={{ width: 13, height: 13, color: 'var(--blue-600)' }} />{L('login.p.valid')}<span className="pc">1 090</span></div>
-                <div className="row"><Icon d={P.check} cls="" style={{ width: 13, height: 13, color: 'var(--muted)' }} />{L('kpi.done')}<span className="pc">1 000</span></div>
+                {capRow(L('login.p.issued'), P.check, 'var(--green)')}
+                {capRow(L('login.p.valid'), P.check, 'var(--blue-600)')}
+                {capRow(L('kpi.done'), P.check, 'var(--muted)')}
               </div>
             </div>
           </div>

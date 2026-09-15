@@ -14,6 +14,8 @@ const REFRESH = 'M23 4v6h-6M1 20v-6h6M3.5 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.65
 const SEARCH = 'M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16zM21 21l-4.35-4.35';
 const PRINTER = 'M6 9V3h12v6M6 18H4a1 1 0 0 1-1-1v-5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v5a1 1 0 0 1-1 1h-2M6 14h12v7H6z';
 
+const PER_PAGE = 10;
+
 function isToday(iso: string) {
   const d = new Date(iso), n = new Date();
   return d.toDateString() === n.toDateString();
@@ -25,10 +27,12 @@ function dt(iso: string) {
   return new Date(iso).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 
-/** Запись медосмотра — извлекается из титулов Т2/Т6 путевого листа. */
+/** Запись медосмотра — титул Т2/Т6 путевого листа. Показателей здесь нет: в титуле лежит
+ *  только зашифрованный blob indicatorsEnc, читаемые pressure/pulse/temperature в data
+ *  не пишутся (WaybillService.withMedicalVerdict). Расшифровка — аудируемый вызов
+ *  wb.medIndicators в профиле водителя (/med/journal). */
 type MedRecord = {
   id: string; number: string | null; driver: string; org: string; date: string;
-  pressure: string; pulse: string; temperature: string; alcotest: string;
   verdict: string; medic: string; passed: boolean;
 };
 
@@ -43,8 +47,6 @@ async function medRecordsOf(w: Waybill): Promise<MedRecord[]> {
         driver: String(w.driverSnapshot?.fullName ?? w.driverRma),
         org: String(w.organizationSnapshot?.name ?? w.organizationRma),
         date: t.signedAt,
-        pressure: String(d.pressure ?? '—'), pulse: String(d.pulse ?? '—'),
-        temperature: String(d.temperature ?? '—'), alcotest: String(d.alcotest ?? '—'),
         verdict, medic: String(d.employeeName ?? '—'),
         passed: !verdict.toUpperCase().includes('НЕ'),
       };
@@ -64,11 +66,11 @@ export default function MedWorkstation() {
   const [error, setError] = useState('');
   const [ok, setOk] = useState('');
   const [now, setNow] = useState<Date | null>(null);
-  const [view, setView] = useState<'queue' | 'history'>('queue');
   const [driverHist, setDriverHist] = useState<MedRecord[] | null>(null);
-  const [allExams, setAllExams] = useState<MedRecord[] | null>(null);
-  const [examSearch, setExamSearch] = useState('');
   const [queueSearch, setQueueSearch] = useState('');
+  const [page, setPage] = useState(1);
+  // Кто в кабинете: имя врача и его организация (для строки идентификации в шапке).
+  const [me, setMe] = useState<{ name: string; orgName: string } | null>(null);
 
   const reload = useCallback(async () => {
     setItems(await wb.list());
@@ -82,13 +84,36 @@ export default function MedWorkstation() {
     return () => clearInterval(t);
   }, []);
 
+  // Врач и его организация — для шапки кабинета (кто проводит осмотр). Первая организация
+  // пользователя; врач — сотрудник с type === 1 (как в остальном коде /med).
+  useEffect(() => {
+    md.organizations().then(async orgs => {
+      const o = orgs[0];
+      if (!o) return;
+      const emps = await md.employees(String(o.rma)).catch(() => [] as Record<string, unknown>[]);
+      const doc = emps.find(e => Number(e.type) === 1);
+      setMe({ name: doc ? String(doc.name) : '', orgName: String(o.name ?? o.rma) });
+    }).catch(() => { /* нет связи — шапка без идентификации */ });
+  }, []);
+
   const pre = useMemo(() => items.filter(w => w.status === 'CREATED' && !w.medPassed), [items]);
+  // Группа риска — у водителя есть незакрытый отклонённый медосмотр (другой его ПЛ всё ещё
+  // в статусе MED_REJECTED — не заменён и не аннулирован диспетчером): повод для повышенного
+  // внимания врача, а не диагноз. Не ловит случаи, когда отказ уже скорректирован титулом
+  // CORRECTION или ПЛ аннулирован — там статус этого конкретного ПЛ уже не MED_REJECTED.
+  const riskDrivers = useMemo(() => {
+    const s = new Set<string>();
+    for (const w of items) if (w.status === 'MED_REJECTED') s.add(w.driverRma);
+    return s;
+  }, [items]);
   const shownPre = useMemo(() => {
     const s = queueSearch.trim().toLowerCase();
     if (!s) return pre;
     return pre.filter(w => [w.number, w.driverRma, w.driverSnapshot?.fullName, w.organizationSnapshot?.name, w.vehicleRegNumber]
       .map(x => String(x ?? '').toLowerCase()).join(' ').includes(s));
   }, [pre, queueSearch]);
+  const pages = Math.max(1, Math.ceil(shownPre.length / PER_PAGE));
+  const view = shownPre.slice((page - 1) * PER_PAGE, page * PER_PAGE);
   const done = useMemo(
     () => items.filter(w => w.status !== 'CREATED' && (w.medPassed || w.status === 'MED_REJECTED')).slice(0, 5),
     [items],
@@ -119,16 +144,6 @@ export default function MedWorkstation() {
       }
     }
   }, [doctors, items]);
-
-  // История осмотров — собираем показатели из титулов Т2/Т6 завершённых ПЛ
-  useEffect(() => {
-    if (view === 'history' && allExams === null) {
-      const completed = items.filter(x => x.medPassed || x.status === 'MED_REJECTED').slice(0, 40);
-      Promise.all(completed.map(medRecordsOf)).then(rs =>
-        setAllExams(rs.flat().sort((a, b) => b.date.localeCompare(a.date))),
-      );
-    }
-  }, [view, items, allExams]);
 
   async function decide(passed: boolean) {
     if (!selected) return;
@@ -167,7 +182,9 @@ export default function MedWorkstation() {
     { title: t('med.act.new.t'), sub: t('med.act.new.s'), icon: P.med, cls: 'ic-blue', onClick: () => { if (pre[0]) openExam(pre[0]); } },
     { title: t('med.act.search.t'), sub: t('med.act.search.s'), icon: SEARCH, cls: 'ic-cyan', href: '/waybills' },
     { title: t('med.history'), sub: t('med.act.hist.s'), icon: P.doc, cls: 'ic-purple', href: '/waybills' },
-    { title: t('med.act.print.t'), sub: t('med.act.print.s'), icon: PRINTER, cls: 'ic-green', onClick: () => window.print() },
+    // Журнал медосмотров — готовый отчёт «Дафтари қайди духтӯр» (титулы Т2/Т6 за период,
+    // с печатью и выгрузкой). Раньше здесь был window.print(), который печатал экран АРМ, а не журнал.
+    { title: t('med.act.print.t'), sub: t('med.act.print.s'), icon: PRINTER, cls: 'ic-green', href: '/reports/journals' },
   ];
 
   return (
@@ -177,6 +194,12 @@ export default function MedWorkstation() {
         <div>
           <h1>{t('med.h')}</h1>
           <div className="page-lead" style={{ margin: 0 }}>{t('med.lead')}</div>
+          {me && (
+            <div style={{ marginTop: 5, fontSize: 12.5, color: 'var(--ink-soft)', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              <Icon d={P.user} cls="" style={{ width: 14, height: 14, color: 'var(--blue-600)' }} />
+              <span>{t('role.DOCTOR')}: <b style={{ color: 'var(--ink)' }}>{me.name || '—'}</b> · {me.orgName}</span>
+            </div>
+          )}
         </div>
         <span className="spacer" />
         <div style={{ display: 'flex', alignItems: 'center', gap: 20, color: 'var(--muted)', fontSize: 13, fontWeight: 500 }}>
@@ -205,65 +228,14 @@ export default function MedWorkstation() {
         ))}
       </div>
 
-      {/* Переключатель вида */}
-      <div style={{ display: 'flex', gap: 8, marginBottom: 18 }}>
-        <button className={`btn ${view === 'queue' ? '' : 'secondary'}`} onClick={() => setView('queue')}>{t('med.tab.queue')}</button>
-        <button className={`btn ${view === 'history' ? '' : 'secondary'}`} onClick={() => setView('history')}>{t('med.history')}</button>
-      </div>
-
-      {view === 'history' ? (
-        <div className="card">
-          <div className="card-h">
-            <h2>{t('med.history')}</h2>
-            <input
-              value={examSearch}
-              onChange={e => setExamSearch(e.target.value)}
-              placeholder={t('med.search.ph')}
-              style={{ marginLeft: 'auto', width: 320 }}
-            />
-          </div>
-          {allExams === null ? (
-            <p style={{ color: 'var(--muted)', fontSize: 13, padding: 12 }}>{t('med.loading.history')}</p>
-          ) : (
-            <>
-              <table>
-                <thead>
-                  <tr><th>{t('col.datetime')}</th><th>{t('col.wbnum')}</th><th>{t('col.driver')}</th><th>{t('col.company')}</th><th>{t('col.bp')}</th><th>{t('col.pulse')}</th><th>{t('col.temp')}</th><th>{t('col.alco')}</th><th>{t('role.DOCTOR')}</th><th>{t('col.result')}</th></tr>
-                </thead>
-                <tbody>
-                  {allExams
-                    .filter(r => { const s = examSearch.toLowerCase(); return !s || r.driver.toLowerCase().includes(s) || (r.number ?? '').toLowerCase().includes(s); })
-                    .map((r, i) => (
-                      <tr key={r.id + i}>
-                        <td>{dt(r.date)}</td>
-                        <td><span className="number">{r.number ?? '—'}</span></td>
-                        <td>{r.driver}</td>
-                        <td>{r.org}</td>
-                        <td style={{ fontWeight: 600 }}>{r.pressure}</td>
-                        <td>{r.pulse}</td>
-                        <td>{r.temperature}</td>
-                        <td>{r.alcotest}</td>
-                        <td>{r.medic}</td>
-                        <td><span className={`badge ${r.passed ? 'green' : 'red'}`}>{r.passed ? t('st.passed') : t('st.failed')}</span></td>
-                      </tr>
-                    ))}
-                  {allExams.length === 0 && (
-                    <tr><td colSpan={10} style={{ textAlign: 'center', color: 'var(--muted)', padding: 28 }}>{t('med.empty.history')}</td></tr>
-                  )}
-                </tbody>
-              </table>
-              <div style={{ marginTop: 12, fontSize: 12.5, color: 'var(--muted)' }}>{t('med.shown.pre')} {allExams.length} {t('med.shown.post')}</div>
-            </>
-          )}
-        </div>
-      ) : (
-      <>
       {/* Очередь + правая колонка */}
       <div className="grid-2" style={{ gridTemplateColumns: '1.6fr 1fr', alignItems: 'start' }}>
         {/* Очередь на медосмотр */}
         <div className="card" style={{ marginBottom: 0 }}>
           <div className="card-h">
-            <h2>{t('med.queue.h')}</h2>
+            <h2 style={{ display: 'inline-flex', alignItems: 'center', gap: 8, margin: 0 }}>
+              <Icon d={P.med} cls="" style={{ width: 18, height: 18, color: 'var(--blue-600)' }} /> {t('med.queue.h')}
+            </h2>
             <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 16 }}>
               <span style={{ color: 'var(--muted)', fontSize: 12.5 }}>{pre.length} {t('med.inqueue')}</span>
               <button
@@ -274,17 +246,22 @@ export default function MedWorkstation() {
               </button>
             </div>
           </div>
-          <input value={queueSearch} onChange={e => setQueueSearch(e.target.value)} placeholder={t('exam.search')}
+          <input value={queueSearch} onChange={e => { setQueueSearch(e.target.value); setPage(1); }} placeholder={t('exam.search')}
             style={{ marginBottom: 12 }} />
           <table>
             <thead>
               <tr><th>{t('col.wbnum')}</th><th>{t('col.driver')}</th><th>{t('col.company')}</th><th>{t('col.time')}</th><th>{t('col.status')}</th><th></th></tr>
             </thead>
             <tbody>
-              {shownPre.map(w => (
+              {view.map(w => (
                 <tr key={w.id}>
                   <td><span className="number">{w.number ?? t('common.draft')}</span></td>
-                  <td>{String(w.driverSnapshot?.fullName ?? w.driverRma)}</td>
+                  <td>
+                    {String(w.driverSnapshot?.fullName ?? w.driverRma)}
+                    {riskDrivers.has(w.driverRma) && (
+                      <span className="badge red" style={{ marginLeft: 8 }} title={t('med.riskgroup.hint')}>{t('med.riskgroup')}</span>
+                    )}
+                  </td>
                   <td>{String(w.organizationSnapshot?.name ?? w.organizationRma)}</td>
                   <td>{hhmm(w.createdAt)}</td>
                   <td><span className="badge amber">{t('st.waiting')}</span></td>
@@ -298,8 +275,13 @@ export default function MedWorkstation() {
               )}
             </tbody>
           </table>
+          {/* Пагинация */}
           <div style={{ display: 'flex', alignItems: 'center', marginTop: 14, fontSize: 12.5, color: 'var(--muted)' }}>
-            <span>{t('paging.shown')} 1–{pre.length} {t('paging.of')} {pre.length}</span>
+            <span>{t('paging.shown')} {shownPre.length === 0 ? 0 : (page - 1) * PER_PAGE + 1}–{Math.min(page * PER_PAGE, shownPre.length)} {t('paging.of')} {shownPre.length}</span>
+            <span style={{ flex: 1 }} />
+            <button className="btn secondary" disabled={page <= 1} onClick={() => setPage(p => p - 1)} style={{ padding: '6px 12px' }}>‹</button>
+            <span style={{ margin: '0 12px' }}>{page} / {pages}</span>
+            <button className="btn secondary" disabled={page >= pages} onClick={() => setPage(p => p + 1)} style={{ padding: '6px 12px' }}>›</button>
           </div>
         </div>
 
@@ -395,10 +377,8 @@ export default function MedWorkstation() {
             )}
           </tbody>
         </table>
-        <button className="link" onClick={() => setView('history')} style={{ display: 'inline-block', marginTop: 12, background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit', padding: 0 }}>{t('med.gotohistory')}</button>
+        <Link className="link" href="/med/journal" style={{ display: 'inline-block', marginTop: 12 }}>{t('med.gotohistory')}</Link>
       </div>
-      </>
-      )}
 
       {/* Модалка проведения осмотра */}
       {selected && (
@@ -420,6 +400,9 @@ export default function MedWorkstation() {
             <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'center', marginBottom: 16, fontSize: 13, color: 'var(--ink-soft)' }}>
               <span className="number">{selected.number ?? t('common.draft')}</span>
               <b style={{ color: 'var(--ink)' }}>{String(selected.driverSnapshot?.fullName ?? selected.driverRma)}</b>
+              {riskDrivers.has(selected.driverRma) && (
+                <span className="badge red" title={t('med.riskgroup.hint')}>{t('med.riskgroup')}</span>
+              )}
               <span>{String(selected.organizationSnapshot?.name ?? selected.organizationRma)}</span>
             </div>
 
@@ -429,17 +412,27 @@ export default function MedWorkstation() {
               {driverHist === null && <div style={{ fontSize: 12.5, color: 'var(--muted)' }}>{t('med.loading.short')}</div>}
               {driverHist && driverHist.length === 0 && <div style={{ fontSize: 12.5, color: 'var(--muted)' }}>{t('med.noexams')}</div>}
               {driverHist && driverHist.length > 0 && (
-                <table style={{ fontSize: 12.5 }}>
-                  <thead><tr><th>{t('col.date')}</th><th>{t('col.bp')}</th><th>{t('col.pulse')}</th><th>{t('col.temp')}</th><th>{t('col.alcoshort')}</th><th>{t('col.verdict')}</th></tr></thead>
-                  <tbody>
-                    {driverHist.map((r, i) => (
-                      <tr key={i}>
-                        <td>{dt(r.date)}</td><td style={{ fontWeight: 600 }}>{r.pressure}</td><td>{r.pulse}</td><td>{r.temperature}</td><td>{r.alcotest}</td>
-                        <td><span className={`badge ${r.passed ? 'green' : 'red'}`}>{r.passed ? t('st.passed') : t('st.failed')}</span></td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                <>
+                  {/* Показатели прошлых осмотров здесь не показываем: они зашифрованы (indicatorsEnc),
+                      а их расшифровка — отдельный аудируемый доступ. Он делается осознанно
+                      в профиле водителя (История осмотров), а не фоном при открытии формы. */}
+                  <table style={{ fontSize: 12.5 }}>
+                    <thead><tr><th>{t('col.date')}</th><th>{t('col.wbnum')}</th><th>{t('role.DOCTOR')}</th><th>{t('col.verdict')}</th></tr></thead>
+                    <tbody>
+                      {driverHist.map((r, i) => (
+                        <tr key={i}>
+                          <td>{dt(r.date)}</td>
+                          <td><span className="number">{r.number ?? '—'}</span></td>
+                          <td>{r.medic}</td>
+                          <td><span className={`badge ${r.passed ? 'green' : 'red'}`}>{r.passed ? t('st.passed') : t('st.failed')}</span></td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  <Link className="link" href="/med/journal" style={{ display: 'inline-block', marginTop: 8, fontSize: 12.5 }}>
+                    {t('med.j.gotoprofile')}
+                  </Link>
+                </>
               )}
             </div>
 

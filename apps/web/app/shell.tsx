@@ -5,6 +5,7 @@ import { useEffect } from 'react';
 import { useAuth } from '@/lib/auth';
 import { useRoleAccess } from '@/lib/roleaccess';
 import { type NavKey } from '@/lib/roles';
+import { appProfile, rolesInProfile, PROFILE_META, profileUrl } from '@/lib/profile';
 import { Sidebar } from './sidebar';
 import { Topbar } from './topbar';
 import { MaintenanceBanner } from './MaintenanceBanner';
@@ -47,6 +48,9 @@ export function Shell({ children }: { children: React.ReactNode }) {
   if (isPublic(pathname)) return <><MaintenanceBanner />{children}</>;
   if (!ready) return <div className="boot">Загрузка системы…</div>;
   if (!authenticated) return <div className="boot">Переход к странице входа…</div>;
+  // Граница профиля: в профильной сборке (waybill/oversight) пускаем только «свои» роли.
+  // В профиле 'all' (монолит) rolesInProfile всегда true — поведение не меняется.
+  if (!rolesInProfile(roles)) return <WrongCabinet />;
 
   return (
     <>
@@ -59,5 +63,27 @@ export function Shell({ children }: { children: React.ReactNode }) {
         </div>
       </div>
     </>
+  );
+}
+
+/** Пользователь вошёл не в своё приложение (профильная сборка): предлагаем перейти в
+ *  правильный кабинет (если его адрес задан) или выйти. */
+function WrongCabinet() {
+  const { logout } = useAuth();
+  const meta = PROFILE_META[appProfile()];
+  const other = meta.other ? { meta: PROFILE_META[meta.other], url: profileUrl(meta.other) } : null;
+  return (
+    <div className="boot" style={{ display: 'flex', flexDirection: 'column', gap: 14, textAlign: 'center', padding: 24 }}>
+      <div style={{ fontSize: 56 }}>🚫</div>
+      <h1 style={{ margin: 0 }}>Это не ваш кабинет</h1>
+      <p style={{ color: 'var(--muted)', maxWidth: 460 }}>
+        Вы вошли в «{meta.title}», но у вашей учётной записи нет к нему доступа.
+        {other ? ` Похоже, вам нужен кабинет «${other.meta.title}».` : ''}
+      </p>
+      <div style={{ display: 'flex', gap: 10 }}>
+        {other?.url && <a className="btn primary" href={other.url} style={{ textDecoration: 'none' }}>Перейти в «{other.meta.title}»</a>}
+        <button className="btn secondary" onClick={logout}>Выйти</button>
+      </div>
+    </div>
   );
 }

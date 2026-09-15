@@ -3,8 +3,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { wb, Waybill, STATUS_LABELS, TYPE_LABELS, type WaybillRequest } from '@/lib/api';
+import { wb, Waybill, STATUS_LABELS, TYPE_LABELS, type WaybillRequest, type LivePosition, type NotificationItem } from '@/lib/api';
 import { useT } from '@/lib/i18n';
+import { useAuth } from '@/lib/auth';
+import { canCreateWaybill } from '@/lib/roles';
 import { Icon, P } from '../icons';
 import { ExpiryAlert } from '../ExpiryAlert';
 
@@ -14,6 +16,11 @@ const REQ_STATUS: Record<string, { k: string; color: string }> = {
   APPROVED: { k: 'req.st.approved', color: 'green' },
   REJECTED: { k: 'req.st.rejected', color: 'red' },
   CANCELLED: { k: 'req.st.cancelled', color: 'gray' },
+};
+
+/** Цвет бейджа уведомления по его виду (совпадает со страницей /notifications). */
+const NOTIF_BADGE: Record<string, string> = {
+  MED_REJECTED: 'red', TECH_REJECTED: 'red', BLOCKED: 'red', EXPIRED: 'amber', READY: 'green', CREATED: 'blue', DRIVER_ISSUE: 'amber',
 };
 
 function fmtDateTime(iso: string | null) {
@@ -26,6 +33,10 @@ function isToday(iso: string | null) {
   const d = new Date(iso);
   const n = new Date();
   return d.getFullYear() === n.getFullYear() && d.getMonth() === n.getMonth() && d.getDate() === n.getDate();
+}
+function agoSec(iso: string | null): number | null {
+  if (!iso) return null;
+  return Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 1000));
 }
 
 /** Что нужно сделать по путевому листу в данном статусе (подсказка диспетчеру). Значения — ключи i18n. */
@@ -41,17 +52,25 @@ const ACTION_HINT: Record<string, string> = {
   BLOCKED: 'disp.hint.blocked',
 };
 
+const PER_PAGE = 10;
+
 /**
- * Кабинет диспетчера — оперативный обзор смены: сколько ПЛ в работе, какие требуют
- * действия (осмотры, оплата, выдача, закрытие) и последние оформленные листы.
+ * Кабинет диспетчера — оперативный обзор смены: живой мониторинг рейсов на линии, заявки
+ * водителей, путевые листы, требующие действия, инструменты и уведомления.
  * Диспетчер оформляет и ведёт путевые листы своей организации.
  */
 export default function DispatcherCabinet() {
   const { t, tType, tStatus } = useT();
+  const { roles } = useAuth();
+  const canCreate = canCreateWaybill(roles);
   const [items, setItems] = useState<Waybill[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const router = useRouter();
+  // Живой мониторинг: ТС «на линии» (реальные GPS-позиции) и уведомления диспетчера.
+  const [live, setLive] = useState<LivePosition[]>([]);
+  const [notifs, setNotifs] = useState<NotificationItem[]>([]);
+  const [tripQ, setTripQ] = useState('');
   // Заявки на путевые листы от водителей: очередь + панель проверки/одобрения/отклонения.
   const [reqs, setReqs] = useState<WaybillRequest[]>([]);
   const [sel, setSel] = useState<WaybillRequest | null>(null);
@@ -60,10 +79,20 @@ export default function DispatcherCabinet() {
   const [reqBusy, setReqBusy] = useState(false);
   const [reqErr, setReqErr] = useState('');
   const [reqMsg, setReqMsg] = useState('');
+  // Пагинация таблицы «Требуют внимания».
+  const [attnPage, setAttnPage] = useState(1);
 
   useEffect(() => {
     wb.list().then(setItems).catch((e: Error) => setError(e.message)).finally(() => setLoading(false));
   }, []);
+  // Живые позиции обновляем периодически — как на странице мониторинга.
+  useEffect(() => {
+    const load = () => wb.gpsLive().then(setLive).catch(() => {});
+    load();
+    const h = window.setInterval(load, 15000);
+    return () => window.clearInterval(h);
+  }, []);
+  useEffect(() => { wb.notifications().then(setNotifs).catch(() => {}); }, []);
 
   function loadReqs() { wb.requests.list().then(setReqs).catch(() => {}); }
   useEffect(() => { loadReqs(); }, []);
@@ -109,14 +138,6 @@ export default function DispatcherCabinet() {
     finally { setReqBusy(false); }
   }
 
-  const stats = useMemo(() => {
-    const total = items.length;
-    const active = items.filter(w => ['ISSUED', 'ACTIVE', 'RETURNED'].includes(w.status)).length;
-    const pending = items.filter(w => ['DRAFT', 'CREATED', 'MED_REJECTED', 'TECH_REJECTED', 'AWAITING_PAYMENT', 'PAID', 'READY'].includes(w.status)).length;
-    const today = items.filter(w => isToday(w.createdAt)).length;
-    return { total, active, pending, today };
-  }, [items]);
-
   // Требуют внимания диспетчера — новые сверху.
   const attention = useMemo(
     () => items
@@ -124,17 +145,50 @@ export default function DispatcherCabinet() {
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
     [items],
   );
+  const attnPages = Math.max(1, Math.ceil(attention.length / PER_PAGE));
+  const attnView = attention.slice((attnPage - 1) * PER_PAGE, attnPage * PER_PAGE);
+
+  const stats = useMemo(() => {
+    const active = items.filter(w => ['ISSUED', 'ACTIVE', 'RETURNED'].includes(w.status)).length;
+    const online = live.length;
+    const driversOnShift = new Set(live.map(r => r.driver).filter(Boolean)).size;
+    return { active, online, driversOnShift, attention: attention.length };
+  }, [items, live, attention.length]);
 
   const recent = useMemo(
     () => [...items].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 8),
     [items],
   );
 
+  // Рейсы для блока мониторинга — с фильтром по номеру/ТС/водителю.
+  const trips = useMemo(() => {
+    const s = tripQ.trim().toLowerCase();
+    const list = s
+      ? live.filter(r => [r.vehicleRegNumber, r.number, r.driver].map(x => String(x ?? '').toLowerCase()).join(' ').includes(s))
+      : live;
+    return list.slice(0, 6);
+  }, [live, tripQ]);
+
+  const topNotifs = useMemo(() => notifs.slice(0, 5), [notifs]);
+
+  const ago = (sec: number | null) => {
+    if (sec == null) return t('mon.nosignal');
+    if (sec < 60) return `${sec} ${t('mon.sec')}`;
+    if (sec < 3600) return `${Math.floor(sec / 60)} ${t('mon.min')}`;
+    return `${Math.floor(sec / 3600)} ${t('mon.hour')}`;
+  };
+  const sigColor = (sec: number | null) => sec == null ? 'gray' : sec < 120 ? 'green' : sec < 900 ? 'amber' : 'red';
+  const notifTitle = (n: NotificationItem) => {
+    const k = `notif.k.${n.kind}`;
+    const tr = t(k);
+    return tr === k ? n.title : tr;
+  };
+
   const kpis = [
-    { label: t('disp.kpi.total'), value: stats.total, icon: P.doc, cls: 'ic-blue' },
-    { label: t('disp.kpi.active'), value: stats.active, icon: P.car, cls: 'ic-cyan' },
-    { label: t('disp.kpi.pending'), value: stats.pending, icon: P.alert, cls: 'ic-amber' },
-    { label: t('kpi.today'), value: stats.today, icon: P.check, cls: 'ic-green' },
+    { label: t('disp.kpi.active'), value: stats.active, icon: P.doc, cls: 'ic-blue' },
+    { label: t('disp.kpi.online'), value: stats.online, icon: P.car, cls: 'ic-cyan' },
+    { label: t('disp.kpi.drivers'), value: stats.driversOnShift, icon: P.users, cls: 'ic-green' },
+    { label: t('disp.kpi.pending'), value: stats.attention, icon: P.alert, cls: 'ic-amber' },
   ];
 
   return (
@@ -144,9 +198,11 @@ export default function DispatcherCabinet() {
           <h1>{t('nav.dispatcher')}</h1>
           <div className="page-lead" style={{ margin: 0 }}>{t('disp.lead')}</div>
         </div>
-        <Link href="/waybills/new" className="btn" style={{ marginLeft: 'auto', textDecoration: 'none' }}>
-          <Icon d={P.doc} cls="" /> {t('nav.waybill.new')}
-        </Link>
+        {canCreate && (
+          <Link href="/waybills/new" className="btn" style={{ marginLeft: 'auto', textDecoration: 'none' }}>
+            <Icon d={P.doc} cls="" /> {t('nav.waybill.new')}
+          </Link>
+        )}
       </div>
 
       {error && <div className="error">{error}</div>}
@@ -257,39 +313,164 @@ export default function DispatcherCabinet() {
         ))}
       </div>
 
-      {/* Требуют внимания */}
-      <div className="card">
-        <div className="card-h">
-          <h2>{t('disp.attention.h')}</h2>
-          <Link className="link" href="/waybills">{t('disp.allregistry')}</Link>
+      {/* Основная сетка: слева — мониторинг рейсов и «требуют внимания», справа — инструменты и уведомления */}
+      <div className="disp-grid">
+        <div className="disp-main">
+          {/* Мониторинг активных рейсов */}
+          <div className="card">
+            <div className="card-h">
+              <h2 style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                <Icon d={P.route} cls="" style={{ width: 18, height: 18, color: 'var(--blue-600)' }} />
+                {t('disp.mon.h')}
+              </h2>
+              <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 10 }}>
+                <input value={tripQ} onChange={e => setTripQ(e.target.value)} placeholder={t('disp.mon.search')} style={{ maxWidth: 200, padding: '7px 12px' }} />
+                <Link className="link" href="/monitoring" style={{ whiteSpace: 'nowrap' }}>{t('disp.mon.map')}</Link>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {trips.map((r, i) => {
+                const sec = agoSec(r.recordedAt);
+                const sc = sigColor(sec);
+                return (
+                  <Link
+                    key={r.vehicleRegNumber + i}
+                    href="/monitoring"
+                    className="trip-card"
+                  >
+                    <span className="trip-ic"><Icon d={P.car} cls="" style={{ width: 22, height: 22 }} /></span>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                        <span className="number" style={{ fontSize: 13 }}>{r.vehicleRegNumber}</span>
+                        <span className={`badge ${STATUS_LABELS[r.status]?.color ?? 'blue'}`}>{tStatus(r.status)}</span>
+                      </div>
+                      <div style={{ fontSize: 12.5, color: 'var(--muted)', marginTop: 3 }}>
+                        {r.driver || '—'}{r.number ? ` · ${r.number}` : ''}
+                      </div>
+                    </div>
+                    <div style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--ink)' }}>
+                        {r.speedKmh != null ? `${r.speedKmh} ${t('mon.kmh')}` : '—'}
+                      </div>
+                      <div style={{ marginTop: 4 }}><span className={`badge ${sc}`}>{ago(sec)}</span></div>
+                    </div>
+                    <Icon d={P.chevron} cls="" style={{ width: 18, height: 18, color: 'var(--faint)', flex: 'none' }} />
+                  </Link>
+                );
+              })}
+              {trips.length === 0 && (
+                <div style={{ textAlign: 'center', color: 'var(--muted)', padding: 26 }}>
+                  {tripQ.trim() ? t('disp.mon.searchempty') : t('disp.mon.empty')}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Требуют внимания */}
+          <div className="card">
+            <div className="card-h">
+              <h2>{t('disp.attention.h')}</h2>
+              <Link className="link" href="/waybills">{t('disp.allregistry')}</Link>
+            </div>
+            <table>
+              <thead>
+                <tr><th>{t('col.number')}</th><th>{t('col.type')}</th><th>{t('col.transport')}</th><th>{t('col.driver')}</th><th>{t('col.todo')}</th><th>{t('col.status')}</th></tr>
+              </thead>
+              <tbody>
+                {attnView.map(w => {
+                  const s = STATUS_LABELS[w.status] ?? { label: w.status, color: 'gray' };
+                  return (
+                    <tr key={w.id} className="clickable" onClick={() => router.push(`/waybills/${w.id}`)}>
+                      <td><span className="number">{w.number ?? t('common.draft')}</span></td>
+                      <td>{tType(w.waybillType).replace(/\s*\(.*\)/, '')}</td>
+                      <td>{w.vehicleRegNumber || '—'}</td>
+                      <td>{String(w.driverSnapshot?.fullName ?? w.driverRma ?? '—')}</td>
+                      <td style={{ color: 'var(--ink-soft)' }}>{t(ACTION_HINT[w.status])}</td>
+                      <td><span className={`badge ${s.color}`}>{tStatus(w.status)}</span></td>
+                    </tr>
+                  );
+                })}
+                {attention.length === 0 && !loading && (
+                  <tr>
+                    <td colSpan={6} style={{ textAlign: 'center', color: 'var(--muted)', padding: 26 }}>
+                      {t('disp.attention.empty')}
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+            {/* Пагинация */}
+            <div style={{ display: 'flex', alignItems: 'center', marginTop: 14, fontSize: 12.5, color: 'var(--muted)' }}>
+              <span>{t('dict.totalrecords')}: <b style={{ color: 'var(--ink)' }}>{attention.length}</b></span>
+              <span style={{ flex: 1 }} />
+              <button className="btn secondary" disabled={attnPage <= 1} onClick={() => setAttnPage(p => p - 1)} style={{ padding: '6px 12px' }}>‹</button>
+              <span style={{ margin: '0 12px' }}>{attnPage} / {attnPages}</span>
+              <button className="btn secondary" disabled={attnPage >= attnPages} onClick={() => setAttnPage(p => p + 1)} style={{ padding: '6px 12px' }}>›</button>
+            </div>
+          </div>
         </div>
-        <table>
-          <thead>
-            <tr><th>{t('col.number')}</th><th>{t('col.type')}</th><th>{t('col.transport')}</th><th>{t('col.driver')}</th><th>{t('col.todo')}</th><th>{t('col.status')}</th></tr>
-          </thead>
-          <tbody>
-            {attention.map(w => {
-              const s = STATUS_LABELS[w.status] ?? { label: w.status, color: 'gray' };
-              return (
-                <tr key={w.id} className="clickable" onClick={() => router.push(`/waybills/${w.id}`)}>
-                  <td><span className="number">{w.number ?? t('common.draft')}</span></td>
-                  <td>{tType(w.waybillType).replace(/\s*\(.*\)/, '')}</td>
-                  <td>{w.vehicleRegNumber || '—'}</td>
-                  <td>{String(w.driverSnapshot?.fullName ?? w.driverRma ?? '—')}</td>
-                  <td style={{ color: 'var(--ink-soft)' }}>{t(ACTION_HINT[w.status])}</td>
-                  <td><span className={`badge ${s.color}`}>{tStatus(w.status)}</span></td>
-                </tr>
-              );
-            })}
-            {attention.length === 0 && !loading && (
-              <tr>
-                <td colSpan={6} style={{ textAlign: 'center', color: 'var(--muted)', padding: 26 }}>
-                  {t('disp.attention.empty')}
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+
+        <div className="disp-side">
+          {/* Инструменты */}
+          <div className="card">
+            <h2>{t('disp.tools.h')}</h2>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {canCreate && (
+                <Link href="/waybills/new" className="btn" style={{ justifyContent: 'flex-start', textDecoration: 'none' }}>
+                  <Icon d={P.plus} cls="" style={{ width: 16, height: 16 }} /> {t('nav.waybill.new')}
+                </Link>
+              )}
+              <Link href="/monitoring" className="btn secondary" style={{ justifyContent: 'flex-start', textDecoration: 'none' }}>
+                <Icon d={P.route} cls="" style={{ width: 16, height: 16 }} /> {t('disp.tools.map')}
+              </Link>
+              <Link href="/waybills" className="btn secondary" style={{ justifyContent: 'flex-start', textDecoration: 'none' }}>
+                <Icon d={P.doc} cls="" style={{ width: 16, height: 16 }} /> {t('disp.tools.registry')}
+              </Link>
+              <Link href="/fleet/vehicles" className="btn secondary" style={{ justifyContent: 'flex-start', textDecoration: 'none' }}>
+                <Icon d={P.car} cls="" style={{ width: 16, height: 16 }} /> {t('disp.tools.fleet')}
+              </Link>
+            </div>
+          </div>
+
+          {/* Уведомления */}
+          <div className="card">
+            <div className="card-h">
+              <h2 style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                <Icon d={P.bell} cls="" style={{ width: 18, height: 18, color: 'var(--blue-600)' }} />
+                {t('notif.title')}
+              </h2>
+              <Link className="link" href="/notifications">{t('disp.notif.all')}</Link>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column' }}>
+              {topNotifs.map(n => (
+                <Link
+                  key={n.id}
+                  href={n.waybillId ? `/waybills/${n.waybillId}` : '/notifications'}
+                  style={{
+                    display: 'flex', alignItems: 'flex-start', gap: 10, padding: '11px 0',
+                    borderBottom: '1px solid var(--line-soft)', textDecoration: 'none',
+                  }}
+                >
+                  <span style={{
+                    width: 8, height: 8, borderRadius: '50%', marginTop: 6, flex: 'none',
+                    background: n.readAt ? 'var(--line)' : 'var(--blue-600)',
+                  }} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                      <span className={`badge ${NOTIF_BADGE[n.kind] ?? 'gray'}`}>{notifTitle(n)}</span>
+                      <span style={{ fontSize: 11.5, color: 'var(--faint)' }}>{fmtDateTime(n.createdAt)}</span>
+                    </div>
+                    {n.body && <div style={{ fontSize: 12.5, color: 'var(--ink-soft)', marginTop: 3 }}>{n.body}</div>}
+                  </div>
+                </Link>
+              ))}
+              {topNotifs.length === 0 && (
+                <div style={{ color: 'var(--muted)', fontSize: 13, padding: '8px 0' }}>{t('notif.empty')}</div>
+              )}
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* Последние путевые листы */}

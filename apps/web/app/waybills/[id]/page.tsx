@@ -4,10 +4,46 @@ import { use, useCallback, useEffect, useState } from 'react';
 import { md, wb, Waybill, Title, StatusEvent, Payment, STATUS_LABELS, type GpsPing, type FieldDefinition } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 import { useAuth } from '@/lib/auth';
+import { verifyLink } from '@/lib/verify';
 import { ExpensesSection } from './ExpensesSection';
+import { Attachments } from './Attachments';
+import { Consignment } from './Consignment';
 import QRCode from 'qrcode';
 
 type Employees = { doctors: { rma: string; name: string }[]; mechanics: { rma: string; name: string }[]; dispatchers: { rma: string; name: string }[] };
+
+// Целевые статусы, уже отражённые титулом на том же шаге (T1/CORRECTION → CREATED,
+// T4 → ACTIVE, T5 → RETURNED; T2/T3 при отказе тоже пишут титул с verdict «НЕ ДОПУЩЕН»
+// → MED_REJECTED/TECH_REJECTED) — их не дублируем отдельной строкой из истории статусов
+// в едином журнале событий, иначе один и тот же шаг попадал бы в журнал дважды.
+const TITLE_COVERED_STATUSES = new Set(['CREATED', 'ACTIVE', 'RETURNED', 'MED_REJECTED', 'TECH_REJECTED']);
+const CANCEL_LIKE_STATUSES = new Set(['CANCELLED', 'EXPIRED', 'BLOCKED']);
+
+type JournalEvent = { at: string; label: string; who: string; tone: 'ok' | 'bad' };
+
+function buildJournal(titles: Title[], history: StatusEvent[], t: (k: string) => string, tStatus: (s: string) => string): JournalEvent[] {
+  const titleEvents: JournalEvent[] = titles.map(ttl => {
+    const d = (ttl.data ?? {}) as Record<string, unknown>;
+    const name = (d.employeeName ?? d.dispatcher) as string | undefined;
+    const roleLabel = t(`role.${ttl.signerRole}`);
+    const who = `${roleLabel || ttl.signerRole} (${name ?? ttl.signerRma})`;
+    const baseKey = `wb.title.${ttl.titleType}`;
+    const base = t(baseKey) !== baseKey ? t(baseKey) : ttl.titleType;
+    const verdict = d.verdict as string | undefined;
+    const rejected = typeof verdict === 'string' && verdict.toUpperCase().includes('НЕ');
+    const label = verdict != null ? `${base} — ${rejected ? t('st.failed') : t('st.passed')}` : base;
+    return { at: ttl.signedAt, label, who, tone: rejected ? 'bad' : 'ok' };
+  });
+  const statusEvents: JournalEvent[] = history
+    .filter(h => !TITLE_COVERED_STATUSES.has(h.toStatus))
+    .map(h => ({
+      at: h.createdAt,
+      label: (h.fromStatus ? `${tStatus(h.fromStatus)} → ` : '') + tStatus(h.toStatus) + (h.reason ? ` — ${h.reason}` : ''),
+      who: h.actor ?? '—',
+      tone: CANCEL_LIKE_STATUSES.has(h.toStatus) ? 'bad' as const : 'ok' as const,
+    }));
+  return [...titleEvents, ...statusEvents].sort((a, b) => a.at.localeCompare(b.at));
+}
 
 export default function WaybillCard({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -20,13 +56,18 @@ export default function WaybillCard({ params }: { params: Promise<{ id: string }
   const [ok, setOk] = useState('');
   const [odometerEntry, setOdometerEntry] = useState('');
   const [motorHoursEntry, setMotorHoursEntry] = useState(''); // моточасы возврата — спецтехника
+  const [retMetrics, setRetMetrics] = useState({ transportWork: '', trips: '', conditionerHours: '' }); // факт. показатели рейса
   const [fuelCalc, setFuelCalc] = useState<Record<string, unknown> | null>(null);
   const [workDays, setWorkDays] = useState<Record<string, unknown>[]>([]);
   const [dayForm, setDayForm] = useState({ workDate: '', exitTime: '06:00', entryTime: '', odometerExit: '', odometerEntry: '', laps: '', revenue: '' });
-  const [fuelForm, setFuelForm] = useState({ fuelType: '1', fuelGiven: '', remainBeforeExit: '' });
+  const [fuelForm, setFuelForm] = useState({ fuelType: '1', fuelGiven: '', remainBeforeExit: '', additionalGiven: '', returned: '' });
   const [replacement, setReplacement] = useState(''); // РМА нового водителя или госномер нового ТС
   const [candidates, setCandidates] = useState<{ value: string; label: string }[]>([]);
-  const [blockReason, setBlockReason] = useState('');
+  const [blockReason, setBlockReason] = useState(''); // разблокировка (Минтранс) — свободное обоснование
+  const [showBlockForm, setShowBlockForm] = useState(false);
+  const [blockAct, setBlockAct] = useState({ reasonCode: '', description: '', place: '', protocolNumber: '' });
+  const [reasons, setReasons] = useState<{ code: string; label: string }[]>([]);
+  const [inspections, setInspections] = useState<Inspection[]>([]);
   const [payment, setPayment] = useState<Payment | null>(null);
   const [tab, setTab] = useState('main');
   const [gps, setGps] = useState<GpsPing | null>(null);
@@ -43,11 +84,12 @@ export default function WaybillCard({ params }: { params: Promise<{ id: string }
     md.fieldDefinitions(data.waybillType, true).then(setFieldDefs).catch(() => setFieldDefs([]));
     setTitles(await wb.titles(id));
     setHistory(await wb.history(id));
+    wb.inspections(id).then(setInspections).catch(() => setInspections([]));
     if (data.number) {
       try {
         const { jws } = await wb.qr(id);
         // QR кодирует URL страницы проверки — камера телефона инспектора открывает её напрямую
-        const verifyUrl = `${window.location.origin}/verify/${jws}`;
+        const verifyUrl = verifyLink(jws);
         setQrUrl(await QRCode.toDataURL(verifyUrl, { width: 240, margin: 1 }));
       } catch { /* QR доступен с READY */ }
     }
@@ -85,6 +127,8 @@ export default function WaybillCard({ params }: { params: Promise<{ id: string }
   }, [id]);
 
   useEffect(() => { reload().catch(e => setError(e.message)); }, [reload]);
+  // Классификатор оснований блокировки — нужен и для формы, и чтобы расшифровать историю.
+  useEffect(() => { wb.inspectionReasons().then(setReasons).catch(() => setReasons([])); }, []);
 
   async function act(label: string, fn: () => Promise<unknown>) {
     setError(''); setOk('');
@@ -106,7 +150,7 @@ export default function WaybillCard({ params }: { params: Promise<{ id: string }
 
   // Доступ к действиям жизненного цикла по роли (админы — сквозной доступ для контроля).
   const has = (r: string) => roles.includes(r);
-  const isAdmin = has('SYSTEM_ADMIN') || has('COMPANY_ADMIN');
+  const isAdmin = has('SYSTEM_ADMIN') || has('COMPANY_ADMIN') || has('BRANCH_ADMIN');
   const canDispatch = has('DISPATCHER') || isAdmin;   // Т1, выдача, Т4, Т5, закрытие, замена, аннулирование
   const canPay = has('ACCOUNTANT') || isAdmin;        // подтверждение оплаты
   const canBlock = has('INSPECTOR') || has('SYSTEM_ADMIN');   // блокировка инспектором
@@ -118,6 +162,9 @@ export default function WaybillCard({ params }: { params: Promise<{ id: string }
   const isIntl = intlKeys.some(k => k in td);
   const hasServiceInfo = 'serviceKind' in td || 'shipmentKind' in td;
   const isSpecial = w.waybillType === 'WB_SPECIAL';
+  const isCargo = ['WB_TRUCK', 'WB_TRUCK_INTL', 'WB_SPECIAL', 'WB_DANGEROUS'].includes(w.waybillType);
+  // Накладная (борхат/CMR) — только для форм, где у оригинала есть отдельный документ приложения.
+  const hasConsignment = ['WB_TRUCK', 'WB_TRUCK_INTL', 'WB_DANGEROUS'].includes(w.waybillType);
   const showRoute = isIntl || hasServiceInfo || isSpecial || !!w.route || !!w.schedule;
   const trailers = Array.isArray(td.trailers) ? (td.trailers as { registrationNumber: string; brand: string }[]) : [];
   const titlesWithData = titles.filter(t => t.data && Object.keys(t.data).length > 0);
@@ -160,7 +207,9 @@ export default function WaybillCard({ params }: { params: Promise<{ id: string }
     { key: 'vehicle', label: t('col.transport') },
     ...(showRoute ? [{ key: 'route', label: t('col.route') }] : []),
     { key: 'fuel', label: t('col.fuel') },
+    ...(hasConsignment ? [{ key: 'consignment', label: t('cn.h') }] : []),
     { key: 'expenses', label: t('wb.tab.expenses') },
+    { key: 'attachments', label: t('wb.tab.attachments') },
     { key: 'inspections', label: t('wb.tab.inspections') },
     { key: 'qr', label: 'QR' },
     { key: 'history', label: t('wb.tab.history') },
@@ -181,11 +230,15 @@ export default function WaybillCard({ params }: { params: Promise<{ id: string }
         <h1 style={{ marginBottom: 0 }}>
           {t('wb.card.h')} {w.number ? <span className="number">{w.number}</span> : t('wb.nonumber')}
         </h1>
+        {w.branchSerial != null && (
+          <span style={{ color: 'var(--muted)', fontSize: 12.5 }}>№ {w.branchSerial}/{w.branchSerialYear} по журналу организации</span>
+        )}
         <span style={{ color: 'var(--muted)', fontSize: 13 }}>{tType(w.waybillType)}</span>
         <span className={`badge ${s.color}`}>{tStatus(w.status)}</span>
         <span className="spacer" />
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
           {w.number && <a className="btn secondary" href={`/waybills/${id}/print`}>{t('wb.printform')}</a>}
+          <a className="btn secondary" href={`/waybills/new?from=${id}`}>{t('wb.btn.copy')}</a>
           {w.status === 'DRAFT' && canDispatch && (
             <button className="btn" disabled={!dispatcher}
               onClick={() => act(t('wb.act.t1'), () => wb.post(`/${id}/titles/t1`, { dispatcherRma: dispatcher }))}>
@@ -232,6 +285,17 @@ export default function WaybillCard({ params }: { params: Promise<{ id: string }
               <input type="number" inputMode="numeric" min={0} style={{ width: 180 }}
                 placeholder={isSpecial ? t('wb.ph.odoentry.opt') : t('wb.ph.odoentry')}
                 value={odometerEntry} onChange={e => setOdometerEntry(e.target.value)} />
+              {isCargo ? (
+                <>
+                  <input type="number" min={0} step="0.1" style={{ width: 150 }} placeholder="Транс. работа P, т·км"
+                    value={retMetrics.transportWork} onChange={e => setRetMetrics(m => ({ ...m, transportWork: e.target.value }))} />
+                  <input type="number" min={0} step="1" style={{ width: 110 }} placeholder="Ездок Z"
+                    value={retMetrics.trips} onChange={e => setRetMetrics(m => ({ ...m, trips: e.target.value }))} />
+                </>
+              ) : (
+                <input type="number" min={0} step="0.1" style={{ width: 150 }} placeholder="Часы кондиционера"
+                  value={retMetrics.conditionerHours} onChange={e => setRetMetrics(m => ({ ...m, conditionerHours: e.target.value }))} />
+              )}
               <button className="btn"
                 disabled={!dispatcher || (isSpecial
                   ? (motorHoursEntry.trim() === '' || !Number.isFinite(Number(motorHoursEntry)))
@@ -240,6 +304,9 @@ export default function WaybillCard({ params }: { params: Promise<{ id: string }
                   dispatcherRma: dispatcher,
                   odometerEntry: odometerEntry.trim() !== '' ? Number(odometerEntry) : (w.odometerExit ?? 0),
                   ...(isSpecial ? { motorHoursEntry: Number(motorHoursEntry) } : {}),
+                  ...(retMetrics.transportWork.trim() !== '' ? { transportWork: Number(retMetrics.transportWork) } : {}),
+                  ...(retMetrics.trips.trim() !== '' ? { trips: Number(retMetrics.trips) } : {}),
+                  ...(retMetrics.conditionerHours.trim() !== '' ? { conditionerHours: Number(retMetrics.conditionerHours) } : {}),
                 }))}>
                 {t('wb.btn.t5')}
               </button>
@@ -268,15 +335,10 @@ export default function WaybillCard({ params }: { params: Promise<{ id: string }
               </button>
             </span>
           )}
-          {w.status === 'ACTIVE' && canBlock && (
-            <span>
-              <input style={{ width: 260, marginRight: 8, display: 'inline-block' }} placeholder={t('wb.ph.blockreason')}
-                value={blockReason} onChange={e => setBlockReason(e.target.value)} />
-              <button className="btn danger" disabled={!blockReason}
-                onClick={() => act(t('wb.act.blocked'), () => wb.post(`/${id}/block`, { reason: blockReason }))}>
-                {t('wb.btn.block')} ({t('wb.r.inspector')})
-              </button>
-            </span>
+          {['ISSUED', 'ACTIVE', 'RETURNED'].includes(w.status) && canBlock && (
+            <button className="btn danger" onClick={() => setShowBlockForm(v => !v)}>
+              {t('wb.btn.block')} ({t('wb.r.inspector')})
+            </button>
           )}
           {w.status === 'BLOCKED' && canUnblock && (
             <span>
@@ -299,6 +361,88 @@ export default function WaybillCard({ params }: { params: Promise<{ id: string }
       </div>
       {error && <div className="error">{error}</div>}
       {ok && <div className="success">{ok}</div>}
+
+      {/* Акт дорожной проверки: блокировка — юридическое действие, основание берётся из
+          классификатора, место и № акта фиксируются вместе с ним. */}
+      {showBlockForm && canBlock && ['ISSUED', 'ACTIVE', 'RETURNED'].includes(w.status) && (
+        <div className="card" style={{ borderColor: 'var(--red)' }}>
+          <div className="card-h"><h2 style={{ margin: 0 }}>{t('insp.act.h')}</h2></div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 12 }}>
+            <div style={{ gridColumn: '1 / -1' }}>
+              <label>{t('insp.act.reason')} *</label>
+              <select value={blockAct.reasonCode} onChange={e => setBlockAct({ ...blockAct, reasonCode: e.target.value })}>
+                <option value="">—</option>
+                {reasons.map(r => <option key={r.code} value={r.code}>{r.label}</option>)}
+              </select>
+            </div>
+            <div style={{ gridColumn: '1 / -1' }}>
+              <label>{t('insp.act.desc')}{blockAct.reasonCode === 'OTHER' ? ' *' : ''}</label>
+              <input value={blockAct.description} placeholder={t('insp.act.desc.ph')}
+                onChange={e => setBlockAct({ ...blockAct, description: e.target.value })} />
+            </div>
+            <div>
+              <label>{t('insp.act.place')}</label>
+              <input value={blockAct.place} placeholder={t('insp.act.place.ph')}
+                onChange={e => setBlockAct({ ...blockAct, place: e.target.value })} />
+            </div>
+            <div>
+              <label>{t('insp.act.protocol')}</label>
+              <input value={blockAct.protocolNumber} placeholder={t('insp.act.protocol.ph')}
+                onChange={e => setBlockAct({ ...blockAct, protocolNumber: e.target.value })} />
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 10, marginTop: 14 }}>
+            <button className="btn danger"
+              disabled={!blockAct.reasonCode || (blockAct.reasonCode === 'OTHER' && !blockAct.description.trim())}
+              onClick={() => act(t('wb.act.blocked'), async () => {
+                await wb.blockWaybill(id, blockAct);
+                setShowBlockForm(false);
+                setInspections(await wb.inspections(id));
+              })}>
+              {t('insp.act.block')}
+            </button>
+            <button className="btn success"
+              onClick={() => act(t('insp.act.passed.done'), async () => {
+                await wb.inspectPassed(id, { place: blockAct.place, protocolNumber: blockAct.protocolNumber });
+                setShowBlockForm(false);
+                setInspections(await wb.inspections(id));
+              })}>
+              {t('insp.act.passed')}
+            </button>
+            <button className="btn secondary" onClick={() => setShowBlockForm(false)}>{t('fleet.cancel')}</button>
+          </div>
+          <div className="hint" style={{ marginTop: 10 }}>{t('insp.act.hint')}</div>
+        </div>
+      )}
+
+      {/* История дорожных проверок — видна всем, кто видит документ (в т.ч. перевозчику:
+          он должен знать, за что и кем заблокирован его лист). */}
+      {inspections.length > 0 && (
+        <div className="card">
+          <div className="card-h"><h2>{t('insp.act.history')}</h2></div>
+          <table>
+            <thead>
+              <tr><th>{t('col.date')}</th><th>{t('insp.act.result')}</th><th>{t('insp.act.reason')}</th>
+                <th>{t('insp.act.place')}</th><th>{t('insp.act.protocol')}</th><th>{t('wb.r.inspector')}</th></tr>
+            </thead>
+            <tbody>
+              {inspections.map(i => (
+                <tr key={i.id}>
+                  <td>{new Date(i.createdAt).toLocaleString('ru-RU')}</td>
+                  <td>{i.action === 'BLOCKED'
+                    ? <span className="badge red">{t('insp.act.blocked')}</span>
+                    : <span className="badge green">{t('insp.act.nofault')}</span>}</td>
+                  <td>{reasons.find(r => r.code === i.reasonCode)?.label ?? '—'}
+                    {i.description && <div style={{ fontSize: 12, color: 'var(--muted)' }}>{i.description}</div>}</td>
+                  <td>{i.place ?? '—'}</td>
+                  <td>{i.protocolNumber ?? '—'}</td>
+                  <td>{i.inspectorName ?? i.inspectorRma}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       {/* Сводная карточка */}
       <div className="card">
@@ -513,6 +657,8 @@ export default function WaybillCard({ params }: { params: Promise<{ id: string }
                       fuelType: Number(fuelForm.fuelType),
                       fuelGiven: fuelForm.fuelGiven ? Number(fuelForm.fuelGiven) : null,
                       remainBeforeExit: fuelForm.remainBeforeExit ? Number(fuelForm.remainBeforeExit) : null,
+                      additionalGiven: fuelForm.additionalGiven ? Number(fuelForm.additionalGiven) : null,
+                      returned: fuelForm.returned ? Number(fuelForm.returned) : null,
                     }));
                   }}>
                     <div><label>{t('rep.col.fueltype')}</label>
@@ -523,6 +669,8 @@ export default function WaybillCard({ params }: { params: Promise<{ id: string }
                     </div>
                     <div><label>{t('rep.col.given')}</label><input type="number" step="0.1" required value={fuelForm.fuelGiven} onChange={e => setFuelForm({ ...fuelForm, fuelGiven: e.target.value })} /></div>
                     <div><label>{t('wb.f.remainbefore')}</label><input type="number" step="0.1" value={fuelForm.remainBeforeExit} onChange={e => setFuelForm({ ...fuelForm, remainBeforeExit: e.target.value })} /></div>
+                    <div><label>{t('wbd.fueladd')}</label><input type="number" step="0.1" value={fuelForm.additionalGiven} onChange={e => setFuelForm({ ...fuelForm, additionalGiven: e.target.value })} /></div>
+                    <div><label>{t('wbd.fuelreturn')}</label><input type="number" step="0.1" value={fuelForm.returned} onChange={e => setFuelForm({ ...fuelForm, returned: e.target.value })} /></div>
                     <div className="full"><button className="btn secondary" type="submit">{t('wb.btn.recordfuel')}</button></div>
                   </form>
                 </>
@@ -580,11 +728,23 @@ export default function WaybillCard({ params }: { params: Promise<{ id: string }
         </>
       )}
 
+      {/* Накладная: приложение к 2-Б или CMR к 5Б-БМ — стороны, груз, операции погрузки-разгрузки */}
+      {tab === 'consignment' && hasConsignment && (
+        <Consignment waybillId={w.id} waybillType={w.waybillType} typeData={td} onSaved={reload} />
+      )}
+
       {/* Расходы рейса (§12): суточные/дороги/парковка/ремонт с подтверждением бухгалтером */}
       {tab === 'expenses' && (
         <div className="card">
           <h2>{t('wb.tab.expenses')}</h2>
           <ExpensesSection waybillId={w.id} terminal={['COMPLETED', 'CANCELLED', 'EXPIRED', 'ARCHIVED'].includes(w.status)} />
+        </div>
+      )}
+
+      {/* Вложения рейса: скан-копии сопроводительных документов (CMR / накладные / фото груза) */}
+      {tab === 'attachments' && (
+        <div className="card">
+          <Attachments waybillId={w.id} terminal={['CANCELLED', 'EXPIRED', 'ARCHIVED'].includes(w.status)} />
         </div>
       )}
 
@@ -638,36 +798,20 @@ export default function WaybillCard({ params }: { params: Promise<{ id: string }
         </div>
       )}
 
-      {/* История: титулы Т1–Т6 + история статусов */}
+      {/* История: единый журнал событий жизненного цикла (титулы Т1–Т6 + переходы статусов) */}
       {tab === 'history' && (
-        <>
-          <div className="card">
-            <h2>{t('wb.titles.h')}</h2>
-            <ul className="timeline">
-              {titles.map(ttl => (
-                <li key={ttl.id}>
-                  <b>{ttl.titleType}</b> — {ttl.signerRole} ({ttl.signerRma})
-                  <div className="when">{new Date(ttl.signedAt).toLocaleString('ru-RU')}</div>
-                </li>
-              ))}
-              {titles.length === 0 && <li>{t('wb.titles.empty')}</li>}
-            </ul>
-          </div>
-
-          <div className="card">
-            <h2>{t('wb.statushistory.h')}</h2>
-            <ul className="timeline">
-              {history.map((h, i) => (
-                <li key={i}>
-                  {h.fromStatus ? `${tStatus(h.fromStatus)} → ` : ''}
-                  <b>{tStatus(h.toStatus)}</b>
-                  {h.reason ? ` — ${h.reason}` : ''}
-                  <div className="when">{new Date(h.createdAt).toLocaleString('ru-RU')} · {h.actor}</div>
-                </li>
-              ))}
-            </ul>
-          </div>
-        </>
+        <div className="card">
+          <h2>{t('wb.journal.h')}</h2>
+          <ul className="timeline">
+            {buildJournal(titles, history, t, tStatus).map((e, i) => (
+              <li key={i} className={e.tone}>
+                <b>{e.label}</b>
+                <div className="when">{new Date(e.at).toLocaleString('ru-RU')} · {e.who}</div>
+              </li>
+            ))}
+            {titles.length === 0 && history.length === 0 && <li>{t('wb.journal.empty')}</li>}
+          </ul>
+        </div>
       )}
     </>
   );

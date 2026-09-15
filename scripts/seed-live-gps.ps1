@@ -3,12 +3,13 @@
 # live radar picture. Re-runnable: cancels any open PL on the same vehicle first.
 # Usage:  powershell -ExecutionPolicy Bypass -File scripts\seed-live-gps.ps1
 $ErrorActionPreference = 'Stop'
+. "$PSScriptRoot\demo-credentials.ps1"
 $kc = 'http://localhost:8180'
 $wb = 'http://localhost:8082'
 $md = 'http://localhost:8081'
 
 function GetToken($user) {
-    $body = "client_id=epd-web&grant_type=password&username=$user&password=$user"
+    $body = "client_id=epd-web&grant_type=password&username=$user&password=$(Get-DemoPassword $user)"
     (Invoke-RestMethod -Method Post -Uri "$kc/realms/epd/protocol/openid-connect/token" -Body $body -ContentType 'application/x-www-form-urlencoded').access_token
 }
 function PostJson($url, $obj, $headers) {
@@ -19,7 +20,7 @@ function PostJson($url, $obj, $headers) {
 $hd = @{ Authorization = "Bearer $(GetToken 'dispatcher')" }
 $hdoc = @{ Authorization = "Bearer $(GetToken 'doctor')" }
 $hm = @{ Authorization = "Bearer $(GetToken 'mechanic')" }
-$ha = @{ Authorization = "Bearer $(GetToken 'admin')" }
+$ha = @{ Authorization = "Bearer $(GetToken 'admin-automation')" }
 Write-Output 'Tokens OK'
 
 # Employees (dispatcher/doctor/mechanic) used as signers
@@ -41,8 +42,8 @@ $done = 0
 foreach ($u in $units) {
     try {
         # upsert driver + vehicle (valid categories / dates so blocking checks pass)
-        PostJson "$md/api/v1/drivers" @{ rma = $u.drv; organizationRma = '025680800'; fullName = $u.dname; licenseNumber = ("AB" + $u.drv); licenseCategories = 'B,C,D'; licenseValidTo = '2028-05-01'; medCertValidTo = '2026-12-31' } $ha | Out-Null
-        PostJson "$md/api/v1/vehicles" @{ registrationNumber = $u.veh; organizationRma = '025680800'; transportType = 1; brand = $u.brand; techInspectionValidTo = '2026-10-01'; controlCardValidTo = '2026-09-01' } $ha | Out-Null
+        PostJson "$md/api/v1/drivers" @{ rma = $u.drv; organizationRma = '025680800'; fullName = $u.dname; licenseNumber = ("AB" + $u.drv); licenseCategories = 'B,C,D'; licenseValidTo = '2028-05-01'; medCertValidTo = '2027-12-31' } $ha | Out-Null
+        PostJson "$md/api/v1/vehicles" @{ registrationNumber = $u.veh; organizationRma = '025680800'; transportType = 1; brand = $u.brand; techInspectionValidTo = '2027-10-01'; controlCardValidTo = '2027-09-01' } $ha | Out-Null
 
         # cancel any open PL on this vehicle (idempotent re-run)
         $open = Invoke-RestMethod "$wb/api/v1/waybills" -Headers $hd
@@ -57,6 +58,9 @@ foreach ($u in $units) {
         $w = PostJson "$wb/api/v1/waybills/$($w.id)/titles/t1" @{ dispatcherRma = '333333333'; validityDays = 1 } $hd
         $w = PostJson "$wb/api/v1/waybills/$($w.id)/confirm-med" @{ employeeRma = '111111111'; passed = $true; indicators = @{ pulse = 70; alcotest = 0 } } $hdoc
         $w = PostJson "$wb/api/v1/waybills/$($w.id)/confirm-tech" @{ employeeRma = '222222222'; passed = $true; checklist = @{ brakes = 'OK' } } $hm
+        # После осмотров ПЛ уходит в AWAITING_PAYMENT — подтверждаем оплату (admin = SYSTEM_ADMIN),
+        # переход AWAITING_PAYMENT → PAID → READY, иначе /issue вернёт 409.
+        if ($w.status -eq 'AWAITING_PAYMENT') { $w = PostJson "$wb/api/v1/waybills/$($w.id)/confirm-payment" @{ method = 'CASH' } $ha }
         $w = PostJson "$wb/api/v1/waybills/$($w.id)/issue" @{ driverConfirmation = 'PIN' } $hd
         $w = PostJson "$wb/api/v1/waybills/$($w.id)/activate" @{ dispatcherRma = '333333333' } $hd
 

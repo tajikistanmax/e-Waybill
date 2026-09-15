@@ -1,8 +1,12 @@
 package tj.mintrans.epd.masterdata.web;
 
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Past;
 import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Size;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -18,6 +22,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 import tj.mintrans.epd.masterdata.config.CurrentUser;
+import tj.mintrans.epd.masterdata.config.TenantScope;
 import tj.mintrans.epd.masterdata.domain.Driver;
 import tj.mintrans.epd.masterdata.repository.DriverRepository;
 import tj.mintrans.epd.masterdata.repository.OrganizationRepository;
@@ -37,14 +42,19 @@ public class DriverController {
 
     private final DriverRepository drivers;
     private final OrganizationRepository organizations;
+    private final tj.mintrans.epd.masterdata.repository.VehicleRepository vehicles;
     private final CurrentUser currentUser;
+    private final TenantScope tenantScope;
     private final AuditService audit;
 
     public DriverController(DriverRepository drivers, OrganizationRepository organizations,
-                            CurrentUser currentUser, AuditService audit) {
+                            tj.mintrans.epd.masterdata.repository.VehicleRepository vehicles,
+                            CurrentUser currentUser, TenantScope tenantScope, AuditService audit) {
         this.drivers = drivers;
         this.organizations = organizations;
+        this.vehicles = vehicles;
         this.currentUser = currentUser;
+        this.tenantScope = tenantScope;
         this.audit = audit;
     }
 
@@ -53,6 +63,9 @@ public class DriverController {
             @NotBlank @Pattern(regexp = "\\d{9,10}", message = "РМА организации должен содержать 9–10 цифр") String organizationRma,
             String tabNumber,
             @NotBlank String fullName,
+            @Past(message = "Дата рождения должна быть в прошлом") LocalDate birthDate,
+            @Min(value = 0, message = "Стаж: 0–80 лет") @Max(value = 80, message = "Стаж: 0–80 лет") Short experienceYears,
+            @Size(max = 500, message = "Медограничения: не более 500 символов") String medRestrictions,
             String licenseNumber,
             String licenseCategories,
             LocalDate licenseValidTo,
@@ -60,20 +73,32 @@ public class DriverController {
             String medCertNumber,
             LocalDate medCertValidTo,
             LocalDate safetyCourseValidTo,
+            String safetyCourseNumber,
             LocalDate adrCertValidTo,
-            String phone) {
+            String phone,
+            // Реквизиты для паритета с боевой формой driver/create (MinTransRT):
+            String passport,
+            String address,
+            @jakarta.validation.constraints.Email(message = "Некорректный email") String email,
+            String powerAttorney,
+            LocalDate visaValidTo,
+            String contractNumber,
+            LocalDate contractValidTo,
+            UUID assignedVehicleId,
+            Boolean suspended) {
     }
 
     /**
-     * Нативное управление водителями внутри платформы: перевозчик (COMPANY_ADMIN/DISPATCHER)
-     * ведёт водителей СВОЕЙ организации; платформенный push-канал единой платформы
-     * (API_INTEGRATOR) и сисадмин — любую. Тенант не может писать в чужую организацию
+     * Нативное управление водителями внутри платформы: перевозчик
+     * (COMPANY_ADMIN — по всем своим филиалам, BRANCH_ADMIN/DISPATCHER — по своему)
+     * ведёт водителей своей области; платформенный push-канал единой платформы
+     * (API_INTEGRATOR) и сисадмин — любую. Тенант не может писать вне своей области
      * (403) и «захватывать» водителя другой организации по РМА (409).
      */
     @PostMapping
-    @PreAuthorize("hasAnyRole('API_INTEGRATOR','SYSTEM_ADMIN','COMPANY_ADMIN','DISPATCHER')")
+    @PreAuthorize("hasAnyRole('API_INTEGRATOR','SYSTEM_ADMIN','COMPANY_ADMIN','BRANCH_ADMIN','DISPATCHER')")
     public ResponseEntity<Driver> upsert(@Valid @RequestBody DriverRequest req) {
-        requireOwnOrganization(req.organizationRma());
+        requireWritable(req.organizationRma());
         var org = organizations.findByRma(req.organizationRma())
                 .orElseThrow(() -> new NotFoundException("Организация не найдена"));
         var existing = drivers.findByRma(req.rma());
@@ -84,6 +109,11 @@ public class DriverController {
         driver.setOrganizationId(org.getId());
         driver.setTabNumber(req.tabNumber());
         driver.setFullName(req.fullName());
+        driver.setBirthDate(req.birthDate());
+        driver.setExperienceYears(req.experienceYears());
+        if (req.medRestrictions() != null) {
+            driver.setMedRestrictions(req.medRestrictions().isBlank() ? null : req.medRestrictions().trim());
+        }
         driver.setLicenseNumber(req.licenseNumber());
         driver.setLicenseCategories(req.licenseCategories());
         driver.setLicenseValidTo(req.licenseValidTo());
@@ -91,8 +121,34 @@ public class DriverController {
         driver.setMedCertNumber(req.medCertNumber());
         driver.setMedCertValidTo(req.medCertValidTo());
         driver.setSafetyCourseValidTo(req.safetyCourseValidTo());
+        if (req.safetyCourseNumber() != null) {
+            driver.setSafetyCourseNumber(req.safetyCourseNumber().isBlank() ? null : req.safetyCourseNumber().trim());
+        }
         driver.setAdrCertValidTo(req.adrCertValidTo());
         driver.setPhone(req.phone());
+        // Реквизиты паритета с боевой формой (driver/create).
+        driver.setPassport(trimToNull(req.passport()));
+        driver.setAddress(trimToNull(req.address()));
+        driver.setEmail(trimToNull(req.email()));
+        driver.setPowerAttorney(trimToNull(req.powerAttorney()));
+        driver.setVisaValidTo(req.visaValidTo());
+        driver.setContractNumber(trimToNull(req.contractNumber()));
+        driver.setContractValidTo(req.contractValidTo());
+        // Закреплённое ТС: если задано — обязано существовать и принадлежать той же организации.
+        if (req.assignedVehicleId() != null) {
+            var veh = vehicles.findById(req.assignedVehicleId())
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "Закрепляемое ТС не найдено"));
+            if (!org.getId().equals(veh.getOrganizationId())) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "ТС принадлежит другой организации");
+            }
+            driver.setAssignedVehicleId(veh.getId());
+        } else {
+            driver.setAssignedVehicleId(null);
+        }
+        // Блокировку/отстранение водителя ставит/снимает только платформенный админ
+        // (Минтранс) — тот же принцип, что и у Vehicle.blocked; перевозчик не может
+        // разблокировать своего же водителя в обход регулятора.
+        if (currentUser.isPlatformAdmin() && req.suspended() != null) driver.setSuspended(req.suspended());
         var saved = drivers.save(driver);
         audit.record(existing.isPresent() ? AuditService.UPDATE : AuditService.CREATE,
                 "DRIVER", req.rma(), oldName, saved.getFullName());
@@ -105,23 +161,23 @@ public class DriverController {
                              @RequestParam(required = false) String q,
                              @RequestParam(defaultValue = "25") int limit) {
         int cap = Math.min(Math.max(limit, 1), 100);
-        // Мультиарендность: не-админ видит только водителей своей организации.
-        // Анонимные (внутренние) вызовы не фильтруются.
-        if (currentUser.isTenantScoped()) {
-            var org = currentUser.organizationRma().flatMap(organizations::findByRma).orElse(null);
-            if (org == null) {
+        // Мультиарендность: тенант видит водителей своей организации и (для
+        // администратора компании) всех её филиалов. Анонимные вызовы не фильтруются.
+        if (tenantScope.isBounded()) {
+            var ids = tenantScope.organizationIds();
+            if (ids.isEmpty()) {
                 return List.of();
             }
             // q — подстрочный поиск по ИНН(РМА) или ФИО с лимитом (тысячи водителей).
             if (q != null) {
-                return drivers.searchByOrg(org.getId(), q.trim(), PageRequest.of(0, cap));
+                return drivers.searchByOrgs(ids, q.trim(), PageRequest.of(0, cap));
             }
             if (rma != null) {
                 return drivers.findByRma(rma)
-                        .filter(d -> org.getId().equals(d.getOrganizationId()))
+                        .filter(d -> ids.contains(d.getOrganizationId()))
                         .map(List::of).orElseGet(List::of);
             }
-            return drivers.findByOrganizationId(org.getId());
+            return drivers.findByOrganizationIdIn(ids);
         }
         if (q != null && organizationRma != null) {
             var org = organizations.findByRma(organizationRma).orElse(null);
@@ -141,20 +197,18 @@ public class DriverController {
     @GetMapping("/{id}")
     public Driver get(@PathVariable UUID id) {
         var driver = drivers.findById(id).orElseThrow(() -> new NotFoundException("Водитель не найден"));
-        // Мультиарендность: не-админ не может прочитать водителя чужой организации по прямому id.
-        if (currentUser.isTenantScoped()) {
-            var org = currentUser.organizationRma().flatMap(organizations::findByRma).orElse(null);
-            if (org == null || !org.getId().equals(driver.getOrganizationId())) {
-                throw new NotFoundException("Водитель не найден");
-            }
+        // Мультиарендность: тенант не может прочитать водителя вне своей области по прямому id.
+        if (tenantScope.isBounded() && !tenantScope.organizationIds().contains(driver.getOrganizationId())) {
+            throw new NotFoundException("Водитель не найден");
         }
         return driver;
     }
 
-    /** Удаление водителя своей организации. Историю ПЛ не рушит — путевые листы хранят
-     *  снимок данных водителя на момент выдачи (master-data и waybill — раздельные БД). */
+    /** Открепление (удаление) водителя от организации. Историю ПЛ не рушит — путевые листы
+     *  хранят снимок данных водителя на момент выдачи (master-data и waybill — раздельные БД).
+     *  Доступно диспетчеру: ведение состава парка — его повседневная задача. */
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasAnyRole('SYSTEM_ADMIN','COMPANY_ADMIN')")
+    @PreAuthorize("hasAnyRole('SYSTEM_ADMIN','COMPANY_ADMIN','BRANCH_ADMIN','DISPATCHER')")
     public ResponseEntity<Void> delete(@PathVariable UUID id) {
         var driver = drivers.findById(id).orElseThrow(() -> new NotFoundException("Водитель не найден"));
         requireOwnEntity(driver.getOrganizationId());
@@ -165,30 +219,31 @@ public class DriverController {
 
     // ------------------------------------------------------------ тенант-защита записи
 
-    /** Тенант пишет только в свою организацию (иначе 403); платформенный админ — в любую. */
-    private void requireOwnOrganization(String organizationRma) {
-        if (currentUser.isTenantScoped()) {
-            var own = currentUser.organizationRma();
-            if (own.isEmpty() || !own.get().equals(organizationRma)) {
-                throw new AccessDeniedException("Доступ только к своей организации");
-            }
+    /** Тенант пишет в свою организацию либо (администратор компании) в её филиал; иначе 403. */
+    private void requireWritable(String organizationRma) {
+        if (tenantScope.isBounded() && !tenantScope.canWrite(organizationRma)) {
+            throw new AccessDeniedException("Доступ только к своим организациям");
         }
     }
 
     /** Нельзя «захватить»/изменить сущность, уже закреплённую за другой организацией (409). */
     private void assertNotForeign(UUID existingOrgId, UUID targetOrgId, String what) {
-        if (currentUser.isTenantScoped() && existingOrgId != null && !existingOrgId.equals(targetOrgId)) {
+        if (tenantScope.isBounded() && existingOrgId != null && !existingOrgId.equals(targetOrgId)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, what + " уже закреплён(а) за другой организацией");
         }
     }
 
-    /** Тенант удаляет/меняет только сущность своей организации (иначе 403). */
+    /** Тенант удаляет/меняет только сущность в своей области (иначе 403). */
     private void requireOwnEntity(UUID entityOrgId) {
-        if (currentUser.isTenantScoped()) {
-            var own = currentUser.organizationRma().flatMap(organizations::findByRma).orElse(null);
-            if (own == null || !own.getId().equals(entityOrgId)) {
-                throw new AccessDeniedException("Доступ только к своей организации");
-            }
+        if (tenantScope.isBounded() && !tenantScope.organizationIds().contains(entityOrgId)) {
+            throw new AccessDeniedException("Доступ только к своим организациям");
         }
+    }
+
+    /** Обрезка пробелов; пустая/только пробелы строка → NULL. */
+    private static String trimToNull(String s) {
+        if (s == null) return null;
+        var t = s.trim();
+        return t.isEmpty() ? null : t;
     }
 }

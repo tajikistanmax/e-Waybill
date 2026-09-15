@@ -9,7 +9,7 @@ import { SettingsEditor } from '../SettingsEditor';
 const FORMS: { key: string; icon: keyof typeof P; ic: string; status: 'on' | 'planned' }[] = [
   { key: 'form', icon: 'doc', ic: 'ic-blue', status: 'on' },
   { key: 'pdf', icon: 'docActive', ic: 'ic-cyan', status: 'on' },
-  { key: 'tpl', icon: 'book', ic: 'ic-amber', status: 'planned' },
+  { key: 'tpl', icon: 'book', ic: 'ic-amber', status: 'on' },
   { key: 'wm', icon: 'shield', ic: 'ic-purple', status: 'planned' },
 ];
 

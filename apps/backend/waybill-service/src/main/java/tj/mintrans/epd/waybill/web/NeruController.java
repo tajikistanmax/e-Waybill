@@ -53,6 +53,7 @@ public class NeruController {
         var driver = wb.getDriverSnapshot();
         String driverName = driver == null ? null : str(driver.get("fullName"));
         return new NeruWaybillView(
+                wb.getId(),
                 wb.getNumber(),
                 wb.getStatus().name(),
                 wb.getVehicleRegNumber(),
@@ -66,8 +67,13 @@ public class NeruController {
         return o == null ? null : o.toString();
     }
 
-    /** Компактная витрина ПЛ для камер/постов Neru (только для сверки, без чувствительных данных). */
+    /**
+     * Компактная витрина ПЛ для камер/постов Neru (только для сверки, без чувствительных данных).
+     * {@code id} нужен инспектору: найдя лист по госномеру, он должен сразу перейти к документу,
+     * чтобы оформить акт проверки или блокировку — без повторного поиска.
+     */
     public record NeruWaybillView(
+            java.util.UUID id,
             String number,
             String status,
             String vehicleRegNumber,

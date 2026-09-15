@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="ru">
+<head>
+    <meta charset="UTF-8"/>
+    <title>Маълумотнома</title>
+    <style>
+        @page { size: A5; margin: 12mm; }
+        * { font-family: "DejaVu Sans", sans-serif; }
+        body { font-size: 10pt; color: #111; line-height: 1.4; }
+        .head { text-align: center; border-bottom: 2px solid #0a6b3b; padding-bottom: 6px; margin-bottom: 10px; }
+        .head b { font-size: 10.5pt; }
+        h1 { font-size: 14pt; text-align: center; margin: 10px 0 2px; }
+        .sub { text-align: center; font-size: 8.5pt; color: #555; margin-bottom: 12px; }
+        table.kv { width: 100%; border-collapse: collapse; margin-bottom: 10px; }
+        table.kv td { border: 1px solid #bbb; padding: 4px 6px; }
+        table.kv td.k { width: 38%; background: #f3f5f4; font-weight: 700; }
+        table.grid { width: 100%; border-collapse: collapse; margin-bottom: 10px; }
+        table.grid th, table.grid td { border: 1px solid #bbb; padding: 4px 6px; font-size: 9pt; }
+        table.grid th { background: #f3f5f4; }
+        .total { text-align: right; font-size: 12pt; font-weight: 700; margin-top: 6px; }
+        .foot { margin-top: 20px; font-size: 8pt; color: #666; }
+        .badge { display: inline-block; background: #fde68a; padding: 1px 6px; border-radius: 3px; font-size: 8pt; }
+        table.foottbl { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        table.foottbl td { border: none; padding: 0; vertical-align: bottom; }
+        table.foottbl td.qr { width: 80px; text-align: right; }
+        .qr img { width: 70px; height: 70px; }
+        .qr div { font-size: 7pt; color: #888; margin-top: 2px; text-align: center; }
+    </style>
+</head>
+<body>
+<div class="head">
+    <b>ВАЗОРАТИ НАҚЛИЁТИ ҶУМҲУРИИ ТОҶИКИСТОН</b><br/>
+    <span class="sub">Единая платформа электронных путевых листов · е-Роҳхат</span>
+</div>
+
+<h1>МАЪЛУМОТНОМА</h1>
+<div class="sub">Справка о стоимости проезда · № <span th:text="${id}">—</span></div>
+
+<table class="kv">
+    <tr><td class="k">Ф.И.О. получателя</td><td th:text="${fio}">—</td></tr>
+    <tr><td class="k">Вид транспорта</td><td><span th:text="${transportType}">—</span>
+        <span class="badge" th:if="${privileged}">льготная (−50%)</span></td></tr>
+    <tr><td class="k">Организация (РМА)</td><td th:text="${orgRma}">—</td></tr>
+    <tr><td class="k">Выдал</td><td th:text="${issuer}">—</td></tr>
+    <tr><td class="k">Дата выдачи</td><td th:text="${issuedAt}">—</td></tr>
+</table>
+
+<table class="grid">
+    <thead><tr><th>Маршрут</th><th>Туда и обратно</th><th>Стоимость</th></tr></thead>
+    <tbody>
+    <tr th:each="l : ${lines}">
+        <td th:text="${l.route}">—</td>
+        <td th:text="${l.roundTrip} ? 'да (сафари рафту баргашт)' : 'нет'">—</td>
+        <td th:text="${#numbers.formatDecimal(l.price, 1, 2)} + ' сомонӣ'">—</td>
+    </tr>
+    </tbody>
+</table>
+
+<div class="total">Итого к оплате: <span th:text="${#numbers.formatDecimal(price, 1, 2)}">0.00</span> сомонӣ</div>
+
+<div class="sub" style="text-align:left; margin-top: 8px" th:if="${tariffOrder != null and tariffOrder != ''}">
+    Тибқи <span th:text="${tariffOrder}"></span>.
+</div>
+
+<table class="foottbl">
+    <tr>
+        <td class="foot">
+            Документ сформирован системой «е-Роҳхат». Электронная справка, действительна без подписи и печати.
+        </td>
+        <td class="qr" th:if="${qr != null}">
+            <img th:src="${qr}" alt="QR"/>
+            <div>Скан — проверка</div>
+        </td>
+    </tr>
+</table>
+</body>
+</html>

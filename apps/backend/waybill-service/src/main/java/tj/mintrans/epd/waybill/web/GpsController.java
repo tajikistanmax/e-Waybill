@@ -13,7 +13,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import tj.mintrans.epd.waybill.client.MasterDataClient;
-import tj.mintrans.epd.waybill.config.CurrentUser;
+import tj.mintrans.epd.waybill.config.TenantScope;
 import tj.mintrans.epd.waybill.domain.GpsPing;
 import tj.mintrans.epd.waybill.domain.Waybill;
 import tj.mintrans.epd.waybill.domain.WaybillStatus;
@@ -26,6 +26,7 @@ import java.time.OffsetDateTime;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -41,14 +42,14 @@ public class GpsController {
     private final GpsPingRepository repository;
     private final WaybillRepository waybills;
     private final MasterDataClient masterData;
-    private final CurrentUser currentUser;
+    private final TenantScope tenantScope;
 
     public GpsController(GpsPingRepository repository, WaybillRepository waybills,
-                         MasterDataClient masterData, CurrentUser currentUser) {
+                         MasterDataClient masterData, TenantScope tenantScope) {
         this.repository = repository;
         this.waybills = waybills;
         this.masterData = masterData;
-        this.currentUser = currentUser;
+        this.tenantScope = tenantScope;
     }
 
     public record GpsPingRequest(
@@ -86,6 +87,8 @@ public class GpsController {
 
     /** Позиция ТС на линии для монитора диспетчера: ПЛ + последняя координата. */
     public record LivePosition(String vehicleRegNumber, String number, String driver, String status,
+                               String waybillType,
+                               String organizationRma, String organizationName,
                                BigDecimal lat, BigDecimal lon, Short speedKmh, OffsetDateTime recordedAt) {
     }
 
@@ -99,12 +102,12 @@ public class GpsController {
     public List<LivePosition> live() {
         var onLine = EnumSet.of(WaybillStatus.ISSUED, WaybillStatus.ACTIVE);
         List<Waybill> active;
-        if (currentUser.isTenantScoped()) {
-            String org = currentUser.organizationRma().orElse(null);
-            if (org == null) {
+        if (tenantScope.isBounded()) {
+            var scope = tenantScope.rmas();
+            if (scope.isEmpty() || scope.contains("__none__")) {
                 return List.of();
             }
-            active = waybills.findByOrganizationRmaOrderByCreatedAtDesc(org).stream()
+            active = waybills.findByOrganizationRmaInOrderByCreatedAtDesc(scope).stream()
                     .filter(w -> onLine.contains(w.getStatus())).toList();
         } else {
             active = waybills.findByStatusInOrderByCreatedAtDesc(onLine);
@@ -113,8 +116,12 @@ public class GpsController {
             var ping = repository.findTop1ByVehicleRegNumberOrderByRecordedAtDesc(w.getVehicleRegNumber()).orElse(null);
             Map<String, Object> ds = w.getDriverSnapshot();
             String driver = ds != null && ds.get("fullName") != null ? String.valueOf(ds.get("fullName")) : w.getDriverRma();
+            Map<String, Object> os = w.getOrganizationSnapshot();
+            String orgName = os != null && os.get("name") != null ? String.valueOf(os.get("name")) : w.getOrganizationRma();
             return new LivePosition(
                     w.getVehicleRegNumber(), w.getNumber(), driver, w.getStatus().name(),
+                    w.getWaybillType() != null ? w.getWaybillType().name() : null,
+                    w.getOrganizationRma(), orgName,
                     ping != null ? ping.getLat() : null,
                     ping != null ? ping.getLon() : null,
                     ping != null ? ping.getSpeedKmh() : null,
@@ -125,12 +132,10 @@ public class GpsController {
     /** Трек по путевому листу (только своя организация для тенанта). */
     @GetMapping("/track")
     public List<GpsPing> track(@RequestParam UUID waybillId) {
-        if (currentUser.isTenantScoped()) {
+        if (tenantScope.isBounded()) {
             var wb = waybills.findById(waybillId)
                     .orElseThrow(() -> new NotFoundException("Трек не найден"));
-            boolean own = currentUser.organizationRma()
-                    .map(rma -> rma.equals(wb.getOrganizationRma())).orElse(false);
-            if (!own) {
+            if (!tenantScope.contains(wb.getOrganizationRma())) {
                 throw new NotFoundException("Трек не найден");
             }
         }
@@ -138,23 +143,24 @@ public class GpsController {
     }
 
     /**
-     * Мультиарендность чтения /last: тенант видит позицию только ТС своей организации.
-     * Организацию ТС резолвим из master-data (organizationId ТС ↔ id организации вызывающего).
-     * Отсутствие/чужая организация → 404 (не раскрываем существование позиции).
+     * Мультиарендность чтения /last: тенант видит позицию только ТС своей организации
+     * ИЛИ филиалов (tenantScope, как в live()/track()) — раньше сравнивалось только с
+     * собственной rma вызывающего, из-за чего COMPANY_ADMIN не видел позицию ТС филиала.
+     * Организацию ТС резолвим из master-data (organizationId ТС ↔ id одной из организаций
+     * области видимости). Отсутствие/чужая организация → 404 (не раскрываем существование позиции).
      */
     private void assertVehicleVisible(String reg) {
-        if (!currentUser.isTenantScoped()) {
+        if (!tenantScope.isBounded()) {
             return;
-        }
-        String callerRma = currentUser.organizationRma().orElse(null);
-        if (callerRma == null) {
-            throw new NotFoundException("Позиция для ТС %s не найдена".formatted(reg));
         }
         var vehicle = masterData.findVehicle(reg)
                 .orElseThrow(() -> new NotFoundException("Позиция для ТС %s не найдена".formatted(reg)));
-        var callerOrg = masterData.findOrganization(callerRma).orElse(null);
-        if (callerOrg == null
-                || !String.valueOf(vehicle.get("organizationId")).equals(String.valueOf(callerOrg.get("id")))) {
+        String vehicleOrgId = String.valueOf(vehicle.get("organizationId"));
+        boolean visible = tenantScope.rmas().stream()
+                .map(masterData::findOrganization)
+                .flatMap(Optional::stream)
+                .anyMatch(org -> vehicleOrgId.equals(String.valueOf(org.get("id"))));
+        if (!visible) {
             throw new NotFoundException("Позиция для ТС %s не найдена".formatted(reg));
         }
     }

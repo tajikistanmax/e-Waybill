@@ -42,6 +42,19 @@ public class WorkDayService {
     @Transactional
     public WorkDay addWorkDay(UUID waybillId, LocalDate workDate, LocalTime exitTime, LocalTime entryTime,
                               Integer odometerExit, Integer odometerEntry, Integer laps, BigDecimal revenue) {
+        return addWorkDay(waybillId, workDate, exitTime, entryTime, odometerExit, odometerEntry, laps, revenue,
+                null, null, null);
+    }
+
+    /**
+     * С посуточными данными для расчёта топлива многодневных пассажирских ПЛ (кондиционер,
+     * клиент/время у клиента) — пока только хранение, движок расчёта их ещё не читает
+     * (см. spec/notes/04-гэп-анализ §2.2: живой путь считает агрегатом на весь ПЛ).
+     */
+    @Transactional
+    public WorkDay addWorkDay(UUID waybillId, LocalDate workDate, LocalTime exitTime, LocalTime entryTime,
+                              Integer odometerExit, Integer odometerEntry, Integer laps, BigDecimal revenue,
+                              BigDecimal conditionerHours, UUID clientId, LocalTime clientTime) {
         var wb = waybillService.get(waybillId);
         if (wb.getStatus() != WaybillStatus.ACTIVE) {
             throw new ConflictException("Рабочий день можно добавить только в статусе ACTIVE (текущий: %s)".formatted(wb.getStatus()));
@@ -69,6 +82,9 @@ public class WorkDayService {
         day.setOdometerEntry(odometerEntry);
         day.setLaps(laps);
         day.setRevenue(revenue);
+        day.setConditionerHours(conditionerHours);
+        day.setClientId(clientId);
+        day.setClientTime(clientTime);
         return workDays.save(day);
     }
 
@@ -84,15 +100,53 @@ public class WorkDayService {
     @Transactional
     public FuelRecord addFuel(UUID waybillId, UUID workDayId, short fuelType,
                               BigDecimal fuelGiven, BigDecimal remainBeforeExit, BigDecimal remainEntry) {
+        return addFuel(waybillId, workDayId, fuelType, fuelGiven, remainBeforeExit, remainEntry, null, null);
+    }
+
+    /**
+     * С довыдачей в пути (additionalGiven) и возвратом неиспользованного топлива на базу
+     * (returned) — графы «Иловагӣ» / «Баргардонида шуд» бланков 1-А/2-Б/3-С/5Б-БМ, ранее
+     * печатавшиеся пустыми (spec/notes/04-гэп-анализ).
+     */
+    @Transactional
+    public FuelRecord addFuel(UUID waybillId, UUID workDayId, short fuelType,
+                              BigDecimal fuelGiven, BigDecimal remainBeforeExit, BigDecimal remainEntry,
+                              BigDecimal additionalGiven, BigDecimal returned) {
         var wb = waybillService.get(waybillId);
         if (wb.getStatus().isTerminal()) {
             throw new ConflictException("Добавление топлива невозможно в статусе " + wb.getStatus());
+        }
+        // Объёмы топлива — только неотрицательные: выданное, довыданное в пути, остатки и возврат < 0 недопустимы.
+        if (isNegative(fuelGiven) || isNegative(remainBeforeExit) || isNegative(remainEntry)
+                || isNegative(additionalGiven) || isNegative(returned)) {
+            throw new UnprocessableException("Объёмы топлива не могут быть отрицательными");
+        }
+        // Электротранспорт (троллейбус) — только электроэнергия (вид 5), горючее ему не выдают.
+        if (wb.getWaybillType() == tj.mintrans.epd.waybill.domain.WaybillType.WB_TROLLEYBUS && fuelType != 5) {
+            throw new UnprocessableException("Для электротранспорта учитывается только электроэнергия (вид 5)");
+        }
+        // Вид топлива заправки должен соответствовать карточке ТС (снимок мастер-данных, поле fuel_type
+        // миграции V47). Несовместимые основные виды между собой не путаем — напр. бензин в дизельный ТС.
+        // Газ (сжиженный/природный) не блокируем: это штатное второе топливо газобаллонного оборудования,
+        // из-за которого на ПЛ и допускается до двух видов топлива (см. MAX_FUEL_TYPES).
+        var vehicleSnapshot = wb.getVehicleSnapshot();
+        Integer vehicleFuel = intOrNull(vehicleSnapshot == null ? null : vehicleSnapshot.get("fuelType"));
+        if (vehicleFuel != null && vehicleFuel.intValue() != fuelType
+                && !isGasFuel(fuelType) && !isGasFuel(vehicleFuel.shortValue())) {
+            throw new UnprocessableException(
+                    "Вид топлива заправки (%d) не соответствует виду топлива транспортного средства (%d)"
+                            .formatted(fuelType, vehicleFuel));
         }
         if (workDayId != null) {
             var day = workDays.findById(workDayId)
                     .orElseThrow(() -> new NotFoundException("Рабочий день не найден"));
             if (!waybillId.equals(day.getWaybillId())) {
                 throw new UnprocessableException("Рабочий день не относится к этому путевому листу");
+            }
+            // Дата заправки берётся из рабочего дня (у самой записи топлива своего поля даты нет —
+            // created_at проставляется автоматически). Заправку нельзя оформить будущим числом.
+            if (day.getWorkDate() != null && day.getWorkDate().isAfter(LocalDate.now())) {
+                throw new UnprocessableException("Дата заправки не может быть в будущем");
             }
         }
         var existing = fuelRecords.findByWaybillIdOrderByCreatedAt(waybillId);
@@ -108,6 +162,24 @@ public class WorkDayService {
         record.setFuelGiven(fuelGiven);
         record.setRemainBeforeExit(remainBeforeExit);
         record.setRemainEntry(remainEntry);
+        record.setAdditionalGiven(additionalGiven);
+        record.setReturned(returned);
         return fuelRecords.save(record);
+    }
+
+    private static boolean isNegative(BigDecimal v) {
+        return v != null && v.signum() < 0;
+    }
+
+    /** Газовое топливо (3=сжиженный, 4=природный) — штатное второе топливо ГБО, с карточкой ТС не сверяется. */
+    private static boolean isGasFuel(short fuelType) {
+        return fuelType == 3 || fuelType == 4;
+    }
+
+    private static Integer intOrNull(Object o) {
+        if (o == null) {
+            return null;
+        }
+        return o instanceof Number n ? n.intValue() : Integer.valueOf(o.toString());
     }
 }

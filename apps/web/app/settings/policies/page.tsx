@@ -13,8 +13,10 @@ const RULE_TYPES: Record<string, 'bool' | 'int'> = {
   require_tech_check: 'bool',
   require_med_post: 'bool',
   require_gps: 'bool',
+  block_minor_driver: 'bool',
   max_validity_days: 'int',
   min_rest_hours: 'int',
+  min_driver_experience_years: 'int',
 };
 const ALL_RULES = Object.keys(RULE_TYPES);
 

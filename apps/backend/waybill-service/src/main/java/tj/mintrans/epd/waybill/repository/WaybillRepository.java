@@ -31,7 +31,14 @@ public interface WaybillRepository extends JpaRepository<Waybill, UUID> {
 
     List<Waybill> findByDriverRmaAndStatusIn(String driverRma, Collection<WaybillStatus> statuses);
 
+    /** Все ПЛ водителя (основной или второй), новые сверху — для мобильного приложения. */
+    @Query("select w from Waybill w where w.driverRma = :rma or w.secondDriverRma = :rma order by w.createdAt desc")
+    List<Waybill> findForDriver(String rma);
+
     List<Waybill> findByOrganizationRmaOrderByCreatedAtDesc(String organizationRma);
+
+    /** ПЛ набора организаций (компания + её филиалы), новые сверху. */
+    List<Waybill> findByOrganizationRmaInOrderByCreatedAtDesc(Collection<String> organizationRmas);
 
     List<Waybill> findByStatusOrderByCreatedAtDesc(WaybillStatus status);
 

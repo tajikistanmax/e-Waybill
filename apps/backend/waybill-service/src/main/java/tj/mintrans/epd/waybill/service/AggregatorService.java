@@ -30,8 +30,14 @@ import java.util.UUID;
 @Service
 public class AggregatorService {
 
-    /** Правило legacy: рейс агрегатора не длиннее 7 дней от даты выезда. */
-    private static final int MAX_TRIP_DAYS = 7;
+    /**
+     * Максимальная длительность рейса агрегатора от даты выезда. Поднято с legacy-лимита
+     * в 7 дней до 30 — теперь совпадает с потолком долгой таксомоторной заявки «3с30»
+     * (legacy waybill_neru) и с уже действующим для WB_TRUCK_INTL/WB_PAX_INTL правилом:
+     * жёсткий предел как осознанный предохранитель цифровой платформы, а не открытый
+     * «1 рейс» из бумажного оригинала.
+     */
+    private static final int MAX_TRIP_DAYS = 30;
 
     /** «Действующие» статусы, при которых ПЛ пригоден к использованию (для legacy GET агрегатора). */
     private static final Set<WaybillStatus> USABLE =

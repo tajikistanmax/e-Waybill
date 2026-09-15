@@ -1,0 +1,42 @@
+# Контекст сборки фронтенд-образов (apps/web, apps/public) = корень монорепо
+# (нужен workspace-пакет packages/shared). Исключаем тяжёлое и не нужное для сборки,
+# чтобы контекст оставался лёгким.
+
+# Node / Next
+**/node_modules
+**/.next
+**/.next-*
+out/
+
+# Java / Gradle backend (в образ фронта не входит; собирается своим Dockerfile)
+apps/backend/**/build/
+apps/backend/**/bin/
+apps/backend/.gradle/
+
+# VCS / IDE / OS
+.git
+.github
+.idea
+.vscode
+**/*.iml
+Thumbs.db
+.DS_Store
+
+# Секреты / env
+**/.env
+**/.env.*
+**/*.local
+
+# Тесты, отчёты, дампы, документация
+apps/web/e2e
+apps/web/e2e-report/
+apps/web/test-results/
+apps/web/playwright-report/
+apps/web/playwright/.cache/
+backups/
+photo/
+docs/
+spec/
+scripts/
+*.log
+*.tmp

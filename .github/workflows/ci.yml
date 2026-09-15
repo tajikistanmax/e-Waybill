@@ -1,0 +1,106 @@
+# Непрерывная интеграция e-Роҳхат: сборка, тесты, проверка типов фронтенда.
+#
+# Гоняется на каждый push и pull request. Красный прогон блокирует слияние —
+# именно это защищает права доступа и жизненный цикл от регресса (см. пусковой план).
+#
+# Примечание: unix-обёртки gradlew в репозитории нет (только gradlew.bat), поэтому
+# Gradle ставится отдельным шагом фиксированной версии 8.14.3 (JDK 21) — той же,
+# что используется локально и в прод-сборке (apps/backend/Dockerfile).
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  backend:
+    name: Бэкенд — сборка и тесты
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Gradle 8.14.3
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.14.3"
+
+      - name: Тесты (unit + права доступа + изоляция арендаторов)
+        working-directory: apps/backend
+        run: gradle :master-data-service:test :waybill-service:test --no-daemon --console=plain
+
+      - name: Отчёт о тестах
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports
+          path: |
+            apps/backend/*/build/reports/tests/
+            apps/backend/*/build/test-results/
+
+  web:
+    name: Фронтенд — проверка типов
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+
+      - name: Установка зависимостей
+        working-directory: apps/web
+        run: npm ci
+
+      - name: Проверка типов (tsc --noEmit)
+        working-directory: apps/web
+        run: npx tsc --noEmit
+
+  security:
+    name: Безопасность — secrets / зависимости / SAST (ИБ-13.5.6)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # gitleaks сканирует всю историю, не только последний коммит
+
+      - name: Secret-scanning (gitleaks)
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITLEAKS_CONFIG: .gitleaks.toml
+
+      - name: SCA — уязвимости зависимостей (Trivy, блокирует только CRITICAL)
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          severity: CRITICAL
+          exit-code: "1"
+          ignore-unfixed: true
+          # Легаси-дамп прототипа (docs/Путевой лист/...) — не прод-кодовая база,
+          # свои node_modules там не поддерживаются и не обновляются целенаправленно.
+          skip-dirs: docs/Путевой лист
+
+      - name: SAST (Semgrep, отчёт — пока не блокирует релиз)
+        continue-on-error: true
+        run: |
+          docker run --rm -v "${{ github.workspace }}:/src" returntocorp/semgrep:latest \
+            semgrep scan --config=auto --error --output=/src/semgrep-report.txt /src/apps
+
+      - name: Отчёт Semgrep
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: semgrep-report
+          path: semgrep-report.txt
+          if-no-files-found: ignore

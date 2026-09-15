@@ -15,9 +15,11 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import tj.mintrans.epd.waybill.domain.Malumotnoma;
 import tj.mintrans.epd.waybill.domain.Waybill;
 
 import java.text.ParseException;
+import java.time.OffsetDateTime;
 import java.util.Date;
 import java.util.Map;
 
@@ -88,6 +90,31 @@ public class QrTokenService {
             return jwt.serialize();
         } catch (JOSEException e) {
             throw new IllegalStateException("Не удалось подписать QR-нагрузку", e);
+        }
+    }
+
+    /**
+     * Подпись справки (маълумотнома) для QR на печатном бланке — тот же ключ/алгоритм,
+     * что и у путевых листов, но без exp/nbf (справка не «истекает», в отличие от ПЛ)
+     * и с {@code typ=MALUMOTNOMA}, по которому {@code VerifyController} отличает её от ПЛ.
+     */
+    public String sign(Malumotnoma m) {
+        try {
+            var claims = new JWTClaimsSet.Builder()
+                    .issuer("epd.tj")
+                    .jwtID(m.getId().toString())
+                    .claim("typ", "MALUMOTNOMA")
+                    .claim("fio", m.getFio())
+                    .claim("price", m.getPrice())
+                    .claim("route", m.getRouteSummary())
+                    .issueTime(m.getCreatedAt() != null ? Date.from(m.getCreatedAt().toInstant())
+                            : Date.from(OffsetDateTime.now().toInstant()))
+                    .build();
+            var jwt = new SignedJWT(new JWSHeader.Builder(JWSAlgorithm.ES256).keyID(key.getKeyID()).build(), claims);
+            jwt.sign(new ECDSASigner(key));
+            return jwt.serialize();
+        } catch (JOSEException e) {
+            throw new IllegalStateException("Не удалось подписать QR-нагрузку справки", e);
         }
     }
 

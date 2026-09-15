@@ -19,8 +19,8 @@ const CARDS: { key: string; icon: keyof typeof P; ic: string; status: 'on' | 'pl
   { key: 'async', icon: 'bell', ic: 'ic-cyan', status: 'on' },
   { key: 'timeout', icon: 'settings', ic: 'ic-green', status: 'on' },
   { key: 'metrics', icon: 'eye', ic: 'ic-amber', status: 'on' },
-  { key: 'rate', icon: 'shield', ic: 'ic-red', status: 'planned' },
-  { key: 'cache', icon: 'book', ic: 'ic-purple', status: 'planned' },
+  { key: 'rate', icon: 'shield', ic: 'ic-red', status: 'on' },
+  { key: 'cache', icon: 'book', ic: 'ic-purple', status: 'on' },
 ];
 
 export default function PerformanceSettingsPage() {

@@ -35,6 +35,10 @@ public class Notification {
     @Column
     private String body;
 
+    /** Роли-получатели через запятую (напр. "DISPATCHER,COMPANY_ADMIN"); null/пусто — видно всем ролям организации. */
+    @Column(name = "target_roles")
+    private String targetRoles;
+
     @Column(name = "created_at", nullable = false)
     private OffsetDateTime createdAt;
 
@@ -58,6 +62,8 @@ public class Notification {
     public void setTitle(String title) { this.title = title; }
     public String getBody() { return body; }
     public void setBody(String body) { this.body = body; }
+    public String getTargetRoles() { return targetRoles; }
+    public void setTargetRoles(String targetRoles) { this.targetRoles = targetRoles; }
     public OffsetDateTime getCreatedAt() { return createdAt; }
     public OffsetDateTime getReadAt() { return readAt; }
     public void setReadAt(OffsetDateTime readAt) { this.readAt = readAt; }

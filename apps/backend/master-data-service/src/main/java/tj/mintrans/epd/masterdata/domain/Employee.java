@@ -7,6 +7,7 @@ import jakarta.persistence.PrePersist;
 import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
 
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
@@ -36,6 +37,22 @@ public class Employee {
     private short type;
 
     private String phone;
+
+    private String address;
+
+    /**
+     * Номер сертификата (свидетельства) врача, проводящего предрейсовый/послерейсовый медосмотр.
+     * Актуален для type=1 (врач); у механика/диспетчера обычно пуст. §8 QA.
+     */
+    @Column(name = "med_cert_number")
+    private String certNumber;
+
+    /**
+     * Срок действия сертификата врача. Истёкший сертификат блокирует подтверждение медосмотра
+     * (waybill-service confirmMed). NULL = не заполнен → не блокирует (пробел в справочнике). §8 QA.
+     */
+    @Column(name = "med_cert_valid_to")
+    private LocalDate certValidTo;
 
     /** MANUAL | UNIFIED (ФИО субъекта — из единой платформы; роль в организации — локальная). */
     @Column(nullable = false)
@@ -75,6 +92,12 @@ public class Employee {
     public void setType(short type) { this.type = type; }
     public String getPhone() { return phone; }
     public void setPhone(String phone) { this.phone = phone; }
+    public String getAddress() { return address; }
+    public void setAddress(String address) { this.address = address; }
+    public String getCertNumber() { return certNumber; }
+    public void setCertNumber(String certNumber) { this.certNumber = certNumber; }
+    public LocalDate getCertValidTo() { return certValidTo; }
+    public void setCertValidTo(LocalDate certValidTo) { this.certValidTo = certValidTo; }
     public String getSource() { return source; }
     public void setSource(String source) { this.source = source; }
     public OffsetDateTime getSyncedAt() { return syncedAt; }

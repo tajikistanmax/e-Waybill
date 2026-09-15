@@ -3,9 +3,11 @@ package tj.mintrans.epd.waybill.web.error;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
 import java.util.Map;
@@ -48,6 +50,31 @@ public class ApiErrors {
     @ExceptionHandler(ForbiddenException.class)
     public ProblemDetail forbidden(ForbiddenException e) {
         return problem(HttpStatus.FORBIDDEN, "Доступ запрещён", e.getMessage());
+    }
+
+    /**
+     * Отказ @PreAuthorize/hasRole без этого обработчика уходит клиенту ПУСТЫМ телом (дефолт
+     * Spring Security) — фронтенд, ожидающий {@code error.detail}, показывает пользователю
+     * пустое сообщение вместо причины (найдено УАТ 2026-09-04, компакт-находка «Тела ошибок
+     * непоследовательны»).
+     */
+    @ExceptionHandler(AccessDeniedException.class)
+    public ProblemDetail accessDenied(AccessDeniedException e) {
+        return problem(HttpStatus.FORBIDDEN, "Доступ запрещён",
+                e.getMessage() != null && !e.getMessage().isBlank() ? e.getMessage() : "Недостаточно прав для этого действия");
+    }
+
+    /**
+     * {@link ResponseStatusException} (напр. в WaybillAttachmentController) без явного
+     * обработчика получает тело от стандартного {@code BasicErrorController} Spring Boot
+     * (поле {@code message}, не RFC 7807 {@code detail}) — приводим к общему виду.
+     */
+    @ExceptionHandler(ResponseStatusException.class)
+    public ProblemDetail responseStatus(ResponseStatusException e) {
+        var p = ProblemDetail.forStatus(e.getStatusCode());
+        p.setTitle(e.getStatusCode().toString());
+        p.setDetail(e.getReason() != null ? e.getReason() : e.getMessage());
+        return p;
     }
 
     @ExceptionHandler(DataIntegrityViolationException.class)

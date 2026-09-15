@@ -5,6 +5,7 @@
 # Требует: master-data :8081, waybill :8082, Keycloak :8180 (realm epd)
 # =====================================================================
 $ErrorActionPreference = 'Stop'
+. "$PSScriptRoot\demo-credentials.ps1"
 $md = "http://localhost:8081"
 $wb = "http://localhost:8082"
 $kc = "http://localhost:8180"
@@ -16,7 +17,7 @@ function Check($name, $ok) {
 }
 
 function GetToken($user) {
-    $body = "client_id=epd-web&grant_type=password&username=$user&password=$user"
+    $body = "client_id=epd-web&grant_type=password&username=$user&password=$(Get-DemoPassword $user)"
     (Invoke-RestMethod -Method Post -Uri "$kc/realms/epd/protocol/openid-connect/token" -Body $body -ContentType "application/x-www-form-urlencoded").access_token
 }
 
@@ -31,7 +32,8 @@ Write-Output "=== SMOKE-ТЕСТ ПЛАТФОРМЫ ЭПД РТ ==="
 $hd = @{ Authorization = "Bearer $(GetToken 'dispatcher')" }  # диспетчер
 $hdoc = @{ Authorization = "Bearer $(GetToken 'doctor')" }     # врач
 $hm = @{ Authorization = "Bearer $(GetToken 'mechanic')" }    # механик
-$ha = @{ Authorization = "Bearer $(GetToken 'admin')" }       # админ компании
+$ha = @{ Authorization = "Bearer $(GetToken 'admin-automation')" }       # SYSTEM_ADMIN, 2FA не требует (QA)
+$hacc = @{ Authorization = "Bearer $(GetToken 'accountant')" } # бухгалтер (оплата ПЛ)
 Check "Токены всех ролей получены" ($hd -and $hdoc -and $hm -and $ha)
 Check "master-data health UP" ((Invoke-RestMethod "$md/actuator/health").status -eq 'UP')
 Check "waybill health UP" ((Invoke-RestMethod "$wb/actuator/health").status -eq 'UP')
@@ -45,11 +47,16 @@ try {
 } catch { Check "403: врач не создаёт ПЛ" ($_.Exception.Response.StatusCode.value__ -eq 403) }
 
 # --- 2. Мастер-данные (upsert идемпотентен) ---
-$org = PostJson "$md/api/v1/organizations" @{ rma = "025680800"; name = "КВД Автобуси Душанбе"; typeCompany = 1; regionId = 1; licenseFrom = "2025-01-01"; licenseTo = "2027-12-31" } $ha
+# Сроки действия — относительно текущей даты (не абсолютные!), иначе фикстура протухает
+# на следующий день после написания (реальный случай: controlCardValidTo="2026-09-01"
+# истёк ровно через сутки и завалил создание ПЛ проверкой "карточка отсутствует/истекла").
+$farFuture = (Get-Date).AddYears(2).ToString("yyyy-MM-dd")
+$nearFuture = (Get-Date).AddMonths(6).ToString("yyyy-MM-dd")
+$org = PostJson "$md/api/v1/organizations" @{ rma = "025680800"; name = "КВД Автобуси Душанбе"; typeCompany = 1; regionId = 1; licenseFrom = "2025-01-01"; licenseTo = $farFuture } $ha
 Check "Организация upsert" ($org.rma -eq "025680800")
-$drv = PostJson "$md/api/v1/drivers" @{ rma = "461930031"; organizationRma = "025680800"; fullName = "Ахмедзода Зохид"; licenseNumber = "AB1234567"; licenseCategories = "D"; licenseValidTo = "2028-05-01"; medCertValidTo = "2026-12-31" } $ha
+$drv = PostJson "$md/api/v1/drivers" @{ rma = "461930031"; organizationRma = "025680800"; fullName = "Ахмедзода Зохид"; licenseNumber = "AB1234567"; licenseCategories = "D"; licenseValidTo = $farFuture; medCertValidTo = $nearFuture } $ha
 Check "Водитель upsert" ($drv.rma -eq "461930031")
-$veh = PostJson "$md/api/v1/vehicles" @{ registrationNumber = "0114TJ01"; organizationRma = "025680800"; transportType = 1; brand = "Акиа"; techInspectionValidTo = "2026-10-01"; controlCardValidTo = "2026-09-01" } $ha
+$veh = PostJson "$md/api/v1/vehicles" @{ registrationNumber = "0114TJ01"; organizationRma = "025680800"; transportType = 1; brand = "Акиа"; techInspectionValidTo = $nearFuture; controlCardValidTo = $nearFuture } $ha
 Check "ТС upsert" ($veh.registrationNumber -eq "0114TJ01")
 foreach ($e in @(@{rma="111111111";n="Раҳимова С.";t=1}, @{rma="222222222";n="Қосимов Ф.";t=2}, @{rma="333333333";n="Назарова М.";t=3})) {
     PostJson "$md/api/v1/employees" @{ rma = $e.rma; organizationRma = "025680800"; name = $e.n; type = $e.t } $ha | Out-Null
@@ -74,7 +81,10 @@ Check "Т1 диспетчером (CREATED)" ($w.status -eq 'CREATED')
 $w = PostJson "$wb/api/v1/waybills/$($w.id)/confirm-med" @{ employeeRma = "111111111"; passed = $true; indicators = @{ pulse = 70; alcotest = 0 } } $hdoc
 Check "Т2 врачом" $w.medPassed
 $w = PostJson "$wb/api/v1/waybills/$($w.id)/confirm-tech" @{ employeeRma = "222222222"; passed = $true; checklist = @{ brakes = "OK" } } $hm
-Check "Т3 механиком → READY + номер" (($w.status -eq 'READY') -and $w.number)
+Check "Т3 механиком → AWAITING_PAYMENT" ($w.status -eq 'AWAITING_PAYMENT')
+# Оплата ПЛ (PAYMENT_ENABLED=true): AWAITING_PAYMENT -> PAID -> READY + номер
+$w = PostJson "$wb/api/v1/waybills/$($w.id)/confirm-payment" @{ method = "CASH"; actor = "444444444" } $hacc
+Check "Оплата бухгалтером → READY + номер" (($w.status -eq 'READY') -and $w.number)
 Check "Формат номера (Луна)" ($w.number -match '^\d{2}-\d{2}-\d{2}-\d{7}-\d$')
 $qr = Invoke-RestMethod "$wb/api/v1/waybills/$($w.id)/qr" -Headers $hd
 Check "QR JWS выдан" ($qr.jws.Length -gt 100)
@@ -121,10 +131,27 @@ try {
     Check "422: международный без визы/дозвола" $false
 } catch { Check "422: международный без визы/дозвола" ($_.Exception.Response.StatusCode.value__ -eq 422) }
 
-# --- 8. API агрегаторов (без токена, legacy) ---
-$agg = PostJson "$wb/api/v1/aggregator/waybills" @{ organization_rma = "025680800"; transport_registration_number = "0114TJ01"; driver_rma = "461930031"; employee_rma = "333333333"; exit_date = (Get-Date -Format "yyyy-MM-dd HH:mm"); distance = 50 } @{}
+# --- 8. API агрегаторов (legacy-контракт) ---
+# AGGREGATOR_OPEN управляет режимом: true (dev) - без токена; false (по умолчанию в
+# docker-compose.prod.yml) - обязателен client-credentials токен epd-aggregator
+# (роль API_INTEGRATOR, см. infra/keycloak/epd-realm.json). Пробуем открытый режим,
+# при 401 переключаемся на client-credentials - так скрипт работает в обоих контурах.
+function GetClientCredentialsToken($clientId, $secret) {
+    $body = "client_id=$clientId&client_secret=$secret&grant_type=client_credentials"
+    (Invoke-RestMethod -Method Post -Uri "$kc/realms/epd/protocol/openid-connect/token" -Body $body -ContentType "application/x-www-form-urlencoded").access_token
+}
+$aggPayload = @{ organization_rma = "025680800"; transport_registration_number = "0114TJ01"; driver_rma = "461930031"; employee_rma = "333333333"; exit_date = (Get-Date -Format "yyyy-MM-dd HH:mm"); distance = 50 }
+$hagg = @{}
+try {
+    $agg = PostJson "$wb/api/v1/aggregator/waybills" $aggPayload $hagg
+} catch {
+    if ($_.Exception.Response.StatusCode.value__ -eq 401) {
+        $hagg = @{ Authorization = "Bearer $(GetClientCredentialsToken 'epd-aggregator' 'epd_aggregator_dev_secret')" }
+        $agg = PostJson "$wb/api/v1/aggregator/waybills" $aggPayload $hagg
+    } else { throw }
+}
 Check "Агрегатор: заявка принята" ($agg.id)
-try { Invoke-RestMethod "$wb/api/v1/aggregator/waybills/$($agg.id)" | Out-Null; Check "Агрегатор: 409 до осмотров" $false }
+try { Invoke-RestMethod "$wb/api/v1/aggregator/waybills/$($agg.id)" -Headers $hagg | Out-Null; Check "Агрегатор: 409 до осмотров" $false }
 catch { Check "Агрегатор: 409 до осмотров" ($_.Exception.Response.StatusCode.value__ -eq 409) }
 PostJson "$wb/api/v1/waybills/$($agg.id)/cancel" @{ reason = "smoke-очистка"; actor = "smoke" } $hd | Out-Null
 
