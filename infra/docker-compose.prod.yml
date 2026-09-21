@@ -114,6 +114,11 @@ services:
       # stub — имитация; при подключении реальной платформы: http + UNIFIED_PLATFORM_URL
       UNIFIED_PLATFORM_MODE: ${UNIFIED_PLATFORM_MODE:-stub}
       UNIFIED_PLATFORM_URL: ${UNIFIED_PLATFORM_URL:-http://unified-platform:8090}
+      # Redis для кэша справочников/политик (Spring Cache): внутри сети compose хост = redis.
+      # Без этого сервис ищет localhost:6379 → /actuator/health = 503 (Redis health indicator),
+      # хотя чтение и падает в БД (CacheConfig). Дефолт application.yml (localhost) — для запуска вне compose.
+      SPRING_DATA_REDIS_HOST: ${SPRING_DATA_REDIS_HOST:-redis}
+      SPRING_DATA_REDIS_PORT: ${SPRING_DATA_REDIS_PORT:-6379}
       # Ограничение кучи JVM: на небольших узлах (≤6 ГБ RAM) не даём сервису забрать
       # слишком много и уронить соседей/себя в OOM. При переносе на крупный узел — убрать.
       JAVA_TOOL_OPTIONS: ${MD_JAVA_OPTS:--Xmx384m}
@@ -122,6 +127,8 @@ services:
         condition: service_healthy
       keycloak:
         condition: service_healthy
+      redis:
+        condition: service_started
     restart: unless-stopped
 
   waybill:
@@ -146,6 +153,13 @@ services:
       PAYMENT_ENABLED: ${PAYMENT_ENABLED:-true}
       PAYMENT_FEE: ${PAYMENT_FEE:-10.00}
       PAYMENT_WEBHOOK_SECRET: ${PAYMENT_WEBHOOK_SECRET:-epd_webhook_dev_secret}   # в проде заменить
+      # Ключ шифрования медицинских показателей (AES-256-GCM, ИБ-13.1.3). ОБЯЗАТЕЛЕН: без него
+      # waybill-service падает на старте (MedicalDataCrypto, fail-fast, dev-заглушки нет).
+      # Значение — из infra/.env (сгенерирован один раз; смена ключа делает ранее сохранённые
+      # медпоказатели нерасшифровываемыми). ${VAR:?…} — compose откажется стартовать без ключа.
+      MEDDATA_ENCRYPTION_KEY: ${MEDDATA_ENCRYPTION_KEY:?MEDDATA_ENCRYPTION_KEY не задан — добавьте в infra/.env (openssl rand -base64 32)}
+      # Постоянный ключ подписи QR (JWS ES256) — из infra/.env; пустой допустим только в режиме stub.
+      QR_SIGNING_KEY: ${QR_SIGNING_KEY:-}
       # API агрегаторов закрыт: нужен client-credentials токен epd-aggregator (роль API_INTEGRATOR)
       AGGREGATOR_OPEN: ${AGGREGATOR_OPEN:-false}
       # OpenAPI/Swagger UI закрыты (см. тот же комментарий у master-data выше)

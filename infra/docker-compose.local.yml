@@ -1,0 +1,14 @@
+# Локальный стенд разработчика — ДОПОЛНЕНИЕ к docker-compose.prod.yml.
+# Публикует порты бэкендов на хост: регрессионные скрипты (scripts/*.ps1), живые проверки и
+# Swagger ходят на localhost:8081 / localhost:8082. На сервере 10.10.29.70 НЕ применять —
+# там бэкенды доступны только внутри сети compose (web → master-data:8081 / waybill:8082).
+#
+# Запуск локального стека:
+#   docker compose -p epd-rt-prod -f docker-compose.prod.yml -f docker-compose.local.yml up -d --build
+services:
+  master-data:
+    ports:
+      - "8081:8081"
+  waybill:
+    ports:
+      - "8082:8082"
