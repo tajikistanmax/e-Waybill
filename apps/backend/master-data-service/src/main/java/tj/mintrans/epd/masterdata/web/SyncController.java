@@ -56,6 +56,7 @@ public class SyncController {
     private final CurrentUser currentUser;
     private final TenantScope tenantScope;
     private final AuditService audit;
+    private final tj.mintrans.epd.masterdata.service.DriverTabNumbers tabNumbers;
 
     private static final java.util.Set<String> SUBJECT_TYPES = java.util.Set.of("PHYSICAL", "IP", "LEGAL");
 
@@ -66,7 +67,8 @@ public class SyncController {
                           EmployeeRepository employees,
                           CurrentUser currentUser,
                           TenantScope tenantScope,
-                          AuditService audit) {
+                          AuditService audit,
+                          tj.mintrans.epd.masterdata.service.DriverTabNumbers tabNumbers) {
         this.unifiedPlatform = unifiedPlatform;
         this.organizations = organizations;
         this.drivers = drivers;
@@ -75,6 +77,7 @@ public class SyncController {
         this.currentUser = currentUser;
         this.tenantScope = tenantScope;
         this.audit = audit;
+        this.tabNumbers = tabNumbers;
     }
 
     // ------------------------------------------------------------ запросы
@@ -178,7 +181,8 @@ public class SyncController {
         driver.setSafetyCourseNumber(license.safetyCourseNumber());
         driver.setSafetyCourseValidTo(license.safetyCourseValidTo());
         driver.setAdrCertValidTo(license.adrCertValidTo());
-        if (req.tabNumber() != null && !req.tabNumber().isBlank()) driver.setTabNumber(req.tabNumber());
+        // Табельный номер: задан → как есть; иначе прежний; иначе max+1 по организации (legacy DriverObserver, 11.7).
+        driver.setTabNumber(tabNumbers.resolve(req.tabNumber(), existing, org.getId()));
         driver.setSource("UNIFIED");
         driver.setSyncedAt(OffsetDateTime.now());
         var savedDriver = drivers.save(driver);

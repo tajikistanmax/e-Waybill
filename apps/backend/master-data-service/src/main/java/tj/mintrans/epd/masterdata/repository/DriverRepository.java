@@ -28,4 +28,8 @@ public interface DriverRepository extends JpaRepository<Driver, UUID> {
             + "and (d.rma like concat('%', :q, '%') or upper(d.fullName) like upper(concat('%', :q, '%'))) "
             + "order by d.fullName")
     List<Driver> searchByOrgs(@Param("orgs") Collection<UUID> orgs, @Param("q") String q, Pageable pageable);
+
+    /** Табельные номера водителей организации (для авто-присвоения max+1, legacy {@code DriverObserver}). */
+    @Query("select d.tabNumber from Driver d where d.organizationId = :org and d.tabNumber is not null")
+    List<String> findTabNumbersByOrganization(@Param("org") UUID org);
 }

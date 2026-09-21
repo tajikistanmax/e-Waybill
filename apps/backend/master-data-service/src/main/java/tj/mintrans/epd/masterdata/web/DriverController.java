@@ -46,16 +46,19 @@ public class DriverController {
     private final CurrentUser currentUser;
     private final TenantScope tenantScope;
     private final AuditService audit;
+    private final tj.mintrans.epd.masterdata.service.DriverTabNumbers tabNumbers;
 
     public DriverController(DriverRepository drivers, OrganizationRepository organizations,
                             tj.mintrans.epd.masterdata.repository.VehicleRepository vehicles,
-                            CurrentUser currentUser, TenantScope tenantScope, AuditService audit) {
+                            CurrentUser currentUser, TenantScope tenantScope, AuditService audit,
+                            tj.mintrans.epd.masterdata.service.DriverTabNumbers tabNumbers) {
         this.drivers = drivers;
         this.organizations = organizations;
         this.vehicles = vehicles;
         this.currentUser = currentUser;
         this.tenantScope = tenantScope;
         this.audit = audit;
+        this.tabNumbers = tabNumbers;
     }
 
     public record DriverRequest(
@@ -107,7 +110,8 @@ public class DriverController {
         var driver = existing.orElseGet(Driver::new);
         driver.setRma(req.rma());
         driver.setOrganizationId(org.getId());
-        driver.setTabNumber(req.tabNumber());
+        // Табельный номер: задан → как есть; иначе прежний; иначе max+1 по организации (legacy DriverObserver, 11.7).
+        driver.setTabNumber(tabNumbers.resolve(req.tabNumber(), existing, org.getId()));
         driver.setFullName(req.fullName());
         driver.setBirthDate(req.birthDate());
         driver.setExperienceYears(req.experienceYears());
