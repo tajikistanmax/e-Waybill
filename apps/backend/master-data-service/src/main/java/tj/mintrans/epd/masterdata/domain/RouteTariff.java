@@ -42,7 +42,16 @@ public class RouteTariff {
     @Column(name = "price_one_time", nullable = false)
     private double priceOneTime;
 
+    /**
+     * Коэффитсиенти иловагӣ — дополнительный коэффициент тарифа (legacy {@code tariffs.adv_coe}, V68,
+     * MIGRATION.md 2.26). В legacy — только поле CRUD, в расчётах не участвует; здесь так же (справочное).
+     */
+    @Column(name = "adv_coe")
+    private java.math.BigDecimal advCoe;
+
     public Long getId() { return id; }
+    public java.math.BigDecimal getAdvCoe() { return advCoe; }
+    public void setAdvCoe(java.math.BigDecimal advCoe) { this.advCoe = advCoe; }
     public UUID getRouteId() { return routeId; }
     public void setRouteId(UUID routeId) { this.routeId = routeId; }
     public Short getFuelId() { return fuelId; }

@@ -92,7 +92,7 @@ export default function DictionariesView({ tab }: { tab: DictTab }) {
           // маршрут: путевые показатели/коэффициенты (V28) и координаты (V67)
           'distanceA', 'distanceB', 'beginPathA', 'beginPathB', 'plannedLap', 'coeUseCapacity', 'averageLengthPassSeat',
           'stationCoef', 'roadQuality', 'mountainCoefValue', 'inCityCoefValue',
-          'additionalFuel100', 'additionalFuel', 'condFuel', 'heatingFuel', 'latitude', 'longitude']) {
+          'additionalFuel100', 'additionalFuel', 'condFuel', 'heatingFuel', 'latitude', 'longitude', 'advCoe']) {
         if (k in body) body[k] = body[k] === '' ? null : Number(body[k]);
       }
       // Маршрут: время рейса / срок свидетельства — пусто → null; флаг «без коэффициентов» — boolean.
@@ -294,6 +294,7 @@ export default function DictionariesView({ tab }: { tab: DictTab }) {
             <div><label>{t('col.transport')}</label><input {...f('typeAuto')} /></div>
             <div><label>{t('dict.f.pricepermkm')}</label><input required type="number" step="0.01" {...f('pricePer1Mkm')} /></div>
             <div><label>{t('dict.f.priceonetime')}</label><input required type="number" step="0.01" {...f('priceOneTime')} /></div>
+            <div><label>{t('dict.f.advcoe')}</label><input type="number" step="0.0001" {...f('advCoe')} /></div>
           </>}
           <div className="full"><button className="btn" type="submit">{t('btn.save')}</button></div>
         </form>
@@ -319,7 +320,7 @@ export default function DictionariesView({ tab }: { tab: DictTab }) {
             {tab === 'used-coefs' && <tr><th>{t('col.year')}</th><th>{t('col.km')}</th><th>{t('col.coef')}</th></tr>}
             {tab === 'drive-classes' && <tr><th>{t('col.driveclass')}</th><th>{t('col.coef')}</th></tr>}
             {tab === 'directions' && <tr><th>{t('col.title')}</th><th>{t('col.number')}</th><th>{t('col.checked')}</th></tr>}
-            {tab === 'route-tariffs' && <tr><th>{t('col.routeid')}</th><th>{t('col.fuel')}</th><th>{t('dict.f.pricepermkm')}</th><th>{t('dict.f.priceonetime')}</th></tr>}
+            {tab === 'route-tariffs' && <tr><th>{t('col.routeid')}</th><th>{t('col.fuel')}</th><th>{t('dict.f.pricepermkm')}</th><th>{t('dict.f.priceonetime')}</th><th>{t('dict.f.advcoe')}</th></tr>}
           </thead>
           <tbody>
             {rows.map((r, i) => (
@@ -336,7 +337,7 @@ export default function DictionariesView({ tab }: { tab: DictTab }) {
                 {tab === 'used-coefs' && <><td>{String(r.year ?? '—')}</td><td>{String(r.km ?? '—')}</td><td><b>{String(r.coef ?? '—')}</b></td></>}
                 {tab === 'drive-classes' && <><td style={{ fontWeight: 600, color: 'var(--ink)' }}>{String(r.driveClass)}</td><td><b>{String(r.coef ?? '—')}</b></td></>}
                 {tab === 'directions' && <><td style={{ fontWeight: 600, color: 'var(--ink)' }}>{String(r.title)}</td><td>{String(r.number ?? '—')}</td><td>{r.checked ? t('st.yes') : '—'}</td></>}
-                {tab === 'route-tariffs' && <><td><span className="number">{String(r.routeId)}</span></td><td>{r.fuelId != null ? String(r.fuelId) : t('dict.any')}</td><td><b>{String(r.pricePer1Mkm)}</b></td><td>{String(r.priceOneTime)}</td></>}
+                {tab === 'route-tariffs' && <><td><span className="number">{String(r.routeId)}</span></td><td>{r.fuelId != null ? String(r.fuelId) : t('dict.any')}</td><td><b>{String(r.pricePer1Mkm)}</b></td><td>{String(r.priceOneTime)}</td><td>{r.advCoe != null ? String(r.advCoe) : '—'}</td></>}
               </tr>
             ))}
             {rows.length === 0 && <tr><td colSpan={6} style={{ textAlign: 'center', color: 'var(--muted)', padding: 20 }}>{t('common.norecords')}</td></tr>}

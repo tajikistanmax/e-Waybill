@@ -322,7 +322,9 @@ public class LegacyReferenceController {
             String number,
             String typeAuto,
             @NotNull Double pricePer1Mkm,
-            @NotNull Double priceOneTime) {
+            @NotNull Double priceOneTime,
+            // Коэффитсиенти иловагӣ (legacy tariffs.adv_coe) — справочное, в расчёт не входит (2.26).
+            java.math.BigDecimal advCoe) {
     }
 
     /** Upsert по (routeId, fuelId) — fuelId=null — тариф для всех видов топлива маршрута. */
@@ -340,6 +342,7 @@ public class LegacyReferenceController {
         tariff.setTypeAuto(req.typeAuto());
         tariff.setPricePer1Mkm(req.pricePer1Mkm());
         tariff.setPriceOneTime(req.priceOneTime());
+        tariff.setAdvCoe(req.advCoe());
         var savedTariff = routeTariffs.save(tariff);
         audit.record(existing.isPresent() ? AuditService.UPDATE : AuditService.CREATE,
                 "ROUTE_TARIFF", req.routeId() + "/" + (req.fuelId() == null ? "*" : req.fuelId()),
