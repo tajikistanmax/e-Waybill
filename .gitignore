@@ -2,6 +2,11 @@
 apps/backend/**/build/
 apps/backend/.gradle/
 *.class
+# Выход компиляции IDE (Eclipse/VS Code Java) — не исходники
+apps/backend/**/bin/
+
+# TypeScript incremental build state
+apps/web/tsconfig.tsbuildinfo
 
 # Node / Next.js
 node_modules/
