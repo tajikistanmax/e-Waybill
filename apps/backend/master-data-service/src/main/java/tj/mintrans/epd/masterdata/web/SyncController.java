@@ -281,7 +281,6 @@ public class SyncController {
      *  любой аутентифицированный мог бы перебирать номера дозволов и нагружать upstream. */
     @PreAuthorize("hasAnyRole('DISPATCHER','COMPANY_ADMIN','SYSTEM_ADMIN','API_INTEGRATOR')")
     @org.springframework.web.bind.annotation.GetMapping("/permit/{number}")
-    @PreAuthorize("hasAnyRole('DISPATCHER','BRANCH_ADMIN','COMPANY_ADMIN','SYSTEM_ADMIN')")
     public UnifiedPlatformClient.PermitInfo permit(@org.springframework.web.bind.annotation.PathVariable String number) {
         return unifiedPlatform.findPermit(number)
                 .orElseThrow(() -> new NotFoundException("Дозвол %s не найден в системе E-PERMIT".formatted(number)));

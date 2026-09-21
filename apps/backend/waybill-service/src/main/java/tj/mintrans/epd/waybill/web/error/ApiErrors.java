@@ -92,13 +92,6 @@ public class ApiErrors {
                 "Найдено несколько записей там, где ожидалась одна — требуется устранение дублей");
     }
 
-    /** Отказ авторизации @PreAuthorize → 403 в едином формате (как и ForbiddenException). */
-    @ExceptionHandler(org.springframework.security.access.AccessDeniedException.class)
-    public ProblemDetail accessDenied(org.springframework.security.access.AccessDeniedException e) {
-        return problem(HttpStatus.FORBIDDEN, "Доступ запрещён",
-                e.getMessage() != null ? e.getMessage() : "Недостаточно прав для выполнения операции");
-    }
-
     /** Некорректный ввод (в т.ч. NumberFormatException при разборе снимков) → 422 вместо 500. */
     @ExceptionHandler(IllegalArgumentException.class)
     public ProblemDetail illegalArgument(IllegalArgumentException e) {

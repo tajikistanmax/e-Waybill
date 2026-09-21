@@ -63,7 +63,7 @@ public class ClassifierController {
      */
     @GetMapping("/waybill-types")
     public List<Classifier> waybillTypes() {
-        return repository.findByCategoryOrderBySortOrderAscCodeAsc("WAYBILL_TYPE");
+        return service.listAllByCategory("WAYBILL_TYPE");
     }
 
     /**
@@ -73,7 +73,7 @@ public class ClassifierController {
      */
     @GetMapping("/waybill-statuses")
     public List<Classifier> waybillStatuses() {
-        return repository.findByCategoryOrderBySortOrderAscCodeAsc("WAYBILL_STATUS");
+        return service.listAllByCategory("WAYBILL_STATUS");
     }
 
     @PostMapping

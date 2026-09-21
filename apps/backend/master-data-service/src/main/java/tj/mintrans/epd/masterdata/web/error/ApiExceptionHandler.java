@@ -85,15 +85,6 @@ public class ApiExceptionHandler {
         return problem;
     }
 
-    /** Отказ авторизации (@PreAuthorize / ручные проверки «только своя организация») → 403 в едином формате. */
-    @ExceptionHandler(org.springframework.security.access.AccessDeniedException.class)
-    public ProblemDetail forbidden(org.springframework.security.access.AccessDeniedException e) {
-        var problem = ProblemDetail.forStatus(HttpStatus.FORBIDDEN);
-        problem.setTitle("Доступ запрещён");
-        problem.setDetail(e.getMessage() != null ? e.getMessage() : "Недостаточно прав для выполнения операции");
-        return problem;
-    }
-
     /** Некорректный ввод (в т.ч. NumberFormatException) → 422 вместо дефолтного 500. */
     @ExceptionHandler(IllegalArgumentException.class)
     public ProblemDetail badRequest(IllegalArgumentException e) {
