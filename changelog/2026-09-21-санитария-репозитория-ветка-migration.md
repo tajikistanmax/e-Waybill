@@ -33,7 +33,8 @@
   `apps/web/tsconfig.tsbuildinfo` — удалены из индекса (на диске остались).
 
 ## Коммиты (ветка `migration`)
-- `5f20557` — chore(repo): убрать артефакты сборки (bin/, tsconfig.tsbuildinfo) из индекса
+- `bdeb0a8` — chore(repo): убрать артефакты сборки (bin/, tsconfig.tsbuildinfo) из индекса
+- `73341d8` — docs(migration): MIGRATION.md, бриф владельца, записи changelog с хэшами (Шаг 0)
 
 ## Как откатить
-- `git revert 5f20557` вернёт файлы в индекс и правила `.gitignore` к прежнему виду.
+- `git revert bdeb0a8` вернёт файлы в индекс и правила `.gitignore` к прежнему виду.
