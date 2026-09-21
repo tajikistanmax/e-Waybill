@@ -101,3 +101,43 @@ Legacy — авто-инкрементные `id` + `company_id` FK. Наше �
 - **Справочники+реестры (Ф1–Ф4):** `mysql_fdw` в epd-prod-postgres → `INSERT … SELECT` с remap, идемпотентно. Быстро, транзакционно, воспроизводимо (SQL-скрипты в `scripts/migration/`).
 - **ПЛ (Ф5, если делаем):** отдельный батч-скрипт (Python или Java-runner) с `COPY` и resolvом снапшотов.
 - Всё — **в отдельной схеме/скриптах**, идемпотентно, с логом и возможностью повторного прогона по фазам.
+
+---
+
+## 9. Ф5 — РЕАЛИЗОВАНО (2026-09-21): исторические ПЛ, вариант B (архив)
+
+**Решение пользователя:** грузить **всю историю** (вариант B, окно = всё время). Записи read-only:
+`status=ARCHIVED`, `source='MIGRATED'` (в модели `Waybill.source` — обычный String, не enum).
+
+**Скрипты** (`scripts/migration/`): `14_staging_phase5_ddl.sql` (обобщённый staging `stg_wb5`,
+22 text-колонки под все типы), `15_phase5_waybills.sql` (трансформация в `waybill`,
+идемпотентно `ON CONFLICT (number) DO NOTHING`), оркестратор `run_phase5.ps1`
+(параметр `-Window`, целевая БД `waybill`).
+
+**Маппинг источник → тип:**
+- `waybill3cs`: `type_service=1`(taxi)→`WB_TAXI`, `2`(route)/`3`(hourly)→`WB_CAR`;
+- `waybill1as`→`WB_MINIBUS`; `waybill1ads`: `type='ebus'`→`WB_TROLLEYBUS`, иначе `WB_BUS`;
+- `waybill2bs`→`WB_TRUCK` (маршрут из `directions.title`, нет schedule);
+- `waybill5bbms`→`WB_TRUCK_INTL` (водители напрямую `first/second_driver_id`, номер = `bba_number`).
+
+**Ключевые решения:**
+- **Натуральные ключи резолвятся в SQL-запросе выгрузки на стороне MySQL** (все таблицы
+  в одной БД — кросс-БД join не нужен). Водитель для 3cs/1as/1ads/2bs — через pivot
+  `parking_driver` (в среднем 1.01 водителя на ТС, `MAX(driver_id)` детерминированно;
+  best-effort: исторический водитель конкретного рейса в legacy не хранится).
+- **Снапшоты самодостаточны** (org `{rma,name}`, vehicle `{registrationNumber,brand}`,
+  driver `{rma,fullName}`) — рендер не зависит от live-реестра; workflow для ARCHIVED не идёт.
+- **Номер** `'MG'||src_code||legacy_id` (уникальный, явно мигрированный; нац. формат
+  RR-YY-… присваивается только в READY). Оригинал legacy-№ — в `type_data.legacyNumber`.
+- `med_passed=tech_passed=true`; `work_day`/`fuel_record` НЕ переносятся (в legacy —
+  сериализованный TEXT; для упрощённого архива достаточно шапки).
+
+**Политика отсева (сироты, консистентно с Ф1–Ф4):** грузятся только ПЛ с разрешимыми
+org+ТС+водитель. Главная причина отсева пассажирских — **~10 002 legacy-водителя с
+`rma='NULL'` (мусор)**; они не в реестре (Ф3 их так же отбросила) → их ПЛ пропускаются.
+Плюс ~36% ПЛ ссылаются на company с пустым `rma` (не мигрированы). Итог: грузится ~половина
+исторических ПЛ (та, что имеет полный набор мигрированных мастер-данных).
+
+**Урок (баг конвейера):** COPY падал `literal carriage return found in data` — в legacy-тексте
+за 4 млн строк встречается «голый» CR (`\r`), который mysql batch не экранирует. Фикс:
+вывод mysql проходит через `tr -d '\015\000'` (убрать CR и NUL; LF-разделители целы).
