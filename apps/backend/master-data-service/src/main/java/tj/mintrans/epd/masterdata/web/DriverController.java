@@ -72,7 +72,8 @@ public class DriverController {
             String licenseNumber,
             String licenseCategories,
             LocalDate licenseValidTo,
-            Short degree,
+            // Класс водителя (дараҷа) 1–3 — legacy degree 1..3 (MIGRATION.md 12.7); питает надбавку cat_1/2/3 в зарплате.
+            @Min(value = 1, message = "Класс водителя: 1–3") @Max(value = 3, message = "Класс водителя: 1–3") Short degree,
             String medCertNumber,
             LocalDate medCertValidTo,
             LocalDate safetyCourseValidTo,
