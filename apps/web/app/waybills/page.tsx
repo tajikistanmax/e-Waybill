@@ -44,8 +44,21 @@ export default function WaybillsPage() {
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [q, setQ] = useState('');
+  // Select-фильтры legacy-реестров (MIGRATION.md 8.1): ТС (parking_id), водитель (timesheet_id), вид обслуживания 3-С (type_service).
+  const [vehicle, setVehicle] = useState('');
+  const [driver, setDriver] = useState('');
+  const [svc, setSvc] = useState('');
   const [page, setPage] = useState(1);
   const { t, tType, tStatus } = useT();
+
+  // Вид услуги 3-С: живые ПЛ несут typeData.serviceKind (TAXI/ROUTE/HOURLY), мигрированные — числовой
+  // typeService (1 такси, 2 хатсайр, 3 соатбай) — приводим к одному коду.
+  const svcOf = (w: Waybill): string => {
+    const kind = w.typeData?.serviceKind;
+    if (typeof kind === 'string' && kind) return kind;
+    const n = Number(w.typeData?.typeService);
+    return n === 1 ? 'TAXI' : n === 2 ? 'ROUTE' : n === 3 ? 'HOURLY' : '';
+  };
 
   useEffect(() => { wb.list().then(setItems).catch(e => setError(e.message)); }, []);
   // Список организаций — для фильтра по компании (платформенные роли видят все ПЛ).
@@ -57,6 +70,9 @@ export default function WaybillsPage() {
     if (status && w.status !== status) return false;
     if (type && w.waybillType !== type) return false;
     if (org && w.organizationRma !== org) return false;
+    if (vehicle && w.vehicleRegNumber !== vehicle) return false;
+    if (driver && w.driverRma !== driver && w.secondDriverRma !== driver) return false;
+    if (svc && svcOf(w) !== svc) return false;
     const d = day(w.validFrom) || day(w.createdAt);
     if (dateFrom && d && d < dateFrom) return false;
     if (dateTo && d && d > dateTo) return false;
@@ -68,7 +84,18 @@ export default function WaybillsPage() {
       if (!hay.includes(s)) return false;
     }
     return true;
-  }), [items, status, type, org, dateFrom, dateTo, q]);
+  }), [items, status, type, org, dateFrom, dateTo, q, vehicle, driver, svc]);
+
+  // Варианты select-фильтров — из загруженного реестра (с учётом выбранных компании и типа), как в
+  // legacy: список ТС/водителей компании; вид обслуживания — только у 3-С.
+  const options = useMemo(() => {
+    const base = items.filter(w => (!org || w.organizationRma === org) && (!type || w.waybillType === type));
+    const vehicles = Array.from(new Set(base.map(w => w.vehicleRegNumber).filter(Boolean))).sort();
+    const drivers = new Map<string, string>();
+    base.forEach(w => { if (w.driverRma && !drivers.has(w.driverRma)) drivers.set(w.driverRma, String(w.driverSnapshot?.fullName ?? w.driverRma)); });
+    return { vehicles, drivers: Array.from(drivers.entries()).sort((a, b) => a[1].localeCompare(b[1])) };
+  }, [items, org, type]);
+  const svcApplicable = !type || type === 'WB_CAR' || type === 'WB_TAXI';
 
   // Карточки-счётчики над фильтрами — по всему набору (не по текущей странице/фильтру).
   const stat = useMemo(() => ({
@@ -86,7 +113,7 @@ export default function WaybillsPage() {
 
   const pages = Math.max(1, Math.ceil(filtered.length / PER_PAGE));
   const view = filtered.slice((page - 1) * PER_PAGE, page * PER_PAGE);
-  const reset = () => { setStatus(''); setType(''); setOrg(''); setDateFrom(''); setDateTo(''); setQ(''); setPage(1); };
+  const reset = () => { setStatus(''); setType(''); setOrg(''); setDateFrom(''); setDateTo(''); setQ(''); setVehicle(''); setDriver(''); setSvc(''); setPage(1); };
   const fmt = (d: string | null) => d ? new Date(d).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—';
   const snapStr = (o: Record<string, unknown> | undefined, k: string) => {
     const v = o?.[k];
@@ -213,6 +240,29 @@ export default function WaybillsPage() {
             <select value={type} onChange={e => { setType(e.target.value); setPage(1); }}>
               <option value="">{t('wb.f.alltypes')}</option>
               {Object.entries(TYPE_LABELS).map(([v]) => <option key={v} value={v}>{tType(v)}</option>)}
+            </select>
+          </div>
+          <div>
+            <label>{t('col.transport')}</label>
+            <select value={vehicle} onChange={e => { setVehicle(e.target.value); setPage(1); }}>
+              <option value="">{t('wb.f.allvehicles')}</option>
+              {options.vehicles.map(v => <option key={v} value={v}>{v}</option>)}
+            </select>
+          </div>
+          <div>
+            <label>{t('col.driver')}</label>
+            <select value={driver} onChange={e => { setDriver(e.target.value); setPage(1); }}>
+              <option value="">{t('wb.f.alldrivers')}</option>
+              {options.drivers.map(([rma, name]) => <option key={rma} value={rma}>{name} ({rma})</option>)}
+            </select>
+          </div>
+          <div>
+            <label>{t('wb.svc.label')} (3-С)</label>
+            <select value={svc} onChange={e => { setSvc(e.target.value); setPage(1); }} disabled={!svcApplicable} title={svcApplicable ? '' : t('wb.f.svconly3c')}>
+              <option value="">{t('wb.f.allsvc')}</option>
+              <option value="TAXI">{t('wb.svc.taxi')}</option>
+              <option value="ROUTE">{t('wb.svc.route')}</option>
+              <option value="HOURLY">{t('wb.svc.hourly')}</option>
             </select>
           </div>
           <div>
