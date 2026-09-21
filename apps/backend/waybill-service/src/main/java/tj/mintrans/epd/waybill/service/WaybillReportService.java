@@ -45,29 +45,79 @@ public class WaybillReportService {
         this.tenantScope = tenantScope;
     }
 
+    /**
+     * Дополнительный отбор строк отчёта (MIGRATION.md 6.7 — legacy {@code report_details}:
+     * детализация по одному ТС {@code parking_id}; по водителю — симметрично).
+     *
+     * @param vehicleRegNumber госномер ТС (без учёта регистра/пробелов), {@code null} — все
+     * @param driverRma        РМА водителя, {@code null} — все
+     */
+    public record Filter(String vehicleRegNumber, String driverRma) {
+        public static final Filter NONE = new Filter(null, null);
+
+        public static Filter of(String vehicleRegNumber, String driverRma) {
+            String v = norm(vehicleRegNumber);
+            String d = norm(driverRma);
+            return v == null && d == null ? NONE : new Filter(v, d);
+        }
+
+        boolean matches(Waybill wb) {
+            if (vehicleRegNumber != null && !vehicleRegNumber.equals(norm(wb.getVehicleRegNumber()))) {
+                return false;
+            }
+            return driverRma == null || driverRma.equals(norm(wb.getDriverRma()));
+        }
+
+        private static String norm(String s) {
+            if (s == null) {
+                return null;
+            }
+            String t = s.replace(" ", "").trim().toUpperCase();
+            return t.isEmpty() ? null : t;
+        }
+    }
+
     /** Пассажирский отчёт (формы 1-А, 1-АД, 1-АДЕ, 3-С). */
     @Transactional(readOnly = true)
     public WaybillReport passenger(ReportType type, LocalDate from, LocalDate to, String organizationRma) {
-        return build(type, from, to, organizationRma, false);
+        return passenger(type, from, to, organizationRma, Filter.NONE);
+    }
+
+    /** Пассажирский отчёт с отбором по ТС / водителю. */
+    @Transactional(readOnly = true)
+    public WaybillReport passenger(ReportType type, LocalDate from, LocalDate to, String organizationRma,
+                                   Filter filter) {
+        return build(type, from, to, organizationRma, false, filter);
     }
 
     /** Грузовой отчёт (формы 2-Б, 5Б-БМ). */
     @Transactional(readOnly = true)
     public WaybillReport cargo(ReportType type, LocalDate from, LocalDate to, String organizationRma) {
-        return build(type, from, to, organizationRma, true);
+        return cargo(type, from, to, organizationRma, Filter.NONE);
+    }
+
+    /** Грузовой отчёт с отбором по ТС / водителю. */
+    @Transactional(readOnly = true)
+    public WaybillReport cargo(ReportType type, LocalDate from, LocalDate to, String organizationRma,
+                               Filter filter) {
+        return build(type, from, to, organizationRma, true, filter);
     }
 
     // ------------------------------------------------------------------
 
     private WaybillReport build(ReportType type, LocalDate from, LocalDate to,
-                                String requestedOrg, boolean cargo) {
+                                String requestedOrg, boolean cargo, Filter filter) {
         Set<String> scope = resolveScope(requestedOrg);
         String org = scope == null ? null : String.join(",", scope);
+        Filter f = filter == null ? Filter.NONE : filter;
 
         // Потоком по периоду (WaybillPeriodScan), а не findAll(): агрегируем строки, сущности не копим.
         Map<String, ReportRow> rows = new LinkedHashMap<>();
         scan.forEach(from, to, scope, wb -> {
             if (!(cargo ? isCargo(wb.getWaybillType()) : isPassenger(wb.getWaybillType()))) {
+                return;
+            }
+            if (!f.matches(wb)) {
                 return;
             }
             Contribution c = contribution(wb, cargo);

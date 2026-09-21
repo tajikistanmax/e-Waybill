@@ -106,24 +106,34 @@ public class ReportController {
 
     // ---------------------------- типовые отчёты движка «Роҳхат» (перенос)
 
-    /** Пассажирский отчёт (формы 1-А, 1-АД, 1-АДЕ, 3-С), тип разреза — {@code ?type=}. */
+    /**
+     * Пассажирский отчёт (формы 1-А, 1-АД, 1-АДЕ, 3-С), тип разреза — {@code ?type=}.
+     * Необязательный отбор по ТС / водителю ({@code vehicleRegNumber}, {@code driverRma}) —
+     * legacy {@code report_details} (детализация по одному ТС), MIGRATION.md 6.7.
+     */
     @GetMapping("/passenger")
     public WaybillReport passenger(
             @RequestParam ReportType type,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
-            @RequestParam(required = false) String organizationRma) {
-        return typedReports.passenger(type, from, to, organizationRma);
+            @RequestParam(required = false) String organizationRma,
+            @RequestParam(required = false) String vehicleRegNumber,
+            @RequestParam(required = false) String driverRma) {
+        return typedReports.passenger(type, from, to, organizationRma,
+                WaybillReportService.Filter.of(vehicleRegNumber, driverRma));
     }
 
-    /** Грузовой отчёт (формы 2-Б, 5Б-БМ), тип разреза — {@code ?type=}. */
+    /** Грузовой отчёт (формы 2-Б, 5Б-БМ), тип разреза — {@code ?type=}; отбор по ТС / водителю — как у пассажирского. */
     @GetMapping("/cargo")
     public WaybillReport cargo(
             @RequestParam ReportType type,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
-            @RequestParam(required = false) String organizationRma) {
-        return typedReports.cargo(type, from, to, organizationRma);
+            @RequestParam(required = false) String organizationRma,
+            @RequestParam(required = false) String vehicleRegNumber,
+            @RequestParam(required = false) String driverRma) {
+        return typedReports.cargo(type, from, to, organizationRma,
+                WaybillReportService.Filter.of(vehicleRegNumber, driverRma));
     }
 
     /** Пассажирский отчёт в XLSX. */
@@ -132,8 +142,11 @@ public class ReportController {
             @RequestParam ReportType type,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
-            @RequestParam(required = false) String organizationRma) {
-        return xlsxResponse(typedReports.passenger(type, from, to, organizationRma));
+            @RequestParam(required = false) String organizationRma,
+            @RequestParam(required = false) String vehicleRegNumber,
+            @RequestParam(required = false) String driverRma) {
+        return xlsxResponse(typedReports.passenger(type, from, to, organizationRma,
+                WaybillReportService.Filter.of(vehicleRegNumber, driverRma)));
     }
 
     /** Грузовой отчёт в XLSX. */
@@ -142,8 +155,11 @@ public class ReportController {
             @RequestParam ReportType type,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
-            @RequestParam(required = false) String organizationRma) {
-        return xlsxResponse(typedReports.cargo(type, from, to, organizationRma));
+            @RequestParam(required = false) String organizationRma,
+            @RequestParam(required = false) String vehicleRegNumber,
+            @RequestParam(required = false) String driverRma) {
+        return xlsxResponse(typedReports.cargo(type, from, to, organizationRma,
+                WaybillReportService.Filter.of(vehicleRegNumber, driverRma)));
     }
 
     /**

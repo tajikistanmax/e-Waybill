@@ -166,6 +166,11 @@ export default function ReportsView({ tab }: { tab: ReportTab }) {
   const [typedType, setTypedType] = useState('BY_VEHICLE');
   const [typedTypes, setTypedTypes] = useState<ReportTypeMeta[]>([]);
   const [typedReport, setTypedReport] = useState<TypedReport | null>(null);
+  // Отбор типового отчёта по одному ТС / водителю (legacy report_details, MIGRATION.md 6.7).
+  const [typedVehicle, setTypedVehicle] = useState('');
+  const [typedDriver, setTypedDriver] = useState('');
+  const typedFilterQs = (typedVehicle.trim() ? `&vehicleRegNumber=${encodeURIComponent(typedVehicle.trim())}` : '')
+    + (typedDriver.trim() ? `&driverRma=${encodeURIComponent(typedDriver.trim())}` : '');
   const [regional, setRegional] = useState<RegionalReport | null>(null);
   const [regionalMode, setRegionalMode] = useState<'trans' | 'count' | 'norm'>('trans');
   const [regionalBill, setRegionalBill] = useState<'PASSENGER' | 'CARGO'>('PASSENGER');
@@ -184,7 +189,7 @@ export default function ReportsView({ tab }: { tab: ReportTab }) {
       if (tab === 'vehicle') setByVehicle(await getJson(`/wb-api/api/v1/reports/by-vehicle?from=${from}&to=${to}`));
       if (tab === 'fuel') setFuel(await getJson(`/wb-api/api/v1/reports/fuel?from=${from}&to=${to}`));
       if (tab === 'typed') {
-        setTypedReport(await getJson(`/wb-api/api/v1/reports/${typedKind}?type=${typedType}&from=${from}&to=${to}`));
+        setTypedReport(await getJson(`/wb-api/api/v1/reports/${typedKind}?type=${typedType}&from=${from}&to=${to}${typedFilterQs}`));
       }
       if (tab === 'regional') {
         const tc = typeCompany ? `&typeCompany=${typeCompany}` : '';
@@ -195,7 +200,7 @@ export default function ReportsView({ tab }: { tab: ReportTab }) {
     } catch (e) {
       setError((e as Error).message);
     }
-  }, [tab, from, to, journalDate, typedKind, typedType, regionalMode, regionalBill, normType, typeCompany]);
+  }, [tab, from, to, journalDate, typedKind, typedType, typedFilterQs, regionalMode, regionalBill, normType, typeCompany]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -220,7 +225,7 @@ export default function ReportsView({ tab }: { tab: ReportTab }) {
     }
   }
   const downloadTypedXlsx = () => downloadXlsx(
-    `/wb-api/api/v1/reports/${typedKind}.xlsx?type=${typedType}&from=${from}&to=${to}`,
+    `/wb-api/api/v1/reports/${typedKind}.xlsx?type=${typedType}&from=${from}&to=${to}${typedFilterQs}`,
     `отчёт-${typedType.toLowerCase()}-${from}_${to}.xlsx`);
   const downloadRegionalXlsx = () => {
     const tc = typeCompany ? `&typeCompany=${typeCompany}` : '';
@@ -387,6 +392,11 @@ export default function ReportsView({ tab }: { tab: ReportTab }) {
           <select value={typedType} onChange={e => setTypedType(e.target.value)} style={{ width: 280 }}>
             {typedTypes.map(rt => <option key={rt.code} value={rt.code}>{rt.label}</option>)}
           </select>
+          <span className="spacer" style={{ flex: 1 }} />
+          <input type="text" style={{ width: 150 }} value={typedVehicle} onChange={e => setTypedVehicle(e.target.value)}
+            placeholder={t('rep.typed.filter.vehicle')} title={t('rep.typed.filter.vehicle')} />
+          <input type="text" style={{ width: 150 }} value={typedDriver} onChange={e => setTypedDriver(e.target.value)}
+            placeholder={t('rep.typed.filter.driver')} title={t('rep.typed.filter.driver')} />
         </div>
       )}
       {error && <div className="error">{error}</div>}
