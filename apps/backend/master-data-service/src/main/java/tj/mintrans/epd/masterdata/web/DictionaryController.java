@@ -114,7 +114,17 @@ public class DictionaryController {
             Double beginPathB,
             Short plannedLap,
             Double coeUseCapacity,
-            Double averageLengthPassSeat) {
+            Double averageLengthPassSeat,
+            // Поля формы legacy без расчёта/печати (V67, MIGRATION.md 2.28): пункты А/Б, время одного
+            // рейса А/Б, срок свидетельства, город/район, координаты (широта −90…90, долгота −180…180).
+            @Size(max = 100) String nameA,
+            @Size(max = 100) String nameB,
+            java.time.LocalTime timeOneLapA,
+            java.time.LocalTime timeOneLapB,
+            java.time.LocalDate validCert,
+            @Size(max = 200) String cityName,
+            @DecimalMin(value = "-90", message = "Широта: −90…90") @jakarta.validation.constraints.DecimalMax(value = "90", message = "Широта: −90…90") BigDecimal latitude,
+            @DecimalMin(value = "-180", message = "Долгота: −180…180") @jakarta.validation.constraints.DecimalMax(value = "180", message = "Долгота: −180…180") BigDecimal longitude) {
     }
 
     @GetMapping("/routes")
@@ -156,6 +166,15 @@ public class DictionaryController {
         route.setPlannedLap(req.plannedLap());
         route.setCoeUseCapacity(req.coeUseCapacity());
         route.setAverageLengthPassSeat(req.averageLengthPassSeat());
+        // Поля формы legacy (V67, 2.28) — как есть; пустые строки → null.
+        route.setNameA(trimToNull(req.nameA()));
+        route.setNameB(trimToNull(req.nameB()));
+        route.setTimeOneLapA(req.timeOneLapA());
+        route.setTimeOneLapB(req.timeOneLapB());
+        route.setValidCert(req.validCert());
+        route.setCityName(trimToNull(req.cityName()));
+        route.setLatitude(req.latitude());
+        route.setLongitude(req.longitude());
         var savedRoute = routes.save(route);
         audit.record(existing.isPresent() ? AuditService.UPDATE : AuditService.CREATE,
                 "ROUTE", org + "/" + req.number(), oldValue, req.name());

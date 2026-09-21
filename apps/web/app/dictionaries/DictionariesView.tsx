@@ -71,10 +71,13 @@ export default function DictionariesView({ tab }: { tab: DictTab }) {
   }, [tab]);
 
   useEffect(() => { setForm({}); setOk(''); setError(''); reload().catch(e => setError(e.message)); }, [reload, tab]);
-  // Типы маршрутов нужны только на вкладке «Маршруты»; тянем один раз при входе на неё.
+  // Города/районы (справочник city) — подсказки поля «Город/район» маршрута (V67, 2.28).
+  const [cities, setCities] = useState<Record<string, unknown>[]>([]);
+  // Типы маршрутов и города нужны только на вкладке «Маршруты»; тянем один раз при входе на неё.
   useEffect(() => {
     if (tab !== 'routes') return;
     md.routeTypes().then(setRouteTypes).catch(() => setRouteTypes([]));
+    md.cities().then(setCities).catch(() => setCities([]));
   }, [tab]);
 
   async function submit(e: React.FormEvent) {
@@ -85,8 +88,19 @@ export default function DictionariesView({ tab }: { tab: DictTab }) {
       // Необязательные числовые поля: пусто → null.
       for (const k of ['transportType', 'regionId', 'routeTypeCode', 'fuelType', 'monthFrom', 'monthTo',
           'typeId', 'capacity', 'carrying', 'costServices', 'fuelInteriorHeating', 'tariffRate',
-          'price', 'cargoClass', 'winterCoefId', 'mountainCoefId', 'inCityCoefId', 'fuelId']) {
+          'price', 'cargoClass', 'winterCoefId', 'mountainCoefId', 'inCityCoefId', 'fuelId',
+          // маршрут: путевые показатели/коэффициенты (V28) и координаты (V67)
+          'distanceA', 'distanceB', 'beginPathA', 'beginPathB', 'plannedLap', 'coeUseCapacity', 'averageLengthPassSeat',
+          'stationCoef', 'roadQuality', 'mountainCoefValue', 'inCityCoefValue',
+          'additionalFuel100', 'additionalFuel', 'condFuel', 'heatingFuel', 'latitude', 'longitude']) {
         if (k in body) body[k] = body[k] === '' ? null : Number(body[k]);
+      }
+      // Маршрут: время рейса / срок свидетельства — пусто → null; флаг «без коэффициентов» — boolean.
+      if (tab === 'routes') {
+        for (const k of ['timeOneLapA', 'timeOneLapB', 'validCert']) {
+          if (k in body) body[k] = body[k] === '' ? null : body[k];
+        }
+        body.excludingCoef = form.excludingCoef === 'true';
       }
       // Обязательные числовые поля.
       for (const k of ['baseNorm', 'value', 'pricePerKm', 'coef', 'year', 'km', 'pricePer1Mkm', 'priceOneTime']) {
@@ -155,6 +169,35 @@ export default function DictionariesView({ tab }: { tab: DictTab }) {
                 {routeTypes.map(rt => <option key={rt.id} value={rt.code}>{rtName(rt)}</option>)}
               </select>
             </div>
+            {/* Поля формы legacy (V67, MIGRATION.md 2.28): пункты А/Б, время рейса, свидетельство, город, координаты. */}
+            <div><label>{t('route.f.namea')}</label><input {...f('nameA')} /></div>
+            <div><label>{t('route.f.nameb')}</label><input {...f('nameB')} /></div>
+            <div><label>{t('route.f.city')}</label><input list="route-cities" {...f('cityName')} />
+              <datalist id="route-cities">{cities.map(c => <option key={String(c.id)} value={String(c.name)} />)}</datalist>
+            </div>
+            <div><label>{t('route.f.validcert')}</label><input type="date" {...f('validCert')} /></div>
+            <div><label>{t('route.f.timelapa')}</label><input type="time" {...f('timeOneLapA')} /></div>
+            <div><label>{t('route.f.timelapb')}</label><input type="time" {...f('timeOneLapB')} /></div>
+            <div><label>{t('route.f.latitude')}</label><input type="number" step="0.000001" min={-90} max={90} {...f('latitude')} /></div>
+            <div><label>{t('route.f.longitude')}</label><input type="number" step="0.000001" min={-180} max={180} {...f('longitude')} /></div>
+            {/* Путевые показатели и коэффициенты (V28) — раньше правились только через API. */}
+            <div><label>{t('route.f.distancea')}</label><input type="number" step="0.1" {...f('distanceA')} /></div>
+            <div><label>{t('route.f.distanceb')}</label><input type="number" step="0.1" {...f('distanceB')} /></div>
+            <div><label>{t('route.f.beginpatha')}</label><input type="number" step="0.1" {...f('beginPathA')} /></div>
+            <div><label>{t('route.f.beginpathb')}</label><input type="number" step="0.1" {...f('beginPathB')} /></div>
+            <div><label>{t('route.f.plannedlap')}</label><input type="number" min={0} {...f('plannedLap')} /></div>
+            <div><label>{t('route.f.coeuse')}</label><input type="number" step="0.01" {...f('coeUseCapacity')} /></div>
+            <div><label>{t('route.f.avgseat')}</label><input type="number" step="0.1" {...f('averageLengthPassSeat')} /></div>
+            <div><label>{t('route.f.stationcoef')}</label><input type="number" min={0} max={100} {...f('stationCoef')} /></div>
+            <div><label>{t('route.f.roadquality')}</label><input type="number" min={0} max={100} {...f('roadQuality')} /></div>
+            <div><label>{t('route.f.mountain')}</label><input type="number" min={0} max={100} {...f('mountainCoefValue')} /></div>
+            <div><label>{t('route.f.incity')}</label><input type="number" min={0} max={100} {...f('inCityCoefValue')} /></div>
+            <div><label>{t('route.f.wintercoef')}</label><input type="number" min={1} {...f('winterCoefId')} /></div>
+            <div><label>{t('route.f.addfuel100')}</label><input type="number" step="0.1" {...f('additionalFuel100')} /></div>
+            <div><label>{t('route.f.addfuel')}</label><input type="number" step="0.1" {...f('additionalFuel')} /></div>
+            <div><label>{t('route.f.condfuel')}</label><input type="number" step="0.1" {...f('condFuel')} /></div>
+            <div><label>{t('route.f.heatingfuel')}</label><input type="number" step="0.1" {...f('heatingFuel')} /></div>
+            <div><label><input type="checkbox" {...fCheck('excludingCoef')} /> {t('route.f.excludingcoef')}</label></div>
           </>}
           {tab === 'clients' && <>
             <div><label>{t('col.number')}</label><input required {...f('number')} placeholder="000123" /></div>
@@ -264,7 +307,7 @@ export default function DictionariesView({ tab }: { tab: DictTab }) {
         </div>
         <table>
           <thead>
-            {tab === 'routes' && <tr><th>{t('col.number')}</th><th>{t('col.name')}</th><th>{t('f.vehtype')}</th><th>{t('col.region')}</th><th>{t('col.routetype')}</th></tr>}
+            {tab === 'routes' && <tr><th>{t('col.number')}</th><th>{t('col.name')}</th><th>{t('f.vehtype')}</th><th>{t('col.region')}</th><th>{t('col.routetype')}</th><th>{t('route.f.namea')} / {t('route.f.nameb')}</th><th>{t('route.f.city')}</th><th>{t('route.f.validcert')}</th></tr>}
             {tab === 'clients' && <tr><th>{t('col.number')}</th><th>{t('col.clienttype')}</th><th>{t('col.name')}</th><th>{t('col.address')}</th><th>{t('col.phone')}</th><th>{t('dict.f.rma')}</th><th>{t('dict.f.bank')}</th></tr>}
             {tab === 'fuel-norms' && <tr><th>{t('f.vehtype')}</th><th>{t('col.brand')}</th><th>{t('dict.col.norm')}</th></tr>}
             {tab === 'coefficients' && <tr><th>{t('dict.f.kind')}</th><th>{t('col.name')}</th><th>{t('dict.f.multiplier').replace(/\s*\(.*\)/, '')}</th><th>{t('col.region')}</th><th>{t('dict.col.months')}</th></tr>}
@@ -281,7 +324,7 @@ export default function DictionariesView({ tab }: { tab: DictTab }) {
           <tbody>
             {rows.map((r, i) => (
               <tr key={String(r.id ?? i)}>
-                {tab === 'routes' && <><td><span className="number">{String(r.number)}</span></td><td style={{ fontWeight: 600, color: 'var(--ink)' }}>{String(r.name)}</td><td>{TT[Number(r.transportType)] ?? '—'}</td><td>{String(r.regionId ?? '—')}</td><td>{r.routeTypeCode != null ? (rtByCode(r.routeTypeCode) ? rtName(rtByCode(r.routeTypeCode)!) : String(r.routeTypeCode)) : '—'}</td></>}
+                {tab === 'routes' && <><td><span className="number">{String(r.number)}</span></td><td style={{ fontWeight: 600, color: 'var(--ink)' }}>{String(r.name)}</td><td>{TT[Number(r.transportType)] ?? '—'}</td><td>{String(r.regionId ?? '—')}</td><td>{r.routeTypeCode != null ? (rtByCode(r.routeTypeCode) ? rtName(rtByCode(r.routeTypeCode)!) : String(r.routeTypeCode)) : '—'}</td><td>{r.nameA || r.nameB ? `${String(r.nameA ?? '')} — ${String(r.nameB ?? '')}` : '—'}</td><td>{String(r.cityName ?? '—')}</td><td>{String(r.validCert ?? '—')}</td></>}
                 {tab === 'clients' && <><td><span className="number">{String(r.number ?? '—')}</span></td><td>{r.type != null && [1, 2, 3, 4].includes(Number(r.type)) ? t('client.type.' + Number(r.type)) : '—'}</td><td style={{ fontWeight: 600, color: 'var(--ink)' }}>{String(r.name)}</td><td>{String(r.address ?? '—')}</td><td>{String(r.phone ?? '—')}</td><td>{String(r.rma ?? '—')}</td><td>{r.bankName ? `${String(r.bankName)}${r.mfo ? ` (${t('dict.f.mfo')} ${String(r.mfo)})` : ''}` : '—'}</td></>}
                 {tab === 'fuel-norms' && <><td>{TT[Number(r.transportType)] ?? r.transportType}</td><td>{r.brand ? String(r.brand) : t('dict.all')}</td><td><b>{String(r.baseNorm)}</b></td></>}
                 {tab === 'coefficients' && <><td>{KIND[String(r.kind)] ?? String(r.kind)}</td><td style={{ fontWeight: 600, color: 'var(--ink)' }}>{String(r.name)}</td><td><b>{String(r.value)}</b></td><td>{String(r.regionId ?? '—')}</td><td>{r.monthFrom ? `${r.monthFrom}–${r.monthTo}` : '—'}</td></>}

@@ -6,10 +6,14 @@ import jakarta.persistence.Id;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.Table;
 
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.time.LocalTime;
 import java.util.UUID;
 
 /**
- * Пассажирский маршрут (хатсайр): рақам, номгӯ, тип ТС, регион.
+ * Пассажирский маршрут (хатсайр): рақам, номгӯ, тип ТС, регион; с V67 — также поля формы legacy
+ * (MIGRATION.md 2.28): пункты А/Б, время одного рейса А/Б, срок свидетельства, город/район, координаты.
  *
  * <p>Коэффициентные и путевые поля (V28, перенос {@code routes} из ИС «Роҳхат») питают
  * расчёт нормы топлива и пассажирских показателей. ВНИМАНИЕ: {@code mountainCoefValue}
@@ -105,6 +109,37 @@ public class Route {
     @Column(name = "average_length_pass_seat")
     private Double averageLengthPassSeat;
 
+    // ------------------------------------------- поля формы legacy без расчёта/печати (V67, 2.28)
+
+    /** Номгӯи хатсайр A — конечный пункт А (legacy {@code name_a}); в печати — общее {@code name}. */
+    @Column(name = "name_a")
+    private String nameA;
+
+    /** Номгӯи хатсайр B — конечный пункт Б (legacy {@code name_b}). */
+    @Column(name = "name_b")
+    private String nameB;
+
+    /** Вақт дар як гардиш A — время одного рейса в направлении А (legacy {@code time_one_lap_a}). */
+    @Column(name = "time_one_lap_a")
+    private LocalTime timeOneLapA;
+
+    /** Время одного рейса в направлении Б. */
+    @Column(name = "time_one_lap_b")
+    private LocalTime timeOneLapB;
+
+    /** Муҳлати вобастакунии шаҳодатнома — срок действия свидетельства маршрута (legacy {@code valid_cert}). */
+    @Column(name = "valid_cert")
+    private LocalDate validCert;
+
+    /** Шаҳру ноҳия — город/район (по справочнику {@link City}, хранится имя, как у организации). */
+    @Column(name = "city_name")
+    private String cityName;
+
+    /** Координаты маршрута (legacy latitude/longitude — строки; здесь NUMERIC(10,6)). */
+    private BigDecimal latitude;
+
+    private BigDecimal longitude;
+
     @PrePersist
     void prePersist() {
         if (id == null) id = UUID.randomUUID();
@@ -158,4 +193,20 @@ public class Route {
     public void setCoeUseCapacity(Double coeUseCapacity) { this.coeUseCapacity = coeUseCapacity; }
     public Double getAverageLengthPassSeat() { return averageLengthPassSeat; }
     public void setAverageLengthPassSeat(Double averageLengthPassSeat) { this.averageLengthPassSeat = averageLengthPassSeat; }
+    public String getNameA() { return nameA; }
+    public void setNameA(String nameA) { this.nameA = nameA; }
+    public String getNameB() { return nameB; }
+    public void setNameB(String nameB) { this.nameB = nameB; }
+    public LocalTime getTimeOneLapA() { return timeOneLapA; }
+    public void setTimeOneLapA(LocalTime timeOneLapA) { this.timeOneLapA = timeOneLapA; }
+    public LocalTime getTimeOneLapB() { return timeOneLapB; }
+    public void setTimeOneLapB(LocalTime timeOneLapB) { this.timeOneLapB = timeOneLapB; }
+    public LocalDate getValidCert() { return validCert; }
+    public void setValidCert(LocalDate validCert) { this.validCert = validCert; }
+    public String getCityName() { return cityName; }
+    public void setCityName(String cityName) { this.cityName = cityName; }
+    public BigDecimal getLatitude() { return latitude; }
+    public void setLatitude(BigDecimal latitude) { this.latitude = latitude; }
+    public BigDecimal getLongitude() { return longitude; }
+    public void setLongitude(BigDecimal longitude) { this.longitude = longitude; }
 }
