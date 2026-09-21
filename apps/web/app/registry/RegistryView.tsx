@@ -8,7 +8,7 @@ import { Icon, P } from '../icons';
 type Row = Record<string, unknown>;
 export type RegistryKind = 'vehicles' | 'drivers' | 'employees';
 
-const EMPLOYEE_TYPES: Record<number, string> = { 1: 'Врач (духтур)', 2: 'Механик', 3: 'Диспетчер (танзимгар)' };
+const EMPLOYEE_TYPES: Record<number, string> = { 1: 'Врач (духтур)', 2: 'Механик', 3: 'Диспетчер (танзимгар)', 4: 'Работник заправочного пункта', 5: 'Работник кассы' };
 const TRANSPORT_TYPES: Record<number, string> = {
   1: 'Автобус', 2: 'Троллейбус', 3: 'Микроавтобус', 4: 'Легковой (сабукрав)', 5: 'Грузовой (2-Б)', 6: 'Грузовой межд. (5Б-БМ)',
 };

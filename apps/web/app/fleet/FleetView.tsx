@@ -56,7 +56,8 @@ export default function FleetView({ kind }: { kind: FleetKind }) {
     { v: '1', l: t('tt.1') }, { v: '2', l: t('tt.2') }, { v: '3', l: t('tt.3') },
     { v: '4', l: t('tt.4') }, { v: '5', l: t('tt.5') }, { v: '6', l: t('tt.6') },
   ];
-  const ET = [{ v: '1', l: t('fleet.emp.1') }, { v: '2', l: t('fleet.emp.2') }, { v: '3', l: t('fleet.emp.3') }];
+  const ET = [{ v: '1', l: t('fleet.emp.1') }, { v: '2', l: t('fleet.emp.2') }, { v: '3', l: t('fleet.emp.3') },
+    { v: '4', l: t('fleet.emp.4') }, { v: '5', l: t('fleet.emp.5') }];
   // Классификатор видов топлива — тот же, что у заправок (FuelRecord.fuelType) и тарифов.
   const FUEL = [
     { v: '1', l: t('fuel.type.1') }, { v: '2', l: t('fuel.type.2') }, { v: '3', l: t('fuel.type.3') },

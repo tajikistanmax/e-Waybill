@@ -55,10 +55,12 @@ public class EmployeeController {
             @NotBlank @Pattern(regexp = "\\d{9,10}", message = "РМА организации должен содержать 9–10 цифр") String organizationRma,
             String tabNumber,
             @NotBlank String name,
-            @NotNull @Min(1) @Max(3) Short type,
+            // Тип сотрудника как в legacy employees.type: 1 врач, 2 механик, 3 диспетчер,
+            // 4 работник заправочного пункта, 5 работник кассы (MIGRATION.md 2.27).
+            @NotNull @Min(value = 1, message = "Тип сотрудника: 1–5") @Max(value = 5, message = "Тип сотрудника: 1–5") Short type,
             String phone,
             String address,
-            // Сертификат врача (§8 QA). Актуален для type=1; у механика/диспетчера обычно пуст.
+            // Сертификат врача (§8 QA). Актуален для type=1; у остальных типов обычно пуст.
             // certValidTo — ISO-дата (yyyy-MM-dd); некорректный формат отклоняется на десериализации.
             String certNumber,
             LocalDate certValidTo) {

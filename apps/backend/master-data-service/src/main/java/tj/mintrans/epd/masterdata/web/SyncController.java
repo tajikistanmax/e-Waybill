@@ -104,7 +104,8 @@ public class SyncController {
     public record SyncEmployeeRequest(
             @NotBlank @Pattern(regexp = "\\d{9,10}", message = "ИНН должен содержать 9–10 цифр") String inn,
             @NotBlank @Pattern(regexp = "\\d{9,10}") String organizationRma,
-            @NotNull @Min(1) @Max(3) Short type,
+            // 1 врач, 2 механик, 3 диспетчер, 4 заправочный пункт, 5 касса (legacy employees.type, 2.27).
+            @NotNull @Min(value = 1, message = "Тип сотрудника: 1–5") @Max(value = 5, message = "Тип сотрудника: 1–5") Short type,
             String tabNumber) {
     }
 
