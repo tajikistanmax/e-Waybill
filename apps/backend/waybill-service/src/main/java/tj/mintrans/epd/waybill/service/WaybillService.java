@@ -211,7 +211,7 @@ public class WaybillService {
                     }
                 }
                 if (wb.getWaybillType() == WaybillType.WB_TRUCK_INTL) {
-                    requireText(data, "cargoName", "Укажите наименование груза (cargoName)");
+                    requireTruckIntlFields(data);
                 }
                 String visaValidTo = str(data.get("visaValidTo"));
                 if (visaValidTo.isBlank()) {
@@ -1328,6 +1328,18 @@ public class WaybillService {
         wb.setKassaConfirmedAt(OffsetDateTime.now());
         // actor (логин кассира) — для аудита достаточно РМА сотрудника в самом ПЛ; отдельного события статуса нет.
         return waybills.save(wb);
+    }
+
+    /**
+     * Обязательные поля 5Б-БМ (MIGRATION.md 12.10, legacy {@code kvd/StoreWaybill5bbmRequest}: load/unload
+     * country+city, cargo_id, bba_number — required; client, second driver, visa — nullable): к странам
+     * (проверяются выше) добавляются города погрузки/разгрузки, наименование груза и номер ББА.
+     */
+    static void requireTruckIntlFields(Map<String, Object> data) {
+        requireText(data, "cargoName", "Укажите наименование груза (cargoName)");
+        requireText(data, "loadCity", "Укажите город погрузки (loadCity)");
+        requireText(data, "unloadCity", "Укажите город разгрузки (unloadCity)");
+        requireText(data, "bbaNumber", "Укажите номер ББА (bbaNumber)");
     }
 
     /** Правило отметки кассы: только 3-С и только после возврата (RETURNED / COMPLETED). */
