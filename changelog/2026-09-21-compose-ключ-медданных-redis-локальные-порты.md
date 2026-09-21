@@ -38,7 +38,7 @@
 - `infra/docker-compose.local.yml` — новый.
 
 ## Коммиты (ветка `migration`)
-- (заполняется после коммита)
+- `4dcfaa6` — fix(infra): compose — ключ шифрования медданных и QR для waybill, Redis для master-data, локальный override портов
 
 ## Как откатить
 - `git revert <hash>`; контейнеры, созданные с ключом, продолжат работать до пересоздания.

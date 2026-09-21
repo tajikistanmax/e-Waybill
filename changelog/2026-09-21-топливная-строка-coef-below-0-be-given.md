@@ -60,7 +60,7 @@ e-Waybill использует единую формулу движка (пер�
   `apps/web/app/fuel/page.tsx`.
 
 ## Коммиты (ветка `migration`)
-- (заполняется после коммита)
+- `1a5204e` — feat(fuel): топливная строка 1-в-1 — coef_below_0 и be_given в модели, additional/coef_below_0 в живом расчёте (§5.6)
 
 ## Как откатить
 - `git revert <hash>` + пересборка `waybill`/`web`. Колонки `coef_below_0`/`be_given` останутся в БД (nullable,
