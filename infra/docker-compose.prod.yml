@@ -188,6 +188,7 @@ services:
       WB_API_URL: http://waybill:8082
     ports:
       - "80:3000"
+      - "3000:3000"   # привычный адрес localhost:3000 (origin разрешён клиентом Keycloak epd-web)
     depends_on:
       - master-data
       - waybill
