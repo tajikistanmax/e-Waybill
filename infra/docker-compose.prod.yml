@@ -26,6 +26,31 @@ services:
       retries: 10
     restart: unless-stopped
 
+  # Резервное копирование БД (перенос legacy Kernel: `db:backup` ежедневно 00:00 + ротация; ИБ-13.8, MIGRATION.md 11.8):
+  # pg_dump обеих БД в том `backups` каждый день в BACKUP_TIME (TZ), хранение BACKUP_RETENTION_DAYS, шифрование
+  # AES-256 при заданном BACKUP_ENCRYPTION_KEY (infra/.env; тот же ключ, что у scripts/backup-postgres.ps1).
+  # Ручной запуск копии: BACKUP_RUN_NOW=1 docker compose ... up -d --force-recreate backup. Восстановление — см. infra/backup/backup-loop.sh.
+  backup:
+    build:
+      context: ./backup
+    image: epd/backup:0.1.0
+    container_name: epd-prod-backup
+    environment:
+      PGHOST: postgres
+      PGUSER: ${DB_USER:-epd}
+      PGPASSWORD: ${DB_PASSWORD:-epd_dev_password}
+      TZ: ${TZ:-Asia/Dushanbe}
+      BACKUP_TIME: ${BACKUP_TIME:-00:00}
+      BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-30}
+      BACKUP_ENCRYPTION_KEY: ${BACKUP_ENCRYPTION_KEY:-}
+      BACKUP_RUN_NOW: ${BACKUP_RUN_NOW:-0}
+    volumes:
+      - backups:/backups
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
   redis:
     image: redis:7-alpine
     container_name: epd-prod-redis
@@ -281,3 +306,4 @@ services:
 volumes:
   pgdata:
   miniodata:
+  backups:
