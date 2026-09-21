@@ -25,6 +25,26 @@ export default function FuelStationCabinet() {
   const [form, setForm] = useState({ fuelType: '2', fuelGiven: '', remainBeforeExit: '', remainEntry: '', additionalGiven: '', returned: '', coefBelow0: '', beGiven: '' });
   const [busy, setBusy] = useState(false);
   const [page, setPage] = useState(1);
+  // Подсказка «из предыдущего ПЛ этого ТС» (legacy parking_fuel_left/parking_fuel_give, MIGRATION.md §4.9).
+  const [hint, setHint] = useState('');
+
+  // При выборе листа и смене вида топлива подставляем остаток до выезда и норму к выдаче
+  // из предыдущего ПЛ того же ТС (как в legacy-форме топливника).
+  useEffect(() => {
+    if (!sel) { setHint(''); return; }
+    let cancelled = false;
+    wb.fuelPrefill(sel.id, Number(form.fuelType)).then(p => {
+      if (cancelled) return;
+      setForm(f => ({
+        ...f,
+        remainBeforeExit: p.remainBeforeExit != null ? String(p.remainBeforeExit) : '',
+        beGiven: p.beGiven != null ? String(p.beGiven) : '',
+      }));
+      setHint(p.found ? `${t('wbd.fuelprefill.from')}${p.sourceWaybillNumber ? ` (${p.sourceWaybillNumber})` : ''}` : t('wbd.fuelprefill.none'));
+    }).catch(() => { if (!cancelled) setHint(''); });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sel?.id, form.fuelType]);
 
   const load = useCallback(() => {
     wb.fuelStation.list().then(setRows).catch(e => setError(e.message));
@@ -171,6 +191,7 @@ export default function FuelStationCabinet() {
                   <input type="number" step="0.1" min="0" style={{ width: 120 }} value={form.beGiven} onChange={e => setForm(f => ({ ...f, beGiven: e.target.value }))} /></div>
                 <button className="btn" onClick={record} disabled={busy || !form.fuelGiven}>{busy ? '…' : t('fuel.btn.record')}</button>
               </div>
+              {hint && <div style={{ marginTop: 8, fontSize: 12, color: 'var(--muted)' }}>{hint}</div>}
             </>
           )}
         </div>

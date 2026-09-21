@@ -624,6 +624,8 @@ export const wb = {
   },
   payment: (id: string) => fetch(`/wb-api/api/v1/waybills/${id}/payment`, { headers: authHeaders() }).then(r => handle<Payment>(r)),
   get: (id: string) => fetch(`/wb-api/api/v1/waybills/${id}`, { headers: authHeaders() }).then(r => handle<Waybill>(r)),
+  // Подсказка формы топлива из предыдущего ПЛ того же ТС (legacy parking_fuel_left/parking_fuel_give, MIGRATION.md §4.9).
+  fuelPrefill: (id: string, fuelType: number) => fetch(`/wb-api/api/v1/waybills/${id}/fuel-prefill?fuelType=${fuelType}`, { headers: authHeaders() }).then(r => handle<FuelPrefill>(r)),
   titles: (id: string) => fetch(`/wb-api/api/v1/waybills/${id}/titles`, { headers: authHeaders() }).then(r => handle<Title[]>(r)),
   // Расшифровка медпоказателей титула Т2/Т6 (ИБ-13.1.3). В самом титуле лежит только
   // зашифрованный blob indicatorsEnc, читаемых pressure/pulse/temperature там НЕТ.
@@ -859,6 +861,12 @@ export type SubjectDocument = {
   uploadedBy: string | null; uploadedAt: string; reviewedBy: string | null; reviewedAt: string | null;
 };
 
+// Автоподстановка топливной строки из предыдущего ПЛ того же ТС (MIGRATION.md §4.9).
+export type FuelPrefill = {
+  found: boolean; fuelType: number;
+  remainBeforeExit: number | null; beGiven: number | null;
+  sourceWaybillId: string | null; sourceWaybillNumber: string | null; sourceAt: string | null;
+};
 export type FuelStationWaybill = {
   id: string; number: string | null; type: string; status: string;
   vehicleRegNumber: string; vehicleBrand: string; driver: string; route: string | null;

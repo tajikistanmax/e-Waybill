@@ -61,6 +61,8 @@ export default function WaybillCard({ params }: { params: Promise<{ id: string }
   const [workDays, setWorkDays] = useState<Record<string, unknown>[]>([]);
   const [dayForm, setDayForm] = useState({ workDate: '', exitTime: '06:00', entryTime: '', odometerExit: '', odometerEntry: '', laps: '', revenue: '' });
   const [fuelForm, setFuelForm] = useState({ fuelType: '1', fuelGiven: '', remainBeforeExit: '', additionalGiven: '', returned: '', coefBelow0: '', beGiven: '' });
+  // Подсказка «из предыдущего ПЛ этого ТС» (legacy parking_fuel_left/parking_fuel_give) — текст под формой топлива.
+  const [fuelHint, setFuelHint] = useState('');
   const [replacement, setReplacement] = useState(''); // РМА нового водителя или госномер нового ТС
   const [candidates, setCandidates] = useState<{ value: string; label: string }[]>([]);
   const [blockReason, setBlockReason] = useState(''); // разблокировка (Минтранс) — свободное обоснование
@@ -76,6 +78,24 @@ export default function WaybillCard({ params }: { params: Promise<{ id: string }
   const [fieldDefs, setFieldDefs] = useState<FieldDefinition[]>([]);
   const { t, tType, tStatus, lang } = useT();
   const { roles } = useAuth();
+
+  // Автоподстановка остатка до выезда и нормы к выдаче из предыдущего ПЛ того же ТС по выбранному
+  // виду топлива (перенос legacy: при смене вида топлива форма перезапрашивала parking_fuel_left/give).
+  useEffect(() => {
+    if (!w || !['ISSUED', 'ACTIVE', 'RETURNED', 'READY'].includes(w.status)) return;
+    let cancelled = false;
+    wb.fuelPrefill(id, Number(fuelForm.fuelType)).then(p => {
+      if (cancelled) return;
+      setFuelForm(f => ({
+        ...f,
+        remainBeforeExit: p.remainBeforeExit != null ? String(p.remainBeforeExit) : '',
+        beGiven: p.beGiven != null ? String(p.beGiven) : '',
+      }));
+      setFuelHint(p.found ? `${t('wbd.fuelprefill.from')}${p.sourceWaybillNumber ? ` (${p.sourceWaybillNumber})` : ''}` : t('wbd.fuelprefill.none'));
+    }).catch(() => { if (!cancelled) setFuelHint(''); });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id, fuelForm.fuelType, w?.status]);
 
   const reload = useCallback(async () => {
     const data = await wb.get(id);
@@ -675,6 +695,7 @@ export default function WaybillCard({ params }: { params: Promise<{ id: string }
                     <div><label>{t('wbd.fuelreturn')}</label><input type="number" step="0.1" value={fuelForm.returned} onChange={e => setFuelForm({ ...fuelForm, returned: e.target.value })} /></div>
                     <div><label>{t('wbd.fuelcoef0')}</label><input type="number" step="0.1" min="0" value={fuelForm.coefBelow0} onChange={e => setFuelForm({ ...fuelForm, coefBelow0: e.target.value })} /></div>
                     <div><label>{t('wbd.fuelbegiven')}</label><input type="number" step="0.1" min="0" value={fuelForm.beGiven} onChange={e => setFuelForm({ ...fuelForm, beGiven: e.target.value })} /></div>
+                    {fuelHint && <div className="full" style={{ fontSize: 12, color: 'var(--muted)' }}>{fuelHint}</div>}
                     <div className="full"><button className="btn secondary" type="submit">{t('wb.btn.recordfuel')}</button></div>
                   </form>
                 </>
