@@ -55,7 +55,9 @@ class DictionaryControllerCargoSecurityTest {
         return jwt().authorities(new SimpleGrantedAuthority("ROLE_" + role));
     }
 
-    private static final String CARGO_BODY = "{\"name\":\"Цемент навалом\"}";
+    // Полное тело: с 12.15 тип/единица/цена обязательны, и валидация (400) срабатывает ДО @PreAuthorize (403),
+    // поэтому матрица прав должна слать валидный груз.
+    private static final String CARGO_BODY = "{\"name\":\"Цемент навалом\",\"type\":\"сыпучий\",\"unit\":\"т\",\"price\":10.5}";
 
     @ParameterizedTest
     @ValueSource(strings = {"SYSTEM_ADMIN", "COMPANY_ADMIN"})

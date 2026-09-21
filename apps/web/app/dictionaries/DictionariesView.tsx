@@ -215,8 +215,8 @@ export default function DictionariesView({ tab }: { tab: DictTab }) {
               </select>
             </div>
             <div><label>{t('col.name')}</label><input required {...f('name')} /></div>
-            <div><label>{t('col.address')}</label><input {...f('address')} /></div>
-            <div><label>{t('col.phone')}</label><input {...f('phone')} /></div>
+            <div><label>{t('col.address')}</label><input required {...f('address')} /></div>
+            <div><label>{t('col.phone')}</label><input required {...f('phone')} /></div>
             <div><label>{t('dict.f.riam')}</label><input {...f('riam')} /></div>
             <div><label>{t('dict.f.rma')}</label><input {...f('rma')} /></div>
             <div><label>{t('dict.f.account')}</label><input {...f('account')} /></div>
@@ -249,9 +249,9 @@ export default function DictionariesView({ tab }: { tab: DictTab }) {
           </>}
           {tab === 'cargos' && <>
             <div><label>{t('col.name')}</label><input required {...f('name')} placeholder="Цемент навалом" /></div>
-            <div><label>{t('col.type')}</label><input {...f('type')} /></div>
-            <div><label>{t('col.unit')}</label><input {...f('unit')} placeholder="т" /></div>
-            <div><label>{t('col.price')}</label><input type="number" step="0.01" {...f('price')} /></div>
+            <div><label>{t('col.type')}</label><input required {...f('type')} /></div>
+            <div><label>{t('col.unit')}</label><input required {...f('unit')} placeholder="т" /></div>
+            <div><label>{t('col.price')}</label><input required type="number" step="0.01" {...f('price')} /></div>
             <div><label>{t('col.class')}</label><input type="number" min={1} max={4} {...f('cargoClass')} /></div>
           </>}
           {tab === 'brands' && <>

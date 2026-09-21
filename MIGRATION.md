@@ -213,7 +213,7 @@
 | 12.12 | GPS: state ∈ 4 значений, direction/distance по состоянию, повтор не чаще 20 мин | нет | [ ] | Вместе с 9.7. |
 | 12.13 | `parkings.number` уникален в компании | `VehicleCardRules.assertParkingNumberUnique` в `POST /vehicles` и `POST /sync/vehicle`: занят другим ТС организации → 409 (свой номер при обновлении — ок); формат 4 цифры — как прежде | [x] | **ЗАКРЫТО 21.09.** Как проверено: `VehicleCardRulesTest`, suite 72/72 ✅; **live**: второе ТС с номером 4711 → 409 «Номер стоянки 4711 уже занят другим ТС этой организации», повторный upsert того же ТС → 200, номер 4712 → 201. |
 | 12.14 | Обязательные при создании ПЛ: компания, ТС, маршрут (кроме 2-Б/5Б-БМ), водитель (≠0), график, дата выезда, одометр ≥0 | `@NotNull/@NotBlank`, `@PositiveOrZero` | [x] | — |
-| 12.15 | Cargo: number/name/type/unit/price обязательны; Client: number/name/address/phone; Direction: number/title | частично `@NotBlank` | [~] | number у cargo — 2.25. |
+| 12.15 | Cargo: number/name/type/unit/price обязательны; Client: number/name/address/phone; Direction: number/title | Cargo: name/type/unit `@NotBlank`, price `@NotNull` (number — автономер, 2.25); Client: number/name/address/phone `@NotBlank`; Direction: title `@NotBlank` (было); web-формы — `required` | [x] | **ЗАКРЫТО 21.09.** Как проверено: `ClientRequestValidationTest` (+1), `CargoRequestValidationTest` (2), `:master-data-service:test` 77/77 ✅ (тело `DictionaryControllerCargoSecurityTest` дополнено — валидация 400 раньше 403), `tsc` ✅; **live**: клиент без телефона → 400, полный → 201; груз без цены → 400, полный → 201 (№ 139). Changelog `2026-09-21-обязательные-поля-клиента-и-груза.md`. |
 
 ## 13. Полная механическая карта (Шаг 1 промпта)
 

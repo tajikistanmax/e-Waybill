@@ -186,8 +186,9 @@ public class DictionaryController {
     public record ClientRequest(
             @NotBlank @Size(max = 10) String number,
             @NotBlank String name,
-            String address,
-            String phone,
+            // Адрес и телефон обязательны, как в legacy ClientRequest (MIGRATION.md 12.15).
+            @NotBlank(message = "Укажите адрес клиента") String address,
+            @NotBlank(message = "Укажите телефон клиента") String phone,
             String organizationRma,
             // Вид клиента (legacy clients.type): 1 заказчик, 2 грузополучатель, 3 грузоотправитель,
             // 4 экспедитор; не передан → 1. Банковские реквизиты — свободный текст (MIGRATION.md 2.24).
@@ -346,9 +347,10 @@ public class DictionaryController {
      */
     public record CargoRequest(
             @NotBlank String name,
-            String type,
-            String unit,
-            BigDecimal price,
+            // Тип, единица и цена обязательны, как в legacy CargoRequest (MIGRATION.md 12.15).
+            @NotBlank(message = "Укажите тип груза") String type,
+            @NotBlank(message = "Укажите единицу измерения груза") String unit,
+            @NotNull(message = "Укажите цену груза") BigDecimal price,
             Short cargoClass) {
     }
 
