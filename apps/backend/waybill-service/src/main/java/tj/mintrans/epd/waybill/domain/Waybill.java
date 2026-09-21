@@ -115,6 +115,13 @@ public class Waybill {
     @Column(nullable = false)
     private String source = "PORTAL";
 
+    /** Касса 3-С «выручка сдана» (legacy employee_kassa_id, MIGRATION.md 4.7): РМА кассира и момент отметки. */
+    @Column(name = "kassa_employee_rma")
+    private String kassaEmployeeRma;
+
+    @Column(name = "kassa_confirmed_at")
+    private OffsetDateTime kassaConfirmedAt;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private OffsetDateTime createdAt;
 
@@ -194,4 +201,8 @@ public class Waybill {
     public void setSource(String source) { this.source = source; }
     public OffsetDateTime getCreatedAt() { return createdAt; }
     public OffsetDateTime getUpdatedAt() { return updatedAt; }
+    public String getKassaEmployeeRma() { return kassaEmployeeRma; }
+    public void setKassaEmployeeRma(String kassaEmployeeRma) { this.kassaEmployeeRma = kassaEmployeeRma; }
+    public OffsetDateTime getKassaConfirmedAt() { return kassaConfirmedAt; }
+    public void setKassaConfirmedAt(OffsetDateTime kassaConfirmedAt) { this.kassaConfirmedAt = kassaConfirmedAt; }
 }

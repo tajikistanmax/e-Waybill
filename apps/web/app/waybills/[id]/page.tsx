@@ -66,6 +66,7 @@ export default function WaybillCard({ params }: { params: Promise<{ id: string }
   const [replacement, setReplacement] = useState(''); // РМА нового водителя или госномер нового ТС
   const [candidates, setCandidates] = useState<{ value: string; label: string }[]>([]);
   const [blockReason, setBlockReason] = useState(''); // разблокировка (Минтранс) — свободное обоснование
+  const [kassaRma, setKassaRma] = useState(''); // касса 3-С: РМА кассира (сотрудник типа 5), MIGRATION.md 4.7
   const [showBlockForm, setShowBlockForm] = useState(false);
   const [blockAct, setBlockAct] = useState({ reasonCode: '', description: '', place: '', protocolNumber: '' });
   const [reasons, setReasons] = useState<{ code: string; label: string }[]>([]);
@@ -174,6 +175,7 @@ export default function WaybillCard({ params }: { params: Promise<{ id: string }
   const canDispatch = has('DISPATCHER') || isAdmin;   // Т1, выдача, Т4, Т5, закрытие, замена, аннулирование
   const canPay = has('ACCOUNTANT') || isAdmin;        // подтверждение оплаты
   const canBlock = has('INSPECTOR') || has('SYSTEM_ADMIN');   // блокировка инспектором
+  const canKassa = has('ACCOUNTANT') || has('SYSTEM_ADMIN');  // касса 3-С «выручка сдана» (4.7)
   const canUnblock = has('SYSTEM_ADMIN');             // разблокировка — только Минтранс
 
   // Данные типа ПЛ (те же, что уже приходят в w.typeData) — используем только их, ничего не выдумываем
@@ -336,6 +338,21 @@ export default function WaybillCard({ params }: { params: Promise<{ id: string }
             <button className="btn" onClick={() => act(t('wb.act.closed'), () => wb.post(`/${id}/close`, { actor: dispatcher }))}>
               {t('wb.btn.close')}
             </button>
+          )}
+          {/* Касса 3-С «выручка сдана» (legacy pay кассира, MIGRATION.md 4.7): только легковой/такси после возврата. */}
+          {(w.waybillType === 'WB_CAR' || w.waybillType === 'WB_TAXI') && ['RETURNED', 'COMPLETED'].includes(w.status) && (
+            w.kassaConfirmedAt ? (
+              <span className="badge green" title={String(w.kassaEmployeeRma ?? '')}>{t('wb.kassa.done')} {new Date(w.kassaConfirmedAt).toLocaleString('ru-RU')}</span>
+            ) : canKassa && (
+              <span>
+                <input style={{ width: 200, marginRight: 8, display: 'inline-block' }} placeholder={t('wb.kassa.ph')}
+                  value={kassaRma} onChange={e => setKassaRma(e.target.value)} />
+                <button className="btn" disabled={!/^\d{9,10}$/.test(kassaRma)}
+                  onClick={() => act(t('wb.kassa.act'), () => wb.post(`/${id}/kassa`, { employeeRma: kassaRma }))}>
+                  {t('wb.kassa.btn')}
+                </button>
+              </span>
+            )
           )}
           {(w.status === 'MED_REJECTED' || w.status === 'TECH_REJECTED') && canDispatch && (
             <span>

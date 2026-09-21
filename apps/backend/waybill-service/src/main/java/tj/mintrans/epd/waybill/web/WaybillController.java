@@ -247,6 +247,24 @@ public class WaybillController {
         return service.cancel(id, req.reason(), req.actor());
     }
 
+    /** Касса 3-С (MIGRATION.md 4.7): РМА сотрудника-кассира (тип 5) организации ПЛ. */
+    public record KassaRequest(
+            @jakarta.validation.constraints.NotBlank
+            @jakarta.validation.constraints.Pattern(regexp = "\\d{9,10}", message = "РМА кассира должен содержать 9–10 цифр")
+            String employeeRma,
+            String actor) {
+    }
+
+    /**
+     * Отметка кассы «выручка сдана» по ПЛ 3-С (legacy {@code pay} кассира, MIGRATION.md 4.7).
+     * Роль ACCOUNTANT (бухгалтерия/касса перевозчика) и SYSTEM_ADMIN; повторная отметка идемпотентна.
+     */
+    @PostMapping("/{id}/kassa")
+    @PreAuthorize("hasAnyRole('ACCOUNTANT','SYSTEM_ADMIN')")
+    public Waybill confirmKassa(@PathVariable UUID id, @Valid @RequestBody KassaRequest req) {
+        return service.confirmKassa(id, req.employeeRma(), req.actor());
+    }
+
     /**
      * Данные накладной (приложение к 2-Б / CMR к 5Б-БМ): стороны, груз, операции
      * погрузки-разгрузки — используются печатными формами {@code print-attachment.pdf}/

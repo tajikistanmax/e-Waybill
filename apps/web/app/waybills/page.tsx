@@ -144,6 +144,10 @@ export default function WaybillsPage() {
       driver: { key: 'driver', label: t('col.driver'), cell: w => String(w.driverSnapshot?.fullName ?? w.driverRma) },
       tab: { key: 'tab', label: t('col.tab'), cell: w => snapStr(w.driverSnapshot, 'tabNumber') },
       phone: { key: 'phone', label: t('col.phone'), cell: w => snapStr(w.driverSnapshot, 'phone') },
+      // Касса 3-С «Пардохти маблағ» (legacy employee_kassa_id, MIGRATION.md 4.7): кто/когда сдал выручку.
+      kassa: { key: 'kassa', label: t('col.kassa'), cell: w => w.kassaConfirmedAt
+        ? <span className="badge green" title={String(w.kassaEmployeeRma ?? '')}>✓ {fmt(w.kassaConfirmedAt)}</span>
+        : <span style={{ color: 'var(--muted)' }}>—</span> },
       start: { key: 'start', label: t('wb.col.start'), cell: w => fmt(w.validFrom) },
       stages: { key: 'stages', label: t('wb.col.stages'), cell: w => <Stages w={w} t={t} /> },
       status: { key: 'status', label: t('col.status'), cell: w => {
@@ -160,7 +164,7 @@ export default function WaybillsPage() {
     // Раскладки по типу ПЛ (соответствие боевым CRUD-контроллерам). Порядок граф — как в оригинале,
     // с сохранением наших улучшений: ФИО водителя, этапы согласования, статус.
     const pax = ['num', 'company', 'transport', 'route', 'tab', 'driver', 'start', 'stages', 'status', 'actions'];   // 1-АД/1-А (+ 4-МБМ)
-    const car = ['num', 'company', 'transport', 'tab', 'phone', 'driver', 'start', 'stages', 'status', 'actions'];    // 3-С легковой/такси
+    const car = ['num', 'company', 'transport', 'tab', 'phone', 'driver', 'start', 'stages', 'kassa', 'status', 'actions'];    // 3-С легковой/такси (+ касса, 4.7)
     const cargo = ['num', 'company', 'transport', 'route', 'tab', 'driver', 'start', 'stages', 'status', 'actions'];  // 2-Б/5Б-БМ
     const all = ['num', 'type', 'company', 'transport', 'driver', 'route', 'start', 'stages', 'status', 'actions'];   // Все типы
     const LAYOUTS: Record<string, string[]> = {

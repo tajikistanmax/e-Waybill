@@ -50,6 +50,9 @@ export type Waybill = {
   secondDriverRma?: string | null;
   typeData?: Record<string, unknown> | null;
   specialMark?: string | null;
+  // Касса 3-С «выручка сдана» (legacy employee_kassa_id, MIGRATION.md 4.7).
+  kassaEmployeeRma?: string | null;
+  kassaConfirmedAt?: string | null;
   createdAt: string;
 };
 

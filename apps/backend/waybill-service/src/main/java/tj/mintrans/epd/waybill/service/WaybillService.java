@@ -1310,6 +1310,36 @@ public class WaybillService {
         return waybills.save(wb);
     }
 
+    /**
+     * Касса 3-С: отметка «выручка сдана» (MIGRATION.md 4.7, legacy {@code Waybill3cCrudController::pay} —
+     * роль employee_kassa ставит {@code employee_kassa_id}). Только формы 3-С (легковой/такси), после возврата
+     * (RETURNED/COMPLETED); кассир — сотрудник организации типа 5 («касса»). Повторная отметка — идемпотентна
+     * (в legacy «Пардохт шудааст», без ошибки): возвращаем ПЛ как есть.
+     */
+    @Transactional
+    public Waybill confirmKassa(UUID id, String employeeRma, String actor) {
+        var wb = getForUpdate(id);
+        assertKassaAllowed(wb.getWaybillType(), wb.getStatus());
+        if (wb.getKassaConfirmedAt() != null) {
+            return wb;
+        }
+        requireEmployee(wb, employeeRma, 5, "Кассир");
+        wb.setKassaEmployeeRma(employeeRma);
+        wb.setKassaConfirmedAt(OffsetDateTime.now());
+        // actor (логин кассира) — для аудита достаточно РМА сотрудника в самом ПЛ; отдельного события статуса нет.
+        return waybills.save(wb);
+    }
+
+    /** Правило отметки кассы: только 3-С и только после возврата (RETURNED / COMPLETED). */
+    static void assertKassaAllowed(WaybillType type, WaybillStatus status) {
+        if (type != WaybillType.WB_CAR && type != WaybillType.WB_TAXI) {
+            throw new UnprocessableException("Отметка кассы предусмотрена только для формы 3-С (легковой/такси)");
+        }
+        if (status != WaybillStatus.RETURNED && status != WaybillStatus.COMPLETED) {
+            throw new ConflictException("Выручку можно сдать только после возврата ПЛ (текущий статус: %s)".formatted(status));
+        }
+    }
+
     @Transactional
     public Waybill cancel(UUID id, String reason, String actor) {
         var wb = getForUpdate(id);
