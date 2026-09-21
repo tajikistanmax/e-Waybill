@@ -305,6 +305,8 @@ public class WaybillPrintService {
         // --- Груз / прицепы / виза
         Map<String, Object> cargo = mapOrEmpty(td.get("cargo"));
         m.put("cargoName", firstNonBlank(str(cargo.get("name")), str(td.get("cargoName")), "—"));
+        // Рамзи бор — сквозной номер груза (legacy cargos.number, «Рамз» в борхате прил. 1/2), 2.25.
+        m.put("cargoNumber", cargoNumberOf(cargo, td));
         m.put("cargoUnit", orDash(str(cargo.get("unit"))));
         // Масса перевозимого груза; если не задана — грузоподъёмность ТС (как в старой системе).
         m.put("cargoWeight", firstNonBlank(str(cargo.get("weight")), str(veh.get("carrying")), "—"));
@@ -737,5 +739,18 @@ public class WaybillPrintService {
 
     private static String orDash(String s) {
         return s == null || s.isBlank() ? "—" : s;
+    }
+
+    /**
+     * Рамзи бор для печати (MIGRATION.md 2.25): номер из вложенного снимка груза {@code typeData.cargo.number},
+     * иначе снимок {@code typeData.cargoNumber} (накладная), иначе «—». Целое печатается без дробной части.
+     */
+    static String cargoNumberOf(Map<String, Object> cargo, Map<String, Object> td) {
+        String n = firstNonBlank(str(cargo == null ? null : cargo.get("number")),
+                str(td == null ? null : td.get("cargoNumber")));
+        if (n.isBlank()) {
+            return "—";
+        }
+        return n.endsWith(".0") ? n.substring(0, n.length() - 2) : n;
     }
 }

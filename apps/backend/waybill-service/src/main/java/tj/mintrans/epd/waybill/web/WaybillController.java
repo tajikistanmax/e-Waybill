@@ -181,7 +181,9 @@ public class WaybillController {
             // Справочники Client (стороны)/Cargo (груз) — id для прослеживаемости, имя уже
             // снято в *Name полях выше (см. WaybillService.ConsignmentUpdate).
             String senderId, String receiverId, String forwarderId, String cargoId,
-            String cargoName) {
+            String cargoName,
+            // Рамзи бор — снимок сквозного номера груза (Cargo.number), печать борхата (2.25).
+            Long cargoNumber) {
     }
 
     // ------------------------------------------------------------- жизненный цикл
@@ -257,7 +259,8 @@ public class WaybillController {
                 req.senderName(), req.senderAddress(), req.receiverName(), req.receiverAddress(),
                 req.forwarderName(), req.cargoVolume(), req.cargoStatCode(), req.submittedDocuments(),
                 req.customsOfficerName(), req.customsConfirmedAt(), req.cargoOperations(),
-                req.senderId(), req.receiverId(), req.forwarderId(), req.cargoId(), req.cargoName()));
+                req.senderId(), req.receiverId(), req.forwarderId(), req.cargoId(), req.cargoName(),
+                req.cargoNumber()));
     }
 
     /** Замена водителя после недопуска (MED_REJECTED → CREATED, титул CORRECTION). */

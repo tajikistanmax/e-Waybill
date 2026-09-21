@@ -1228,7 +1228,10 @@ public class WaybillService {
             String senderId, String receiverId, String forwarderId, String cargoId,
             // Наименование груза — снимок из справочника Cargo (или свободный текст), тот же
             // typeData.cargoName, что читает печатная форма (см. WaybillPrintService.model()).
-            String cargoName) {
+            String cargoName,
+            // Рамзи бор — снимок сквозного номера груза (Cargo.number, legacy cargos.number),
+            // печатается в борхате (прил. 1/2, «Рамз»), MIGRATION.md 2.25.
+            Long cargoNumber) {
     }
 
     @Transactional
@@ -1252,6 +1255,7 @@ public class WaybillService {
         putIfPresent(td, "forwarderId", data.forwarderId());
         putIfPresent(td, "cargoId", data.cargoId());
         putIfPresent(td, "cargoName", data.cargoName());
+        putIfPresent(td, "cargoNumber", data.cargoNumber());
         if (data.cargoOperations() != null) {
             td.put("cargoOperations", data.cargoOperations());
         }

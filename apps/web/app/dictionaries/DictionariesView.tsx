@@ -253,7 +253,7 @@ export default function DictionariesView({ tab }: { tab: DictTab }) {
             {tab === 'fuel-norms' && <tr><th>{t('f.vehtype')}</th><th>{t('col.brand')}</th><th>{t('dict.col.norm')}</th></tr>}
             {tab === 'coefficients' && <tr><th>{t('dict.f.kind')}</th><th>{t('col.name')}</th><th>{t('dict.f.multiplier').replace(/\s*\(.*\)/, '')}</th><th>{t('col.region')}</th><th>{t('dict.col.months')}</th></tr>}
             {tab === 'tariffs' && <tr><th>{t('f.vehtype')}</th><th>{t('col.fuel')}</th><th>{t('dict.col.somonikm')}</th></tr>}
-            {tab === 'cargos' && <tr><th>{t('col.name')}</th><th>{t('col.type')}</th><th>{t('col.unit')}</th><th>{t('col.price')}</th><th>{t('col.class')}</th></tr>}
+            {tab === 'cargos' && <tr><th>{t('col.cargonumber')}</th><th>{t('col.name')}</th><th>{t('col.type')}</th><th>{t('col.unit')}</th><th>{t('col.price')}</th><th>{t('col.class')}</th></tr>}
             {tab === 'brands' && <tr><th>{t('col.name')}</th><th>{t('col.number')}</th><th>{t('col.model')}</th><th>{t('col.capacity')}</th><th>{t('dict.f.tariff').replace(/,.*/, '')}</th></tr>}
             {tab === 'winter-coefs' && <tr><th>{t('col.name')}</th><th>{t('col.periodfrom')}</th><th>{t('col.periodto')}</th><th>{t('col.coef')}</th></tr>}
             {(tab === 'mountain-coefs' || tab === 'city-coefs') && <tr><th>{t('col.name')}</th><th>{t('col.coef')}</th></tr>}
@@ -270,7 +270,7 @@ export default function DictionariesView({ tab }: { tab: DictTab }) {
                 {tab === 'fuel-norms' && <><td>{TT[Number(r.transportType)] ?? r.transportType}</td><td>{r.brand ? String(r.brand) : t('dict.all')}</td><td><b>{String(r.baseNorm)}</b></td></>}
                 {tab === 'coefficients' && <><td>{KIND[String(r.kind)] ?? String(r.kind)}</td><td style={{ fontWeight: 600, color: 'var(--ink)' }}>{String(r.name)}</td><td><b>{String(r.value)}</b></td><td>{String(r.regionId ?? '—')}</td><td>{r.monthFrom ? `${r.monthFrom}–${r.monthTo}` : '—'}</td></>}
                 {tab === 'tariffs' && <><td>{TT[Number(r.transportType)] ?? r.transportType}</td><td>{r.fuelType != null ? String(r.fuelType) : t('dict.any')}</td><td><b>{String(r.pricePerKm)}</b></td></>}
-                {tab === 'cargos' && <><td style={{ fontWeight: 600, color: 'var(--ink)' }}>{String(r.name)}</td><td>{String(r.type ?? '—')}</td><td>{String(r.unit ?? '—')}</td><td>{r.price != null ? String(r.price) : '—'}</td><td>{r.cargoClass != null ? String(r.cargoClass) : '—'}</td></>}
+                {tab === 'cargos' && <><td><span className="number">{r.number != null ? String(r.number) : '—'}</span></td><td style={{ fontWeight: 600, color: 'var(--ink)' }}>{String(r.name)}</td><td>{String(r.type ?? '—')}</td><td>{String(r.unit ?? '—')}</td><td>{r.price != null ? String(r.price) : '—'}</td><td>{r.cargoClass != null ? String(r.cargoClass) : '—'}</td></>}
                 {tab === 'brands' && <><td style={{ fontWeight: 600, color: 'var(--ink)' }}>{String(r.name)}</td><td>{String(r.number ?? '—')}</td><td>{String(r.model ?? '—')}</td><td>{String(r.capacity ?? '—')}</td><td>{r.tariffRate != null ? String(r.tariffRate) : '—'}</td></>}
                 {tab === 'winter-coefs' && <><td style={{ fontWeight: 600, color: 'var(--ink)' }}>{String(r.name)}</td><td>{String(r.periodFrom ?? '—')}</td><td>{String(r.periodTo ?? '—')}</td><td><b>{String(r.coef ?? '—')}</b></td></>}
                 {(tab === 'mountain-coefs' || tab === 'city-coefs') && <><td style={{ fontWeight: 600, color: 'var(--ink)' }}>{String(r.name)}</td><td><b>{String(r.coef ?? '—')}</b></td></>}

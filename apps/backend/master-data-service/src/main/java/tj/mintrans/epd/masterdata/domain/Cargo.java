@@ -16,9 +16,9 @@ import java.util.UUID;
  * <p>В отличие от {@link Client}, ПЛАТФОРМЕННЫЙ, не привязан к организации: в эталоне таблица
  * {@code cargos} не имеет колонки организации/компании, доступ к CRUD регулируется ролью
  * (Backpack {@code role:superadmin|region|company}), а не мультитенантностью по РМА — один общий
- * справочник грузов для всех перевозчиков. Поле {@code number} эталона (автоинкремент вида
- * Backpack, только для отображения — id никогда не использовался как внешний ключ, FK
- * {@code cargo_waybills.cargo_id} ссылается на {@code id}) здесь не переносится.</p>
+ * справочник грузов для всех перевозчиков. Поле {@code number} эталона — сквозной автономер
+ * (legacy {@code Cargo::creating: number = max+1}), печатается в борхате (прил. 1/2, «Рамз»);
+ * с V65 выдаётся БД (sequence), MIGRATION.md 2.25.</p>
  */
 @Entity
 @Table(name = "cargo")
@@ -26,6 +26,11 @@ public class Cargo {
 
     @Id
     private UUID id;
+
+    /** Рамзи бор — сквозной номер груза; присваивает БД при вставке (V65), в API только на чтение. */
+    @Column(name = "number", insertable = false, updatable = false)
+    @org.hibernate.annotations.Generated
+    private Long number;
 
     @Column(nullable = false)
     private String name;
@@ -48,6 +53,7 @@ public class Cargo {
     }
 
     public UUID getId() { return id; }
+    public Long getNumber() { return number; }
     public String getName() { return name; }
     public void setName(String name) { this.name = name; }
     public String getType() { return type; }

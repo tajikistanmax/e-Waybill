@@ -90,9 +90,9 @@ export function Consignment({
   }, [clients]);
   const searchCargos = useCallback(async (q: string): Promise<SSOption[]> => {
     const ql = q.trim().toLowerCase();
-    return cargos.filter(c => !ql || c.name.toLowerCase().includes(ql))
-      .slice(0, 25).map(c => ({ value: c.id, label: c.name }));
-  }, [cargos]);
+    return cargos.filter(c => !ql || c.name.toLowerCase().includes(ql) || String(c.number ?? '').includes(ql))
+      .slice(0, 25).map(c => ({ value: c.id, label: c.name, sub: c.number != null ? `${t('col.cargonumber')} ${c.number}` : '' }));
+  }, [cargos, t]);
 
   function setOp(i: number, key: keyof CargoOp, value: string) {
     setOps(prev => prev.map((o, idx) => (idx === i ? { ...o, [key]: value } : o)));
@@ -118,6 +118,12 @@ export function Consignment({
         receiverId: receiverId || null,
         forwarderId: forwarderId || null,
         cargoId: cargoId || null,
+        // Рамзи бор — снимок сквозного номера груза из справочника (печать борхата, 2.25);
+        // при отсутствии справочника сохраняем ранее снятый номер из typeData.
+        cargoNumber: cargoId
+          ? ((cargos.find(c => c.id === cargoId)?.number as number | undefined)
+            ?? (typeData.cargoNumber != null && typeData.cargoNumber !== '' ? Number(typeData.cargoNumber) : null))
+          : null,
       });
       setOk(t('cn.saved'));
       onSaved();

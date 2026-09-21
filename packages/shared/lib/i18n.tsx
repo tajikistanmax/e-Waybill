@@ -1092,6 +1092,7 @@ const DICT: Record<string, { ru: string; tj: string; en?: string }> = {
   'rep.crosscut': { ru: 'Разрез', tj: 'Буриш' },
   'rep.typed.filter.vehicle': { ru: 'Госномер ТС (отбор)', tj: 'Рақами давлатии ВН (интихоб)' },
   'rep.typed.filter.driver': { ru: 'РМА водителя (отбор)', tj: 'РМА-и ронанда (интихоб)' },
+  'col.cargonumber': { ru: 'Рамз (№ груза)', tj: 'Рамзи бор' },
   'rep.opt.passenger': { ru: 'Пассажирские', tj: 'Мусофиркашонӣ' },
   'rep.opt.cargo': { ru: 'Грузовые', tj: 'Боркашонӣ' },
   'rep.crosscut.title': { ru: 'Разрез «ведомственный/общий»', tj: 'Буриш «идоравӣ/умумӣ»' },
