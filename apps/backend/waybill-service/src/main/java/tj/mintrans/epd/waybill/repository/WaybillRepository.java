@@ -148,4 +148,34 @@ public interface WaybillRepository extends JpaRepository<Waybill, UUID> {
                                                 @Param("types") Collection<tj.mintrans.epd.waybill.domain.WaybillType> types,
                                                 @Param("from") OffsetDateTime from,
                                                 @Param("to") OffsetDateTime to);
+
+    // Активность ТС / водителей за период (MIGRATION.md 8.5/8.6, legacy ParkingCrudController
+    // active_trans/inactive_trans/4-роҳхат, DriverCrudController active_drivers/inactive_drivers):
+    // число ПЛ выбранных видов по госномеру / РМА водителя — агрегат в БД, все статусы (как legacy COUNT).
+
+    @Query("select w.vehicleRegNumber, count(w) from Waybill w "
+            + "where w.waybillType in :types and w.createdAt >= :from and w.createdAt < :to "
+            + "group by w.vehicleRegNumber")
+    List<Object[]> countByVehicle(@Param("types") Collection<tj.mintrans.epd.waybill.domain.WaybillType> types,
+                                  @Param("from") OffsetDateTime from, @Param("to") OffsetDateTime to);
+
+    @Query("select w.vehicleRegNumber, count(w) from Waybill w "
+            + "where w.organizationRma in :rmas and w.waybillType in :types "
+            + "and w.createdAt >= :from and w.createdAt < :to group by w.vehicleRegNumber")
+    List<Object[]> countByVehicleForOrganizations(@Param("rmas") Collection<String> organizationRmas,
+                                                  @Param("types") Collection<tj.mintrans.epd.waybill.domain.WaybillType> types,
+                                                  @Param("from") OffsetDateTime from, @Param("to") OffsetDateTime to);
+
+    @Query("select w.driverRma, count(w) from Waybill w "
+            + "where w.waybillType in :types and w.createdAt >= :from and w.createdAt < :to "
+            + "group by w.driverRma")
+    List<Object[]> countByDriver(@Param("types") Collection<tj.mintrans.epd.waybill.domain.WaybillType> types,
+                                 @Param("from") OffsetDateTime from, @Param("to") OffsetDateTime to);
+
+    @Query("select w.driverRma, count(w) from Waybill w "
+            + "where w.organizationRma in :rmas and w.waybillType in :types "
+            + "and w.createdAt >= :from and w.createdAt < :to group by w.driverRma")
+    List<Object[]> countByDriverForOrganizations(@Param("rmas") Collection<String> organizationRmas,
+                                                 @Param("types") Collection<tj.mintrans.epd.waybill.domain.WaybillType> types,
+                                                 @Param("from") OffsetDateTime from, @Param("to") OffsetDateTime to);
 }

@@ -1,7 +1,7 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
-import { md } from '@/lib/api';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { md, wb } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { useT } from '@/lib/i18n';
 import { Icon, P } from '../icons';
@@ -9,6 +9,14 @@ import SubjectDocuments from './SubjectDocuments';
 
 type Row = Record<string, unknown>;
 export type FleetKind = 'vehicles' | 'drivers' | 'employees';
+// Формы ПЛ legacy → виды ПЛ e-Waybill для фильтров активности (MIGRATION.md 8.5/8.6): 3-С = легковой + такси,
+// 1-АД = автобус + троллейбус.
+const ACT_FORM_TYPES: Record<string, string[]> = {
+  '': [], '3c': ['WB_CAR', 'WB_TAXI'], '2b': ['WB_TRUCK'], '1ad': ['WB_BUS', 'WB_TROLLEYBUS'], '1a': ['WB_MINIBUS'], '5bbm': ['WB_TRUCK_INTL'],
+};
+const ACT_FORM_LABELS: { v: string; l: string }[] = [
+  { v: '3c', l: '3-С' }, { v: '2b', l: '2-Б' }, { v: '1ad', l: '1-АД' }, { v: '1a', l: '1-А' }, { v: '5bbm', l: '5Б-БМ' },
+];
 type Field = { key: string; label: string; type?: 'text' | 'number' | 'date' | 'select'; opts?: { v: string; l: string }[]; req?: boolean; keyField?: boolean };
 
 /**
@@ -39,6 +47,51 @@ export default function FleetView({ kind }: { kind: FleetKind }) {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState('');
   const [err, setErr] = useState('');
+
+  // Активность за период (MIGRATION.md 8.5/8.6) — фильтры legacy-реестров ТС (active_trans / inactive_trans /
+  // active2b / 4-роҳхат(3с) / 2-роҳхат(2b) / период по году выпуска) и водителей (active_drivers{тип} / inactive_drivers).
+  // Счётчики ПЛ по ключу берём с бэкенда (/reports/activity), отбор — по всему парку организации (statRows).
+  const [actFrom, setActFrom] = useState('');
+  const [actTo, setActTo] = useState('');
+  const [actForm, setActForm] = useState('');
+  const [actMode, setActMode] = useState<'any' | 'active' | 'inactive' | 'exact'>('any');
+  const [actN, setActN] = useState('4');
+  const [yearFrom, setYearFrom] = useState('');
+  const [yearTo, setYearTo] = useState('');
+  const [actMap, setActMap] = useState<Record<string, number> | null>(null);
+  const actActive = (kind === 'vehicles' || kind === 'drivers') && (actMode !== 'any' || yearFrom !== '' || yearTo !== '');
+  useEffect(() => {
+    if (!(kind === 'vehicles' || kind === 'drivers') || actMode === 'any' || !actFrom || !actTo) { setActMap(null); return; }
+    let alive = true;
+    wb.activity(kind === 'vehicles' ? 'VEHICLE' : 'DRIVER', actFrom, actTo, ACT_FORM_TYPES[actForm] ?? [])
+      .then(list => { if (alive) setActMap(Object.fromEntries(list.map(r => [r.key, r.waybills]))); })
+      .catch(() => { if (alive) setActMap({}); });
+    return () => { alive = false; };
+  }, [kind, actMode, actFrom, actTo, actForm]);
+  const visible = useMemo(() => {
+    if (!actActive) return rows;
+    const s = q.trim().toLowerCase();
+    return statRows.filter(r => {
+      const key = String(kind === 'vehicles' ? r.registrationNumber : r.rma);
+      if (s) {
+        const hay = kind === 'vehicles' ? `${r.registrationNumber ?? ''} ${r.brand ?? ''}` : `${r.fullName ?? ''} ${r.rma ?? ''}`;
+        if (!hay.toLowerCase().includes(s)) return false;
+      }
+      if (kind === 'vehicles') {
+        const y = Number(r.yearManufacture);
+        if (yearFrom && (!y || y < Number(yearFrom))) return false;
+        if (yearTo && (!y || y > Number(yearTo))) return false;
+      }
+      if (actMode !== 'any') {
+        if (!actMap) return false; // период не задан или счётчики ещё грузятся
+        const n = actMap[key] ?? 0;
+        if (actMode === 'active' && n === 0) return false;
+        if (actMode === 'inactive' && n > 0) return false;
+        if (actMode === 'exact' && n !== Number(actN || 0)) return false;
+      }
+      return true;
+    });
+  }, [actActive, rows, statRows, q, kind, yearFrom, yearTo, actMode, actMap, actN]);
 
   useEffect(() => { md.organizations().then(l => { if (l.length) setOrgRma(String(l[0].rma)); }).catch(() => {}); }, []);
   // Смена раздела — сброс поиска, формы и сообщений.
@@ -263,6 +316,33 @@ export default function FleetView({ kind }: { kind: FleetKind }) {
 
       {/* Поиск + таблица */}
       <div className="card" style={{ padding: 16 }}>
+        {kind !== 'employees' && (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10, alignItems: 'end', marginBottom: 12 }}>
+            <div style={{ gridColumn: '1 / -1', fontSize: 12.5, fontWeight: 600, color: 'var(--muted)' }}>{t('fleet.act.title')}</div>
+            <div><label style={{ fontSize: 12, color: 'var(--muted)' }}>{t('flt.datefrom')}</label><input type="date" value={actFrom} onChange={e => setActFrom(e.target.value)} style={{ width: '100%' }} /></div>
+            <div><label style={{ fontSize: 12, color: 'var(--muted)' }}>{t('flt.dateto')}</label><input type="date" value={actTo} onChange={e => setActTo(e.target.value)} style={{ width: '100%' }} /></div>
+            <div><label style={{ fontSize: 12, color: 'var(--muted)' }}>{t('fleet.act.form')}</label>
+              <select value={actForm} onChange={e => setActForm(e.target.value)} style={{ width: '100%' }}>
+                <option value="">{t('fleet.act.form.all')}</option>
+                {ACT_FORM_LABELS.map(f => <option key={f.v} value={f.v}>{f.l}</option>)}
+              </select>
+            </div>
+            <div><label style={{ fontSize: 12, color: 'var(--muted)' }}>{t('fleet.act.mode')}</label>
+              <select value={actMode} onChange={e => setActMode(e.target.value as 'any' | 'active' | 'inactive' | 'exact')} style={{ width: '100%' }}>
+                <option value="any">{t('fleet.act.mode.any')}</option>
+                <option value="active">{t('fleet.act.mode.active')}</option>
+                <option value="inactive">{t('fleet.act.mode.inactive')}</option>
+                <option value="exact">{t('fleet.act.mode.exact')}</option>
+              </select>
+            </div>
+            {actMode === 'exact' && <div><label style={{ fontSize: 12, color: 'var(--muted)' }}>{t('fleet.act.n')}</label><input type="number" min={0} value={actN} onChange={e => setActN(e.target.value)} style={{ width: '100%' }} /></div>}
+            {kind === 'vehicles' && (<>
+              <div><label style={{ fontSize: 12, color: 'var(--muted)' }}>{t('fleet.act.yearfrom')}</label><input type="number" min={1900} value={yearFrom} onChange={e => setYearFrom(e.target.value)} style={{ width: '100%' }} /></div>
+              <div><label style={{ fontSize: 12, color: 'var(--muted)' }}>{t('fleet.act.yearto')}</label><input type="number" min={1900} value={yearTo} onChange={e => setYearTo(e.target.value)} style={{ width: '100%' }} /></div>
+            </>)}
+            {actActive && <div style={{ gridColumn: '1 / -1', fontSize: 11.5, color: 'var(--muted)' }}>{t('fleet.act.hint')} {actMode !== 'any' && !actMap ? '…' : ''}</div>}
+          </div>
+        )}
         <input value={q} onChange={e => setQ(e.target.value)}
           placeholder={kind === 'vehicles' ? t('fleet.search.vehicle') : kind === 'drivers' ? t('fleet.search.driver') : t('fleet.search.employee')} style={{ marginBottom: 12 }} />
         <table>
@@ -277,19 +357,19 @@ export default function FleetView({ kind }: { kind: FleetKind }) {
           </thead>
           <tbody>
             {loading && <tr><td colSpan={cols} style={{ color: 'var(--muted)' }}>{t('fleet.loading')}</td></tr>}
-            {!loading && rows.length === 0 && <tr><td colSpan={cols} style={{ color: 'var(--muted)' }}>{t('fleet.empty')}</td></tr>}
-            {!loading && kind === 'vehicles' && rows.map((v, i) => (
+            {!loading && visible.length === 0 && <tr><td colSpan={cols} style={{ color: 'var(--muted)' }}>{t('fleet.empty')}</td></tr>}
+            {!loading && kind === 'vehicles' && visible.map((v, i) => (
               <tr key={i}>
-                <td style={{ fontWeight: 600, fontFamily: 'var(--mono)' }}>{String(v.registrationNumber ?? '')}</td>
+                <td style={{ fontWeight: 600, fontFamily: 'var(--mono)' }}>{String(v.registrationNumber ?? '')}{actMap && <span className="badge blue" style={{ marginLeft: 6 }} title={t('fleet.act.count')}>{actMap[String(v.registrationNumber)] ?? 0}</span>}</td>
                 <td>{String(v.brand ?? '—')}</td>
                 <td>{TT.find(x => x.v === String(v.transportType))?.l ?? String(v.transportType ?? '—')}</td>
                 <td>{v.techInspectionValidTo ? String(v.techInspectionValidTo) : '—'}</td>
                 <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>{canManage && rowActions(v)}</td>
               </tr>
             ))}
-            {!loading && kind === 'drivers' && rows.map((d, i) => (
+            {!loading && kind === 'drivers' && visible.map((d, i) => (
               <tr key={i}>
-                <td style={{ fontWeight: 600 }}>{String(d.fullName ?? '')}</td>
+                <td style={{ fontWeight: 600 }}>{String(d.fullName ?? '')}{actMap && <span className="badge blue" style={{ marginLeft: 6 }} title={t('fleet.act.count')}>{actMap[String(d.rma)] ?? 0}</span>}</td>
                 <td style={{ fontFamily: 'var(--mono)' }}>{String(d.rma ?? '')}</td>
                 <td>{String(d.licenseCategories ?? '—')}</td>
                 <td>{d.licenseValidTo ? String(d.licenseValidTo) : '—'}</td>

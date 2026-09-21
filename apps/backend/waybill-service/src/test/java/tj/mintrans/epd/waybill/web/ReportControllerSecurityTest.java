@@ -44,6 +44,7 @@ class ReportControllerSecurityTest {
     @MockitoBean RegionalReportService regionalReports;
     @MockitoBean InspectionJournalService journals;
     @MockitoBean ReportXlsxWriter xlsx;
+    @MockitoBean tj.mintrans.epd.waybill.service.ActivityReportService activity;
     // JwtDecoder не должен ходить в Keycloak — jwt()-постпроцессор кладёт токен напрямую.
     @MockitoBean JwtDecoder jwtDecoder;
 

@@ -48,15 +48,17 @@ public class ReportController {
     private final RegionalReportService regionalReports;
     private final InspectionJournalService journals;
     private final ReportXlsxWriter xlsx;
+    private final tj.mintrans.epd.waybill.service.ActivityReportService activity;
 
     public ReportController(ReportService reports, WaybillReportService typedReports,
                             RegionalReportService regionalReports, InspectionJournalService journals,
-                            ReportXlsxWriter xlsx) {
+                            ReportXlsxWriter xlsx, tj.mintrans.epd.waybill.service.ActivityReportService activity) {
         this.reports = reports;
         this.typedReports = typedReports;
         this.regionalReports = regionalReports;
         this.journals = journals;
         this.xlsx = xlsx;
+        this.activity = activity;
     }
 
     /**
@@ -102,6 +104,23 @@ public class ReportController {
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
             @RequestParam(required = false) String organizationRma) {
         return reports.fuel(from, to, organizationRma);
+    }
+
+    /**
+     * Активность ТС / водителей за период — число ПЛ выбранных видов по госномеру или РМА водителя
+     * (MIGRATION.md 8.5/8.6: фильтры legacy-реестров «активные / без ПЛ / ровно N за период»).
+     *
+     * @param by    VEHICLE | DRIVER
+     * @param types виды ПЛ через запятую (WB_CAR,WB_TAXI …); не переданы — все виды
+     */
+    @GetMapping("/activity")
+    public List<tj.mintrans.epd.waybill.service.ActivityReportService.Row> activity(
+            @RequestParam tj.mintrans.epd.waybill.service.ActivityReportService.By by,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
+            @RequestParam(required = false) List<tj.mintrans.epd.waybill.domain.WaybillType> types,
+            @RequestParam(required = false) String organizationRma) {
+        return activity.activity(by, from, to, types, organizationRma);
     }
 
     // ---------------------------- типовые отчёты движка «Роҳхат» (перенос)
