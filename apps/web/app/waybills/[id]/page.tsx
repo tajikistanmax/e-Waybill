@@ -57,6 +57,8 @@ export default function WaybillCard({ params }: { params: Promise<{ id: string }
   const [odometerEntry, setOdometerEntry] = useState('');
   const [motorHoursEntry, setMotorHoursEntry] = useState(''); // моточасы возврата — спецтехника
   const [retMetrics, setRetMetrics] = useState({ transportWork: '', trips: '', conditionerHours: '' }); // факт. показатели рейса
+  // Международные формы (MIGRATION.md 3.14/3.15): прибытие в пункт назначения (5Б-БМ/4-МБМ) и пассажиры (4-МБМ).
+  const [retIntl, setRetIntl] = useState({ arrivalTime: '', passengersCount: '' });
   const [fuelCalc, setFuelCalc] = useState<Record<string, unknown> | null>(null);
   const [workDays, setWorkDays] = useState<Record<string, unknown>[]>([]);
   const [dayForm, setDayForm] = useState({ workDate: '', exitTime: '06:00', entryTime: '', odometerExit: '', odometerEntry: '', laps: '', revenue: '' });
@@ -185,6 +187,7 @@ export default function WaybillCard({ params }: { params: Promise<{ id: string }
   const hasServiceInfo = 'serviceKind' in td || 'shipmentKind' in td;
   const isSpecial = w.waybillType === 'WB_SPECIAL';
   const isCargo = ['WB_TRUCK', 'WB_TRUCK_INTL', 'WB_SPECIAL', 'WB_DANGEROUS'].includes(w.waybillType);
+  const isIntlForm = w.waybillType === 'WB_TRUCK_INTL' || w.waybillType === 'WB_PAX_INTL'; // 5Б-БМ / 4-МБМ
   // Накладная (борхат/CMR) — только для форм, где у оригинала есть отдельный документ приложения.
   const hasConsignment = ['WB_TRUCK', 'WB_TRUCK_INTL', 'WB_DANGEROUS'].includes(w.waybillType);
   const showRoute = isIntl || hasServiceInfo || isSpecial || !!w.route || !!w.schedule;
@@ -318,6 +321,17 @@ export default function WaybillCard({ params }: { params: Promise<{ id: string }
                 <input type="number" min={0} step="0.1" style={{ width: 150 }} placeholder="Часы кондиционера"
                   value={retMetrics.conditionerHours} onChange={e => setRetMetrics(m => ({ ...m, conditionerHours: e.target.value }))} />
               )}
+              {isIntlForm && (
+                <label style={{ display: 'inline-flex', gap: 6, alignItems: 'center', fontSize: 12, color: 'var(--muted)' }}>
+                  {t('wb.ph.arrival')}
+                  <input type="datetime-local" style={{ width: 200 }} title={t('wb.ph.arrival')}
+                    value={retIntl.arrivalTime} onChange={e => setRetIntl(m => ({ ...m, arrivalTime: e.target.value }))} />
+                </label>
+              )}
+              {w.waybillType === 'WB_PAX_INTL' && (
+                <input type="number" min={0} step="1" style={{ width: 170 }} placeholder={t('wb.ph.passengers')} title={t('wb.ph.passengers')}
+                  value={retIntl.passengersCount} onChange={e => setRetIntl(m => ({ ...m, passengersCount: e.target.value }))} />
+              )}
               <button className="btn"
                 disabled={!dispatcher || (isSpecial
                   ? (motorHoursEntry.trim() === '' || !Number.isFinite(Number(motorHoursEntry)))
@@ -329,6 +343,8 @@ export default function WaybillCard({ params }: { params: Promise<{ id: string }
                   ...(retMetrics.transportWork.trim() !== '' ? { transportWork: Number(retMetrics.transportWork) } : {}),
                   ...(retMetrics.trips.trim() !== '' ? { trips: Number(retMetrics.trips) } : {}),
                   ...(retMetrics.conditionerHours.trim() !== '' ? { conditionerHours: Number(retMetrics.conditionerHours) } : {}),
+                  ...(isIntlForm && retIntl.arrivalTime.trim() !== '' ? { arrivalTime: retIntl.arrivalTime.trim() } : {}),
+                  ...(w.waybillType === 'WB_PAX_INTL' && retIntl.passengersCount.trim() !== '' ? { passengersCount: Number(retIntl.passengersCount) } : {}),
                 }))}>
                 {t('wb.btn.t5')}
               </button>
@@ -614,6 +630,8 @@ export default function WaybillCard({ params }: { params: Promise<{ id: string }
             {'loadCountry' in td && <><dt>{t('wb.triproute')}</dt><dd>{String(td.loadCountry)} → {Array.isArray(td.transitCountries) && td.transitCountries.length ? `${(td.transitCountries as string[]).join(', ')} → ` : ''}{String(td.unloadCountry)}</dd></>}
             {'cargoName' in td && <><dt>{t('wb.cargo')}</dt><dd>{String(td.cargoName)}</dd></>}
             {'bbaNumber' in td && <><dt>{t('wb.bba')}</dt><dd>{String(td.bbaNumber)}</dd></>}
+            {'arrivalTime' in td && <><dt>{t('wb.dt.arrival')}</dt><dd>{String(td.arrivalTime).replace('T', ' ')}</dd></>}
+            {'passengersCount' in td && <><dt>{t('wb.dt.passengers')}</dt><dd>{String(td.passengersCount)}</dd></>}
           </dl>
         </div>
       )}

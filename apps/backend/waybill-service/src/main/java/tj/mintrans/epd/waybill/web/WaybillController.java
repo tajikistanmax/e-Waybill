@@ -1,6 +1,7 @@
 package tj.mintrans.epd.waybill.web;
 
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
@@ -122,7 +123,11 @@ public class WaybillController {
             Double transportWork,      // грузовая: транспортная работа P, т·км
             Double trips,              // грузовая: число ездок Z
             Double conditionerHours,   // пассажирская: часы работы кондиционера
-            Integer airConditionerPercent) {
+            Integer airConditionerPercent,
+            // Международные формы (MIGRATION.md 3.14/3.15): прибытие в пункт назначения
+            // (5Б-БМ/4-МБМ, ISO yyyy-MM-ddTHH:mm) и перевезено пассажиров (4-МБМ).
+            String arrivalTime,
+            @Min(0) Integer passengersCount) {
     }
 
     public record CloseRequest(String actor) {
@@ -183,7 +188,9 @@ public class WaybillController {
             String senderId, String receiverId, String forwarderId, String cargoId,
             String cargoName,
             // Рамзи бор — снимок сквозного номера груза (Cargo.number), печать борхата (2.25).
-            Long cargoNumber) {
+            Long cargoNumber,
+            // «Шумораи рейс» СМР (legacy reis_amount, 3.15) — число ездок Z (typeData.trips).
+            @Min(0) Integer tripsCount) {
     }
 
     // ------------------------------------------------------------- жизненный цикл
@@ -232,7 +239,8 @@ public class WaybillController {
     public Waybill returnTrip(@PathVariable UUID id, @Valid @RequestBody ReturnRequest req) {
         return service.returnTrip(id, req.dispatcherRma(), req.odometerEntry(), req.motorHoursEntry(),
                 new WaybillService.ReturnMetrics(req.transportWork(), req.trips(),
-                        req.conditionerHours(), req.airConditionerPercent()));
+                        req.conditionerHours(), req.airConditionerPercent(),
+                        req.arrivalTime(), req.passengersCount()));
     }
 
     @PostMapping("/{id}/close")
@@ -278,7 +286,7 @@ public class WaybillController {
                 req.forwarderName(), req.cargoVolume(), req.cargoStatCode(), req.submittedDocuments(),
                 req.customsOfficerName(), req.customsConfirmedAt(), req.cargoOperations(),
                 req.senderId(), req.receiverId(), req.forwarderId(), req.cargoId(), req.cargoName(),
-                req.cargoNumber()));
+                req.cargoNumber(), req.tripsCount()));
     }
 
     /** Замена водителя после недопуска (MED_REJECTED → CREATED, титул CORRECTION). */

@@ -62,6 +62,8 @@ export function Consignment({
     submittedDocuments: str(typeData.submittedDocuments),
     customsOfficerName: str(typeData.customsOfficerName),
     customsConfirmedAt: str(typeData.customsConfirmedAt),
+    // «Шумораи рейс» СМР (legacy reis_amount, MIGRATION.md 3.15) — то же typeData.trips, что вводится при возврате.
+    tripsCount: typeData.trips == null || typeData.trips === '' ? '' : String(Math.trunc(Number(typeData.trips))),
   });
   // id сторон/груза из справочников Client/Cargo — только для прослеживаемости (не живой джойн).
   const [senderId, setSenderId] = useState(str(typeData.senderId));
@@ -113,6 +115,7 @@ export function Consignment({
         submittedDocuments: form.submittedDocuments || null,
         customsOfficerName: form.customsOfficerName || null,
         customsConfirmedAt: form.customsConfirmedAt || null,
+        tripsCount: isCmr && form.tripsCount.trim() !== '' ? Math.trunc(Number(form.tripsCount)) : null,
         cargoOperations: ops,
         senderId: senderId || null,
         receiverId: receiverId || null,
@@ -206,6 +209,7 @@ export function Consignment({
         {isCmr && field(t('cn.f.volume'), 'cargoVolume', { type: 'number' })}
         {isCmr && field(t('cn.f.statcode'), 'cargoStatCode')}
         {isCmr && field(t('cn.f.docs'), 'submittedDocuments')}
+        {isCmr && field(t('cn.f.trips'), 'tripsCount', { type: 'number' })}
         {isCmr && field(t('cn.f.customs'), 'customsOfficerName')}
         {isCmr && field(t('cn.f.customsdate'), 'customsConfirmedAt', { type: 'datetime-local' })}
       </div>

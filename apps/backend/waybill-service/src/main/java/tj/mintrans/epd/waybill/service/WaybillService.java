@@ -1158,14 +1158,55 @@ public class WaybillService {
         return returnTrip(id, dispatcherRma, odometerEntry, null);
     }
 
-    /** Фактические показатели рейса, вносимые при возврате (для расчёта и сводных отчётов). */
+    /**
+     * Фактические показатели рейса, вносимые при возврате (для расчёта и сводных отчётов).
+     * Международные формы (MIGRATION.md 3.14/3.15): {@code arrivalTime} — время прибытия в пункт
+     * назначения (legacy 5Б-БМ {@code arrival_time}, отдельно от возврата в парк), {@code passengersCount}
+     * — перевезено пассажиров (legacy 4-МБМ {@code number_passengers}, «Шумораи мусофирон» бланка).
+     */
     public record ReturnMetrics(Double transportWork, Double trips,
-                                Double conditionerHours, Integer airConditionerPercent) {
-        public static final ReturnMetrics EMPTY = new ReturnMetrics(null, null, null, null);
+                                Double conditionerHours, Integer airConditionerPercent,
+                                String arrivalTime, Integer passengersCount) {
+        public static final ReturnMetrics EMPTY = new ReturnMetrics(null, null, null, null, null, null);
+
+        public ReturnMetrics(Double transportWork, Double trips, Double conditionerHours, Integer airConditionerPercent) {
+            this(transportWork, trips, conditionerHours, airConditionerPercent, null, null);
+        }
 
         boolean any() {
-            return transportWork != null || trips != null || conditionerHours != null || airConditionerPercent != null;
+            return transportWork != null || trips != null || conditionerHours != null || airConditionerPercent != null
+                    || arrivalTime != null || passengersCount != null;
         }
+    }
+
+    /**
+     * Правила международных полей возврата (MIGRATION.md 3.14/3.15): время прибытия — только у 5Б-БМ и
+     * 4-МБМ и в формате ISO-8601 (yyyy-MM-ddTHH:mm[:ss]); число пассажиров — только у 4-МБМ и не меньше 0.
+     * Пустая строка времени = «не задано». Возвращает нормализованное время (или null).
+     */
+    static String assertIntlReturnFields(WaybillType type, ReturnMetrics m) {
+        if (m == null) return null;
+        boolean intl = type == WaybillType.WB_TRUCK_INTL || type == WaybillType.WB_PAX_INTL;
+        String arrival = m.arrivalTime() == null || m.arrivalTime().isBlank() ? null : m.arrivalTime().trim();
+        if (arrival != null) {
+            if (!intl) {
+                throw new UnprocessableException("Время прибытия (arrivalTime) задаётся только у форм 5Б-БМ и 4-МБМ");
+            }
+            try {
+                arrival = java.time.LocalDateTime.parse(arrival).toString();
+            } catch (java.time.format.DateTimeParseException e) {
+                throw new UnprocessableException("Время прибытия (arrivalTime) должно быть в формате ГГГГ-ММ-ДДTЧЧ:ММ");
+            }
+        }
+        if (m.passengersCount() != null) {
+            if (type != WaybillType.WB_PAX_INTL) {
+                throw new UnprocessableException("Число пассажиров (passengersCount) задаётся только у формы 4-МБМ");
+            }
+            if (m.passengersCount() < 0) {
+                throw new UnprocessableException("Число пассажиров (passengersCount) не может быть отрицательным");
+            }
+        }
+        return arrival;
     }
 
     /** Возврат (Т5). Для спецтехники дополнительно фиксируются моточасы возврата (motorHoursEntry). */
@@ -1191,6 +1232,7 @@ public class WaybillService {
             throw new UnprocessableException("Пробег %d км превышает суточный лимит формы %s — %d км"
                     .formatted(odometerEntry - wb.getOdometerExit(), wb.getWaybillType().legacyForm(), maxDailyKm));
         }
+        String arrivalTime = assertIntlReturnFields(wb.getWaybillType(), metrics);
         wb.setOdometerEntry(odometerEntry);
         if (metrics != null && metrics.any()) {
             var td = wb.getTypeData() != null
@@ -1200,6 +1242,9 @@ public class WaybillService {
             if (metrics.trips() != null) td.put("trips", metrics.trips());
             if (metrics.conditionerHours() != null) td.put("conditionerHours", metrics.conditionerHours());
             if (metrics.airConditionerPercent() != null) td.put("airConditionerPercent", metrics.airConditionerPercent());
+            // 5Б-БМ/4-МБМ: прибытие в пункт назначения и перевезённые пассажиры (MIGRATION.md 3.14/3.15).
+            if (arrivalTime != null) td.put("arrivalTime", arrivalTime);
+            if (metrics.passengersCount() != null) td.put("passengersCount", metrics.passengersCount());
             wb.setTypeData(td);
         }
         // Спецтехника: учёт по моточасам — фиксируем моточасы возврата в type_data,
@@ -1248,7 +1293,20 @@ public class WaybillService {
             String cargoName,
             // Рамзи бор — снимок сквозного номера груза (Cargo.number, legacy cargos.number),
             // печатается в борхате (прил. 1/2, «Рамз»), MIGRATION.md 2.25.
-            Long cargoNumber) {
+            Long cargoNumber,
+            // «Шумораи рейс» СМР (legacy cargo_waybill5bbms.reis_amount, MIGRATION.md 3.15) — число
+            // ездок Z; хранится в том же typeData.trips, что вводится при возврате и идёт в расчёт.
+            Integer tripsCount) {
+        public ConsignmentUpdate(String senderName, String senderAddress, String receiverName, String receiverAddress,
+                                 String forwarderName, Double cargoVolume, String cargoStatCode, String submittedDocuments,
+                                 String customsOfficerName, String customsConfirmedAt,
+                                 java.util.List<Map<String, Object>> cargoOperations,
+                                 String senderId, String receiverId, String forwarderId, String cargoId,
+                                 String cargoName, Long cargoNumber) {
+            this(senderName, senderAddress, receiverName, receiverAddress, forwarderName, cargoVolume, cargoStatCode,
+                    submittedDocuments, customsOfficerName, customsConfirmedAt, cargoOperations,
+                    senderId, receiverId, forwarderId, cargoId, cargoName, cargoNumber, null);
+        }
     }
 
     @Transactional
@@ -1273,6 +1331,12 @@ public class WaybillService {
         putIfPresent(td, "cargoId", data.cargoId());
         putIfPresent(td, "cargoName", data.cargoName());
         putIfPresent(td, "cargoNumber", data.cargoNumber());
+        if (data.tripsCount() != null) {
+            if (data.tripsCount() < 0) {
+                throw new UnprocessableException("Число рейсов (tripsCount) не может быть отрицательным");
+            }
+            td.put("trips", data.tripsCount());
+        }
         if (data.cargoOperations() != null) {
             td.put("cargoOperations", data.cargoOperations());
         }

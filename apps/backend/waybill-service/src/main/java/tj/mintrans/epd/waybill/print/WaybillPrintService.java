@@ -326,6 +326,8 @@ public class WaybillPrintService {
         // времени возврата в парк (odometerEntry/entryTime): международный рейс может
         // прибыть к получателю задолго до формального закрытия ПЛ на базе.
         m.put("arrivalTime", orDash(str(td.get("arrivalTime"))));
+        // «Шумораи мусофирон» 4-МБМ — перевезено пассажиров по факту рейса (legacy number_passengers, 3.14).
+        m.put("passengersCount", orDash(str(td.get("passengersCount"))));
         m.put("permitNumber", orDash(str(td.get("permitNumber"))));
         m.put("transitCountries", td.get("transitCountries") instanceof List<?> tc
                 ? tc.stream().map(String::valueOf).reduce((a, b) -> a + ", " + b).orElse("—") : "—");

@@ -134,7 +134,7 @@
             <td th:text="${unloadCountry}"></td><td th:text="${unloadCity}"></td>
             <td th:text="${transitCountries}"></td>
             <td class="center" th:text="${distanceKm}"></td>
-            <td></td>
+            <td class="center" th:text="${passengersCount}"></td>
         </tr>
         <tr th:if="${clientName != null and clientName != '—'}">
             <td colspan="8">Фармоишдиҳанда: <span th:text="${clientName}"></span></td>
