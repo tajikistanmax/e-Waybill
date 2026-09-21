@@ -102,6 +102,61 @@ class WaybillCalcEngineTest {
         assertThat(r.salary().salary()).isEqualByComparingTo("475.00");
     }
 
+    /** Марка с отоплением салона 2.5 л/ч (как brands id=1 в боевом справочнике). */
+    private void brandWithInteriorHeating() {
+        lenient().when(brandNorms.forName(any())).thenReturn(
+                new BrandNorms(40L, "[{\"fuel_id\":2,\"consumption\":30}]",
+                        "[{\"fuel_id\":2,\"consumption\":25}]", null, 2.5d));
+    }
+
+    @Test
+    @DisplayName("отопление салона OFF (по умолчанию, как legacy warm_salon=0): норма 68.82 без надбавки даже зимой")
+    void interiorHeatingOffByDefault() {
+        brandWithInteriorHeating();
+        PassengerCalcResult r = engine.passenger(baseInput().build()); // 15 декабря, зима активна, 8 ч
+
+        assertThat(r.fuels().getFirst().normLiters()).isEqualTo(68.82d);
+    }
+
+    @Test
+    @DisplayName("отопление салона WINTER: зимой +2.5·8 = 20 л (88.82), вне сезона — без надбавки")
+    void interiorHeatingWinterOnly() {
+        brandWithInteriorHeating();
+        WaybillCalcEngine winter = new WaybillCalcEngine(new CoefficientCalculator(dict),
+                new FuelNormCalculator(), brandNorms, InteriorHeatingMode.WINTER);
+
+        PassengerCalcResult december = winter.passenger(baseInput().build());
+        assertThat(december.coefficients().winterCoef()).isEqualTo(5);
+        assertThat(december.fuels().getFirst().normLiters()).isEqualTo(88.82d);
+
+        // июль: K = 2+3+2+0−1 = 6 → 0.01·31·200·1.06 = 65.72, отопления нет
+        PassengerCalcResult july = winter.passenger(baseInput().calcDate(LocalDate.of(2024, 7, 15)).build());
+        assertThat(july.coefficients().winterCoef()).isZero();
+        assertThat(july.fuels().getFirst().normLiters()).isEqualTo(65.72d);
+    }
+
+    @Test
+    @DisplayName("отопление салона ALWAYS (прежнее поведение): +20 л и в июле (85.72)")
+    void interiorHeatingAlways() {
+        brandWithInteriorHeating();
+        WaybillCalcEngine always = new WaybillCalcEngine(new CoefficientCalculator(dict),
+                new FuelNormCalculator(), brandNorms, InteriorHeatingMode.ALWAYS);
+
+        PassengerCalcResult july = always.passenger(baseInput().calcDate(LocalDate.of(2024, 7, 15)).build());
+        assertThat(july.fuels().getFirst().normLiters()).isEqualTo(85.72d);
+    }
+
+    @Test
+    @DisplayName("ветка Душанбе не зависит от режима отопления: heating_fuel маршрута, Ma=64 при ALWAYS")
+    void interiorHeatingDoesNotTouchDushanbeBranch() {
+        brandWithInteriorHeating();
+        WaybillCalcEngine always = new WaybillCalcEngine(new CoefficientCalculator(dict),
+                new FuelNormCalculator(), brandNorms, InteriorHeatingMode.ALWAYS);
+
+        PassengerCalcResult r = always.passenger(baseInput().routeExcludingCoef(true).build());
+        assertThat(r.fuels().getFirst().normLiters()).isEqualTo(64d);
+    }
+
     @Test
     @DisplayName("ветка excluding_coef: душанбинская норма 25, коэффициенты не применяются, Ma=64")
     void excludingCoefBranch() {

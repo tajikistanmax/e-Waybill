@@ -2,6 +2,8 @@ package tj.mintrans.epd.waybill.calc;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import tj.mintrans.epd.waybill.calc.model.BrandNorms;
 import tj.mintrans.epd.waybill.calc.model.CalcFuelLine;
@@ -47,12 +49,37 @@ public class WaybillCalcEngine {
     private final CoefficientCalculator coefficients;
     private final FuelNormCalculator fuel;
     private final BrandNormsProvider brandNorms;
+    private final InteriorHeatingMode heatingMode;
 
+    /** Конструктор для тестов/ручной сборки: отопление салона выключено (паритет с legacy). */
     public WaybillCalcEngine(CoefficientCalculator coefficients, FuelNormCalculator fuel,
                              BrandNormsProvider brandNorms) {
+        this(coefficients, fuel, brandNorms, InteriorHeatingMode.OFF);
+    }
+
+    @Autowired
+    public WaybillCalcEngine(CoefficientCalculator coefficients, FuelNormCalculator fuel,
+                             BrandNormsProvider brandNorms,
+                             @Value("${epd.calc.interior-heating:OFF}") InteriorHeatingMode heatingMode) {
         this.coefficients = coefficients;
         this.fuel = fuel;
         this.brandNorms = brandNorms;
+        this.heatingMode = heatingMode == null ? InteriorHeatingMode.OFF : heatingMode;
+    }
+
+    /**
+     * Надбавка на отопление салона применяется по {@link InteriorHeatingMode}: OFF — никогда
+     * (как в legacy, где {@code warm_salon = 0}); WINTER — только при действующем зимнем
+     * коэффициенте маршрута (замысел закомментированного кода {@code helpers.php:348});
+     * ALWAYS — круглый год. Ветка Душанбе ({@code excluding_coef}) берёт отопление из
+     * {@code routes.heating_fuel} и сюда не попадает.
+     */
+    private boolean interiorHeatingApplies(CoefficientBreakdown coef) {
+        return switch (heatingMode) {
+            case OFF -> false;
+            case WINTER -> coef != null && coef.winterCoef() > 0;
+            case ALWAYS -> true;
+        };
     }
 
     /**
@@ -109,7 +136,8 @@ public class WaybillCalcEngine {
                         .conditionerHours(conditionerHours)
                         .workHours(workHours)
                         .airConditionerPercent(in.airConditionerPercent())
-                        .interiorHeatingPerHour(brand == null ? 0d : brand.interiorHeatingPerHour())
+                        .interiorHeatingPerHour(brand != null && interiorHeatingApplies(coef)
+                                ? brand.interiorHeatingPerHour() : 0d)
                         .build();
                 normLiters = fuel.calcNorm(request).normLiters();
             }
