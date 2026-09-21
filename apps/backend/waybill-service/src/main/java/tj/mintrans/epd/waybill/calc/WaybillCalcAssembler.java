@@ -140,6 +140,29 @@ public class WaybillCalcAssembler {
         }
         PassengerCalcResult r = engine.passenger(buildPassenger(wb, s, brandName, year, capacity,
                 exitOdo, entryOdo, workMinutes, laps, revenue, fuels, calcDate, route));
+
+        // Показатели «свободного» такси (METER, type_service=1) и почасовой аренды (HOURLY=3)
+        // маршрутный движок НЕ считает (нет маршрута → нули). Считаем их спец-формулой оригинала
+        // (Calc.php::taxi_type/hourly_type) через уже протестированный MultiDayPassengerCalc — для
+        // одно- и многодневных ПЛ (однодневный: один день синтезируется из шапки ПЛ). Маршрутное
+        // такси (ROUTE=2), автобус/микроавтобус и ТОПЛИВО не затрагиваются, поэтому придержанная B10
+        // (посуточные показатели микроавтобуса/маршрута) остаётся в силе (MULTIDAY_PASSENGER_ENABLED=false).
+        if (type == WaybillType.WB_TAXI || type == WaybillType.WB_CAR) {
+            Short svc = taxiServiceType(wb);
+            if (svc != null && (svc == 1 || svc == 3)) {   // METER | HOURLY (ROUTE считает движок)
+                List<PassengerDay> taxiDays = days.isEmpty()
+                        ? List.of(new PassengerDay(calcDate, null, null, null,
+                                exitOdo, entryOdo, null, null,
+                                workMinutes > 0 ? workMinutes : null, null, null, null))
+                        : passengerDays(days);
+                PassengerMetrics taxiMetrics = MultiDayPassengerCalc.forTaxi(
+                        svc, null, capacity, capacity, taxiDays, null, null, revenue);
+                r = new PassengerCalcResult(r.distanceKm(), r.workTimeMinutes(), r.workHours(),
+                        r.coefficients(), r.fuels(), r.totalNormLiters(), r.salary(), taxiMetrics, r.tariff());
+                notes.add("Показатели рассчитаны спец-формулой такси (тип обслуживания "
+                        + (svc == 1 ? "«свободное»" : "почасовая аренда") + ")");
+            }
+        }
         // Гэп B10: у МНОГОДНЕВНОГО пассажирского листа форм 1-А (микроавтобус) и 3-С
         // (легковой/такси) показатели перевозки считаются ПОСУТОЧНО (MultiDayPassengerCalc),
         // а не однодневным приближением движка. Однодневный лист (≤ 1 рабочего дня) и прочие
@@ -333,21 +356,31 @@ public class WaybillCalcAssembler {
         return result;
     }
 
-    /** Вид услуги 3-С ({@code typeData.serviceKind}) → код {@code type_service} (1/2/3); {@code null} — не задан. */
+    /**
+     * Вид услуги 3-С → код {@code type_service} (1/2/3); {@code null} — не задан.
+     * Основной источник — {@code typeData.serviceKind} (TAXI/ROUTE/HOURLY, ПЛ из живого потока);
+     * фолбэк — числовой {@code typeData.typeService} ("1"/"2"/"3", мигрированные ПЛ из legacy).
+     */
     private static Short taxiServiceType(Waybill wb) {
         Map<String, Object> td = wb.getTypeData();
-        String kind = td == null ? null : str0(td.get("serviceKind"));
-        if (kind == null) {
+        if (td == null) {
             return null;
         }
-        if ("TAXI".equalsIgnoreCase(kind.trim())) {
-            return (short) 1;   // METER — «свободное» такси, пробег по счётчику
+        String kind = str0(td.get("serviceKind"));
+        if (kind != null) {
+            if ("TAXI".equalsIgnoreCase(kind.trim())) {
+                return (short) 1;   // METER — «свободное» такси, пробег по счётчику
+            }
+            if ("ROUTE".equalsIgnoreCase(kind.trim())) {
+                return (short) 2;   // маршрутное такси
+            }
+            if ("HOURLY".equalsIgnoreCase(kind.trim())) {
+                return (short) 3;   // почасовая аренда
+            }
         }
-        if ("ROUTE".equalsIgnoreCase(kind.trim())) {
-            return (short) 2;   // маршрутное такси
-        }
-        if ("HOURLY".equalsIgnoreCase(kind.trim())) {
-            return (short) 3;   // почасовая аренда
+        String ts = str0(td.get("typeService"));   // мигрированные ПЛ: legacy type_service 1/2/3
+        if (ts != null && ts.trim().matches("[123]")) {
+            return Short.valueOf(ts.trim());
         }
         return null;
     }

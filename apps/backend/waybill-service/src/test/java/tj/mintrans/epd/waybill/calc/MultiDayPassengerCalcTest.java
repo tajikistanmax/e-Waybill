@@ -229,5 +229,22 @@ class MultiDayPassengerCalcTest {
             assertThat(meter.passengerCount()).isEqualTo(20d);
             assertThat(routed.passengerTurnover()).isEqualTo(1200d);
         }
+
+        @Test
+        @DisplayName("тип 1 ОДНОДНЕВНЫЙ: один день из шапки ПЛ (как в WaybillCalcAssembler) — формула таксометра")
+        void meterSingleDayFromHeader() {
+            // Обвязка живого пути (WaybillCalcAssembler) для однодневного такси синтезирует один
+            // PassengerDay из шапки ПЛ (одометр выезд/возврат) и зовёт forTaxi(1, null, cap, cap, [день]).
+            // Эталон Calc.php::taxi_type: gashti_umumi=300; gasht_musofir=300·0.75=225;
+            // miqdori=(225·(4/2))/15=30; gardishi=30·15=450.
+            PassengerDay headerDay = new PassengerDay(
+                    LocalDate.of(2024, 5, 10), null, null, null, 1000L, 1300L, null, null, null, null, null, null);
+            PassengerMetrics m = MultiDayPassengerCalc.forTaxi((short) 1, null, 4, 4, List.of(headerDay), null, null, null);
+            assertThat(m.totalDistanceKm()).isEqualTo(300d);   // gashti_umumi
+            assertThat(m.routeDistanceKm()).isEqualTo(225d);   // gasht_musofir (75 %)
+            assertThat(m.passengerCount()).isEqualTo(30d);     // miqdori
+            assertThat(m.passengerTurnover()).isEqualTo(450d); // gardishi
+            assertThat(m.speedometerBased()).isTrue();
+        }
     }
 }
