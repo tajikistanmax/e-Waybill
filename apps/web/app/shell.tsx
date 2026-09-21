@@ -9,6 +9,7 @@ import { appProfile, rolesInProfile, PROFILE_META, profileUrl } from '@/lib/prof
 import { Sidebar } from './sidebar';
 import { Topbar } from './topbar';
 import { MaintenanceBanner } from './MaintenanceBanner';
+import { LicenseBanner } from './LicenseBanner';
 
 const isPublic = (path: string) => path === '/login' || path.startsWith('/verify/');
 
@@ -59,6 +60,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
         <Sidebar />
         <div className="content">
           <Topbar />
+          <LicenseBanner />
           <main className="page">{allowed ? children : <div className="boot">Переход…</div>}</main>
         </div>
       </div>
