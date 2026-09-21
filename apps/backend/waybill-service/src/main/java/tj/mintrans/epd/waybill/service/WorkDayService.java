@@ -19,24 +19,25 @@ import java.util.UUID;
 
 /**
  * Многодневные путевые листы: рабочие дни (по строке на день, legacy-формы 1-А/2-Б)
- * и учёт топлива (не более двух видов на ПЛ — две топливные секции бланка).
+ * и учёт топлива (лимит видов топлива на ПЛ — по форме, {@link tj.mintrans.epd.waybill.domain.WaybillType#maxFuelTypes()}).
  */
 @Service
 public class WorkDayService {
 
-    /** Legacy-бланк содержит две топливные секции — не более двух видов топлива на ПЛ. */
-    private static final int MAX_FUEL_TYPES = 2;
-
     private final WorkDayRepository workDays;
     private final FuelRecordRepository fuelRecords;
     private final WaybillService waybillService;
+    /** Проверять лимит суточного пробега ({@code epd.limits.daily-km-enabled}, MIGRATION.md 12.5). */
+    private final boolean dailyKmEnabled;
 
     public WorkDayService(WorkDayRepository workDays,
                           FuelRecordRepository fuelRecords,
-                          WaybillService waybillService) {
+                          WaybillService waybillService,
+                          @org.springframework.beans.factory.annotation.Value("${epd.limits.daily-km-enabled:false}") boolean dailyKmEnabled) {
         this.workDays = workDays;
         this.fuelRecords = fuelRecords;
         this.waybillService = waybillService;
+        this.dailyKmEnabled = dailyKmEnabled;
     }
 
     @Transactional
@@ -72,6 +73,13 @@ public class WorkDayService {
         }
         if (odometerExit != null && odometerEntry != null && odometerEntry < odometerExit) {
             throw new UnprocessableException("Одометр возврата меньше одометра выезда");
+        }
+        // Лимит суточного пробега (MIGRATION.md 12.5, legacy max_counter_value 650 для 3-С/1-А) — по флагу.
+        int maxDailyKm = wb.getWaybillType().maxDailyKm();
+        if (dailyKmEnabled && maxDailyKm > 0 && odometerExit != null && odometerEntry != null
+                && odometerEntry - odometerExit > maxDailyKm) {
+            throw new UnprocessableException("Суточный пробег %d км превышает лимит формы %s — %d км"
+                    .formatted(odometerEntry - odometerExit, wb.getWaybillType().legacyForm(), maxDailyKm));
         }
         var day = new WorkDay();
         day.setWaybillId(waybillId);
@@ -165,11 +173,22 @@ public class WorkDayService {
                 throw new UnprocessableException("Дата заправки не может быть в будущем");
             }
         }
+        // Довыдача в пути «Харҷи иловагӣ» для 1-АД ограничена 0…5 л (legacy additional_value / between:0,5;
+        // MIGRATION.md 12.8); у остальных форм — только неотрицательность (выше).
+        int maxAdditional = wb.getWaybillType().maxAdditionalFuelLiters();
+        if (maxAdditional >= 0 && additionalGiven != null && additionalGiven.compareTo(BigDecimal.valueOf(maxAdditional)) > 0) {
+            throw new UnprocessableException("Довыдача в пути для формы %s — не более %d л"
+                    .formatted(wb.getWaybillType().legacyForm(), maxAdditional));
+        }
+        // Лимит видов топлива на ПЛ по форме (MIGRATION.md 12.4, legacy fuels … max:N): 2-Б/5Б-БМ — 1,
+        // пассажирские — 2 (две топливные секции бланка).
         var existing = fuelRecords.findByWaybillIdOrderByCreatedAt(waybillId);
         long distinctTypes = existing.stream().map(FuelRecord::getFuelType).distinct().count();
         boolean newType = existing.stream().noneMatch(r -> r.getFuelType() == fuelType);
-        if (newType && distinctTypes >= MAX_FUEL_TYPES) {
-            throw new UnprocessableException("Не более двух видов топлива на путевой лист");
+        int maxFuelTypes = wb.getWaybillType().maxFuelTypes();
+        if (newType && distinctTypes >= maxFuelTypes) {
+            throw new UnprocessableException("Для формы %s допускается не более %d вид(ов) топлива на путевой лист"
+                    .formatted(wb.getWaybillType().legacyForm(), maxFuelTypes));
         }
         var record = new FuelRecord();
         record.setWaybillId(waybillId);

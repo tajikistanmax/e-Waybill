@@ -54,6 +54,11 @@ public class WaybillService {
     private final boolean paymentEnabled;
     private final java.math.BigDecimal paymentFee;
 
+    /** Рабочие дни ПЛ — для лимита суточного пробега при возврате однодневного ПЛ (12.5). */
+    private final tj.mintrans.epd.waybill.repository.WorkDayRepository workDays;
+    /** Проверять лимит суточного пробега ({@code epd.limits.daily-km-enabled}, MIGRATION.md 12.5). */
+    private final boolean dailyKmEnabled;
+
     public WaybillService(WaybillRepository waybills,
                           WaybillTitleRepository titles,
                           WaybillStatusEventRepository events,
@@ -68,7 +73,11 @@ public class WaybillService {
                           TitleSigner titleSigner,
                           MedicalDataCrypto medicalCrypto,
                           @org.springframework.beans.factory.annotation.Value("${epd.payment.enabled:false}") boolean paymentEnabled,
-                          @org.springframework.beans.factory.annotation.Value("${epd.payment.fee-somoni:10.00}") java.math.BigDecimal paymentFee) {
+                          @org.springframework.beans.factory.annotation.Value("${epd.payment.fee-somoni:10.00}") java.math.BigDecimal paymentFee,
+                          tj.mintrans.epd.waybill.repository.WorkDayRepository workDays,
+                          @org.springframework.beans.factory.annotation.Value("${epd.limits.daily-km-enabled:false}") boolean dailyKmEnabled) {
+        this.workDays = workDays;
+        this.dailyKmEnabled = dailyKmEnabled;
         this.waybills = waybills;
         this.titles = titles;
         this.events = events;
@@ -1173,6 +1182,14 @@ public class WaybillService {
         requireEmployee(wb, dispatcherRma, 3, "Диспетчер");
         if (wb.getOdometerExit() != null && odometerEntry < wb.getOdometerExit()) {
             throw new UnprocessableException("Одометр возврата меньше одометра выезда");
+        }
+        // Лимит суточного пробега (MIGRATION.md 12.5) для ПЛ без рабочих дней: пробег по шапке = один день.
+        int maxDailyKm = wb.getWaybillType().maxDailyKm();
+        if (dailyKmEnabled && maxDailyKm > 0 && wb.getOdometerExit() != null
+                && odometerEntry - wb.getOdometerExit() > maxDailyKm
+                && workDays.countByWaybillId(id) == 0) {
+            throw new UnprocessableException("Пробег %d км превышает суточный лимит формы %s — %d км"
+                    .formatted(odometerEntry - wb.getOdometerExit(), wb.getWaybillType().legacyForm(), maxDailyKm));
         }
         wb.setOdometerEntry(odometerEntry);
         if (metrics != null && metrics.any()) {
