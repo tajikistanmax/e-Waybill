@@ -394,13 +394,40 @@ public class WaybillCalcAssembler {
                 .map(m -> str0(m.get("number"))).orElse(null);
         boolean intl = wb.getWaybillType() == WaybillType.WB_TRUCK_INTL;
 
+        // Направление (Самт) 2-Б — коэффициенты зимы/гор/города берутся из справочника Direction по
+        // typeData.directionId (legacy CargoFuelBase::getCoef: $waybill2b->direction->*_coef_id), если
+        // Supplement их не переопределяет. Раньше без Supplement K содержал только износ.
+        Long dirWinter = s.directionWinterCoefId();
+        Long dirMountain = s.directionMountainCoefId();
+        Long dirCity = s.directionInCityCoefId();
+        if (dirWinter == null && dirMountain == null && dirCity == null) {
+            Long directionId = tdLong(wb.getTypeData(), "directionId");
+            if (directionId != null) {
+                Map<String, Object> direction = masterData.findDirection(directionId).orElse(null);
+                if (direction != null) {
+                    dirWinter = longOf(direction.get("winterCoefId"));
+                    dirMountain = longOf(direction.get("mountainCoefId"));
+                    dirCity = longOf(direction.get("inCityCoefId"));
+                } else {
+                    log.warn("Направление id={} ПЛ {} не найдено в справочнике — коэффициенты направления не применены",
+                            directionId, wb.getId());
+                }
+            }
+        }
+        // Прицеп: масса/грузоподъёмность — из снимка ТС (legacy parkings.weight_ydak / carrying_ydak /
+        // weight_ydak_2), если Supplement не задаёт. Раньше без Supplement надбавка за прицеп была 0.
+        Map<String, Object> veh = wb.getVehicleSnapshot();
+        double trailerWeight = s.trailerWeight() != null ? s.trailerWeight() : nzd(dblOf(veh == null ? null : veh.get("trailer1Weight")));
+        double trailerCarrying = s.trailerCarrying() != null ? s.trailerCarrying() : nzd(dblOf(veh == null ? null : veh.get("trailer1Carrying")));
+        double trailerWeight2 = s.trailerWeight2() != null ? s.trailerWeight2() : nzd(dblOf(veh == null ? null : veh.get("trailer2Weight")));
+
         return CargoCalcInput.builder()
                 .brandName(brandName)
                 .brandNumber(brandCode)
                 .vehicleYearManufacture(year)
-                .directionWinterCoefId(s.directionWinterCoefId())
-                .directionMountainCoefId(s.directionMountainCoefId())
-                .directionInCityCoefId(s.directionInCityCoefId())
+                .directionWinterCoefId(dirWinter)
+                .directionMountainCoefId(dirMountain)
+                .directionInCityCoefId(dirCity)
                 .applyCoefficient(!intl)
                 .odometerExit(exitOdo)
                 .odometerEntry(entryOdo)
@@ -408,9 +435,9 @@ public class WaybillCalcAssembler {
                 .trips(s.trips() == null ? 0d : s.trips())
                 .specialWorkHours(s.specialWorkHours() == null ? 0d : s.specialWorkHours())
                 .specialDistance(s.specialDistance() == null ? 0d : s.specialDistance())
-                .trailerWeight(s.trailerWeight() == null ? 0d : s.trailerWeight())
-                .trailerCarrying(s.trailerCarrying() == null ? 0d : s.trailerCarrying())
-                .trailerWeight2(s.trailerWeight2() == null ? 0d : s.trailerWeight2())
+                .trailerWeight(trailerWeight)
+                .trailerCarrying(trailerCarrying)
+                .trailerWeight2(trailerWeight2)
                 .calcDate(calcDate)
                 .fuels(fuels)
                 .earning(revenue)
@@ -539,6 +566,32 @@ public class WaybillCalcAssembler {
             return null;
         }
         return v instanceof Number n ? n.intValue() : Integer.valueOf(v.toString());
+    }
+
+    private static Long longOf(Object v) {
+        if (v == null || v.toString().isBlank()) {
+            return null;
+        }
+        try {
+            return v instanceof Number n ? n.longValue() : (long) Double.parseDouble(v.toString());
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
+    private static Double dblOf(Object v) {
+        if (v == null || v.toString().isBlank()) {
+            return null;
+        }
+        try {
+            return v instanceof Number n ? n.doubleValue() : Double.valueOf(v.toString());
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
+    private static double nzd(Double v) {
+        return v == null ? 0d : v;
     }
 
     private static Double dbl(Map<String, Object> m, String k) {

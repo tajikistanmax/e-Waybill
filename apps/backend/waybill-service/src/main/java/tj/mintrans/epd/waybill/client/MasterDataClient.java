@@ -29,6 +29,7 @@ public class MasterDataClient {
     /** Кэши справочников по контексту вызывающего (см. {@link TtlCache}); TTL 60 с. */
     private final TtlCache<List<Map<String, Object>>> routesCache = new TtlCache<>(java.time.Duration.ofSeconds(60));
     private final TtlCache<List<Map<String, Object>>> organizationsCache = new TtlCache<>(java.time.Duration.ofSeconds(60));
+    private final TtlCache<Optional<Map<String, Object>>> directionsCache = new TtlCache<>(java.time.Duration.ofSeconds(60));
 
     public MasterDataClient(@Value("${epd.master-data.base-url}") String baseUrl,
                             ServiceTokenProvider serviceToken) {
@@ -279,19 +280,6 @@ public class MasterDataClient {
         return list("/api/v1/legacy-ref/directions");
     }
 
-    /** Направление грузовой перевозки по id; 404 → empty. */
-    public Optional<Map<String, Object>> findDirection(long id) {
-        try {
-            Map<String, Object> direction = client.get()
-                    .uri("/api/v1/legacy-ref/directions/{id}", id)
-                    .retrieve()
-                    .body(new ParameterizedTypeReference<Map<String, Object>>() {});
-            return Optional.ofNullable(direction);
-        } catch (org.springframework.web.client.HttpClientErrorException.NotFound e) {
-            return Optional.empty();
-        }
-    }
-
     /** Тарифы конкретного маршрута (нархнома). */
     public List<Map<String, Object>> listRouteTariffs(String routeId) {
         return list("/api/v1/legacy-ref/route-tariffs?routeId={id}", routeId);
@@ -306,10 +294,30 @@ public class MasterDataClient {
         return routesCache.get(callerKey(), () -> list("/api/v1/dictionaries/routes"));
     }
 
+    /**
+     * Направление (Самт) грузового ПЛ 2-Б по id — несёт id зимнего/горного/городского коэффициентов
+     * (legacy {@code directions.winter_coef_id / mountain_coef_id / in_city_coef_id}); 404 → empty.
+     * Кэш 60 с (расчёт по каждому грузовому ПЛ отчёта).
+     */
+    public Optional<Map<String, Object>> findDirection(long id) {
+        return directionsCache.get(callerKey() + ":" + id, () -> {
+            try {
+                Map<String, Object> d = client.get()
+                        .uri("/api/v1/legacy-ref/directions/{id}", id)
+                        .retrieve()
+                        .body(new ParameterizedTypeReference<Map<String, Object>>() {});
+                return Optional.ofNullable(d);
+            } catch (org.springframework.web.client.HttpClientErrorException.NotFound e) {
+                return Optional.empty();
+            }
+        });
+    }
+
     /** Сброс кэшей справочников (после правки маршрутов/организаций через этот сервис или в тестах). */
     public void invalidateCaches() {
         routesCache.invalidateAll();
         organizationsCache.invalidateAll();
+        directionsCache.invalidateAll();
     }
 
     /**
