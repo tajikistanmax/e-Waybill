@@ -16,6 +16,9 @@ public interface VehicleRepository extends JpaRepository<Vehicle, UUID> {
     List<Vehicle> findByOrganizationId(UUID organizationId);
     List<Vehicle> findByOrganizationIdIn(Collection<UUID> organizationIds);
 
+    /** ТС организации с данным номером стоянки — уникальность в пределах организации (legacy ParkingRequest, 12.13). */
+    List<Vehicle> findByOrganizationIdAndParkingNumber(UUID organizationId, String parkingNumber);
+
     /** ТС с указанным VIN в канонической форме — trim + верхний регистр, как у частичного
      *  уникального индекса uq_vehicle_vincode (V49). Список (а не Optional) — устойчив к возможным
      *  дублям в старых данных до применения индекса. Параметр {@code vin} уже канонизирован. */

@@ -57,6 +57,7 @@ public class SyncController {
     private final TenantScope tenantScope;
     private final AuditService audit;
     private final tj.mintrans.epd.masterdata.service.DriverTabNumbers tabNumbers;
+    private final tj.mintrans.epd.masterdata.service.VehicleCardRules cardRules;
 
     private static final java.util.Set<String> SUBJECT_TYPES = java.util.Set.of("PHYSICAL", "IP", "LEGAL");
 
@@ -68,7 +69,8 @@ public class SyncController {
                           CurrentUser currentUser,
                           TenantScope tenantScope,
                           AuditService audit,
-                          tj.mintrans.epd.masterdata.service.DriverTabNumbers tabNumbers) {
+                          tj.mintrans.epd.masterdata.service.DriverTabNumbers tabNumbers,
+                          tj.mintrans.epd.masterdata.service.VehicleCardRules cardRules) {
         this.unifiedPlatform = unifiedPlatform;
         this.organizations = organizations;
         this.drivers = drivers;
@@ -78,6 +80,7 @@ public class SyncController {
         this.tenantScope = tenantScope;
         this.audit = audit;
         this.tabNumbers = tabNumbers;
+        this.cardRules = cardRules;
     }
 
     // ------------------------------------------------------------ запросы
@@ -269,7 +272,11 @@ public class SyncController {
         vehicle.setIntlCertificateNumber(info.intlCertificateNumber());
         vehicle.setInsuranceValidTo(info.insuranceValidTo());
         vehicle.setAdrApprovalValidTo(info.adrApprovalValidTo());
-        if (req.parkingNumber() != null && !req.parkingNumber().isBlank()) vehicle.setParkingNumber(req.parkingNumber());
+        if (req.parkingNumber() != null && !req.parkingNumber().isBlank()) {
+            // Номер стоянки уникален в организации (12.13); год выпуска из ГАИ здесь не валидируем — внешние данные.
+            cardRules.assertParkingNumberUnique(org.getId(), req.parkingNumber(), vehicle);
+            vehicle.setParkingNumber(req.parkingNumber());
+        }
         vehicle.setSource("UNIFIED");
         vehicle.setSyncedAt(OffsetDateTime.now());
         var savedVehicle = vehicles.save(vehicle);

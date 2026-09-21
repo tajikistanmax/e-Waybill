@@ -46,14 +46,17 @@ public class VehicleController {
     private final CurrentUser currentUser;
     private final TenantScope tenantScope;
     private final AuditService audit;
+    private final tj.mintrans.epd.masterdata.service.VehicleCardRules cardRules;
 
     public VehicleController(VehicleRepository vehicles, OrganizationRepository organizations,
-                             CurrentUser currentUser, TenantScope tenantScope, AuditService audit) {
+                             CurrentUser currentUser, TenantScope tenantScope, AuditService audit,
+                             tj.mintrans.epd.masterdata.service.VehicleCardRules cardRules) {
         this.vehicles = vehicles;
         this.organizations = organizations;
         this.currentUser = currentUser;
         this.tenantScope = tenantScope;
         this.audit = audit;
+        this.cardRules = cardRules;
     }
 
     public record VehicleRequest(
@@ -118,6 +121,8 @@ public class VehicleController {
         vehicle.setOrganizationId(org.getId());
         vehicle.setTransportType(req.transportType());
         vehicle.setBrand(req.brand());
+        // Номер стоянки уникален в организации (legacy ParkingRequest, MIGRATION.md 12.13) — 409 до save.
+        cardRules.assertParkingNumberUnique(org.getId(), req.parkingNumber(), vehicle);
         vehicle.setParkingNumber(req.parkingNumber());
         vehicle.setCapacity(req.capacity());
         vehicle.setCarrying(req.carrying());
@@ -130,6 +135,8 @@ public class VehicleController {
         vehicle.setVincode(canonicalVin);
         vehicle.setFuelType(req.fuelType());
         vehicle.setEnginePower(req.enginePower());
+        // Год выпуска 1900…текущий+1 (legacy kvd/StoreTransportRequest, MIGRATION.md 12.3) — 422.
+        cardRules.assertYearManufacture(req.yearManufacture());
         vehicle.setYearManufacture(req.yearManufacture());
         vehicle.setTechInspectionValidTo(req.techInspectionValidTo());
         vehicle.setControlCardValidTo(req.controlCardValidTo());
