@@ -246,8 +246,16 @@ public class ReportController {
      * тенант видит свою область, платформенные роли — все организации.
      */
     @GetMapping("/passenger-volume-trend")
-    public PassengerVolumeTrend passengerVolumeTrend(@RequestParam(defaultValue = "7") int months) {
-        return regionalReports.passengerVolumeTrend(months);
+    public PassengerVolumeTrend passengerVolumeTrend(
+            @RequestParam(defaultValue = "7") int months,
+            @RequestParam(required = false) tj.mintrans.epd.waybill.domain.WaybillType type) {
+        // MIGRATION.md 6.8: legacy dashboard/ebus — только троллейбус; ?type= сужает до одного вида.
+        if (type != null && type != tj.mintrans.epd.waybill.domain.WaybillType.WB_BUS
+                && type != tj.mintrans.epd.waybill.domain.WaybillType.WB_TROLLEYBUS) {
+            throw new tj.mintrans.epd.waybill.web.error.ApiErrors.UnprocessableException(
+                    "Тренд строится только для автобусов (WB_BUS) и троллейбусов (WB_TROLLEYBUS)");
+        }
+        return regionalReports.passengerVolumeTrend(months, type == null ? null : java.util.Set.of(type));
     }
 
     /** Журнал предрейсового техконтроля (Дафтари қайди механик, тип 13). Инспектору доступен —

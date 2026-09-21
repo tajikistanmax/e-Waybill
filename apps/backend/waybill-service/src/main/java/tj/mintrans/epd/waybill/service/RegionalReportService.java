@@ -15,6 +15,7 @@ import tj.mintrans.epd.waybill.domain.WaybillPlan;
 import tj.mintrans.epd.waybill.domain.WaybillStatus;
 import tj.mintrans.epd.waybill.domain.WaybillType;
 import tj.mintrans.epd.waybill.repository.WaybillPlanRepository;
+import tj.mintrans.epd.waybill.repository.WaybillRepository;
 import tj.mintrans.epd.waybill.web.error.ApiErrors.ForbiddenException;
 
 import java.time.LocalDate;
@@ -36,23 +37,29 @@ import java.util.Set;
 @Service
 public class RegionalReportService {
 
+    /** Виды ПЛ тренда панели по умолчанию (legacy dashboard/ebus — только троллейбус; у нас оба). */
+    static final Set<WaybillType> TREND_TYPES = Set.of(WaybillType.WB_BUS, WaybillType.WB_TROLLEYBUS);
+
     private final WaybillPeriodScan scan;
     private final WaybillPlanRepository plans;
     private final WaybillCalcAssembler assembler;
     private final CurrentUser currentUser;
     private final TenantScope tenantScope;
     private final tj.mintrans.epd.waybill.client.MasterDataClient masterData;
+    private final WaybillRepository waybills;
 
     public RegionalReportService(WaybillPeriodScan scan, WaybillPlanRepository plans,
                                  WaybillCalcAssembler assembler, CurrentUser currentUser,
                                  TenantScope tenantScope,
-                                 tj.mintrans.epd.waybill.client.MasterDataClient masterData) {
+                                 tj.mintrans.epd.waybill.client.MasterDataClient masterData,
+                                 WaybillRepository waybills) {
         this.scan = scan;
         this.plans = plans;
         this.assembler = assembler;
         this.currentUser = currentUser;
         this.tenantScope = tenantScope;
         this.masterData = masterData;
+        this.waybills = waybills;
     }
 
     /** Транспортный вид ТС + норма листов на стоянку по виду ПЛ (§6.4). */
@@ -563,6 +570,18 @@ public class RegionalReportService {
      */
     @Transactional(readOnly = true)
     public PassengerVolumeTrend passengerVolumeTrend(int months) {
+        return passengerVolumeTrend(months, TREND_TYPES);
+    }
+
+    /**
+     * Тренд по выбранным видам ПЛ (автобус / троллейбус / оба): пассажирооборот завершённых ПЛ
+     * и число выписанных ПЛ по месяцам (MIGRATION.md 6.8 — legacy {@code dashboard/ebus}:
+     * {@code BillCountsController} + {@code PassengerVolumeController}, 6 месяцев назад + текущий).
+     *
+     * @param requestedTypes виды ПЛ; {@code null}/пусто — {@link #TREND_TYPES}
+     */
+    public PassengerVolumeTrend passengerVolumeTrend(int months, Set<WaybillType> requestedTypes) {
+        Set<WaybillType> types = requestedTypes == null || requestedTypes.isEmpty() ? TREND_TYPES : requestedTypes;
         int n = Math.max(1, Math.min(months, 24));
         Set<String> scope = tenantScope.isBounded() ? tenantScope.rmas() : null;
         LocalDate to = LocalDate.now();
@@ -570,19 +589,36 @@ public class RegionalReportService {
 
         List<String> monthKeys = new ArrayList<>();
         Map<String, Double> byMonth = new LinkedHashMap<>();
+        Map<String, Long> countByMonth = new LinkedHashMap<>();
         for (int i = n - 1; i >= 0; i--) {
             LocalDate m = to.minusMonths(i);
             String key = monthKey(m);
             monthKeys.add(key);
             byMonth.put(key, 0.0);
+            countByMonth.put(key, 0L);
         }
 
-        // Потоком по периоду и области (WaybillPeriodScan), а не findAll() — после Ф5 2,3 млн ПЛ;
-        // тренд открыт тенантам — их область небольшая, платформенным ролям — весь период n месяцев.
         Set<String> scanScope = scope != null && scope.contains("__none__") ? Set.of() : scope;
+
+        // Число ПЛ по месяцам — агрегат в БД по всем статусам (legacy COUNT по MONTH(created_at)),
+        // без прохода по строкам: в периоде платформенной роли после Ф5 сотни тысяч ПЛ.
+        List<Object[]> counts = scanScope == null
+                ? waybills.countByMonth(types, WaybillPeriodScan.lower(from), WaybillPeriodScan.upper(to))
+                : scanScope.isEmpty() ? List.of()
+                : waybills.countByMonthForOrganizations(scanScope, types,
+                        WaybillPeriodScan.lower(from), WaybillPeriodScan.upper(to));
+        for (Object[] row : counts) {
+            String key = String.format("%04d-%02d", ((Number) row[0]).intValue(), ((Number) row[1]).intValue());
+            if (countByMonth.containsKey(key)) {
+                countByMonth.put(key, ((Number) row[2]).longValue());
+            }
+        }
+
+        // Пассажирооборот — потоком по завершённым ПЛ периода и области (WaybillPeriodScan), а не findAll();
+        // тренд открыт тенантам — их область небольшая, платформенным ролям — весь период n месяцев.
         scan.forEachCompleted(from, to, scanScope, wb -> {
             WaybillType type = wb.getWaybillType();
-            if (type != WaybillType.WB_BUS && type != WaybillType.WB_TROLLEYBUS) {
+            if (!types.contains(type)) {
                 return;
             }
             if (wb.getCreatedAt() == null) {
@@ -601,9 +637,12 @@ public class RegionalReportService {
 
         List<PassengerVolumeTrend.Point> points = new ArrayList<>();
         for (String key : monthKeys) {
-            points.add(new PassengerVolumeTrend.Point(key, Math.round(byMonth.get(key) * 100.0) / 100.0));
+            points.add(new PassengerVolumeTrend.Point(key, Math.round(byMonth.get(key) * 100.0) / 100.0,
+                    countByMonth.get(key)));
         }
-        return new PassengerVolumeTrend(n, points);
+        List<WaybillType> typeList = new ArrayList<>(types);
+        typeList.sort(java.util.Comparator.naturalOrder());
+        return new PassengerVolumeTrend(n, typeList, points);
     }
 
     private static String monthKey(LocalDate d) {

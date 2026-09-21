@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
-  ResponsiveContainer, AreaChart, Area, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
+  ResponsiveContainer, AreaChart, Area, LineChart, ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   PieChart, Pie, Cell,
 } from 'recharts';
 import { wb, md, Waybill, STATUS_LABELS } from '@/lib/api';
@@ -44,15 +44,18 @@ export default function DashboardPage() {
 
   // Пассажирооборот (млн пасс-км) автобус/троллейбус по месяцам — перенос легаси-графика
   // Admin\Charts\Ebus\PassengerVolumeController, единственного содержательного KPI старой панели.
-  const [volumeTrend, setVolumeTrend] = useState<{ name: string; value: number }[]>([]);
+  // + число выписанных ПЛ по месяцам (legаси Ebus\BillCountsController) и выбор вида: оба / автобус / троллейбус
+  // (легаси dashboard/ebus — только троллейбус). MIGRATION.md 6.8.
+  const [volumeTrend, setVolumeTrend] = useState<{ name: string; value: number; waybills: number }[]>([]);
+  const [trendType, setTrendType] = useState<'' | 'WB_BUS' | 'WB_TROLLEYBUS'>('');
   useEffect(() => {
-    wb.passengerVolumeTrend(7)
+    wb.passengerVolumeTrend(7, trendType || undefined)
       .then(r => setVolumeTrend(r.points.map(p => {
         const [y, m] = p.month.split('-').map(Number);
-        return { name: new Date(y, m - 1, 1).toLocaleDateString('ru-RU', { month: 'short', year: '2-digit' }), value: p.turnoverMillion };
+        return { name: new Date(y, m - 1, 1).toLocaleDateString('ru-RU', { month: 'short', year: '2-digit' }), value: p.turnoverMillion, waybills: p.waybills ?? 0 };
       })))
       .catch(() => setVolumeTrend([]));
-  }, []);
+  }, [trendType]);
 
   // Подпись области: название своей организации (для тенанта) — чтобы было видно, чьи это цифры.
   useEffect(() => {
@@ -234,17 +237,29 @@ export default function DashboardPage() {
 
       {/* Пассажирооборот автобус/троллейбус — реальный KPI (перенос легаси Ebus\PassengerVolumeController) */}
       <div className="card">
-        <div className="card-h"><h2>{t('dash.paxturnover')}</h2><span className="badge blue" style={{ marginLeft: 'auto' }}>{volumeTrend.length} {t('dash.months')}</span></div>
+        <div className="card-h">
+          <h2>{t('dash.paxturnover')}</h2>
+          <select value={trendType} onChange={e => setTrendType(e.target.value as '' | 'WB_BUS' | 'WB_TROLLEYBUS')} style={{ marginLeft: 'auto', width: 190 }} title={t('dash.trend.type')}>
+            <option value="">{t('dash.trend.all')}</option>
+            <option value="WB_BUS">{tType('WB_BUS').replace(/\s*\(.*\)/, '')}</option>
+            <option value="WB_TROLLEYBUS">{tType('WB_TROLLEYBUS').replace(/\s*\(.*\)/, '')}</option>
+          </select>
+          <span className="badge blue" style={{ marginLeft: 8 }}>{volumeTrend.length} {t('dash.months')}</span>
+        </div>
         <div style={{ height: 220 }}>
           <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={volumeTrend} margin={{ top: 8, right: 8, left: -18, bottom: 0 }}>
+            <ComposedChart data={volumeTrend} margin={{ top: 8, right: 0, left: -18, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#eef2f7" vertical={false} />
               <XAxis dataKey="name" tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
-              <YAxis tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
+              <YAxis yAxisId="left" tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
+              <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} width={44} />
               <Tooltip contentStyle={{ borderRadius: 10, border: '1px solid #e4e9f0', fontSize: 12 }}
-                formatter={(v) => [`${Number(v).toLocaleString('ru-RU')} ${t('dash.mlnpaxkm')}`, t('dash.turnover')]} />
-              <Line type="monotone" dataKey="value" name={t('dash.turnover')} stroke="#7c5cdb" strokeWidth={2.5} dot={{ r: 3 }} />
-            </LineChart>
+                formatter={(v, name) => name === t('dash.wbcount')
+                  ? [Number(v).toLocaleString('ru-RU'), t('dash.wbcount')]
+                  : [`${Number(v).toLocaleString('ru-RU')} ${t('dash.mlnpaxkm')}`, t('dash.turnover')]} />
+              <Bar yAxisId="right" dataKey="waybills" name={t('dash.wbcount')} fill="rgba(66, 186, 150, 0.4)" stroke="rgb(66, 186, 150)" radius={[4, 4, 0, 0]} />
+              <Line yAxisId="left" type="monotone" dataKey="value" name={t('dash.turnover')} stroke="#7c5cdb" strokeWidth={2.5} dot={{ r: 3 }} />
+            </ComposedChart>
           </ResponsiveContainer>
         </div>
       </div>

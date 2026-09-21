@@ -126,4 +126,26 @@ public interface WaybillRepository extends JpaRepository<Waybill, UUID> {
                                                             @Param("status") WaybillStatus status,
                                                             @Param("from") OffsetDateTime from,
                                                             @Param("to") OffsetDateTime to);
+
+    /**
+     * Число ПЛ по месяцам ({@code [год, месяц, count]}) за период по видам ПЛ, все статусы —
+     * тренд панели (legacy {@code Ebus\BillCountsController}: {@code COUNT ... GROUP BY MONTH(created_at)}).
+     * Агрегат в БД, а не проход по строкам: после Ф5 в периоде сотни тысяч ПЛ.
+     */
+    @Query("select extract(year from w.createdAt), extract(month from w.createdAt), count(w) from Waybill w "
+            + "where w.waybillType in :types and w.createdAt >= :from and w.createdAt < :to "
+            + "group by extract(year from w.createdAt), extract(month from w.createdAt)")
+    List<Object[]> countByMonth(@Param("types") Collection<tj.mintrans.epd.waybill.domain.WaybillType> types,
+                                @Param("from") OffsetDateTime from,
+                                @Param("to") OffsetDateTime to);
+
+    /** То же по набору организаций (тенант: компания + филиалы). */
+    @Query("select extract(year from w.createdAt), extract(month from w.createdAt), count(w) from Waybill w "
+            + "where w.organizationRma in :rmas and w.waybillType in :types "
+            + "and w.createdAt >= :from and w.createdAt < :to "
+            + "group by extract(year from w.createdAt), extract(month from w.createdAt)")
+    List<Object[]> countByMonthForOrganizations(@Param("rmas") Collection<String> organizationRmas,
+                                                @Param("types") Collection<tj.mintrans.epd.waybill.domain.WaybillType> types,
+                                                @Param("from") OffsetDateTime from,
+                                                @Param("to") OffsetDateTime to);
 }

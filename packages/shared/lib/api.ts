@@ -774,8 +774,9 @@ export const wb = {
     `/wb-api/api/v1/reports/regional-count?bill=${bill}&from=${from}&to=${to}${typeCompany ? `&typeCompany=${typeCompany}` : ''}`,
     { headers: authHeaders() }).then(r => handle<RegionalCount>(r)),
   // Тренд пассажирооборота (млн пасс-км) по месяцам — KPI дашборда (перенос Ebus\PassengerVolumeController).
-  passengerVolumeTrend: (months = 7) => fetch(
-    `/wb-api/api/v1/reports/passenger-volume-trend?months=${months}`, { headers: authHeaders() })
+  // type — WB_BUS | WB_TROLLEYBUS (пусто = оба); каждая точка несёт и число выписанных ПЛ (legacy BillCountsController).
+  passengerVolumeTrend: (months = 7, type?: string) => fetch(
+    `/wb-api/api/v1/reports/passenger-volume-trend?months=${months}${type ? `&type=${type}` : ''}`, { headers: authHeaders() })
     .then(r => handle<PassengerVolumeTrend>(r)),
   // Журналы предрейсового контроля (Дафтари қайди механик / духтӯр, типы 13/14).
   mechanicJournal: (from: string, to: string) => fetch(
@@ -838,7 +839,8 @@ export type RegionalCount = {
 
 export type PassengerVolumeTrend = {
   months: number;
-  points: { month: string; turnoverMillion: number }[];
+  types?: string[];
+  points: { month: string; turnoverMillion: number; waybills: number }[];
 };
 
 type InspMark = {
