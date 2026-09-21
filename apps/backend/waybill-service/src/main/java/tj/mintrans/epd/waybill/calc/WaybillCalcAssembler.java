@@ -40,6 +40,13 @@ public class WaybillCalcAssembler {
 
     private static final Logger log = LoggerFactory.getLogger(WaybillCalcAssembler.class);
 
+    /**
+     * Гейт придержанной правки B10 (посуточные показатели многодневных пассажирских 1-А/3-С).
+     * {@code false} — ветка дормантна, живой расчёт байт-в-байт прежний (решение о придержании,
+     * см. заметку B10). Код B10 сохранён; включать только по явному одобрению.
+     */
+    private static final boolean MULTIDAY_PASSENGER_ENABLED = false;
+
     private final WaybillCalcEngine engine;
     private final MasterDataClient masterData;
     private final WorkDayRepository workDays;
@@ -139,7 +146,7 @@ public class WaybillCalcAssembler {
         // формы (автобус/троллейбус/междугородний) идут прежним путём — показатели движка не
         // трогаем (массовый случай остаётся байт-в-байт прежним). Замещаются ТОЛЬКО показатели
         // перевозки; топливо/зарплата/коэффициенты/тариф остаются из движка.
-        if (days.size() > 1) {
+        if (MULTIDAY_PASSENGER_ENABLED && days.size() > 1) {
             PassengerMetrics multiDay = multiDayPassengerMetrics(wb, type, days, capacity, revenue, route);
             if (multiDay != null) {
                 r = new PassengerCalcResult(r.distanceKm(), r.workTimeMinutes(), r.workHours(),
