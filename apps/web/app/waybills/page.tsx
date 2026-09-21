@@ -48,8 +48,23 @@ export default function WaybillsPage() {
   const [vehicle, setVehicle] = useState('');
   const [driver, setDriver] = useState('');
   const [svc, setSvc] = useState('');
+  // Реестры накладных (MIGRATION.md 8.8): legacy cmr (СМР к 5Б-БМ) и cargowaybill1/2attachment (борхаты к 2-Б)
+  // с фильтрами «клиент» и «период» — у нас как отбор реестра ПЛ: документ (борхат / СМР) + клиент из накладной.
+  const [docKind, setDocKind] = useState<'' | 'attachment' | 'cmr'>('');
+  const [client, setClient] = useState('');
   const [page, setPage] = useState(1);
   const { t, tType, tStatus } = useT();
+
+  // Накладная заполнена: есть стороны или операции погрузки-разгрузки (POST /consignment).
+  const hasConsignment = (w: Waybill): boolean => {
+    const td = w.typeData ?? {};
+    const ops = td.cargoOperations;
+    return !!(td.senderName || td.receiverName || td.forwarderName || (Array.isArray(ops) && ops.length > 0));
+  };
+  const clientsOf = (w: Waybill): string[] => {
+    const td = w.typeData ?? {};
+    return [td.senderName, td.receiverName, td.forwarderName, td.clientName].filter((x): x is string => typeof x === 'string' && x.trim() !== '');
+  };
 
   // Вид услуги 3-С: живые ПЛ несут typeData.serviceKind (TAXI/ROUTE/HOURLY), мигрированные — числовой
   // typeService (1 такси, 2 хатсайр, 3 соатбай) — приводим к одному коду.
@@ -73,6 +88,9 @@ export default function WaybillsPage() {
     if (vehicle && w.vehicleRegNumber !== vehicle) return false;
     if (driver && w.driverRma !== driver && w.secondDriverRma !== driver) return false;
     if (svc && svcOf(w) !== svc) return false;
+    if (docKind === 'attachment' && !((w.waybillType === 'WB_TRUCK' || w.waybillType === 'WB_DANGEROUS') && hasConsignment(w))) return false;
+    if (docKind === 'cmr' && !(w.waybillType === 'WB_TRUCK_INTL' && hasConsignment(w))) return false;
+    if (client && !clientsOf(w).includes(client)) return false;
     const d = day(w.validFrom) || day(w.createdAt);
     if (dateFrom && d && d < dateFrom) return false;
     if (dateTo && d && d > dateTo) return false;
@@ -84,7 +102,7 @@ export default function WaybillsPage() {
       if (!hay.includes(s)) return false;
     }
     return true;
-  }), [items, status, type, org, dateFrom, dateTo, q, vehicle, driver, svc]);
+  }), [items, status, type, org, dateFrom, dateTo, q, vehicle, driver, svc, docKind, client]);
 
   // Варианты select-фильтров — из загруженного реестра (с учётом выбранных компании и типа), как в
   // legacy: список ТС/водителей компании; вид обслуживания — только у 3-С.
@@ -93,7 +111,8 @@ export default function WaybillsPage() {
     const vehicles = Array.from(new Set(base.map(w => w.vehicleRegNumber).filter(Boolean))).sort();
     const drivers = new Map<string, string>();
     base.forEach(w => { if (w.driverRma && !drivers.has(w.driverRma)) drivers.set(w.driverRma, String(w.driverSnapshot?.fullName ?? w.driverRma)); });
-    return { vehicles, drivers: Array.from(drivers.entries()).sort((a, b) => a[1].localeCompare(b[1])) };
+    const clients = Array.from(new Set(base.flatMap(clientsOf))).sort((a, b) => a.localeCompare(b));
+    return { vehicles, drivers: Array.from(drivers.entries()).sort((a, b) => a[1].localeCompare(b[1])), clients };
   }, [items, org, type]);
   const svcApplicable = !type || type === 'WB_CAR' || type === 'WB_TAXI';
 
@@ -113,7 +132,7 @@ export default function WaybillsPage() {
 
   const pages = Math.max(1, Math.ceil(filtered.length / PER_PAGE));
   const view = filtered.slice((page - 1) * PER_PAGE, page * PER_PAGE);
-  const reset = () => { setStatus(''); setType(''); setOrg(''); setDateFrom(''); setDateTo(''); setQ(''); setVehicle(''); setDriver(''); setSvc(''); setPage(1); };
+  const reset = () => { setStatus(''); setType(''); setOrg(''); setDateFrom(''); setDateTo(''); setQ(''); setVehicle(''); setDriver(''); setSvc(''); setDocKind(''); setClient(''); setPage(1); };
   const fmt = (d: string | null) => d ? new Date(d).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—';
   const snapStr = (o: Record<string, unknown> | undefined, k: string) => {
     const v = o?.[k];
@@ -267,6 +286,21 @@ export default function WaybillsPage() {
               <option value="TAXI">{t('wb.svc.taxi')}</option>
               <option value="ROUTE">{t('wb.svc.route')}</option>
               <option value="HOURLY">{t('wb.svc.hourly')}</option>
+            </select>
+          </div>
+          <div>
+            <label>{t('wb.f.doc')}</label>
+            <select value={docKind} onChange={e => { setDocKind(e.target.value as '' | 'attachment' | 'cmr'); setPage(1); }}>
+              <option value="">{t('wb.f.doc.any')}</option>
+              <option value="attachment">{t('wb.f.doc.attachment')}</option>
+              <option value="cmr">{t('wb.f.doc.cmr')}</option>
+            </select>
+          </div>
+          <div>
+            <label>{t('wb.f.client')}</label>
+            <select value={client} onChange={e => { setClient(e.target.value); setPage(1); }}>
+              <option value="">{t('wb.f.allclients')}</option>
+              {options.clients.map(c => <option key={c} value={c}>{c}</option>)}
             </select>
           </div>
           <div>
