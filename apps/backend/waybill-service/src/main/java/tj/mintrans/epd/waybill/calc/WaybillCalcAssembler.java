@@ -471,14 +471,33 @@ public class WaybillCalcAssembler {
     }
 
     private List<CalcFuelLine> fuelLines(java.util.UUID waybillId) {
+        return toCalcFuelLines(fuelRecords.findByWaybillIdOrderByCreatedAt(waybillId));
+    }
+
+    /**
+     * Записи топлива ПЛ → строки входа расчёта. Перенос 1-в-1 (MIGRATION.md §5.6): надбавка
+     * при t° ниже 0 ({@code coef_below_0}, в оригинале прибавляется к выданному — helpers.php
+     * {@code fuel_calc}/{@code fuel_calc_day}) и довыдача в пути ({@code additional} legacy =
+     * {@code additional_given}; в оригинале входит в «give» и в остаток при возврате) теперь
+     * передаются в движок, а не нулями. {@code be_given} в формулах не участвует.
+     */
+    static List<CalcFuelLine> toCalcFuelLines(List<FuelRecord> records) {
         List<CalcFuelLine> lines = new ArrayList<>();
-        for (FuelRecord fr : fuelRecords.findByWaybillIdOrderByCreatedAt(waybillId)) {
+        if (records == null) {
+            return lines;
+        }
+        for (FuelRecord fr : records) {
             lines.add(new CalcFuelLine(fr.getFuelType(),
-                    fr.getFuelGiven() == null ? 0d : fr.getFuelGiven().doubleValue(),
-                    0d, 0d,
-                    fr.getRemainBeforeExit() == null ? 0d : fr.getRemainBeforeExit().doubleValue()));
+                    dbl(fr.getFuelGiven()),
+                    dbl(fr.getCoefBelow0()),
+                    dbl(fr.getAdditionalGiven()),
+                    dbl(fr.getRemainBeforeExit())));
         }
         return lines;
+    }
+
+    private static double dbl(BigDecimal v) {
+        return v == null ? 0d : v.doubleValue();
     }
 
     private static LocalDate calcDate(Waybill wb) {

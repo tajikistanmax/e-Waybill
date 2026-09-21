@@ -47,6 +47,20 @@ public class FuelRecord {
     /** Возвращено на базу неиспользованное топливо, «Баргардонида шуд» бланка. */
     private BigDecimal returned;
 
+    /**
+     * Надбавка при температуре ниже 0 °C, л — «Коефитсенти ҳарорати аз 0 поён» legacy
+     * ({@code fuels[].coef_below_0}). В расчёте прибавляется к выданному (helpers.php fuel_calc).
+     */
+    @Column(name = "coef_below_0")
+    private BigDecimal coefBelow0;
+
+    /**
+     * Норма к выдаче, л — «Дода шавад» legacy ({@code fuels[].be_given}). Хранимое значение
+     * (в оригинале префилл из предыдущего ПЛ того же ТС), в формулах расчёта не участвует.
+     */
+    @Column(name = "be_given")
+    private BigDecimal beGiven;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private OffsetDateTime createdAt;
 
@@ -73,5 +87,9 @@ public class FuelRecord {
     public void setAdditionalGiven(BigDecimal additionalGiven) { this.additionalGiven = additionalGiven; }
     public BigDecimal getReturned() { return returned; }
     public void setReturned(BigDecimal returned) { this.returned = returned; }
+    public BigDecimal getCoefBelow0() { return coefBelow0; }
+    public void setCoefBelow0(BigDecimal coefBelow0) { this.coefBelow0 = coefBelow0; }
+    public BigDecimal getBeGiven() { return beGiven; }
+    public void setBeGiven(BigDecimal beGiven) { this.beGiven = beGiven; }
     public OffsetDateTime getCreatedAt() { return createdAt; }
 }

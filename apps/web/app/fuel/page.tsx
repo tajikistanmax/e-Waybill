@@ -22,7 +22,7 @@ export default function FuelStationCabinet() {
   const [ok, setOk] = useState('');
   const [sel, setSel] = useState<FuelStationWaybill | null>(null);
   const [lines, setLines] = useState<FuelLine[]>([]);
-  const [form, setForm] = useState({ fuelType: '2', fuelGiven: '', remainBeforeExit: '', remainEntry: '', additionalGiven: '', returned: '' });
+  const [form, setForm] = useState({ fuelType: '2', fuelGiven: '', remainBeforeExit: '', remainEntry: '', additionalGiven: '', returned: '', coefBelow0: '', beGiven: '' });
   const [busy, setBusy] = useState(false);
   const [page, setPage] = useState(1);
 
@@ -47,9 +47,11 @@ export default function FuelStationCabinet() {
         remainEntry: form.remainEntry ? Number(form.remainEntry) : null,
         additionalGiven: form.additionalGiven ? Number(form.additionalGiven) : null,
         returned: form.returned ? Number(form.returned) : null,
+        coefBelow0: form.coefBelow0 ? Number(form.coefBelow0) : null,
+        beGiven: form.beGiven ? Number(form.beGiven) : null,
       });
       setOk(t('fuel.recorded'));
-      setForm(f => ({ ...f, fuelGiven: '', remainBeforeExit: '', remainEntry: '', additionalGiven: '', returned: '' }));
+      setForm(f => ({ ...f, fuelGiven: '', remainBeforeExit: '', remainEntry: '', additionalGiven: '', returned: '', coefBelow0: '', beGiven: '' }));
       wb.fuelStation.fuel(sel.id).then(setLines);
       load();
     } catch (e) {
@@ -127,7 +129,7 @@ export default function FuelStationCabinet() {
           {sel && (
             <>
               <table>
-                <thead><tr><th>{t('fuel.col.kind')}</th><th>{t('fuel.col.given')}</th><th>{t('fuel.col.remainbefore')}</th><th>{t('fuel.col.remainentry')}</th><th>{t('fuel.col.additional')}</th><th>{t('fuel.col.returned')}</th><th>{t('fuel.col.time')}</th></tr></thead>
+                <thead><tr><th>{t('fuel.col.kind')}</th><th>{t('fuel.col.given')}</th><th>{t('fuel.col.remainbefore')}</th><th>{t('fuel.col.remainentry')}</th><th>{t('fuel.col.additional')}</th><th>{t('fuel.col.returned')}</th><th>{t('wbd.fuelcoef0')}</th><th>{t('wbd.fuelbegiven')}</th><th>{t('fuel.col.time')}</th></tr></thead>
                 <tbody>
                   {lines.map(l => (
                     <tr key={l.id}>
@@ -137,10 +139,12 @@ export default function FuelStationCabinet() {
                       <td>{l.remainEntry ?? '—'}</td>
                       <td>{l.additionalGiven ?? '—'}</td>
                       <td>{l.returned ?? '—'}</td>
+                      <td>{l.coefBelow0 ?? '—'}</td>
+                      <td>{l.beGiven ?? '—'}</td>
                       <td>{l.at ? new Date(l.at).toLocaleString('ru-RU') : '—'}</td>
                     </tr>
                   ))}
-                  {lines.length === 0 && <tr><td colSpan={7} style={{ textAlign: 'center', color: 'var(--muted)', padding: 14 }}>{t('fuel.empty.records')}</td></tr>}
+                  {lines.length === 0 && <tr><td colSpan={9} style={{ textAlign: 'center', color: 'var(--muted)', padding: 14 }}>{t('fuel.empty.records')}</td></tr>}
                 </tbody>
               </table>
 
@@ -161,6 +165,10 @@ export default function FuelStationCabinet() {
                   <input type="number" step="0.1" style={{ width: 120 }} value={form.additionalGiven} onChange={e => setForm(f => ({ ...f, additionalGiven: e.target.value }))} /></div>
                 <div><label style={{ display: 'block', fontSize: 12, color: 'var(--muted)', marginBottom: 4 }}>{t('wbd.fuelreturn')}</label>
                   <input type="number" step="0.1" style={{ width: 120 }} value={form.returned} onChange={e => setForm(f => ({ ...f, returned: e.target.value }))} /></div>
+                <div><label style={{ display: 'block', fontSize: 12, color: 'var(--muted)', marginBottom: 4 }}>{t('wbd.fuelcoef0')}</label>
+                  <input type="number" step="0.1" min="0" style={{ width: 120 }} value={form.coefBelow0} onChange={e => setForm(f => ({ ...f, coefBelow0: e.target.value }))} /></div>
+                <div><label style={{ display: 'block', fontSize: 12, color: 'var(--muted)', marginBottom: 4 }}>{t('wbd.fuelbegiven')}</label>
+                  <input type="number" step="0.1" min="0" style={{ width: 120 }} value={form.beGiven} onChange={e => setForm(f => ({ ...f, beGiven: e.target.value }))} /></div>
                 <button className="btn" onClick={record} disabled={busy || !form.fuelGiven}>{busy ? '…' : t('fuel.btn.record')}</button>
               </div>
             </>

@@ -60,7 +60,7 @@ export default function WaybillCard({ params }: { params: Promise<{ id: string }
   const [fuelCalc, setFuelCalc] = useState<Record<string, unknown> | null>(null);
   const [workDays, setWorkDays] = useState<Record<string, unknown>[]>([]);
   const [dayForm, setDayForm] = useState({ workDate: '', exitTime: '06:00', entryTime: '', odometerExit: '', odometerEntry: '', laps: '', revenue: '' });
-  const [fuelForm, setFuelForm] = useState({ fuelType: '1', fuelGiven: '', remainBeforeExit: '', additionalGiven: '', returned: '' });
+  const [fuelForm, setFuelForm] = useState({ fuelType: '1', fuelGiven: '', remainBeforeExit: '', additionalGiven: '', returned: '', coefBelow0: '', beGiven: '' });
   const [replacement, setReplacement] = useState(''); // РМА нового водителя или госномер нового ТС
   const [candidates, setCandidates] = useState<{ value: string; label: string }[]>([]);
   const [blockReason, setBlockReason] = useState(''); // разблокировка (Минтранс) — свободное обоснование
@@ -659,6 +659,8 @@ export default function WaybillCard({ params }: { params: Promise<{ id: string }
                       remainBeforeExit: fuelForm.remainBeforeExit ? Number(fuelForm.remainBeforeExit) : null,
                       additionalGiven: fuelForm.additionalGiven ? Number(fuelForm.additionalGiven) : null,
                       returned: fuelForm.returned ? Number(fuelForm.returned) : null,
+                      coefBelow0: fuelForm.coefBelow0 ? Number(fuelForm.coefBelow0) : null,
+                      beGiven: fuelForm.beGiven ? Number(fuelForm.beGiven) : null,
                     }));
                   }}>
                     <div><label>{t('rep.col.fueltype')}</label>
@@ -671,6 +673,8 @@ export default function WaybillCard({ params }: { params: Promise<{ id: string }
                     <div><label>{t('wb.f.remainbefore')}</label><input type="number" step="0.1" value={fuelForm.remainBeforeExit} onChange={e => setFuelForm({ ...fuelForm, remainBeforeExit: e.target.value })} /></div>
                     <div><label>{t('wbd.fueladd')}</label><input type="number" step="0.1" value={fuelForm.additionalGiven} onChange={e => setFuelForm({ ...fuelForm, additionalGiven: e.target.value })} /></div>
                     <div><label>{t('wbd.fuelreturn')}</label><input type="number" step="0.1" value={fuelForm.returned} onChange={e => setFuelForm({ ...fuelForm, returned: e.target.value })} /></div>
+                    <div><label>{t('wbd.fuelcoef0')}</label><input type="number" step="0.1" min="0" value={fuelForm.coefBelow0} onChange={e => setFuelForm({ ...fuelForm, coefBelow0: e.target.value })} /></div>
+                    <div><label>{t('wbd.fuelbegiven')}</label><input type="number" step="0.1" min="0" value={fuelForm.beGiven} onChange={e => setFuelForm({ ...fuelForm, beGiven: e.target.value })} /></div>
                     <div className="full"><button className="btn secondary" type="submit">{t('wb.btn.recordfuel')}</button></div>
                   </form>
                 </>

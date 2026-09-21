@@ -134,6 +134,25 @@ class WaybillCalcEngineTest {
     }
 
     @Test
+    @DisplayName("§5.6 старое-vs-новое: coef_below_0 прибавляется к выданному (helpers.php fuel_calc: 80+2=82), " +
+            "additional входит в остаток при возврате: 10 + 82 + 3 − 68.82 = 26.18")
+    void coefBelow0AndAdditionalAffectGivenAndRemain() {
+        // Легаси-строка fuels[]: {"fuel_id":2,"fuel_given":80,"coef_below_0":2,"additional":3,"remain_fuel_before_exit":10}
+        PassengerCalcResult r = engine.passenger(
+                baseInput().fuels(List.of(new CalcFuelLine(2L, 80d, 2d, 3d, 10d))).build());
+
+        var fuel = r.fuels().getFirst();
+        // fuel_calc(): $fuel = fuel_given; if (coef_below_0) $fuel += coef_below_0  → 82
+        assertThat(fuel.given()).isCloseTo(82d, within(1e-9));
+        assertThat(fuel.additional()).isCloseTo(3d, within(1e-9));
+        // норматив от coef_below_0/additional не зависит (тот же Ma, что в normal())
+        assertThat(fuel.normLiters()).isEqualTo(68.82d);
+        // остаток при возврате: before + (given + coef_below_0) + additional − Ma
+        assertThat(fuel.remainEntry()).isEqualTo(26.18d);
+        // регресс: с нулями (как подавал ассемблер до 21.09) остаток был бы 21.18 — см. normal()
+    }
+
+    @Test
     @DisplayName("летний лист: зимняя надбавка не применяется, K=6")
     void summerWaybillHasNoWinterCoef() {
         PassengerCalcResult r = engine.passenger(baseInput().calcDate(LocalDate.of(2024, 6, 15)).build());

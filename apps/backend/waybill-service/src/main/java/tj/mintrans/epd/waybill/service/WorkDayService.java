@@ -112,13 +112,29 @@ public class WorkDayService {
     public FuelRecord addFuel(UUID waybillId, UUID workDayId, short fuelType,
                               BigDecimal fuelGiven, BigDecimal remainBeforeExit, BigDecimal remainEntry,
                               BigDecimal additionalGiven, BigDecimal returned) {
+        return addFuel(waybillId, workDayId, fuelType, fuelGiven, remainBeforeExit, remainEntry,
+                additionalGiven, returned, null, null);
+    }
+
+    /**
+     * Полная топливная строка legacy «Роҳхат» (MIGRATION.md §5.6): плюс надбавка при температуре
+     * ниже 0 °C ({@code coef_below_0}, прибавляется к выданному в расчёте) и норма к выдаче
+     * ({@code be_given}, хранимое поле «Дода шавад»).
+     */
+    @Transactional
+    public FuelRecord addFuel(UUID waybillId, UUID workDayId, short fuelType,
+                              BigDecimal fuelGiven, BigDecimal remainBeforeExit, BigDecimal remainEntry,
+                              BigDecimal additionalGiven, BigDecimal returned,
+                              BigDecimal coefBelow0, BigDecimal beGiven) {
         var wb = waybillService.get(waybillId);
         if (wb.getStatus().isTerminal()) {
             throw new ConflictException("Добавление топлива невозможно в статусе " + wb.getStatus());
         }
-        // Объёмы топлива — только неотрицательные: выданное, довыданное в пути, остатки и возврат < 0 недопустимы.
+        // Объёмы топлива — только неотрицательные: выданное, довыданное в пути, остатки, возврат,
+        // надбавка «ниже 0» и норма к выдаче < 0 недопустимы (legacy: numeric|min:0).
         if (isNegative(fuelGiven) || isNegative(remainBeforeExit) || isNegative(remainEntry)
-                || isNegative(additionalGiven) || isNegative(returned)) {
+                || isNegative(additionalGiven) || isNegative(returned)
+                || isNegative(coefBelow0) || isNegative(beGiven)) {
             throw new UnprocessableException("Объёмы топлива не могут быть отрицательными");
         }
         // Электротранспорт (троллейбус) — только электроэнергия (вид 5), горючее ему не выдают.
@@ -164,6 +180,8 @@ public class WorkDayService {
         record.setRemainEntry(remainEntry);
         record.setAdditionalGiven(additionalGiven);
         record.setReturned(returned);
+        record.setCoefBelow0(coefBelow0);
+        record.setBeGiven(beGiven);
         return fuelRecords.save(record);
     }
 

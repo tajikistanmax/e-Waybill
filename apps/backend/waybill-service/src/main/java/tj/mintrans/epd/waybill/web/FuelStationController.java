@@ -65,7 +65,8 @@ public class FuelStationController {
 
     public record FuelLine(String id, int fuelType, String fuelName, BigDecimal fuelGiven,
                            BigDecimal remainBeforeExit, BigDecimal remainEntry,
-                           BigDecimal additionalGiven, BigDecimal returned, String at) {
+                           BigDecimal additionalGiven, BigDecimal returned,
+                           BigDecimal coefBelow0, BigDecimal beGiven, String at) {
     }
 
     public record RecordFuelRequest(
@@ -74,7 +75,11 @@ public class FuelStationController {
             BigDecimal remainBeforeExit,
             BigDecimal remainEntry,
             BigDecimal additionalGiven,
-            BigDecimal returned) {
+            BigDecimal returned,
+            /** Надбавка при t° ниже 0 °C, л (legacy coef_below_0). */
+            BigDecimal coefBelow0,
+            /** Норма к выдаче, л (legacy be_given, «Дода шавад»). */
+            BigDecimal beGiven) {
     }
 
     @GetMapping("/waybills")
@@ -107,6 +112,7 @@ public class FuelStationController {
                         FUEL_NAMES.getOrDefault((int) f.getFuelType(), "Топливо " + f.getFuelType()),
                         f.getFuelGiven(), f.getRemainBeforeExit(), f.getRemainEntry(),
                         f.getAdditionalGiven(), f.getReturned(),
+                        f.getCoefBelow0(), f.getBeGiven(),
                         f.getCreatedAt() == null ? null : f.getCreatedAt().toString()))
                 .toList();
     }
@@ -116,7 +122,7 @@ public class FuelStationController {
         assertOwn(id);
         FuelRecord saved = workDays.addFuel(id, null, req.fuelType().shortValue(),
                 req.fuelGiven(), req.remainBeforeExit(), req.remainEntry(),
-                req.additionalGiven(), req.returned());
+                req.additionalGiven(), req.returned(), req.coefBelow0(), req.beGiven());
         return ResponseEntity.status(HttpStatus.CREATED).body(saved);
     }
 

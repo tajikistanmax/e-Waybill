@@ -867,7 +867,10 @@ export type FuelStationWaybill = {
 export type FuelLine = {
   id: string; fuelType: number; fuelName: string;
   fuelGiven: number | null; remainBeforeExit: number | null; remainEntry: number | null;
-  additionalGiven: number | null; returned: number | null; at: string | null;
+  additionalGiven: number | null; returned: number | null;
+  // Перенос 1-в-1 (MIGRATION.md §5.6): надбавка при t° ниже 0 (legacy coef_below_0) и норма к выдаче (be_given).
+  coefBelow0: number | null; beGiven: number | null;
+  at: string | null;
 };
 
 export type MalumotnomaRoute = {

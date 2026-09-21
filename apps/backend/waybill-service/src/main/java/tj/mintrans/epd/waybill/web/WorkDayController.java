@@ -58,7 +58,11 @@ public class WorkDayController {
             BigDecimal remainBeforeExit,
             BigDecimal remainEntry,
             BigDecimal additionalGiven,
-            BigDecimal returned) {
+            BigDecimal returned,
+            /** Надбавка при t° ниже 0 °C, л (legacy coef_below_0). */
+            BigDecimal coefBelow0,
+            /** Норма к выдаче, л (legacy be_given, «Дода шавад»). */
+            BigDecimal beGiven) {
     }
 
     /** Рабочий день вместе с записями топлива этого дня. */
@@ -97,7 +101,7 @@ public class WorkDayController {
     public ResponseEntity<FuelRecord> addFuel(@PathVariable UUID id, @Valid @RequestBody FuelRequest req) {
         var record = service.addFuel(id, req.workDayId(), req.fuelType().shortValue(),
                 req.fuelGiven(), req.remainBeforeExit(), req.remainEntry(),
-                req.additionalGiven(), req.returned());
+                req.additionalGiven(), req.returned(), req.coefBelow0(), req.beGiven());
         return ResponseEntity.status(HttpStatus.CREATED).body(record);
     }
 }
