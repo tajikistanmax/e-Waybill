@@ -14,7 +14,6 @@ import tj.mintrans.epd.waybill.calc.report.WaybillReport;
 import tj.mintrans.epd.waybill.config.TenantScope;
 import tj.mintrans.epd.waybill.domain.Waybill;
 import tj.mintrans.epd.waybill.domain.WaybillType;
-import tj.mintrans.epd.waybill.repository.WaybillRepository;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -35,13 +34,13 @@ import java.util.Set;
 @Service
 public class WaybillReportService {
 
-    private final WaybillRepository waybills;
+    private final WaybillPeriodScan scan;
     private final WaybillCalcAssembler assembler;
     private final TenantScope tenantScope;
 
-    public WaybillReportService(WaybillRepository waybills, WaybillCalcAssembler assembler,
+    public WaybillReportService(WaybillPeriodScan scan, WaybillCalcAssembler assembler,
                                 TenantScope tenantScope) {
-        this.waybills = waybills;
+        this.scan = scan;
         this.assembler = assembler;
         this.tenantScope = tenantScope;
     }
@@ -64,21 +63,20 @@ public class WaybillReportService {
                                 String requestedOrg, boolean cargo) {
         Set<String> scope = resolveScope(requestedOrg);
         String org = scope == null ? null : String.join(",", scope);
-        List<Waybill> list = waybills.findAll().stream()
-                .filter(wb -> scope == null || scope.contains(wb.getOrganizationRma()))
-                .filter(wb -> cargo ? isCargo(wb.getWaybillType()) : isPassenger(wb.getWaybillType()))
-                .filter(wb -> inPeriod(wb, from, to))
-                .toList();
 
+        // Потоком по периоду (WaybillPeriodScan), а не findAll(): агрегируем строки, сущности не копим.
         Map<String, ReportRow> rows = new LinkedHashMap<>();
-        for (Waybill wb : list) {
+        scan.forEach(from, to, scope, wb -> {
+            if (!(cargo ? isCargo(wb.getWaybillType()) : isPassenger(wb.getWaybillType()))) {
+                return;
+            }
             Contribution c = contribution(wb, cargo);
             String key = groupKey(type.grouping(), wb, c);
             String label = groupLabel(type.grouping(), wb, c, key);
             ReportRow row = rows.computeIfAbsent(key, k -> ReportRow.zero(k, label));
             rows.put(key, row.plus(c.laps, c.distanceKm, c.routeDistanceKm, c.turnover, c.passengers,
                     c.normLiters, c.givenLiters, c.revenue, c.kassa, c.salary));
-        }
+        });
 
         List<ReportRow> ordered = new ArrayList<>(rows.values());
         ordered.sort((a, b) -> a.key().compareToIgnoreCase(b.key()));
@@ -165,21 +163,15 @@ public class WaybillReportService {
                 || t == WaybillType.WB_SPECIAL || t == WaybillType.WB_DANGEROUS;
     }
 
-    private static boolean inPeriod(Waybill wb, LocalDate from, LocalDate to) {
-        if (wb.getCreatedAt() == null) {
-            return false;
-        }
-        LocalDate d = wb.getCreatedAt().toLocalDate();
-        return !d.isBefore(from) && !d.isAfter(to);
-    }
-
     /**
      * Набор организаций отчёта: {@code null} — все (платформенная роль без фильтра);
-     * иначе — область тенанта (компания + филиалы) либо запрошенная организация для платформы.
+     * иначе — область тенанта (компания + филиалы; «__none__» → пусто = нет доступа)
+     * либо запрошенная организация для платформы.
      */
     private Set<String> resolveScope(String requested) {
         if (tenantScope.isBounded()) {
-            return tenantScope.rmas();
+            Set<String> s = tenantScope.rmas();
+            return s == null || s.contains("__none__") ? Set.of() : s;
         }
         return requested == null || requested.isBlank() ? null : Set.of(requested.trim());
     }

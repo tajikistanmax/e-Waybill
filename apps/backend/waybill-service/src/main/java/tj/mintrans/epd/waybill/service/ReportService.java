@@ -3,28 +3,27 @@ package tj.mintrans.epd.waybill.service;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import tj.mintrans.epd.waybill.config.TenantScope;
-import tj.mintrans.epd.waybill.domain.FuelRecord;
 import tj.mintrans.epd.waybill.domain.Waybill;
 import tj.mintrans.epd.waybill.domain.WaybillStatus;
 import tj.mintrans.epd.waybill.repository.FuelRecordRepository;
-import tj.mintrans.epd.waybill.repository.WaybillRepository;
 import tj.mintrans.epd.waybill.repository.WorkDayRepository;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
-import java.util.Comparator;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.UUID;
-import java.util.stream.Collectors;
 
 /**
- * Отчёты по путевым листам (MVP: сборка в памяти из findAll — данных немного,
- * простота важнее). Фильтр периода — по created_at; мультиарендность — не-админ
- * видит только свою организацию (claim organization_rma).
+ * Отчёты по путевым листам. Период — по created_at; мультиарендность — не-админ видит
+ * только свою область (компания + филиалы), платформенная роль — все либо запрошенную организацию.
+ *
+ * <p>С 21.09.2026 — без {@code findAll()}: ПЛ читаются потоком по периоду
+ * ({@link WaybillPeriodScan}), суммы топлива/выручки считает БД. После миграции Ф5
+ * (≈2,3 млн архивных ПЛ) прежняя сборка «всё в память» роняла сервис в OutOfMemoryError.</p>
  */
 @Service
 public class ReportService {
@@ -37,14 +36,14 @@ public class ReportService {
             (short) 4, "Газ природный",
             (short) 5, "Электро");
 
-    private final WaybillRepository waybills;
+    private final WaybillPeriodScan scan;
     private final WorkDayRepository workDays;
     private final FuelRecordRepository fuelRecords;
     private final TenantScope tenantScope;
 
-    public ReportService(WaybillRepository waybills, WorkDayRepository workDays,
+    public ReportService(WaybillPeriodScan scan, WorkDayRepository workDays,
                          FuelRecordRepository fuelRecords, TenantScope tenantScope) {
-        this.waybills = waybills;
+        this.scan = scan;
         this.workDays = workDays;
         this.fuelRecords = fuelRecords;
         this.tenantScope = tenantScope;
@@ -83,126 +82,149 @@ public class ReportService {
 
     @Transactional(readOnly = true)
     public SummaryReport summary(LocalDate from, LocalDate to, String organizationRma) {
-        var list = load(from, to, organizationRma);
-        long completed = list.stream().filter(wb -> wb.getStatus() == WaybillStatus.COMPLETED).count();
-        long cancelled = list.stream().filter(wb -> wb.getStatus() == WaybillStatus.CANCELLED).count();
-        long active = list.stream().filter(wb -> wb.getStatus() == WaybillStatus.ACTIVE).count();
-        long distanceKm = list.stream()
-                .filter(wb -> wb.getStatus() == WaybillStatus.COMPLETED)
-                .mapToLong(ReportService::distanceOf)
-                .sum();
-
-        var ids = list.stream().map(Waybill::getId).collect(Collectors.toSet());
-        BigDecimal fuelGiven = fuelRecords.findAll().stream()
-                .filter(fr -> ids.contains(fr.getWaybillId()))
-                .map(FuelRecord::getFuelGiven)
-                .filter(java.util.Objects::nonNull)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
-        BigDecimal revenue = workDays.findAll().stream()
-                .filter(wd -> ids.contains(wd.getWaybillId()))
-                .map(wd -> wd.getRevenue())
-                .filter(java.util.Objects::nonNull)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
-
-        Map<String, Long> byStatus = list.stream().collect(Collectors.groupingBy(
-                wb -> wb.getStatus().name(), LinkedHashMap::new, Collectors.counting()));
-        Map<String, Long> byType = list.stream().collect(Collectors.groupingBy(
-                wb -> wb.getWaybillType().name(), LinkedHashMap::new, Collectors.counting()));
-
+        Set<String> scope = resolveScope(organizationRma);
+        long[] c = new long[5]; // 0 total, 1 completed, 2 cancelled, 3 active, 4 distance
+        Map<String, Long> byStatus = new LinkedHashMap<>();
+        Map<String, Long> byType = new LinkedHashMap<>();
+        if (!noAccess(scope)) {
+            scan.forEachAll(from, to, scope, wb -> {   // счётная сводка — без лимита строк
+                c[0]++;
+                if (wb.getStatus() == WaybillStatus.COMPLETED) {
+                    c[1]++;
+                    c[4] += distanceOf(wb);
+                } else if (wb.getStatus() == WaybillStatus.CANCELLED) {
+                    c[2]++;
+                } else if (wb.getStatus() == WaybillStatus.ACTIVE) {
+                    c[3]++;
+                }
+                byStatus.merge(wb.getStatus().name(), 1L, Long::sum);
+                byType.merge(wb.getWaybillType().name(), 1L, Long::sum);
+            });
+        }
+        BigDecimal fuelGiven = BigDecimal.ZERO;
+        BigDecimal revenue = BigDecimal.ZERO;
+        if (!noAccess(scope)) {
+            OffsetDateTime lo = WaybillPeriodScan.lower(from);
+            OffsetDateTime hi = WaybillPeriodScan.upper(to);
+            fuelGiven = nz(scope == null
+                    ? fuelRecords.sumFuelGivenInPeriod(lo, hi)
+                    : fuelRecords.sumFuelGivenInPeriodForOrganizations(scope, lo, hi));
+            revenue = nz(scope == null
+                    ? workDays.sumRevenueInPeriod(lo, hi)
+                    : workDays.sumRevenueInPeriodForOrganizations(scope, lo, hi));
+        }
         return new SummaryReport(new Period(from, to),
-                new Totals(list.size(), completed, cancelled, active, distanceKm, fuelGiven, revenue),
+                new Totals(c[0], c[1], c[2], c[3], c[4], fuelGiven, revenue),
                 byStatus, byType);
     }
 
-    /** Журнал диспетчера: путевые листы, созданные в указанную дату. */
+    /** Журнал диспетчера: путевые листы, созданные в указанную дату (в порядке создания). */
     @Transactional(readOnly = true)
     public List<JournalRow> dispatcherJournal(LocalDate date, String organizationRma) {
-        return load(date, date, organizationRma).stream()
-                .sorted(Comparator.comparing(Waybill::getCreatedAt))
-                .map(wb -> new JournalRow(
-                        wb.getNumber(),
-                        wb.getWaybillType().name(),
-                        wb.getVehicleRegNumber(),
-                        driverName(wb),
-                        wb.getStatus().name(),
-                        wb.getValidFrom(),
-                        wb.getValidTo(),
-                        wb.getOdometerExit(),
-                        wb.getOdometerEntry()))
-                .toList();
+        Set<String> scope = resolveScope(organizationRma);
+        List<JournalRow> rows = new ArrayList<>();
+        if (noAccess(scope)) {
+            return rows;
+        }
+        scan.forEachAll(date, date, scope, wb -> rows.add(new JournalRow(
+                wb.getNumber(),
+                wb.getWaybillType().name(),
+                wb.getVehicleRegNumber(),
+                driverName(wb),
+                wb.getStatus().name(),
+                wb.getValidFrom(),
+                wb.getValidTo(),
+                wb.getOdometerExit(),
+                wb.getOdometerEntry())));
+        return rows;
+    }
+
+    /** Накопитель по ключу группировки (водитель / ТС): листов, завершено, пробег завершённых. */
+    private static final class Agg {
+        long waybills;
+        long completed;
+        long distance;
+        String label;
+
+        void add(Waybill wb, String label) {
+            waybills++;
+            if (wb.getStatus() == WaybillStatus.COMPLETED) {
+                completed++;
+                distance += distanceOf(wb);
+            }
+            if (this.label == null && label != null) {
+                this.label = label;
+            }
+        }
     }
 
     @Transactional(readOnly = true)
     public List<DriverRow> byDriver(LocalDate from, LocalDate to, String organizationRma) {
-        var byDriver = load(from, to, organizationRma).stream()
-                .collect(Collectors.groupingBy(Waybill::getDriverRma, LinkedHashMap::new, Collectors.toList()));
+        Set<String> scope = resolveScope(organizationRma);
+        Map<String, Agg> byDriver = new LinkedHashMap<>();
+        if (!noAccess(scope)) {
+            scan.forEachAll(from, to, scope, wb ->
+                    byDriver.computeIfAbsent(wb.getDriverRma(), k -> new Agg()).add(wb, driverName(wb)));
+        }
         return byDriver.entrySet().stream()
-                .map(e -> new DriverRow(
-                        e.getKey(),
-                        e.getValue().stream().map(ReportService::driverName)
-                                .filter(java.util.Objects::nonNull).findFirst().orElse(null),
-                        e.getValue().size(),
-                        completedCount(e.getValue()),
-                        completedDistance(e.getValue())))
+                .map(e -> new DriverRow(e.getKey(), e.getValue().label,
+                        e.getValue().waybills, e.getValue().completed, e.getValue().distance))
                 .toList();
     }
 
     @Transactional(readOnly = true)
     public List<VehicleRow> byVehicle(LocalDate from, LocalDate to, String organizationRma) {
-        var byVehicle = load(from, to, organizationRma).stream()
-                .collect(Collectors.groupingBy(Waybill::getVehicleRegNumber, LinkedHashMap::new, Collectors.toList()));
+        Set<String> scope = resolveScope(organizationRma);
+        Map<String, Agg> byVehicle = new LinkedHashMap<>();
+        if (!noAccess(scope)) {
+            scan.forEachAll(from, to, scope, wb ->
+                    byVehicle.computeIfAbsent(wb.getVehicleRegNumber(), k -> new Agg()).add(wb, null));
+        }
         return byVehicle.entrySet().stream()
-                .map(e -> new VehicleRow(
-                        e.getKey(),
-                        e.getValue().size(),
-                        completedCount(e.getValue()),
-                        completedDistance(e.getValue())))
+                .map(e -> new VehicleRow(e.getKey(),
+                        e.getValue().waybills, e.getValue().completed, e.getValue().distance))
                 .toList();
     }
 
-    /** Топливо по видам: выдано и остаток при возвращении (по ПЛ периода). */
+    /** Топливо по видам: выдано и остаток при возвращении (по ПЛ периода) — агрегат в БД. */
     @Transactional(readOnly = true)
     public List<FuelRow> fuel(LocalDate from, LocalDate to, String organizationRma) {
-        Set<UUID> ids = load(from, to, organizationRma).stream()
-                .map(Waybill::getId).collect(Collectors.toSet());
-        var byType = fuelRecords.findAll().stream()
-                .filter(fr -> ids.contains(fr.getWaybillId()))
-                .collect(Collectors.groupingBy(FuelRecord::getFuelType,
-                        java.util.TreeMap::new, Collectors.toList()));
-        return byType.entrySet().stream()
-                .map(e -> new FuelRow(
-                        e.getKey(),
-                        FUEL_NAMES.getOrDefault(e.getKey(), "Неизвестно"),
-                        sum(e.getValue(), FuelRecord::getFuelGiven),
-                        sum(e.getValue(), FuelRecord::getRemainEntry)))
-                .toList();
+        Set<String> scope = resolveScope(organizationRma);
+        if (noAccess(scope)) {
+            return List.of();
+        }
+        OffsetDateTime lo = WaybillPeriodScan.lower(from);
+        OffsetDateTime hi = WaybillPeriodScan.upper(to);
+        List<Object[]> rows = scope == null
+                ? fuelRecords.sumByFuelTypeInPeriod(lo, hi)
+                : fuelRecords.sumByFuelTypeInPeriodForOrganizations(scope, lo, hi);
+        List<FuelRow> out = new ArrayList<>();
+        for (Object[] r : rows) {
+            short type = ((Number) r[0]).shortValue();
+            out.add(new FuelRow(type, FUEL_NAMES.getOrDefault(type, "Неизвестно"),
+                    nz((BigDecimal) r[1]), nz((BigDecimal) r[2])));
+        }
+        return out;
     }
 
     // ------------------------------------------------------------------ вспомогательные
 
     /**
-     * ПЛ за период (по created_at) с учётом мультиарендности: не-админ видит
-     * только свою организацию (пришедший organizationRma игнорируется;
-     * нет claim — пустой список).
+     * Область отчёта: {@code null} — все организации (платформенная роль без фильтра);
+     * иначе — область тенанта (компания + филиалы; пустая/«__none__» = нет доступа)
+     * либо запрошенная организация для платформы.
      */
-    private List<Waybill> load(LocalDate from, LocalDate to, String requestedOrganizationRma) {
-        final Set<String> scope;
+    private Set<String> resolveScope(String requestedOrganizationRma) {
         if (tenantScope.isBounded()) {
-            scope = tenantScope.rmas();
-            if (scope.isEmpty() || scope.contains("__none__")) {
-                return List.of();
-            }
-        } else {
-            scope = requestedOrganizationRma == null || requestedOrganizationRma.isBlank()
-                    ? null : Set.of(requestedOrganizationRma);
+            Set<String> scope = tenantScope.rmas();
+            return scope == null || scope.contains("__none__") ? Set.of() : scope;
         }
-        return waybills.findAll().stream()
-                .filter(wb -> scope == null || scope.contains(wb.getOrganizationRma()))
-                .filter(wb -> {
-                    var created = wb.getCreatedAt().toLocalDate();
-                    return !created.isBefore(from) && !created.isAfter(to);
-                })
-                .toList();
+        return requestedOrganizationRma == null || requestedOrganizationRma.isBlank()
+                ? null : Set.of(requestedOrganizationRma);
+    }
+
+    private static boolean noAccess(Set<String> scope) {
+        return scope != null && scope.isEmpty();
     }
 
     private static long distanceOf(Waybill wb) {
@@ -210,17 +232,6 @@ public class ReportService {
             return 0;
         }
         return Math.max(0, wb.getOdometerEntry() - wb.getOdometerExit());
-    }
-
-    private static long completedCount(List<Waybill> list) {
-        return list.stream().filter(wb -> wb.getStatus() == WaybillStatus.COMPLETED).count();
-    }
-
-    private static long completedDistance(List<Waybill> list) {
-        return list.stream()
-                .filter(wb -> wb.getStatus() == WaybillStatus.COMPLETED)
-                .mapToLong(ReportService::distanceOf)
-                .sum();
     }
 
     private static String driverName(Waybill wb) {
@@ -231,11 +242,7 @@ public class ReportService {
         return snapshot.get("fullName").toString();
     }
 
-    private static BigDecimal sum(List<FuelRecord> records,
-                                  java.util.function.Function<FuelRecord, BigDecimal> getter) {
-        return records.stream()
-                .map(getter)
-                .filter(java.util.Objects::nonNull)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
+    private static BigDecimal nz(BigDecimal v) {
+        return v == null ? BigDecimal.ZERO : v;
     }
 }

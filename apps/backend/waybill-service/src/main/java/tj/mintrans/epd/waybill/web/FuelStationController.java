@@ -85,8 +85,9 @@ public class FuelStationController {
     @GetMapping("/waybills")
     public List<FuelStationWaybill> list() {
         String org = org();
-        return waybills.findByOrganizationRmaOrderByCreatedAtDesc(org).stream()
-                .filter(w -> FUELABLE.contains(w.getStatus()))
+        // Только листы «на заправке» — по статусам в БД, а не все ПЛ организации в память
+        // (после Ф5 у организации могут быть десятки тысяч архивных ПЛ).
+        return waybills.findByOrganizationRmaAndStatusInOrderByCreatedAtDesc(org, FUELABLE).stream()
                 .map(w -> {
                     List<FuelRecord> fuel = workDays.listFuel(w.getId());
                     double total = fuel.stream()

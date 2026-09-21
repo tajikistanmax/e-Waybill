@@ -15,7 +15,6 @@ import tj.mintrans.epd.waybill.domain.WaybillPlan;
 import tj.mintrans.epd.waybill.domain.WaybillStatus;
 import tj.mintrans.epd.waybill.domain.WaybillType;
 import tj.mintrans.epd.waybill.repository.WaybillPlanRepository;
-import tj.mintrans.epd.waybill.repository.WaybillRepository;
 import tj.mintrans.epd.waybill.web.error.ApiErrors.ForbiddenException;
 
 import java.time.LocalDate;
@@ -37,18 +36,18 @@ import java.util.Set;
 @Service
 public class RegionalReportService {
 
-    private final WaybillRepository waybills;
+    private final WaybillPeriodScan scan;
     private final WaybillPlanRepository plans;
     private final WaybillCalcAssembler assembler;
     private final CurrentUser currentUser;
     private final TenantScope tenantScope;
     private final tj.mintrans.epd.waybill.client.MasterDataClient masterData;
 
-    public RegionalReportService(WaybillRepository waybills, WaybillPlanRepository plans,
+    public RegionalReportService(WaybillPeriodScan scan, WaybillPlanRepository plans,
                                  WaybillCalcAssembler assembler, CurrentUser currentUser,
                                  TenantScope tenantScope,
                                  tj.mintrans.epd.waybill.client.MasterDataClient masterData) {
-        this.waybills = waybills;
+        this.scan = scan;
         this.plans = plans;
         this.assembler = assembler;
         this.currentUser = currentUser;
@@ -87,16 +86,13 @@ public class RegionalReportService {
 
         // Выдано ПЛ данного вида за период — по organization_rma.
         Map<String, Long> issuedByOrg = new LinkedHashMap<>();
-        for (Waybill wb : waybills.findAll()) {
-            if (wb.getWaybillType() != type || wb.getNumber() == null || wb.getCreatedAt() == null) {
-                continue;
-            }
-            java.time.LocalDate d = wb.getCreatedAt().toLocalDate();
-            if (d.isBefore(from) || d.isAfter(to)) {
-                continue;
+        // Потоком по периоду (WaybillPeriodScan, счётный — без лимита), а не findAll() — после Ф5 2,3 млн ПЛ.
+        scan.forEachAll(from, to, null, wb -> {
+            if (wb.getWaybillType() != type || wb.getNumber() == null) {
+                return;
             }
             issuedByOrg.merge(wb.getOrganizationRma(), 1L, Long::sum);
-        }
+        });
 
         // Организации: из справочника (все) + из факта; фильтр «ведомственный/общий» —
         // на уровне справочника, до построения строк (typeCompany == null — без фильтра).
@@ -114,6 +110,10 @@ public class RegionalReportService {
             issuedByOrg.keySet().forEach(rma -> orgByRma.putIfAbsent(rma, Map.of("rma", rma, "name", rma)));
         }
 
+        // Стоянки (ТС нужного вида) по всем организациям — ОДНИМ агрегатным запросом к master-data,
+        // а не списком ТС каждой организации (тысячи HTTP-вызовов → 429 rate-limit).
+        Map<String, Long> parkingsByOrg = masterData.countVehiclesByOrganization(transportType == 0 ? null : transportType);
+
         List<tj.mintrans.epd.waybill.calc.report.WaybillNormReport.Row> rows = new ArrayList<>();
         long tIssued = 0;
         long tParkings = 0;
@@ -122,10 +122,7 @@ public class RegionalReportService {
             String rma = e.getKey();
             Map<String, Object> org = e.getValue();
             long issued = issuedByOrg.getOrDefault(rma, 0L);
-            long parkings = masterData.listVehicles(rma).stream()
-                    .filter(v -> transportType == 0
-                            || String.valueOf(transportType).equals(String.valueOf(v.get("transportType"))))
-                    .count();
+            long parkings = parkingsByOrg.getOrDefault(rma, 0L);
             if (issued == 0 && parkings == 0) {
                 continue;
             }
@@ -189,51 +186,11 @@ public class RegionalReportService {
         boolean singleMonth = from.getYear() == to.getYear() && from.getMonthValue() == to.getMonthValue();
         Short targetMonth = singleMonth ? (short) from.getMonthValue() : null;
 
-        // Факт: объём и оборот по каждому завершённому ПЛ выбранного вида.
+        // Факт: объём и оборот по каждому завершённому ПЛ выбранного вида — два прохода потоком
+        // по периоду (текущий и тот же период прошлого года), а не findAll() (Ф5: 2,3 млн ПЛ).
         Map<String, Fact> factByOrg = new LinkedHashMap<>();
-        for (Waybill wb : waybills.findAll()) {
-            boolean typeOk = cargo ? isCargo(wb.getWaybillType()) : isPassenger(wb.getWaybillType());
-            if (wb.getStatus() != WaybillStatus.COMPLETED || !typeOk) {
-                continue;
-            }
-            LocalDate d = wb.getCreatedAt() == null ? null : wb.getCreatedAt().toLocalDate();
-            if (d == null) {
-                continue;
-            }
-            boolean cur = !d.isBefore(from) && !d.isAfter(to);
-            boolean prev = !d.isBefore(prevFrom) && !d.isAfter(prevTo);
-            if (!cur && !prev) {
-                continue;
-            }
-            double volume;
-            double rotation;
-            if (cargo) {
-                WaybillCalcAssembler.View v = assembler.calculate(wb, WaybillCalcAssembler.Supplement.empty());
-                if (v.cargo() == null) {
-                    continue;
-                }
-                double p = v.cargo().transportWork();            // P, т·км
-                double dist = Math.max(1, v.cargo().distanceKm());
-                volume = (p / dist) / 1000.0;                    // тыс. тонн (средняя загрузка × 1 ходка)
-                rotation = p / 1_000_000.0;                      // млн т·км
-            } else {
-                PassengerMetrics m = metrics(wb);
-                if (m == null) {
-                    continue;
-                }
-                volume = m.passengerCount() / 1000.0;            // тыс. пасс.
-                rotation = m.passengerTurnover() / 1_000_000.0;  // млн пасс-км
-            }
-            Fact f = factByOrg.computeIfAbsent(wb.getOrganizationRma(), k -> new Fact(wb));
-            f.absorb(wb);
-            if (cur) {
-                f.volumeCur += volume;
-                f.rotationCur += rotation;
-            } else {
-                f.volumePrev += volume;
-                f.rotationPrev += rotation;
-            }
-        }
+        scan.forEachCompleted(from, to, null, wb -> absorbFact(wb, cargo, true, factByOrg));
+        scan.forEachCompleted(prevFrom, prevTo, null, wb -> absorbFact(wb, cargo, false, factByOrg));
 
         // План по предприятиям на оба года: годовая строка (plan_month IS NULL) и, если
         // отчётный период — один месяц, месячная строка на этот месяц (она приоритетнее).
@@ -317,6 +274,42 @@ public class RegionalReportService {
         return new RegionalReport(bill, "transportation", from, to, year, prevYear, regions, grand);
     }
 
+    /** Вклад одного завершённого ПЛ в факт сводного отчёта (текущий период — {@code cur}, иначе прошлогодний). */
+    private void absorbFact(Waybill wb, boolean cargo, boolean cur, Map<String, Fact> factByOrg) {
+        boolean typeOk = cargo ? isCargo(wb.getWaybillType()) : isPassenger(wb.getWaybillType());
+        if (wb.getStatus() != WaybillStatus.COMPLETED || !typeOk || wb.getCreatedAt() == null) {
+            return;
+        }
+        double volume;
+        double rotation;
+        if (cargo) {
+            WaybillCalcAssembler.View v = assembler.calculate(wb, WaybillCalcAssembler.Supplement.empty());
+            if (v.cargo() == null) {
+                return;
+            }
+            double p = v.cargo().transportWork();            // P, т·км
+            double dist = Math.max(1, v.cargo().distanceKm());
+            volume = (p / dist) / 1000.0;                    // тыс. тонн (средняя загрузка × 1 ходка)
+            rotation = p / 1_000_000.0;                      // млн т·км
+        } else {
+            PassengerMetrics m = metrics(wb);
+            if (m == null) {
+                return;
+            }
+            volume = m.passengerCount() / 1000.0;            // тыс. пасс.
+            rotation = m.passengerTurnover() / 1_000_000.0;  // млн пасс-км
+        }
+        Fact f = factByOrg.computeIfAbsent(wb.getOrganizationRma(), k -> new Fact(wb));
+        f.absorb(wb);
+        if (cur) {
+            f.volumeCur += volume;
+            f.rotationCur += rotation;
+        } else {
+            f.volumePrev += volume;
+            f.rotationPrev += rotation;
+        }
+    }
+
     private static boolean isCargo(WaybillType t) {
         return t == WaybillType.WB_TRUCK || t == WaybillType.WB_TRUCK_INTL
                 || t == WaybillType.WB_SPECIAL || t == WaybillType.WB_DANGEROUS;
@@ -378,15 +371,24 @@ public class RegionalReportService {
             prevTo = to.minusMonths(1);
         }
 
-        // Аккумулятор по организации.
+        // Аккумулятор по организации. Один проход потоком по объединённому периоду всех
+        // счётчиков (от самой ранней границы до `to`), а не findAll() — после Ф5 в таблице 2,3 млн ПЛ.
+        final LocalDate pf = prevFrom;
+        final LocalDate pt = prevTo;
+        LocalDate scanFrom = startOfYear.minusYears(1);
+        for (LocalDate b : List.of(pf, from.minusYears(1), from, startOfYear)) {
+            if (b.isBefore(scanFrom)) {
+                scanFrom = b;
+            }
+        }
         Map<String, Acc> byOrg = new LinkedHashMap<>();
-        for (Waybill wb : waybills.findAll()) {
+        scan.forEachAll(scanFrom, to, null, wb -> {   // счётный отчёт — без лимита строк
             if (!billMatches(kind, wb.getWaybillType())) {
-                continue;
+                return;
             }
             LocalDate d = wb.getCreatedAt() == null ? null : wb.getCreatedAt().toLocalDate();
             if (d == null) {
-                continue;
+                return;
             }
             boolean issued = wb.getNumber() != null;
             boolean processed = wb.getOdometerEntry() != null || wb.getStatus() == WaybillStatus.COMPLETED;
@@ -398,7 +400,7 @@ public class RegionalReportService {
                 if (issued) { a.issuedMonth++; if (veh != null) a.vehMonth.add(veh); }
                 if (processed) { a.processedMonth++; }
             }
-            if (inRange(d, prevFrom, prevTo)) {
+            if (inRange(d, pf, pt)) {
                 if (issued) { a.issuedPrevMonth++; if (veh != null) a.vehPrevMonth.add(veh); }
                 if (processed) { a.processedPrevMonth++; }
             }
@@ -424,7 +426,7 @@ public class RegionalReportService {
                     a.cargoWithConsignment++;
                 }
             }
-        }
+        });
 
         // Фильтр «ведомственный/общий» — на уровне набора организаций, до построения иерархии.
         if (typeCompany != null) {
@@ -575,31 +577,27 @@ public class RegionalReportService {
             byMonth.put(key, 0.0);
         }
 
-        for (Waybill wb : waybills.findAll()) {
+        // Потоком по периоду и области (WaybillPeriodScan), а не findAll() — после Ф5 2,3 млн ПЛ;
+        // тренд открыт тенантам — их область небольшая, платформенным ролям — весь период n месяцев.
+        Set<String> scanScope = scope != null && scope.contains("__none__") ? Set.of() : scope;
+        scan.forEachCompleted(from, to, scanScope, wb -> {
             WaybillType type = wb.getWaybillType();
             if (type != WaybillType.WB_BUS && type != WaybillType.WB_TROLLEYBUS) {
-                continue;
+                return;
             }
-            if (wb.getStatus() != WaybillStatus.COMPLETED) {
-                continue;
+            if (wb.getCreatedAt() == null) {
+                return;
             }
-            if (scope != null && !scope.contains(wb.getOrganizationRma())) {
-                continue;
-            }
-            LocalDate d = wb.getCreatedAt() == null ? null : wb.getCreatedAt().toLocalDate();
-            if (d == null || d.isBefore(from) || d.isAfter(to)) {
-                continue;
-            }
-            String key = monthKey(d);
+            String key = monthKey(wb.getCreatedAt().toLocalDate());
             if (!byMonth.containsKey(key)) {
-                continue;
+                return;
             }
             PassengerMetrics m = metrics(wb);
             if (m == null) {
-                continue;
+                return;
             }
             byMonth.merge(key, m.passengerTurnover() / 1_000_000.0, Double::sum); // млн пасс-км
-        }
+        });
 
         List<PassengerVolumeTrend.Point> points = new ArrayList<>();
         for (String key : monthKeys) {

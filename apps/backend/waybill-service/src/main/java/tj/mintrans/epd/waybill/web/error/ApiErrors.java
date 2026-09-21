@@ -65,6 +65,29 @@ public class ApiErrors {
     }
 
     /**
+     * master-data ответил 429 (rate-limit по IP при массовых справочных запросах отчётов) —
+     * это временная перегрузка зависимости, а не ошибка сервера: 503 + Retry-After, а не 500.
+     */
+    @ExceptionHandler(org.springframework.web.client.HttpClientErrorException.TooManyRequests.class)
+    public ProblemDetail masterDataThrottled(org.springframework.web.client.HttpClientErrorException.TooManyRequests e) {
+        String retry = e.getResponseHeaders() != null ? e.getResponseHeaders().getFirst("Retry-After") : null;
+        var p = problem(HttpStatus.SERVICE_UNAVAILABLE, "Справочная служба временно перегружена",
+                "Служба мастер-данных ограничила частоту запросов"
+                        + (retry != null ? " — повторите через " + retry + " с" : " — повторите позже"));
+        if (retry != null) {
+            p.setProperty("retryAfterSeconds", retry);
+        }
+        return p;
+    }
+
+    /** master-data недоступен (сеть/таймаут) — 503, а не 500. */
+    @ExceptionHandler(org.springframework.web.client.ResourceAccessException.class)
+    public ProblemDetail masterDataUnavailable(org.springframework.web.client.ResourceAccessException e) {
+        return problem(HttpStatus.SERVICE_UNAVAILABLE, "Справочная служба недоступна",
+                "Служба мастер-данных не отвечает — повторите позже");
+    }
+
+    /**
      * {@link ResponseStatusException} (напр. в WaybillAttachmentController) без явного
      * обработчика получает тело от стандартного {@code BasicErrorController} Spring Boot
      * (поле {@code message}, не RFC 7807 {@code detail}) — приводим к общему виду.

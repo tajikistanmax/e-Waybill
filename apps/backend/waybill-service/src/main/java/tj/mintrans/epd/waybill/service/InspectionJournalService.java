@@ -4,7 +4,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import tj.mintrans.epd.waybill.domain.Waybill;
 import tj.mintrans.epd.waybill.domain.WaybillTitle;
-import tj.mintrans.epd.waybill.repository.WaybillRepository;
 import tj.mintrans.epd.waybill.repository.WaybillTitleRepository;
 
 import java.time.LocalDate;
@@ -30,13 +29,13 @@ public class InspectionJournalService {
      * его тоже незачем показывать как «деталь» — это не читаемые данные, а ciphertext. */
     private static final Set<String> META = Set.of("verdict", "employeeName", "employeeRma", "dispatcher", "indicatorsEnc");
 
-    private final WaybillRepository waybills;
+    private final WaybillPeriodScan scan;
     private final WaybillTitleRepository titles;
     private final tj.mintrans.epd.waybill.config.TenantScope tenantScope;
 
-    public InspectionJournalService(WaybillRepository waybills, WaybillTitleRepository titles,
+    public InspectionJournalService(WaybillPeriodScan scan, WaybillTitleRepository titles,
                                     tj.mintrans.epd.waybill.config.TenantScope tenantScope) {
-        this.waybills = waybills;
+        this.scan = scan;
         this.titles = titles;
         this.tenantScope = tenantScope;
     }
@@ -66,15 +65,16 @@ public class InspectionJournalService {
         Set<String> scope = resolveScope(requestedOrg);
         String org = scope == null ? null : String.join(",", scope);
         List<MechanicRow> rows = new ArrayList<>();
-        for (Waybill wb : inPeriod(from, to, scope)) {
+        // Потоком по периоду в порядке created_at (WaybillPeriodScan), а не findAll() — Ф5: 2,3 млн ПЛ.
+        scan.forEach(from, to, scope, wb -> {
             List<WaybillTitle> ts = titles.findByWaybillIdOrderBySignedAt(wb.getId());
             Mark control = mark(find(ts, "T3"));
             if (control == null) {
-                continue;
+                return;
             }
             rows.add(new MechanicRow(number(wb), date(wb), vehicle(wb), driver(wb),
                     wb.getOdometerExit(), control));
-        }
+        });
         return new MechanicJournal(from, to, org, rows);
     }
 
@@ -83,33 +83,19 @@ public class InspectionJournalService {
         Set<String> scope = resolveScope(requestedOrg);
         String org = scope == null ? null : String.join(",", scope);
         List<DoctorRow> rows = new ArrayList<>();
-        for (Waybill wb : inPeriod(from, to, scope)) {
+        scan.forEach(from, to, scope, wb -> {
             List<WaybillTitle> ts = titles.findByWaybillIdOrderBySignedAt(wb.getId());
             Mark pre = mark(find(ts, "T2"));
             Mark post = mark(find(ts, "T6"));
             if (pre == null && post == null) {
-                continue;
+                return;
             }
             rows.add(new DoctorRow(number(wb), date(wb), vehicle(wb), driver(wb), pre, post));
-        }
+        });
         return new DoctorJournal(from, to, org, rows);
     }
 
     // ------------------------------------------------------------------
-
-    private List<Waybill> inPeriod(LocalDate from, LocalDate to, Set<String> scope) {
-        return waybills.findAll().stream()
-                .filter(wb -> scope == null || scope.contains(wb.getOrganizationRma()))
-                .filter(wb -> {
-                    if (wb.getCreatedAt() == null) {
-                        return false;
-                    }
-                    LocalDate d = wb.getCreatedAt().toLocalDate();
-                    return !d.isBefore(from) && !d.isAfter(to);
-                })
-                .sorted((a, b) -> a.getCreatedAt().compareTo(b.getCreatedAt()))
-                .toList();
-    }
 
     private static WaybillTitle find(List<WaybillTitle> titles, String type) {
         return titles.stream().filter(t -> type.equals(t.getTitleType())).reduce((a, b) -> b).orElse(null);
@@ -189,10 +175,11 @@ public class InspectionJournalService {
         return snapshot.get(field).toString();
     }
 
-    /** Набор организаций журнала: {@code null} — все; иначе область тенанта либо запрошенная. */
+    /** Набор организаций журнала: {@code null} — все; иначе область тенанта («__none__» → пусто) либо запрошенная. */
     private Set<String> resolveScope(String requested) {
         if (tenantScope.isBounded()) {
-            return tenantScope.rmas();
+            Set<String> s = tenantScope.rmas();
+            return s == null || s.contains("__none__") ? Set.of() : s;
         }
         return requested == null || requested.isBlank() ? null : Set.of(requested.trim());
     }

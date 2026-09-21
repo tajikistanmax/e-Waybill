@@ -34,4 +34,16 @@ public interface VehicleRepository extends JpaRepository<Vehicle, UUID> {
             + "and upper(v.registrationNumber) like upper(concat('%', :q, '%')) "
             + "order by v.registrationNumber")
     List<Vehicle> searchByOrgs(@Param("orgs") Collection<UUID> orgs, @Param("q") String q, Pageable pageable);
+
+    /**
+     * Число ТС по организациям — [organizationId, count]. Для отчёта «Норматив выдачи ПЛ»
+     * (waybill-service): одна агрегатная выборка вместо запроса списка ТС каждой из тысяч
+     * организаций (N+1 по HTTP упирался в rate-limit master-data — 429).
+     */
+    @Query("select v.organizationId, count(v) from Vehicle v group by v.organizationId")
+    List<Object[]> countByOrganization();
+
+    /** То же, только ТС заданного вида (transport_type 1..6). */
+    @Query("select v.organizationId, count(v) from Vehicle v where v.transportType = :type group by v.organizationId")
+    List<Object[]> countByOrganizationForType(@Param("type") short type);
 }

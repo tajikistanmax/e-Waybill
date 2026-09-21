@@ -1,10 +1,13 @@
 package tj.mintrans.epd.waybill.repository;
 
 import jakarta.persistence.LockModeType;
+import jakarta.persistence.QueryHint;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.jpa.repository.QueryHints;
+import org.springframework.data.repository.query.Param;
 import tj.mintrans.epd.waybill.domain.Waybill;
 import tj.mintrans.epd.waybill.domain.WaybillStatus;
 
@@ -13,6 +16,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.stream.Stream;
 
 public interface WaybillRepository extends JpaRepository<Waybill, UUID> {
 
@@ -67,9 +71,59 @@ public interface WaybillRepository extends JpaRepository<Waybill, UUID> {
     /** Активные ПЛ по набору статусов (GPS-мониторинг «на линии» для платформенных ролей). */
     List<Waybill> findByStatusInOrderByCreatedAtDesc(Collection<WaybillStatus> statuses);
 
+    /** ПЛ организации в наборе статусов (кабинет пункта выдачи топлива — «на заправке»). */
+    List<Waybill> findByOrganizationRmaAndStatusInOrderByCreatedAtDesc(String organizationRma,
+                                                                      Collection<WaybillStatus> statuses);
+
     /** Просроченные документы для автоперехода в EXPIRED (LifecycleScheduler). */
     List<Waybill> findByStatusInAndValidToBefore(Collection<WaybillStatus> statuses, OffsetDateTime validTo);
 
     /** Завершённые документы старше срока ретенции — в ARCHIVED (LifecycleScheduler). */
     List<Waybill> findByStatusAndUpdatedAtBefore(WaybillStatus status, OffsetDateTime updatedAt);
+
+    // --- Отчёты: выборка ПО ПЕРИОДУ и ПОТОКОМ вместо findAll (после Ф5 в таблице ~2.3 млн
+    //     архивных ПЛ; findAll() в отчётах ронял сервис в OutOfMemoryError при -Xmx384m).
+    //     Полуинтервал [from, to): границы дня считает WaybillPeriodScan. ---
+
+    long countByCreatedAtGreaterThanEqualAndCreatedAtLessThan(OffsetDateTime from, OffsetDateTime to);
+
+    long countByOrganizationRmaInAndCreatedAtGreaterThanEqualAndCreatedAtLessThan(
+            Collection<String> organizationRmas, OffsetDateTime from, OffsetDateTime to);
+
+    /** Поток ПЛ периода (все организации), по возрастанию created_at; требует открытой транзакции. */
+    @Query("select w from Waybill w where w.createdAt >= :from and w.createdAt < :to order by w.createdAt")
+    @QueryHints(@QueryHint(name = org.hibernate.jpa.HibernateHints.HINT_FETCH_SIZE, value = "500"))
+    Stream<Waybill> streamByPeriod(@Param("from") OffsetDateTime from, @Param("to") OffsetDateTime to);
+
+    /** Поток ПЛ периода набора организаций (тенант: компания + филиалы). */
+    @Query("select w from Waybill w where w.organizationRma in :rmas and w.createdAt >= :from and w.createdAt < :to "
+            + "order by w.createdAt")
+    @QueryHints(@QueryHint(name = org.hibernate.jpa.HibernateHints.HINT_FETCH_SIZE, value = "500"))
+    Stream<Waybill> streamByPeriodAndOrganizations(@Param("rmas") Collection<String> organizationRmas,
+                                                   @Param("from") OffsetDateTime from,
+                                                   @Param("to") OffsetDateTime to);
+
+    // Те же выборки, но только по одному статусу (отчёты по завершённым ПЛ: сводный перевозок, тренд) —
+    // фильтр в SQL, чтобы не тянуть архив (ARCHIVED) через приложение.
+
+    long countByStatusAndCreatedAtGreaterThanEqualAndCreatedAtLessThan(WaybillStatus status,
+                                                                       OffsetDateTime from, OffsetDateTime to);
+
+    long countByOrganizationRmaInAndStatusAndCreatedAtGreaterThanEqualAndCreatedAtLessThan(
+            Collection<String> organizationRmas, WaybillStatus status, OffsetDateTime from, OffsetDateTime to);
+
+    @Query("select w from Waybill w where w.status = :status and w.createdAt >= :from and w.createdAt < :to "
+            + "order by w.createdAt")
+    @QueryHints(@QueryHint(name = org.hibernate.jpa.HibernateHints.HINT_FETCH_SIZE, value = "500"))
+    Stream<Waybill> streamByPeriodAndStatus(@Param("status") WaybillStatus status,
+                                            @Param("from") OffsetDateTime from,
+                                            @Param("to") OffsetDateTime to);
+
+    @Query("select w from Waybill w where w.organizationRma in :rmas and w.status = :status "
+            + "and w.createdAt >= :from and w.createdAt < :to order by w.createdAt")
+    @QueryHints(@QueryHint(name = org.hibernate.jpa.HibernateHints.HINT_FETCH_SIZE, value = "500"))
+    Stream<Waybill> streamByPeriodAndOrganizationsAndStatus(@Param("rmas") Collection<String> organizationRmas,
+                                                            @Param("status") WaybillStatus status,
+                                                            @Param("from") OffsetDateTime from,
+                                                            @Param("to") OffsetDateTime to);
 }

@@ -225,6 +225,35 @@ public class VehicleController {
         return vehicles.findAll();
     }
 
+    /**
+     * Число ТС по организациям ({@code РМА → количество}), необязательно — только вида
+     * {@code transportType} (1..6). Одна агрегатная выборка для отчёта «Норматив выдачи ПЛ»
+     * (waybill-service) вместо списка ТС каждой организации. Тенант получает только свою область.
+     */
+    @GetMapping("/count-by-organization")
+    public java.util.Map<String, Long> countByOrganization(
+            @RequestParam(required = false) Short transportType) {
+        List<Object[]> rows = transportType == null
+                ? vehicles.countByOrganization()
+                : vehicles.countByOrganizationForType(transportType);
+        java.util.Set<UUID> allowed = tenantScope.isBounded() ? new java.util.HashSet<>(tenantScope.organizationIds()) : null;
+        java.util.Map<UUID, Long> byId = new java.util.LinkedHashMap<>();
+        for (Object[] r : rows) {
+            UUID orgId = (UUID) r[0];
+            if (orgId == null || (allowed != null && !allowed.contains(orgId))) {
+                continue;
+            }
+            byId.put(orgId, ((Number) r[1]).longValue());
+        }
+        java.util.Map<String, Long> byRma = new java.util.LinkedHashMap<>();
+        for (var org : organizations.findAllById(byId.keySet())) {
+            if (org.getRma() != null) {
+                byRma.put(org.getRma(), byId.get(org.getId()));
+            }
+        }
+        return byRma;
+    }
+
     @GetMapping("/{id}")
     public Vehicle get(@PathVariable UUID id) {
         var vehicle = vehicles.findById(id).orElseThrow(() -> new NotFoundException("Транспорт не найден"));

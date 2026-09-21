@@ -26,6 +26,9 @@ public class MasterDataClient {
 
     private final RestClient client;
     private final ServiceTokenProvider serviceToken;
+    /** Кэши справочников по контексту вызывающего (см. {@link TtlCache}); TTL 60 с. */
+    private final TtlCache<List<Map<String, Object>>> routesCache = new TtlCache<>(java.time.Duration.ofSeconds(60));
+    private final TtlCache<List<Map<String, Object>>> organizationsCache = new TtlCache<>(java.time.Duration.ofSeconds(60));
 
     public MasterDataClient(@Value("${epd.master-data.base-url}") String baseUrl,
                             ServiceTokenProvider serviceToken) {
@@ -80,8 +83,23 @@ public class MasterDataClient {
         return list("/api/v1/vehicles?organizationRma={o}", organizationRma);
     }
 
+    /**
+     * Число ТС по организациям ({@code РМА → количество}), при {@code transportType != null} — только
+     * этого вида. Одна агрегатная выборка master-data для «Норматива выдачи ПЛ» вместо списка ТС
+     * каждой организации (N+1 по HTTP → 429 rate-limit).
+     */
+    public Map<String, Long> countVehiclesByOrganization(Integer transportType) {
+        Map<String, Long> m = transportType == null
+                ? client.get().uri("/api/v1/vehicles/count-by-organization").retrieve()
+                        .body(new ParameterizedTypeReference<Map<String, Long>>() {})
+                : client.get().uri("/api/v1/vehicles/count-by-organization?transportType={t}", transportType).retrieve()
+                        .body(new ParameterizedTypeReference<Map<String, Long>>() {});
+        return m == null ? Map.of() : m;
+    }
+
+    /** Организации, видимые вызывающему (master-data скоупит по токену); кэш 60 с на контекст вызывающего. */
     public List<Map<String, Object>> listOrganizations() {
-        return list("/api/v1/organizations");
+        return organizationsCache.get(callerKey(), () -> list("/api/v1/organizations"));
     }
 
     /**
@@ -279,9 +297,41 @@ public class MasterDataClient {
         return list("/api/v1/legacy-ref/route-tariffs?routeId={id}", routeId);
     }
 
-    /** Маршруты (с коэффициентными и путевыми полями V28). */
+    /**
+     * Маршруты (с коэффициентными и путевыми полями V28). Кэш 60 с на контекст вызывающего:
+     * отчёты зовут {@link #findRoute} по каждому ПЛ, без кэша это сотни GET /dictionaries/routes
+     * в минуту с одного IP и 429 от rate-limit master-data.
+     */
     public List<Map<String, Object>> listRoutes() {
-        return list("/api/v1/dictionaries/routes");
+        return routesCache.get(callerKey(), () -> list("/api/v1/dictionaries/routes"));
+    }
+
+    /** Сброс кэшей справочников (после правки маршрутов/организаций через этот сервис или в тестах). */
+    public void invalidateCaches() {
+        routesCache.invalidateAll();
+        organizationsCache.invalidateAll();
+    }
+
+    /**
+     * Ключ кэша = контекст вызывающего: SHA-256 bearer-токена пользователя текущего запроса
+     * (master-data скоупит списки по токену — ответы тенантов не смешиваются), иначе «service»
+     * (client-credentials — платформенная область).
+     */
+    private String callerKey() {
+        String userAuthorization = null;
+        if (RequestContextHolder.getRequestAttributes() instanceof ServletRequestAttributes attrs) {
+            userAuthorization = attrs.getRequest().getHeader(HttpHeaders.AUTHORIZATION);
+        }
+        if (userAuthorization == null || userAuthorization.isBlank()) {
+            return "service";
+        }
+        try {
+            byte[] digest = java.security.MessageDigest.getInstance("SHA-256")
+                    .digest(userAuthorization.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            return java.util.HexFormat.of().formatHex(digest);
+        } catch (java.security.NoSuchAlgorithmException e) {
+            return Integer.toHexString(userAuthorization.hashCode());
+        }
     }
 
     /** Маршрут по номеру или названию (регистронезависимо); из маршрутов организации токена. */
