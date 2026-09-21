@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { md } from '@/lib/api';
 import { useT } from '@/lib/i18n';
+import { downloadCsv } from '@/lib/csv';
 import { Icon, P } from '../icons';
 
 type Row = Record<string, unknown>;
@@ -166,6 +167,33 @@ export default function RegistryView({ kind }: { kind: RegistryKind }) {
 
   const emptyText = loading ? t('common.loading') : t('common.norecords');
 
+  // Каскад регион→город→компания (8.2): компании — только выбранного региона/города; выпавшая из каскада — сброс.
+  const cascadedOrgs = useMemo(() => orgs.filter(o =>
+    (!regionFilter || String(o.regionId ?? '') === regionFilter) && (!cityFilter || String(o.cityName ?? '') === cityFilter)),
+  [orgs, regionFilter, cityFilter]);
+  useEffect(() => {
+    if (orgFilter && !cascadedOrgs.some(o => String(o.id) === orgFilter)) setOrgFilter('');
+  }, [cascadedOrgs, orgFilter]);
+
+  // Экспорт текущей выборки реестра в CSV (8.7, legacy enableExportButtons) — все поля карточки.
+  function exportCsv() {
+    const src = String;
+    const head = kind === 'vehicles'
+      ? [t('col.regnum'), t('dt.vehtype'), t('col.brand'), t('col.org'), t('dt.parking'), t('dt.capacity'), t('dt.carrying'), t('col.odometer'), t('dt.year'), t('col.techto'), t('col.cardto'), 'VIN', t('dt.insto'), t('dt.adrto'), t('dt.source')]
+      : kind === 'drivers'
+        ? [t('col.fio'), t('col.innrma'), t('col.org'), t('dt.tabnum'), t('col.phone'), t('dt.license'), t('dt.cats'), t('dt.licvalidto'), t('dt.degree'), t('col.medto'), t('dt.safetyto'), t('col.assignedveh'), t('col.address'), t('dt.source')]
+        : [t('col.fio'), t('col.innrma'), t('col.org'), t('col.position'), t('dt.tabnum'), t('col.phone'), t('col.address'), t('dt.source')];
+    const line = (r: Row): unknown[] => {
+      const source = String(r.source) === 'UNIFIED' ? t('reg.src.unified') : t('dt.src.manual');
+      return kind === 'vehicles'
+        ? [r.registrationNumber, vehType(r.transportType, t), r.brand, orgName(r), r.parkingNumber, r.capacity, r.carrying, r.odometer, r.yearManufacture, r.techInspectionValidTo, r.controlCardValidTo, r.vincode, r.insuranceValidTo, r.adrApprovalValidTo, source]
+        : kind === 'drivers'
+          ? [r.fullName, r.rma, orgName(r), r.tabNumber, r.phone, r.licenseNumber, r.licenseCategories, r.licenseValidTo, r.degree, r.medCertValidTo, r.safetyCourseValidTo, assignedVehReg(r), r.address, source]
+          : [r.name, r.rma, orgName(r), empType(r.type, t), r.tabNumber, r.phone, r.address, source];
+    };
+    downloadCsv(`${src(kind)}_${new Date().toISOString().slice(0, 10)}.csv`, [head, ...filtered.map(line)]);
+  }
+
   return (
     <div className="card">
       <div className="card-h">
@@ -196,11 +224,15 @@ export default function RegistryView({ kind }: { kind: RegistryKind }) {
             <option value="">{t('flt.allcities')}</option>
             {orgCities.map(c => <option key={c} value={c}>{c}</option>)}
           </select>
+          {/* Каскад регион→город→компания (MIGRATION.md 8.2): список компаний сужается по региону/городу. */}
           <select value={orgFilter} onChange={e => setOrgFilter(e.target.value)} style={{ width: 240 }}>
             <option value="">{t('reg.allorgs')}</option>
-            {orgs.map(o => <option key={String(o.id)} value={String(o.id)}>{String(o.name ?? o.rma)}</option>)}
+            {cascadedOrgs.map(o => <option key={String(o.id)} value={String(o.id)}>{String(o.name ?? o.rma)}</option>)}
           </select>
           <input value={q} onChange={e => setQ(e.target.value)} placeholder={t('reg.search')} style={{ width: 240 }} />
+          <button type="button" className="btn secondary" onClick={exportCsv} disabled={filtered.length === 0} title={t('rep.export.hint')}>
+            <Icon d={P.chart} cls="" style={{ width: 15, height: 15 }} /> CSV
+          </button>
         </div>
       </div>
 

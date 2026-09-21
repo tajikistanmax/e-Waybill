@@ -5,6 +5,7 @@ import { authHeaders, md, type RouteType } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 import { useAuth } from '@/lib/auth';
 import { canEditNationalDictionaries } from '@/lib/roles';
+import { downloadCsv } from '@/lib/csv';
 
 type Row = Record<string, unknown>;
 export type DictTab = 'routes' | 'clients' | 'fuel-norms' | 'coefficients' | 'tariffs' | 'cargos'
@@ -142,6 +143,13 @@ export default function DictionariesView({ tab }: { tab: DictTab }) {
   );
 
   const activeLabel = t(LABEL_KEY[tab]);
+
+  /** CSV справочника: колонки — объединение ключей записей (кроме id), значения как есть (объекты → JSON). */
+  function exportCsv() {
+    const keys = Array.from(rows.reduce((acc, r) => { Object.keys(r).forEach(k => { if (k !== 'id') acc.add(k); }); return acc; }, new Set<string>()));
+    const cell = (v: unknown) => (v != null && typeof v === 'object') ? JSON.stringify(v) : (v ?? '');
+    downloadCsv(`${tab}_${new Date().toISOString().slice(0, 10)}.csv`, [keys, ...rows.map(r => keys.map(k => cell(r[k])))]);
+  }
 
   return (
     <>
@@ -305,6 +313,8 @@ export default function DictionariesView({ tab }: { tab: DictTab }) {
         <div className="card-h">
           <h2>{activeLabel}</h2>
           <span style={{ marginLeft: 'auto', color: 'var(--muted)', fontSize: 12.5 }}>{t('dict.totalrecords')}: {rows.length}</span>
+          {/* Экспорт справочника в CSV (8.7, legacy enableExportButtons) — все поля записей как есть. */}
+          <button type="button" className="btn secondary" style={{ marginLeft: 10 }} onClick={exportCsv} disabled={rows.length === 0} title={t('rep.export.hint')}>CSV</button>
         </div>
         <table>
           <thead>

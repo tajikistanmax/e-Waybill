@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { md, wb } from '@/lib/api';
+import { downloadCsv } from '@/lib/csv';
 import { useAuth } from '@/lib/auth';
 import { useT } from '@/lib/i18n';
 import { Icon, P } from '../icons';
@@ -224,6 +225,17 @@ export default function FleetView({ kind }: { kind: FleetKind }) {
     } catch (e) { setErr((e as Error).message); }
   }
 
+  /** CSV текущего списка: колонки = поля формы раздела (подписи локализованы), плюс счётчик ПЛ при активном отборе. */
+  function exportCsv() {
+    const head = fields.map(f => f.label).concat(actMap ? [t('fleet.act.count')] : []);
+    const line = (r: Row): unknown[] => fields.map(f => {
+      const v = r[f.key];
+      if (f.type === 'select' && f.opts) return f.opts.find(o => o.v === String(v))?.l ?? (v ?? '');
+      return v ?? '';
+    }).concat(actMap ? [actMap[String(kind === 'vehicles' ? r.registrationNumber : r.rma)] ?? 0] : []);
+    downloadCsv(`${kind}_${new Date().toISOString().slice(0, 10)}.csv`, [head, ...visible.map(line)]);
+  }
+
   if (!allowed) {
     return (
       <div className="card">
@@ -273,14 +285,18 @@ export default function FleetView({ kind }: { kind: FleetKind }) {
         </>
       )}
 
-      {canManage && (
-        <div style={{ display: 'flex', marginBottom: 16 }}>
-          <button className="btn" style={{ marginLeft: 'auto' }} onClick={() => (form ? setForm(null) : openNew())}>
+      <div style={{ display: 'flex', gap: 8, marginBottom: 16, justifyContent: 'flex-end' }}>
+        {/* Экспорт текущего списка (8.7, legacy enableExportButtons) — CSV для Excel. */}
+        <button className="btn secondary" onClick={exportCsv} disabled={visible.length === 0} title={t('rep.export.hint')}>
+          <Icon d={P.chart} cls="" style={{ width: 15, height: 15 }} /> CSV
+        </button>
+        {canManage && (
+          <button className="btn" onClick={() => (form ? setForm(null) : openNew())}>
             <Icon d={P.plus} cls="" style={{ width: 15, height: 15 }} />{' '}
             {kind === 'vehicles' ? t('fleet.add.vehicle') : kind === 'drivers' ? t('fleet.add.driver') : t('fleet.add.employee')}
           </button>
-        </div>
-      )}
+        )}
+      </div>
 
       {/* Полная форма ручного ввода/редактирования */}
       {canManage && form && (
