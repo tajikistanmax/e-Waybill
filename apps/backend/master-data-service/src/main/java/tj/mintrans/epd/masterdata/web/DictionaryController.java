@@ -169,7 +169,16 @@ public class DictionaryController {
             @NotBlank String name,
             String address,
             String phone,
-            String organizationRma) {
+            String organizationRma,
+            // Вид клиента (legacy clients.type): 1 заказчик, 2 грузополучатель, 3 грузоотправитель,
+            // 4 экспедитор; не передан → 1. Банковские реквизиты — свободный текст (MIGRATION.md 2.24).
+            @Min(value = 1, message = "Вид клиента: 1–4") @Max(value = 4, message = "Вид клиента: 1–4") Short type,
+            @Size(max = 50) String riam,
+            @Size(max = 20) String rma,
+            @Size(max = 50) String account,
+            @Size(max = 50) String correspondenceAccount,
+            @Size(max = 20) String mfo,
+            @Size(max = 200) String bankName) {
     }
 
     @GetMapping("/clients")
@@ -193,6 +202,14 @@ public class DictionaryController {
         client.setName(req.name());
         client.setAddress(req.address());
         client.setPhone(req.phone());
+        // Вид и реквизиты (2.24): вид не передан → 1 (заказчик), как default legacy-формы.
+        client.setType(req.type() == null ? (short) 1 : req.type());
+        client.setRiam(trimToNull(req.riam()));
+        client.setRma(trimToNull(req.rma()));
+        client.setAccount(trimToNull(req.account()));
+        client.setCorrespondenceAccount(trimToNull(req.correspondenceAccount()));
+        client.setMfo(trimToNull(req.mfo()));
+        client.setBankName(trimToNull(req.bankName()));
         var savedClient = clients.save(client);
         audit.record(existing.isPresent() ? AuditService.UPDATE : AuditService.CREATE,
                 "CLIENT", org + "/" + req.number(), oldValue, req.name());
@@ -339,6 +356,15 @@ public class DictionaryController {
     }
 
     // ------------------------------------------------------------------ вспомогательное
+
+    /** Пустая/пробельная строка → {@code null}, иначе обрезанная (реквизиты клиента, 2.24). */
+    private static String trimToNull(String s) {
+        if (s == null) {
+            return null;
+        }
+        String t = s.trim();
+        return t.isEmpty() ? null : t;
+    }
 
     private static <T> ResponseEntity<T> saved(Optional<?> existing, T body) {
         return ResponseEntity.status(existing.isPresent() ? HttpStatus.OK : HttpStatus.CREATED).body(body);

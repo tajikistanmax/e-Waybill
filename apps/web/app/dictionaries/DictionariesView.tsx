@@ -103,6 +103,11 @@ export default function DictionariesView({ tab }: { tab: DictTab }) {
         delete body.dirNumber;
         body.checked = form.checked === 'true';
       }
+      // Client.type — числовой вид клиента (1–4); ключ формы "type" занят текстовым полем cargos.
+      if (tab === 'clients') {
+        body.type = form.clientType ? Number(form.clientType) : 1;
+        delete body.clientType;
+      }
       await api(tab, body);
       setOk(t('common.saved'));
       setForm({});
@@ -153,9 +158,20 @@ export default function DictionariesView({ tab }: { tab: DictTab }) {
           </>}
           {tab === 'clients' && <>
             <div><label>{t('col.number')}</label><input required {...f('number')} placeholder="000123" /></div>
+            <div><label>{t('col.clienttype')}</label>
+              <select {...f('clientType')}>
+                {[1, 2, 3, 4].map(v => <option key={v} value={String(v)}>{t('client.type.' + v)}</option>)}
+              </select>
+            </div>
             <div><label>{t('col.name')}</label><input required {...f('name')} /></div>
             <div><label>{t('col.address')}</label><input {...f('address')} /></div>
             <div><label>{t('col.phone')}</label><input {...f('phone')} /></div>
+            <div><label>{t('dict.f.riam')}</label><input {...f('riam')} /></div>
+            <div><label>{t('dict.f.rma')}</label><input {...f('rma')} /></div>
+            <div><label>{t('dict.f.account')}</label><input {...f('account')} /></div>
+            <div><label>{t('dict.f.corraccount')}</label><input {...f('correspondenceAccount')} /></div>
+            <div><label>{t('dict.f.mfo')}</label><input {...f('mfo')} /></div>
+            <div><label>{t('dict.f.bank')}</label><input {...f('bankName')} /></div>
           </>}
           {tab === 'fuel-norms' && <>
             <div><label>{t('f.vehtype')}</label>{ttSelect('transportType')}</div>
@@ -249,7 +265,7 @@ export default function DictionariesView({ tab }: { tab: DictTab }) {
         <table>
           <thead>
             {tab === 'routes' && <tr><th>{t('col.number')}</th><th>{t('col.name')}</th><th>{t('f.vehtype')}</th><th>{t('col.region')}</th><th>{t('col.routetype')}</th></tr>}
-            {tab === 'clients' && <tr><th>{t('col.number')}</th><th>{t('col.name')}</th><th>{t('col.address')}</th><th>{t('col.phone')}</th></tr>}
+            {tab === 'clients' && <tr><th>{t('col.number')}</th><th>{t('col.clienttype')}</th><th>{t('col.name')}</th><th>{t('col.address')}</th><th>{t('col.phone')}</th><th>{t('dict.f.rma')}</th><th>{t('dict.f.bank')}</th></tr>}
             {tab === 'fuel-norms' && <tr><th>{t('f.vehtype')}</th><th>{t('col.brand')}</th><th>{t('dict.col.norm')}</th></tr>}
             {tab === 'coefficients' && <tr><th>{t('dict.f.kind')}</th><th>{t('col.name')}</th><th>{t('dict.f.multiplier').replace(/\s*\(.*\)/, '')}</th><th>{t('col.region')}</th><th>{t('dict.col.months')}</th></tr>}
             {tab === 'tariffs' && <tr><th>{t('f.vehtype')}</th><th>{t('col.fuel')}</th><th>{t('dict.col.somonikm')}</th></tr>}
@@ -266,7 +282,7 @@ export default function DictionariesView({ tab }: { tab: DictTab }) {
             {rows.map((r, i) => (
               <tr key={String(r.id ?? i)}>
                 {tab === 'routes' && <><td><span className="number">{String(r.number)}</span></td><td style={{ fontWeight: 600, color: 'var(--ink)' }}>{String(r.name)}</td><td>{TT[Number(r.transportType)] ?? '—'}</td><td>{String(r.regionId ?? '—')}</td><td>{r.routeTypeCode != null ? (rtByCode(r.routeTypeCode) ? rtName(rtByCode(r.routeTypeCode)!) : String(r.routeTypeCode)) : '—'}</td></>}
-                {tab === 'clients' && <><td><span className="number">{String(r.number ?? '—')}</span></td><td style={{ fontWeight: 600, color: 'var(--ink)' }}>{String(r.name)}</td><td>{String(r.address ?? '—')}</td><td>{String(r.phone ?? '—')}</td></>}
+                {tab === 'clients' && <><td><span className="number">{String(r.number ?? '—')}</span></td><td>{r.type != null && [1, 2, 3, 4].includes(Number(r.type)) ? t('client.type.' + Number(r.type)) : '—'}</td><td style={{ fontWeight: 600, color: 'var(--ink)' }}>{String(r.name)}</td><td>{String(r.address ?? '—')}</td><td>{String(r.phone ?? '—')}</td><td>{String(r.rma ?? '—')}</td><td>{r.bankName ? `${String(r.bankName)}${r.mfo ? ` (${t('dict.f.mfo')} ${String(r.mfo)})` : ''}` : '—'}</td></>}
                 {tab === 'fuel-norms' && <><td>{TT[Number(r.transportType)] ?? r.transportType}</td><td>{r.brand ? String(r.brand) : t('dict.all')}</td><td><b>{String(r.baseNorm)}</b></td></>}
                 {tab === 'coefficients' && <><td>{KIND[String(r.kind)] ?? String(r.kind)}</td><td style={{ fontWeight: 600, color: 'var(--ink)' }}>{String(r.name)}</td><td><b>{String(r.value)}</b></td><td>{String(r.regionId ?? '—')}</td><td>{r.monthFrom ? `${r.monthFrom}–${r.monthTo}` : '—'}</td></>}
                 {tab === 'tariffs' && <><td>{TT[Number(r.transportType)] ?? r.transportType}</td><td>{r.fuelType != null ? String(r.fuelType) : t('dict.any')}</td><td><b>{String(r.pricePerKm)}</b></td></>}
