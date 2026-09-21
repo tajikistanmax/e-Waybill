@@ -1,7 +1,7 @@
 'use client';
 
 import { use, useEffect, useState } from 'react';
-import { wb, md, Waybill, Title, type FieldDefinition } from '@/lib/api';
+import { wb, md, Waybill, Title, type FieldDefinition, type RouteType } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 import { verifyLink } from '@/lib/verify';
 import QRCode from 'qrcode';
@@ -31,7 +31,7 @@ export default function PrintWaybill({ params }: { params: Promise<{ id: string 
   const [qrUrl, setQrUrl] = useState('');
   const [routeTypes, setRouteTypes] = useState<RouteType[]>([]);
   const [error, setError] = useState('');
-  const [opt, setOpt] = useState({ showQr: true, showStamp: true, paperSize: 'A4' });
+  const [opt, setOpt] = useState({ showQr: true, showStamp: true, paperSize: 'A4', showWatermark: false, watermarkText: '' });
   const [landscape, setLandscape] = useState(false);
   const [copy, setCopy] = useState(false);
   // Определения доп.полей (конструктор) — подписи значений typeData.custom на бланке.

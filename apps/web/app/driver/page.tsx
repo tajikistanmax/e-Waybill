@@ -68,6 +68,15 @@ export default function DriverCabinet() {
   const pickedRef = useRef(false); // подавляет повторное открытие списка сразу после выбора
   // Типы ПЛ, отключённые администратором — не показываются в форме заявки.
   const [offTypes, setOffTypes] = useState<Set<string>>(new Set());
+  // GPS-метка текущего рейса и реквизиты его ТС — для карты рейса и карточки «мой транспорт».
+  const [pos, setPos] = useState<GpsPing | null>(null);
+  const [vehInfo, setVehInfo] = useState<Record<string, unknown> | null>(null);
+  // Модалка «Сообщить о неисправности» диспетчеру/механику (тот же механизм, что в кабинете механика).
+  const [reportOpen, setReportOpen] = useState(false);
+  const [reportForm, setReportForm] = useState({ issueType: '', message: '' });
+  const [reportBusy, setReportBusy] = useState(false);
+  const [reportErr, setReportErr] = useState('');
+  const [reportMsg, setReportMsg] = useState('');
 
   useEffect(() => {
     md.waybillTypes()
@@ -127,6 +136,26 @@ export default function DriverCabinet() {
         /* QR доступен только с готового путевого листа */
       }
     })();
+    return () => { cancelled = true; };
+  }, [current]);
+
+  // GPS-метка текущего рейса + реквизиты его ТС (техосмотр/страховка) для карты и статуса документов.
+  useEffect(() => {
+    setPos(null); setVehInfo(null);
+    if (!current) return;
+    let cancelled = false;
+    // Последняя GPS-точка ТС (если сервис отдаёт) — не критично: при ошибке карта просто без метки.
+    fetch(`/wb-api/api/v1/gps/last?vehicleRegNumber=${encodeURIComponent(current.vehicleRegNumber)}`, { headers: authHeaders() })
+      .then(r => (r.ok ? r.json() : null))
+      .then(d => { if (!cancelled && d && d.lat != null) setPos(d as GpsPing); })
+      .catch(() => { /* GPS может быть недоступен — не блокирует кабинет */ });
+    md.searchVehicles(current.organizationRma, current.vehicleRegNumber, 3)
+      .then(list => {
+        if (cancelled) return;
+        const reg = current.vehicleRegNumber.trim().toUpperCase();
+        setVehInfo(list.find(v => String(v.registrationNumber ?? '').toUpperCase() === reg) ?? list[0] ?? null);
+      })
+      .catch(() => { /* реквизиты ТС недоступны — карточка покажет прочерки */ });
     return () => { cancelled = true; };
   }, [current]);
 
@@ -195,6 +224,23 @@ export default function DriverCabinet() {
   async function cancelReq(id: string) {
     setReqErr('');
     try { await wb.requests.cancel(id); loadReqs(); } catch (err) { setReqErr((err as Error).message); }
+  }
+
+  // Отправка «Сообщить о неисправности» — уведомление диспетчеру/механику (как в кабинете механика).
+  async function submitReport() {
+    if (!reportForm.message.trim()) return;
+    setReportBusy(true); setReportErr('');
+    try {
+      const veh = current?.vehicleRegNumber ?? '';
+      await wb.reportIssue({
+        issueType: reportForm.issueType || t('drv.report.t.other'),
+        message: (veh ? `[${veh}] ` : '') + reportForm.message.trim(),
+      });
+      setReportMsg(t('drv.report.sent'));
+      setReportOpen(false);
+      setReportForm({ issueType: '', message: '' });
+    } catch (e) { setReportErr((e as Error).message); }
+    finally { setReportBusy(false); }
   }
 
   const kpis = [

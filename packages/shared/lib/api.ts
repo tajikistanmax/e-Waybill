@@ -224,6 +224,23 @@ export type RouteType = {
   updatedAt?: string;
 };
 
+// Эксплуатационная сводка сервисов (Настройки → Производительность/Интеграции/Резервные копии).
+export type OpsRuntime = { uptimeMs: number; heapUsedBytes: number; heapMaxBytes: number; processors: number };
+export type MdOps = {
+  unifiedPlatformMode: string;
+  databases: { name: string; size_bytes: number }[];
+  runtime: OpsRuntime;
+};
+export type WbOps = {
+  paymentEnabled: boolean;
+  aggregatorOpen: boolean;
+  signingMode: string;
+  kafkaBootstrap: string;
+  eventsTopic: string;
+  numbering: { type: string; total: number; numbered: number; last_number: string | null }[];
+  runtime: OpsRuntime;
+};
+
 // Справочник контрагентов (заказчиков) — /api/v1/dictionaries/clients (master-data-service).
 export type Client = {
   id: string;
@@ -365,6 +382,11 @@ export const md = {
   saveClassifier: (body: Record<string, unknown>) => mdPost('classifiers', body) as Promise<ClassifierItem>,
   deleteClassifier: (id: string) => fetch(`/md-api/api/v1/classifiers/${id}`, { method: 'DELETE', headers: authHeaders() })
     .then(r => { if (!r.ok && r.status !== 204) throw new Error(`Ошибка ${r.status}`); }),
+  // Виды/статусы ПЛ как классификаторы (для форм заявки и настроек) — обёртки над classifiers.
+  waybillTypes: () => fetch(`/md-api/api/v1/classifiers?category=WAYBILL_TYPE&all=true`, { headers: authHeaders() }).then(r => handle<ClassifierItem[]>(r)),
+  waybillStatuses: () => fetch(`/md-api/api/v1/classifiers?category=WAYBILL_STATUS&all=true`, { headers: authHeaders() }).then(r => handle<ClassifierItem[]>(r)),
+  // Эксплуатационная сводка master-data (Настройки → Производительность/Резервные копии).
+  ops: () => fetch('/md-api/api/v1/ops/overview', { headers: authHeaders() }).then(r => handle<MdOps>(r)),
   // Заказчики (контрагенты) — для «Заказчик» бланка 2-Б и накладной (стороны/груз).
   clients: () => fetch('/md-api/api/v1/dictionaries/clients', { headers: authHeaders() }).then(r => handle<Client[]>(r)),
   saveClient: (body: Record<string, unknown>) => mdPost('dictionaries/clients', body) as Promise<Client>,
@@ -568,6 +590,8 @@ export type WaybillRequest = {
 
 export const wb = {
   list: () => fetch('/wb-api/api/v1/waybills', { headers: authHeaders() }).then(r => handle<Waybill[]>(r)),
+  // Эксплуатационная сводка waybill-service (Настройки → Производительность/Интеграции/Нумерация).
+  ops: () => fetch('/wb-api/api/v1/ops/overview', { headers: authHeaders() }).then(r => handle<WbOps>(r)),
   // Доступные типы ПЛ для организации (по лицензии/виду субъекта) — для шага выбора типа.
   availableTypes: (orgRma: string) => fetch(
     `/wb-api/api/v1/waybills/available-types?organizationRma=${encodeURIComponent(orgRma)}`,
