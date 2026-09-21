@@ -14,6 +14,10 @@ public interface SubjectDocumentRepository extends JpaRepository<SubjectDocument
 
     long countBySubjectTypeAndSubjectKey(String subjectType, String subjectKey);
 
+    /** Последний документ вида/статуса (фото/подпись водителя на бланк — только APPROVED). */
+    java.util.Optional<SubjectDocument> findFirstBySubjectTypeAndSubjectKeyAndDocTypeAndStatusOrderByUploadedAtDesc(
+            String subjectType, String subjectKey, String docType, String status);
+
     /** Проекция без BLOB — список карточек без содержимого файлов. */
     interface Meta {
         UUID getId();

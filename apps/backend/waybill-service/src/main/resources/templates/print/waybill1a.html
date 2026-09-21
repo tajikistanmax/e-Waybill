@@ -150,9 +150,10 @@
 <div class="section">
     <table>
         <tr>
-            <td style="width: 33%"><div class="line" th:text="${mechanicName}"></div><div class="caption">Механик (имзо)</div></td>
-            <td style="width: 33%"><div class="line" th:text="${doctorName}"></div><div class="caption">Духтур (имзо, сикка)</div></td>
-            <td style="width: 34%"><div class="line" th:text="${dispatcherName}"></div><div class="caption">Танзимгар (имзо)</div></td>
+            <td style="width: 25%"><div class="line" th:text="${mechanicName}"></div><div class="caption">Механик (имзо)</div></td>
+            <td style="width: 25%"><div class="line" th:text="${doctorName}"></div><div class="caption">Духтур (имзо, сикка)</div></td>
+            <td style="width: 25%"><div class="line" th:text="${dispatcherName}"></div><div class="caption">Танзимгар (имзо)</div></td>
+            <td style="width: 25%"><div class="line"><span th:text="${driverName}"></span> <img th:if="${driverSignature != null}" th:src="${driverSignature}" alt="" style="height: 22px"/></div><div class="caption">Ронанда (имзо)</div></td>
         </tr>
     </table>
 </div>

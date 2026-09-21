@@ -55,8 +55,13 @@ public class SubjectDocumentController {
             "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
     private static final Set<String> VEHICLE_DOC_TYPES = Set.of(
             "TECH_PASSPORT", "INSURANCE", "TECH_INSPECTION", "LEASE_CONTRACT", "ADR_CERT", "OTHER");
+    /**
+     * PHOTO / SIGNATURE — фото и подпись водителя (legacy drivers.photo / signature_attach, MIGRATION.md 2.6, 12.11):
+     * только изображения; одобренная подпись печатается на бланке ПЛ (waybill-service, «Ронанда (имзо)»).
+     */
     private static final Set<String> DRIVER_DOC_TYPES = Set.of(
-            "DRIVER_LICENSE", "MED_CERT", "SAFETY_COURSE", "ADR_CERT", "PASSPORT", "OTHER");
+            "DRIVER_LICENSE", "MED_CERT", "SAFETY_COURSE", "ADR_CERT", "PASSPORT", "PHOTO", "SIGNATURE", "OTHER");
+    static final Set<String> VISUAL_DOC_TYPES = Set.of("PHOTO", "SIGNATURE");
 
     private final SubjectDocumentRepository documents;
     private final VehicleRepository vehicles;
@@ -105,6 +110,7 @@ public class SubjectDocumentController {
         if (contentType == null || !ALLOWED_TYPES.contains(contentType)) {
             throw unprocessable("Недопустимый тип файла: " + contentType + " (нужен PDF, изображение или Word)");
         }
+        assertVisualTypeIsImage(docType, contentType);
         if (documents.countBySubjectTypeAndSubjectKey(s.type(), s.key()) >= 50) {
             throw unprocessable("Достигнут предел числа документов объекта (50)");
         }
@@ -130,6 +136,23 @@ public class SubjectDocumentController {
         audit.record(AuditService.CREATE, "SUBJECT_DOCUMENT", s.type() + ":" + s.key(), null,
                 "%s · %s · %d байт".formatted(docType, doc.getFileName(), file.getSize()));
         return ResponseEntity.status(HttpStatus.CREATED).body(meta(s, doc.getId()));
+    }
+
+    /**
+     * Последний ОДОБРЕННЫЙ документ вида {@code docType} (файл) — для фото/подписи водителя на бланке ПЛ
+     * и в карточке: печать берёт только одобренную подпись (строже legacy, где файл печатался сразу). 404 — нет.
+     */
+    @GetMapping("/latest")
+    public ResponseEntity<byte[]> latest(@PathVariable String subject, @PathVariable String key,
+                                         @RequestParam("docType") String docType) {
+        Subject s = resolve(subject, key);
+        var doc = documents.findFirstBySubjectTypeAndSubjectKeyAndDocTypeAndStatusOrderByUploadedAtDesc(
+                        s.type(), s.key(), docType, "APPROVED")
+                .orElseThrow(() -> new NotFoundException("Одобренный документ вида " + docType + " не найден"));
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CACHE_CONTROL, "private, max-age=60")
+                .contentType(MediaType.parseMediaType(doc.getContentType()))
+                .body(doc.getData());
     }
 
     @GetMapping("/{docId}")
@@ -232,6 +255,14 @@ public class SubjectDocumentController {
 
     private static ResponseStatusException unprocessable(String message) {
         return new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, message);
+    }
+
+    /** Фото и подпись водителя — только изображения (legacy: image|mimes:jpg,png,jpeg), иначе 422. */
+    static void assertVisualTypeIsImage(String docType, String contentType) {
+        if (VISUAL_DOC_TYPES.contains(docType) && (contentType == null || !contentType.startsWith("image/"))) {
+            throw unprocessable("Для вида «%s» допускается только изображение (JPEG/PNG), получено: %s"
+                    .formatted(docType, contentType));
+        }
     }
 
     private static String safeName(String name) {

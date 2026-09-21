@@ -39,7 +39,9 @@
                     </div>
                 </td>
                 <td>
-                    <div class="line">&#160;</div>
+                    <!-- Подпись водителя: одобренное изображение SIGNATURE из master-data (legacy signature_attach), иначе линия. -->
+                    <div class="line" th:if="${driverSignature != null}"><img th:src="${driverSignature}" alt="" style="height: 26px"/></div>
+                    <div class="line" th:unless="${driverSignature != null}">&#160;</div>
                     <div class="caption" style="text-align:left">Ронанда (имзо)</div>
                 </td>
                 <td>

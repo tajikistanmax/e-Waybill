@@ -6,10 +6,26 @@ import { useAuth } from '@/lib/auth';
 import { useT } from '@/lib/i18n';
 
 const VEHICLE_TYPES = ['TECH_PASSPORT', 'INSURANCE', 'TECH_INSPECTION', 'LEASE_CONTRACT', 'ADR_CERT', 'OTHER'];
-const DRIVER_TYPES = ['DRIVER_LICENSE', 'MED_CERT', 'SAFETY_COURSE', 'ADR_CERT', 'PASSPORT', 'OTHER'];
+// PHOTO / SIGNATURE — фото и подпись водителя (legacy photo / signature_attach, MIGRATION.md 2.6, 12.11):
+// только изображения; одобренная подпись печатается на бланке ПЛ («Ронанда (имзо)»).
+const DRIVER_TYPES = ['DRIVER_LICENSE', 'MED_CERT', 'SAFETY_COURSE', 'ADR_CERT', 'PASSPORT', 'PHOTO', 'SIGNATURE', 'OTHER'];
+const VISUAL_TYPES = ['PHOTO', 'SIGNATURE'];
 const STATUS_COLOR: Record<string, string> = { PENDING: 'amber', APPROVED: 'green', REJECTED: 'red' };
 const STATUS_KEY: Record<string, string> = { PENDING: 'sd.status.PENDING', APPROVED: 'doc.status.APPROVED', REJECTED: 'doc.status.REJECTED' };
 const fmtSize = (b: number) => (b < 1024 ? `${b} Б` : b < 1_048_576 ? `${(b / 1024).toFixed(0)} КБ` : `${(b / 1_048_576).toFixed(1)} МБ`);
+
+/** Миниатюра изображения (фото/подпись водителя): файл отдаётся только с токеном, поэтому через blob URL. */
+function Thumb({ subject, subjectKey, doc }: { subject: 'vehicles' | 'drivers'; subjectKey: string; doc: SubjectDocument }) {
+  const [url, setUrl] = useState('');
+  useEffect(() => {
+    let alive = true; let objectUrl = '';
+    wb.subjectDocuments.download(subject, subjectKey, doc.id)
+      .then(blob => { if (!alive) return; objectUrl = URL.createObjectURL(blob); setUrl(objectUrl); })
+      .catch(() => { /* миниатюра необязательна */ });
+    return () => { alive = false; if (objectUrl) URL.revokeObjectURL(objectUrl); };
+  }, [subject, subjectKey, doc.id]);
+  return url ? <img src={url} alt="" style={{ height: 36, maxWidth: 120, objectFit: 'contain', verticalAlign: 'middle', marginRight: 6, border: '1px solid var(--line-soft)', background: '#fff' }} /> : null;
+}
 
 /** Документы одного ТС или водителя: прикрепление, скачивание, одобрение/отклонение. */
 export default function SubjectDocuments({ subject, subjectKey, title }: {
@@ -80,6 +96,9 @@ export default function SubjectDocuments({ subject, subjectKey, title }: {
         <input ref={fileRef} type="file" accept=".pdf,.jpg,.jpeg,.png,.tif,.tiff,.doc,.docx,application/pdf,image/*" style={{ maxWidth: 220 }} />
         <button className="btn" onClick={upload} disabled={busy}>{busy ? t('doc.btn.uploading') : t('att.btn.upload')}</button>
       </div>
+      {subject === 'drivers' && VISUAL_TYPES.includes(form.docType) && (
+        <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: -4, marginBottom: 10 }}>{t('sd.hint.visual')}</div>
+      )}
 
       <table>
         <thead><tr><th>{t('doc.col.kind')}</th><th>{t('att.col.file')}</th><th>{t('sd.col.to')}</th><th>{t('doc.col.size')}</th><th>{t('col.status')}</th><th></th></tr></thead>
@@ -90,6 +109,7 @@ export default function SubjectDocuments({ subject, subjectKey, title }: {
               <tr key={d.id}>
                 <td>{t('sd.type.' + d.docType)}</td>
                 <td>
+                  {VISUAL_TYPES.includes(d.docType) && d.contentType.startsWith('image/') && <Thumb subject={subject} subjectKey={subjectKey} doc={d} />}
                   <button className="link" style={{ background: 'none', border: 0, color: 'var(--blue-600)', cursor: 'pointer', padding: 0, textAlign: 'left' }} onClick={() => open(d)}>
                     {d.title || d.fileName}
                   </button>

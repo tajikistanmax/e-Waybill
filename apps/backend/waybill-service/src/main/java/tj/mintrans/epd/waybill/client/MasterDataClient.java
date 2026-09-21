@@ -30,6 +30,8 @@ public class MasterDataClient {
     private final TtlCache<List<Map<String, Object>>> routesCache = new TtlCache<>(java.time.Duration.ofSeconds(60));
     private final TtlCache<List<Map<String, Object>>> organizationsCache = new TtlCache<>(java.time.Duration.ofSeconds(60));
     private final TtlCache<Optional<Map<String, Object>>> directionsCache = new TtlCache<>(java.time.Duration.ofSeconds(60));
+    /** Подпись водителя (data URI) для печати бланка — по РМА в контексте вызывающего; TTL 60 с. */
+    private final TtlCache<Optional<String>> driverSignatureCache = new TtlCache<>(java.time.Duration.ofSeconds(60));
 
     public MasterDataClient(@Value("${epd.master-data.base-url}") String baseUrl,
                             ServiceTokenProvider serviceToken) {
@@ -119,6 +121,38 @@ public class MasterDataClient {
         } catch (RuntimeException e) {
             return List.of();
         }
+    }
+
+    /**
+     * Одобренная подпись водителя (документ вида SIGNATURE, master-data) как {@code data:image/...;base64,...}
+     * для графы «Ронанда (имзо)» бланка — перенос legacy {@code drivers.signature_attach} (MIGRATION.md 2.6).
+     * Любая ошибка (нет подписи, 403 тенанта/роли, недоступность) → empty: бланк печатается без изображения.
+     */
+    public Optional<String> findDriverSignatureDataUri(String rma) {
+        if (rma == null || rma.isBlank()) {
+            return Optional.empty();
+        }
+        return driverSignatureCache.get(callerKey() + ":" + rma, () -> {
+            try {
+                var resp = client.get()
+                        .uri("/api/v1/drivers/{rma}/documents/latest?docType=SIGNATURE", rma)
+                        .retrieve()
+                        .toEntity(byte[].class);
+                var ct = resp.getHeaders().getContentType();
+                return Optional.ofNullable(dataUri(ct == null ? null : ct.toString(), resp.getBody()));
+            } catch (RuntimeException e) {
+                return Optional.empty();
+            }
+        });
+    }
+
+    /** {@code data:<image/*>;base64,...} либо null, если это не изображение или тело пустое. */
+    static String dataUri(String contentType, byte[] body) {
+        if (body == null || body.length == 0 || contentType == null || !contentType.startsWith("image/")) {
+            return null;
+        }
+        String ct = contentType.contains(";") ? contentType.substring(0, contentType.indexOf(';')).trim() : contentType.trim();
+        return "data:" + ct + ";base64," + java.util.Base64.getEncoder().encodeToString(body);
     }
 
     /** Онлайн-проверка дозвола E-PERMIT через единую платформу (404 → empty). */

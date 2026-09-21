@@ -548,6 +548,9 @@ public class WaybillPrintService {
             qr = qrImage.dataUri(publicBaseUrl + "/verify/" + qrToken.sign(wb));
         }
         m.put("qr", qr);
+        // Подпись водителя (одобренный документ SIGNATURE в master-data) — графа «Ронанда (имзо)»,
+        // перенос legacy signature_attach (MIGRATION.md 2.6); нет/недоступна → пустая линия для подписи от руки.
+        m.put("driverSignature", masterData.findDriverSignatureDataUri(wb.getDriverRma()).orElse(null));
         m.put("printedAt", DT.format(java.time.LocalDateTime.now()));
         m.put("generatedAt", DT.format(java.time.LocalDateTime.now()));
 
