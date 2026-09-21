@@ -29,6 +29,10 @@ const LABEL_KEY: Record<RegistryKind, string> = {
 
 const s = (v: unknown) => (v == null || v === '' ? '—' : String(v));
 
+// Пагинация: рендерим только текущую страницу. Без неё на боевых данных (89k ТС / 68k
+// водителей) браузер вешался, пытаясь отрисовать десятки тысяч строк разом.
+const PER_PAGE = 20;
+
 /** Модальное окно с полной карточкой записи (только просмотр). */
 function DetailModal({ kind, row, orgName, assignedVeh, onClose, t }: {
   kind: RegistryKind; row: Row; orgName: string; assignedVeh: string; onClose: () => void; t: (k: string) => string;
@@ -102,6 +106,7 @@ export default function RegistryView({ kind }: { kind: RegistryKind }) {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [detail, setDetail] = useState<Row | null>(null);
+  const [page, setPage] = useState(1);
 
   useEffect(() => { md.organizations().then(setOrgs).catch(e => setError(e.message)); }, []);
   // Для реестра водителей — карта ТС (id → госномер) для колонки «Номер транспорта».
@@ -153,6 +158,12 @@ export default function RegistryView({ kind }: { kind: RegistryKind }) {
     });
   }, [rows, q, orgFilter, typeFilter, posFilter, regionFilter, cityFilter, kind, orgById, orgMeta]);
 
+  // Сброс на первую страницу при изменении фильтров/поиска/данных.
+  useEffect(() => { setPage(1); }, [q, orgFilter, typeFilter, posFilter, regionFilter, cityFilter, rows]);
+  const pages = Math.max(1, Math.ceil(filtered.length / PER_PAGE));
+  const safePage = Math.min(page, pages);
+  const view = filtered.slice((safePage - 1) * PER_PAGE, safePage * PER_PAGE);
+
   const emptyText = loading ? t('common.loading') : t('common.norecords');
 
   return (
@@ -199,7 +210,7 @@ export default function RegistryView({ kind }: { kind: RegistryKind }) {
         <table>
           <thead><tr><th>{t('col.regnum')}</th><th>{t('col.type')}</th><th>{t('col.brand')}</th><th>{t('col.org')}</th><th>{t('col.odometer')}</th><th>{t('col.techto')}</th><th>VIN</th><th>{t('col.actions')}</th></tr></thead>
           <tbody>
-            {filtered.map(r => (
+            {view.map(r => (
               <tr key={String(r.id)}>
                 <td><span className="number">{s(r.registrationNumber)}</span></td>
                 <td>{vehType(r.transportType, t)}</td>
@@ -230,7 +241,7 @@ export default function RegistryView({ kind }: { kind: RegistryKind }) {
         <table>
           <thead><tr><th>{t('col.fio')}</th><th>{t('col.innrma')}</th><th>{t('col.org')}</th><th>{t('col.phone')}</th><th>{t('tech.categories')}</th><th>{t('col.licto')}</th><th>{t('col.assignedveh')}</th><th>{t('col.actions')}</th></tr></thead>
           <tbody>
-            {filtered.map(r => (
+            {view.map(r => (
               <tr key={String(r.id)}>
                 <td style={{ fontWeight: 600, color: 'var(--ink)' }}>{s(r.fullName)}</td>
                 <td><span className="number">{s(r.rma)}</span></td>
@@ -261,7 +272,7 @@ export default function RegistryView({ kind }: { kind: RegistryKind }) {
         <table>
           <thead><tr><th>{t('col.fio')}</th><th>{t('col.innrma')}</th><th>{t('col.org')}</th><th>{t('col.position')}</th><th>{t('col.phone')}</th><th>{t('col.address')}</th><th>{t('col.actions')}</th></tr></thead>
           <tbody>
-            {filtered.map(r => (
+            {view.map(r => (
               <tr key={String(r.id)}>
                 <td style={{ fontWeight: 600, color: 'var(--ink)' }}>{s(r.name)}</td>
                 <td><span className="number">{s(r.rma)}</span></td>
@@ -287,8 +298,12 @@ export default function RegistryView({ kind }: { kind: RegistryKind }) {
         </table>
       )}
 
-      <div style={{ marginTop: 12, fontSize: 12.5, color: 'var(--muted)' }}>
-        {t('dash.total')}: {filtered.length}{rows.length !== filtered.length ? ` ${t('paging.of')} ${rows.length}` : ''}
+      <div style={{ display: 'flex', alignItems: 'center', marginTop: 12, fontSize: 12.5, color: 'var(--muted)' }}>
+        <span>{t('dash.total')}: <b style={{ color: 'var(--ink)' }}>{filtered.length}</b>{rows.length !== filtered.length ? ` ${t('paging.of')} ${rows.length}` : ''}</span>
+        <span style={{ flex: 1 }} />
+        <button className="btn secondary" disabled={safePage <= 1} onClick={() => setPage(p => Math.max(1, p - 1))} style={{ padding: '5px 11px' }}>‹</button>
+        <span style={{ margin: '0 12px' }}>{safePage} / {pages}</span>
+        <button className="btn secondary" disabled={safePage >= pages} onClick={() => setPage(p => Math.min(pages, p + 1))} style={{ padding: '5px 11px' }}>›</button>
       </div>
 
       {detail && <DetailModal kind={kind} row={detail} orgName={orgName(detail)} assignedVeh={assignedVehReg(detail)} onClose={() => setDetail(null)} t={t} />}
