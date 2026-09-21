@@ -4,10 +4,13 @@ import { useCallback, useEffect, useState } from 'react';
 import { wb, md, type WaybillPlan } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 
+// Виды плана = legacy config/trans.php bill_type_plan: 1 Мусофирбарӣ, 2 Автомобили сабукрав (такси),
+// 3 Шакли 2Б (грузовые), 4 Шакли 5Б-БМ (грузовые международные) — MIGRATION.md 2.29.
 const KINDS = [
   { v: 'PASSENGER', k: 'rp.kind.passenger' },
   { v: 'CARGO', k: 'rp.kind.cargo' },
   { v: 'TAXI', k: 'rp.kind.taxi' },
+  { v: 'CARGO_INTL', k: 'rp.kind.cargointl' },
 ];
 
 /** Редактор плановых показателей перевозок (для сводного отчёта Минтранса). SYSTEM_ADMIN / MINTRANS_ANALYST. */

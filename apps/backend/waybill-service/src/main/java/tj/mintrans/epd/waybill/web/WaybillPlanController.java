@@ -48,7 +48,10 @@ public class WaybillPlanController {
             // Месяц плана (1–12), опционально: null — план на весь год (как раньше);
             // указан — план на конкретный месяц (легаси Y-m), приоритетный в отчёте за этот месяц.
             @Min(1) @Max(12) Short planMonth,
-            @NotBlank String planKind,
+            // Вид плана = legacy bill_type_plan: PASSENGER (1), TAXI (2), CARGO (3, форма 2-Б),
+            // CARGO_INTL (4, форма 5Б-БМ) — MIGRATION.md 2.29. Иное — 400.
+            @NotBlank @jakarta.validation.constraints.Pattern(regexp = "PASSENGER|TAXI|CARGO|CARGO_INTL",
+                    message = "Вид плана: PASSENGER, TAXI, CARGO или CARGO_INTL") String planKind,
             @NotNull Double volumeThousand,
             @NotNull Double rotationMillion,
             String note) {
