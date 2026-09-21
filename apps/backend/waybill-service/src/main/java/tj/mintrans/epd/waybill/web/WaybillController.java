@@ -6,6 +6,7 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.PositiveOrZero;
 import jakarta.validation.constraints.Size;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -50,6 +51,10 @@ public class WaybillController {
     private final WaybillCalcAssembler waybillCalc;
     private final CurrentUser currentUser;
     private final TenantScope tenantScope;
+
+    /** Защитный лимит листинга реестра (после миграции Ф5 в waybill ~2.3 млн архивных ПЛ). */
+    private static final int LIST_CAP = 1000;
+    private static final String MIGRATED = "MIGRATED";
 
     public WaybillController(WaybillService service, WaybillRepository waybills,
                              WaybillTitleRepository titles, WaybillStatusEventRepository events,
@@ -392,7 +397,13 @@ public class WaybillController {
     @PreAuthorize(READ_ROLES)
     public List<Waybill> list(@RequestParam(required = false) String organizationRma,
                               @RequestParam(required = false) WaybillStatus status,
-                              @RequestParam(required = false) String number) {
+                              @RequestParam(required = false) String number,
+                              @RequestParam(required = false, defaultValue = "false") boolean archived) {
+        // Дефолтный реестр ИСКЛЮЧАЕТ архив (source='MIGRATED', ~2.3 млн историч. ПЛ из
+        // миграции Ф5) и ОГРАНИЧЕН LIST_CAP — иначе findAll вернул бы миллионы строк (OOM).
+        // archived=true — явный доступ к архиву (тоже с лимитом, организационно-ограниченный).
+        // Полноценная серверная пагинация — отдельная задача.
+        var cap = PageRequest.of(0, LIST_CAP);
         // Мультиарендность: тенант видит свою организацию (администратор компании — и все
         // её филиалы); пришедший organizationRma игнорируется, область берётся из токена.
         if (tenantScope.isBounded()) {
@@ -409,13 +420,20 @@ public class WaybillController {
                         .filter(wb -> driverRma == null || driverRma.equals(wb.getDriverRma()) || driverRma.equals(wb.getSecondDriverRma()))
                         .map(List::of).orElseGet(List::of);
             }
-            var result = waybills.findByOrganizationRmaInOrderByCreatedAtDesc(scoped);
+            List<Waybill> result;
+            if (archived) {
+                result = waybills.findByOrganizationRmaInOrderByCreatedAtDesc(scoped, cap);
+            } else if (status != null) {
+                result = waybills.findByOrganizationRmaInAndStatusAndSourceNotOrderByCreatedAtDesc(scoped, status, MIGRATED, cap);
+            } else {
+                result = waybills.findByOrganizationRmaInAndSourceNotOrderByCreatedAtDesc(scoped, MIGRATED, cap);
+            }
             if (driverRma != null) {
                 result = result.stream()
                         .filter(wb -> driverRma.equals(wb.getDriverRma()) || driverRma.equals(wb.getSecondDriverRma()))
                         .toList();
             }
-            if (status != null) {
+            if (archived && status != null) {
                 final WaybillStatus st = status;
                 result = result.stream().filter(wb -> wb.getStatus() == st).toList();
             }
@@ -425,12 +443,18 @@ public class WaybillController {
             return waybills.findByNumber(number).map(List::of).orElseGet(List::of);
         }
         if (organizationRma != null) {
-            return waybills.findByOrganizationRmaOrderByCreatedAtDesc(organizationRma);
+            return archived
+                    ? waybills.findByOrganizationRmaOrderByCreatedAtDesc(organizationRma, cap)
+                    : waybills.findByOrganizationRmaAndSourceNotOrderByCreatedAtDesc(organizationRma, MIGRATED, cap);
         }
         if (status != null) {
-            return waybills.findByStatusOrderByCreatedAtDesc(status);
+            return archived
+                    ? waybills.findByStatusOrderByCreatedAtDesc(status, cap)
+                    : waybills.findByStatusAndSourceNotOrderByCreatedAtDesc(status, MIGRATED, cap);
         }
-        return waybills.findAll();
+        return archived
+                ? waybills.findAll(cap).getContent()
+                : waybills.findBySourceNotOrderByCreatedAtDesc(MIGRATED, cap);
     }
 
     @GetMapping("/{id}/titles")
