@@ -32,6 +32,20 @@ class SubjectDocumentVisualTypesTest {
     void otherTypesUnrestricted() {
         assertThatCode(() -> SubjectDocumentController.assertVisualTypeIsImage("DRIVER_LICENSE", "application/pdf"))
                 .doesNotThrowAnyException();
-        assertThat(SubjectDocumentController.VISUAL_DOC_TYPES).containsExactlyInAnyOrder("PHOTO", "SIGNATURE");
+        // SEAL — печать сотрудника (legacy employees.seal), такое же изображение, как фото и подпись.
+        assertThat(SubjectDocumentController.VISUAL_DOC_TYPES).containsExactlyInAnyOrder("PHOTO", "SIGNATURE", "SEAL");
+    }
+
+    @Test
+    @DisplayName("перечни видов по объекту: ТС, водитель, сотрудник (перенос прикреплений боевых форм)")
+    void allowedTypesBySubject() {
+        assertThat(SubjectDocumentController.allowedTypes("VEHICLE"))
+                .contains("TECH_PASSPORT", "TECH_INSPECTION", "CONTROL_CARD", "INSURANCE");
+        assertThat(SubjectDocumentController.allowedTypes("DRIVER"))
+                .contains("DRIVER_LICENSE", "PASSPORT", "SAFETY_COURSE", "MED_CERT", "TAX_CERT", "POWER_ATTORNEY", "VISA", "PHOTO", "SIGNATURE");
+        assertThat(SubjectDocumentController.allowedTypes("EMPLOYEE"))
+                .containsExactlyInAnyOrder("SIGNATURE", "SEAL", "PASSPORT", "OTHER");
+        // Печать — вложение сотрудника, а не транспорта.
+        assertThat(SubjectDocumentController.allowedTypes("VEHICLE")).doesNotContain("SEAL");
     }
 }

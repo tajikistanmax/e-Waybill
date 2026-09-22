@@ -7,6 +7,7 @@ import { useT, WAYBILL_TYPE_CODES } from '@/lib/i18n';
 import { Icon, P } from '../icons';
 import { ExpiryAlert } from '../ExpiryAlert';
 import OrgDocuments from './OrgDocuments';
+import SubjectDocuments from '../fleet/SubjectDocuments';
 
 type Row = Record<string, unknown>;
 type Tab = 'drivers' | 'vehicles' | 'employees';
@@ -274,6 +275,8 @@ function OrgRegistry() {
   const [attachError, setAttachError] = useState('');
   const [confirmRow, setConfirmRow] = useState<{ row: Row; action: 'detach' | 'delete' } | null>(null);
   const [busy, setBusy] = useState(false);
+  // Ключ редактируемой записи (РМА водителя/сотрудника или госномер ТС) — для панели вложений.
+  const [editingKey, setEditingKey] = useState<string | null>(null);
   const [driverForm, setDriverForm] = useState({ inn: '', tabNumber: '' });
   const [vehicleForm, setVehicleForm] = useState({ registrationNumber: '', parkingNumber: '' });
   const [employeeForm, setEmployeeForm] = useState({ inn: '', type: '1', tabNumber: '' });
@@ -524,6 +527,8 @@ function OrgRegistry() {
     setError(''); setOk('');
     setEntityMode('manual');
     setShowForm(true);
+    // Ключ записи нужен для панели вложений (документы привязаны к РМА / госномеру).
+    setEditingKey(String(tab === 'vehicles' ? row.registrationNumber : row.rma));
     if (tab === 'drivers') setDriverManual(rowToForm(row, DRIVER_KEYS));
     else if (tab === 'vehicles') setVehicleManual(rowToForm(row, VEHICLE_KEYS));
     else setEmployeeManual(rowToForm(row, EMPLOYEE_KEYS));
@@ -718,7 +723,7 @@ function OrgRegistry() {
         <button className="btn secondary" disabled={!orgRma} onClick={() => { setAttachOpen(true); setAttachKey(''); setAttachFound(null); setAttachError(''); }}>
           {t('comp.attach.btn')}
         </button>
-        <button className="btn" disabled={!orgRma} onClick={() => { setShowForm(true); setEntityMode('manual'); }}>{t('btn.add')}</button>
+        <button className="btn" disabled={!orgRma} onClick={() => { setShowForm(true); setEntityMode('manual'); setEditingKey(null); }}>{t('btn.add')}</button>
       </div>
 
       {showForm && (
@@ -827,6 +832,13 @@ function OrgRegistry() {
                     <button className="btn secondary" type="button" onClick={() => setShowForm(false)}>{t('btn.cancel')}</button>
                   </div>
                 </form>
+              )}
+              {/* Вложения карточки (перенос прикреплений боевых форм driver/parking/employee create):
+                  доступны после сохранения записи — документ привязывается к её ключу. */}
+              {editingKey && (
+                <div style={{ marginTop: 18, borderTop: '1px solid var(--line)', paddingTop: 14 }}>
+                  <SubjectDocuments subject={tab} subjectKey={editingKey} title={t('sd.h')} />
+                </div>
               )}
             </>
           )}

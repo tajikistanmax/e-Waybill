@@ -5,17 +5,23 @@ import { wb, type SubjectDocument } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { useT } from '@/lib/i18n';
 
-const VEHICLE_TYPES = ['TECH_PASSPORT', 'INSURANCE', 'TECH_INSPECTION', 'LEASE_CONTRACT', 'ADR_CERT', 'OTHER'];
+// Перечни видов совпадают с DOC_TYPES бэкенда (SubjectDocumentController).
+const VEHICLE_TYPES = ['TECH_PASSPORT', 'INSURANCE', 'TECH_INSPECTION', 'CONTROL_CARD', 'LEASE_CONTRACT', 'ADR_CERT', 'OTHER'];
 // PHOTO / SIGNATURE — фото и подпись водителя (legacy photo / signature_attach, MIGRATION.md 2.6, 12.11):
 // только изображения; одобренная подпись печатается на бланке ПЛ («Ронанда (имзо)»).
-const DRIVER_TYPES = ['DRIVER_LICENSE', 'MED_CERT', 'SAFETY_COURSE', 'ADR_CERT', 'PASSPORT', 'PHOTO', 'SIGNATURE', 'OTHER'];
-const VISUAL_TYPES = ['PHOTO', 'SIGNATURE'];
+const DRIVER_TYPES = ['DRIVER_LICENSE', 'MED_CERT', 'SAFETY_COURSE', 'ADR_CERT', 'PASSPORT',
+  'TAX_CERT', 'POWER_ATTORNEY', 'VISA', 'PHOTO', 'SIGNATURE', 'OTHER'];
+// Сотрудник: подпись и печать карточки employee/create (legacy signature / seal).
+const EMPLOYEE_TYPES = ['SIGNATURE', 'SEAL', 'PASSPORT', 'OTHER'];
+const VISUAL_TYPES = ['PHOTO', 'SIGNATURE', 'SEAL'];
+/** Объект, к которому относятся документы: ТС, водитель или сотрудник. */
+export type SubjectPath = 'vehicles' | 'drivers' | 'employees';
 const STATUS_COLOR: Record<string, string> = { PENDING: 'amber', APPROVED: 'green', REJECTED: 'red' };
 const STATUS_KEY: Record<string, string> = { PENDING: 'sd.status.PENDING', APPROVED: 'doc.status.APPROVED', REJECTED: 'doc.status.REJECTED' };
 const fmtSize = (b: number) => (b < 1024 ? `${b} Б` : b < 1_048_576 ? `${(b / 1024).toFixed(0)} КБ` : `${(b / 1_048_576).toFixed(1)} МБ`);
 
 /** Миниатюра изображения (фото/подпись водителя): файл отдаётся только с токеном, поэтому через blob URL. */
-function Thumb({ subject, subjectKey, doc }: { subject: 'vehicles' | 'drivers'; subjectKey: string; doc: SubjectDocument }) {
+function Thumb({ subject, subjectKey, doc }: { subject: SubjectPath; subjectKey: string; doc: SubjectDocument }) {
   const [url, setUrl] = useState('');
   useEffect(() => {
     let alive = true; let objectUrl = '';
@@ -29,7 +35,7 @@ function Thumb({ subject, subjectKey, doc }: { subject: 'vehicles' | 'drivers'; 
 
 /** Документы одного ТС или водителя: прикрепление, скачивание, одобрение/отклонение. */
 export default function SubjectDocuments({ subject, subjectKey, title }: {
-  subject: 'vehicles' | 'drivers'; subjectKey: string; title: string;
+  subject: SubjectPath; subjectKey: string; title: string;
 }) {
   const { roles } = useAuth();
   const { t } = useT();
@@ -37,9 +43,9 @@ export default function SubjectDocuments({ subject, subjectKey, title }: {
   const [docs, setDocs] = useState<SubjectDocument[]>([]);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
-  const [form, setForm] = useState({ docType: subject === 'vehicles' ? 'TECH_PASSPORT' : 'DRIVER_LICENSE', title: '', validTo: '' });
+  const [form, setForm] = useState({ docType: subject === 'vehicles' ? 'TECH_PASSPORT' : subject === 'employees' ? 'SIGNATURE' : 'DRIVER_LICENSE', title: '', validTo: '' });
   const fileRef = useRef<HTMLInputElement>(null);
-  const TYPES = subject === 'vehicles' ? VEHICLE_TYPES : DRIVER_TYPES;
+  const TYPES = subject === 'vehicles' ? VEHICLE_TYPES : subject === 'employees' ? EMPLOYEE_TYPES : DRIVER_TYPES;
 
   const load = useCallback(() => {
     wb.subjectDocuments.list(subject, subjectKey).then(setDocs).catch(e => setError(e.message));

@@ -44,7 +44,7 @@ import java.util.UUID;
  * одобряет админ компании или сисадмин. Файлы в БД (bytea), как и документы организации.</p>
  */
 @RestController
-@RequestMapping("/api/v1/{subject:vehicles|drivers}/{key}/documents")
+@RequestMapping("/api/v1/{subject:vehicles|drivers|employees}/{key}/documents")
 @PreAuthorize("hasAnyRole('SYSTEM_ADMIN','COMPANY_ADMIN','DISPATCHER','API_INTEGRATOR')")
 public class SubjectDocumentController {
 
@@ -53,29 +53,43 @@ public class SubjectDocumentController {
             "application/pdf", "image/jpeg", "image/png", "image/tiff", "image/heic",
             "application/msword",
             "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+    // CONTROL_CARD — карта контроля/чек-лист (legacy expire_checklist_date_attach): последнее вложение
+    // карточки ТС боевой формы parking/create, решение владельца 22.09 «перенести все прикрепления».
     private static final Set<String> VEHICLE_DOC_TYPES = Set.of(
-            "TECH_PASSPORT", "INSURANCE", "TECH_INSPECTION", "LEASE_CONTRACT", "ADR_CERT", "OTHER");
+            "TECH_PASSPORT", "INSURANCE", "TECH_INSPECTION", "CONTROL_CARD", "LEASE_CONTRACT", "ADR_CERT", "OTHER");
     /**
      * PHOTO / SIGNATURE — фото и подпись водителя (legacy drivers.photo / signature_attach, MIGRATION.md 2.6, 12.11):
      * только изображения; одобренная подпись печатается на бланке ПЛ (waybill-service, «Ронанда (имзо)»).
      */
+    // TAX_CERT (rma_attach), POWER_ATTORNEY (power_attorney_attach), VISA (visa_valid_attach) —
+    // остальные вложения боевой формы driver/create (решение владельца 22.09).
     private static final Set<String> DRIVER_DOC_TYPES = Set.of(
-            "DRIVER_LICENSE", "MED_CERT", "SAFETY_COURSE", "ADR_CERT", "PASSPORT", "PHOTO", "SIGNATURE", "OTHER");
-    static final Set<String> VISUAL_DOC_TYPES = Set.of("PHOTO", "SIGNATURE");
+            "DRIVER_LICENSE", "MED_CERT", "SAFETY_COURSE", "ADR_CERT", "PASSPORT",
+            "TAX_CERT", "POWER_ATTORNEY", "VISA", "PHOTO", "SIGNATURE", "OTHER");
+    /**
+     * Вложения карточки сотрудника боевой формы {@code employee/create}: подпись и печать
+     * (legacy {@code employees.signature}, {@code employees.seal}) — только изображения.
+     */
+    private static final Set<String> EMPLOYEE_DOC_TYPES = Set.of("SIGNATURE", "SEAL", "PASSPORT", "OTHER");
+    static final Set<String> VISUAL_DOC_TYPES = Set.of("PHOTO", "SIGNATURE", "SEAL");
 
     private final SubjectDocumentRepository documents;
     private final VehicleRepository vehicles;
     private final DriverRepository drivers;
+    private final tj.mintrans.epd.masterdata.repository.EmployeeRepository employees;
     private final OrganizationRepository organizations;
     private final CurrentUser currentUser;
     private final AuditService audit;
 
     public SubjectDocumentController(SubjectDocumentRepository documents, VehicleRepository vehicles,
-                                     DriverRepository drivers, OrganizationRepository organizations,
+                                     DriverRepository drivers,
+                                     tj.mintrans.epd.masterdata.repository.EmployeeRepository employees,
+                                     OrganizationRepository organizations,
                                      CurrentUser currentUser, AuditService audit) {
         this.documents = documents;
         this.vehicles = vehicles;
         this.drivers = drivers;
+        this.employees = employees;
         this.organizations = organizations;
         this.currentUser = currentUser;
         this.audit = audit;
@@ -96,7 +110,7 @@ public class SubjectDocumentController {
             @RequestParam(value = "validTo", required = false)
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate validTo) {
         Subject s = resolve(subject, key);
-        Set<String> allowed = "VEHICLE".equals(s.type()) ? VEHICLE_DOC_TYPES : DRIVER_DOC_TYPES;
+        Set<String> allowed = allowedTypes(s.type());
         if (!allowed.contains(docType)) {
             throw unprocessable("Недопустимый вид документа «%s» (для %s: %s)".formatted(docType, subject, allowed));
         }
@@ -220,13 +234,28 @@ public class SubjectDocumentController {
     private record Subject(String type, String key, String organizationRma) {
     }
 
-    /** Резолвит ТС/водителя, проверяет что объект существует и (для тенанта) свой. */
+    /** Допустимые виды документов по виду объекта. */
+    static Set<String> allowedTypes(String subjectType) {
+        return switch (subjectType) {
+            case "VEHICLE" -> VEHICLE_DOC_TYPES;
+            case "EMPLOYEE" -> EMPLOYEE_DOC_TYPES;
+            default -> DRIVER_DOC_TYPES;
+        };
+    }
+
+    /** Резолвит ТС/водителя/сотрудника, проверяет что объект существует и (для тенанта) свой. */
     private Subject resolve(String subjectPath, String key) {
         if ("vehicles".equals(subjectPath)) {
             Vehicle v = vehicles.findByRegistrationNumber(key.trim().toUpperCase())
                     .orElseThrow(() -> new NotFoundException("Транспорт не найден"));
             requireOwn(v.getOrganizationId());
             return new Subject("VEHICLE", v.getRegistrationNumber(), orgRma(v.getOrganizationId()));
+        }
+        if ("employees".equals(subjectPath)) {
+            var e = employees.findByRma(key.trim())
+                    .orElseThrow(() -> new NotFoundException("Сотрудник не найден"));
+            requireOwn(e.getOrganizationId());
+            return new Subject("EMPLOYEE", e.getRma(), orgRma(e.getOrganizationId()));
         }
         Driver d = drivers.findByRma(key.trim())
                 .orElseThrow(() -> new NotFoundException("Водитель не найден"));

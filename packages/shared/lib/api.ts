@@ -776,11 +776,11 @@ export const wb = {
   deleteExpense: (eid: string) => fetch(`/wb-api/api/v1/expenses/${eid}`, { method: 'DELETE', headers: authHeaders() })
     .then(async r => { if (!r.ok && r.status !== 204) { const p = await r.json().catch(() => null); throw new Error(p?.detail ?? p?.title ?? `Ошибка ${r.status}`); } }),
 
-  // Документы ТС и водителей (прикрепление → одобрение). subject: 'vehicles' | 'drivers'.
+  // Документы ТС и водителей (прикрепление → одобрение). subject: SubjectDocSubject.
   subjectDocuments: {
-    list: (subject: 'vehicles' | 'drivers', key: string) =>
+    list: (subject: SubjectDocSubject, key: string) =>
       fetch(`/md-api/api/v1/${subject}/${encodeURIComponent(key)}/documents`, { headers: authHeaders() }).then(r => handle<SubjectDocument[]>(r)),
-    upload: (subject: 'vehicles' | 'drivers', key: string, file: File, docType: string, title: string, validTo: string) => {
+    upload: (subject: SubjectDocSubject, key: string, file: File, docType: string, title: string, validTo: string) => {
       const form = new FormData();
       form.append('file', file);
       form.append('docType', docType);
@@ -789,15 +789,15 @@ export const wb = {
       return fetch(`/md-api/api/v1/${subject}/${encodeURIComponent(key)}/documents`, { method: 'POST', headers: authHeaders(), body: form })
         .then(async r => { if (!r.ok) { const p = await r.json().catch(() => null); throw new Error(p?.detail ?? p?.message ?? `Ошибка ${r.status}`); } return r.json() as Promise<SubjectDocument>; });
     },
-    download: async (subject: 'vehicles' | 'drivers', key: string, id: string) => {
+    download: async (subject: SubjectDocSubject, key: string, id: string) => {
       const r = await fetch(`/md-api/api/v1/${subject}/${encodeURIComponent(key)}/documents/${id}`, { headers: authHeaders() });
       if (!r.ok) throw new Error(`Ошибка ${r.status}`);
       return r.blob();
     },
-    review: (subject: 'vehicles' | 'drivers', key: string, id: string, action: 'approve' | 'reject', note?: string) =>
+    review: (subject: SubjectDocSubject, key: string, id: string, action: 'approve' | 'reject', note?: string) =>
       fetch(`/md-api/api/v1/${subject}/${encodeURIComponent(key)}/documents/${id}/${action}${note ? `?note=${encodeURIComponent(note)}` : ''}`,
         { method: 'POST', headers: authHeaders() }).then(r => handle<SubjectDocument>(r)),
-    remove: (subject: 'vehicles' | 'drivers', key: string, id: string) =>
+    remove: (subject: SubjectDocSubject, key: string, id: string) =>
       fetch(`/md-api/api/v1/${subject}/${encodeURIComponent(key)}/documents/${id}`, { method: 'DELETE', headers: authHeaders() })
         .then(r => { if (!r.ok && r.status !== 204) throw new Error(`Ошибка ${r.status}`); }),
   },
@@ -1009,6 +1009,9 @@ export type LivePosition = {
   organizationRma: string | null; organizationName: string | null;
   lat: number | null; lon: number | null; speedKmh: number | null; recordedAt: string | null;
 };
+
+/** Объект, к которому относятся документы субъекта: ТС, водитель или сотрудник. */
+export type SubjectDocSubject = 'vehicles' | 'drivers' | 'employees';
 
 /** Субъект парка для перевода между организациями (drivers | vehicles | employees). */
 export type SubjectKind = 'drivers' | 'vehicles' | 'employees';
