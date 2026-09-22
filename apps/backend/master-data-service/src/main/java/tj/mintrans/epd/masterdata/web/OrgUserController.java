@@ -48,12 +48,21 @@ public class OrgUserController {
     private static final String BRANCH_ADMIN = "BRANCH_ADMIN";
     /** COMPANY_ADMIN — только системным администратором (см. normalizeRole). */
     private static final String COMPANY_ADMIN = "COMPANY_ADMIN";
+    /**
+     * Внешние кабинеты накладных (MIGRATION.md 1.1/3.11): логины грузоотправителя и экспедитора
+     * выдаёт перевозчик своим контрагентам (нужен атрибут clientIds), таможенника — только
+     * системный администратор (государственная роль, не относится к конкретному перевозчику).
+     */
+    private static final Set<String> CLIENT_ROLES = Set.of("CLIENT_SENDER", "CLIENT_FORWARDER");
+    private static final String CUSTOMS_OFFICER = "CUSTOMS_OFFICER";
     private static final Set<String> ALL_REVOCABLE;
 
     static {
         var s = new java.util.HashSet<>(GRANTABLE);
         s.add(BRANCH_ADMIN);
         s.add(COMPANY_ADMIN);
+        s.addAll(CLIENT_ROLES);
+        s.add(CUSTOMS_OFFICER);
         ALL_REVOCABLE = Set.copyOf(s);
     }
 
@@ -81,7 +90,10 @@ public class OrgUserController {
             @Pattern(regexp = "\\d{9,10}", message = "РМА сотрудника: 9–10 цифр") String personRma,
             @NotBlank @Pattern(regexp = "\\d{9,10}", message = "РМА организации: 9–10 цифр") String organizationRma,
             @NotBlank String role,
-            String password) {
+            String password,
+            // Контрагенты внешнего пользователя кабинета накладных (идентификаторы Client):
+            // обязателен для CLIENT_SENDER / CLIENT_FORWARDER, игнорируется для остальных ролей.
+            List<String> clientIds) {
     }
 
     public record EnabledRequest(boolean enabled) {
@@ -118,9 +130,10 @@ public class OrgUserController {
         String role = normalizeRole(req.role());
         String password = (req.password() == null || req.password().isBlank())
                 ? randomPassword() : req.password().trim();
+        List<String> clientIds = normalizeClientIds(role, req.clientIds());
         try {
             String id = keycloak.createUser(req.username().trim(), req.firstName(), req.lastName(),
-                    req.email(), blankToNull(req.personRma()), req.organizationRma(), password);
+                    req.email(), blankToNull(req.personRma()), req.organizationRma(), password, clientIds);
             keycloak.setSingleRealmRole(id, role, ALL_REVOCABLE);
             audit.record(AuditService.CREATE, "ORG_USER", req.username().trim(), null,
                     role + " @ " + req.organizationRma());
@@ -193,9 +206,43 @@ public class OrgUserController {
      * разрешаем COMPANY_ADMIN выдавать COMPANY_ADMIN самому себе/другим — самостоятельное
      * размножение администраторов компании не то же самое, что первичное провижининг платформой.
      */
+    /**
+     * Контрагенты внешнего пользователя: для ролей кабинета накладных обязателен хотя бы один
+     * идентификатор клиента (иначе кабинет будет пустым), для остальных ролей список игнорируется.
+     */
+    private static List<String> normalizeClientIds(String role, List<String> raw) {
+        if (!CLIENT_ROLES.contains(role)) {
+            return List.of();
+        }
+        List<String> ids = raw == null ? List.of()
+                : raw.stream().filter(s -> s != null && !s.isBlank()).map(String::trim).distinct().toList();
+        if (ids.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                    "Для роли кабинета накладных укажите хотя бы одного клиента (clientIds)");
+        }
+        for (String id : ids) {
+            try {
+                java.util.UUID.fromString(id);
+            } catch (IllegalArgumentException e) {
+                throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                        "Идентификатор клиента не распознан: " + id);
+            }
+        }
+        return ids;
+    }
+
     private String normalizeRole(String raw) {
         String role = raw == null ? "" : raw.trim().toUpperCase();
         if (GRANTABLE.contains(role)) {
+            return role;
+        }
+        // Логины контрагентам выдаёт перевозчик (у них скоуп по клиентам, а не по организации).
+        if (CLIENT_ROLES.contains(role)
+                && (currentUser.hasRole("SYSTEM_ADMIN") || currentUser.hasRole("COMPANY_ADMIN"))) {
+            return role;
+        }
+        // Таможенник — государственная роль, выдаёт только системный администратор.
+        if (CUSTOMS_OFFICER.equals(role) && currentUser.hasRole("SYSTEM_ADMIN")) {
             return role;
         }
         if (BRANCH_ADMIN.equals(role)

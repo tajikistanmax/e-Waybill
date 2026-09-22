@@ -475,6 +475,8 @@ export const md = {
     create: (body: {
       username: string; firstName?: string; lastName?: string; email?: string;
       personRma?: string; organizationRma: string; role: string; password?: string;
+      // Контрагенты внешнего пользователя кабинета накладных (CLIENT_SENDER / CLIENT_FORWARDER).
+      clientIds?: string[];
     }) => mdPost('org-users', body) as Promise<OrgUser>,
     setEnabled: (id: string, enabled: boolean) => fetch(`/md-api/api/v1/org-users/${id}/enabled`, {
       method: 'PATCH', headers: authHeaders({ 'Content-Type': 'application/json' }),

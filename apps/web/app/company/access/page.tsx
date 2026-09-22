@@ -9,6 +9,8 @@ import { useT } from '@/lib/i18n';
 type Row = Record<string, unknown>;
 
 const BASE_ROLES = ['DISPATCHER', 'DOCTOR', 'MECHANIC', 'DRIVER', 'ACCOUNTANT', 'FUEL_STATION'];
+// Роли кабинета накладных, которым нужен список контрагентов (claim client_ids).
+const CLIENT_CABINET_ROLES = ['CLIENT_SENDER', 'CLIENT_FORWARDER'];
 const dim = { color: 'var(--muted)' } as const;
 const smallBtn = { padding: '5px 10px', fontSize: 12 } as const;
 
@@ -22,6 +24,10 @@ export default function AccessPage() {
   const canGrantCompanyAdmin = roles.includes('SYSTEM_ADMIN');
   const grantableRoles = [
     ...BASE_ROLES,
+    // Кабинет накладных: логины контрагентам выдаёт перевозчик, таможеннику — только Минтранс
+    // (MIGRATION.md 1.1/3.11; те же правила в normalizeRole на бэкенде).
+    ...(canGrantBranchAdmin ? ['CLIENT_SENDER', 'CLIENT_FORWARDER'] : []),
+    ...(canGrantCompanyAdmin ? ['CUSTOMS_OFFICER'] : []),
     ...(canGrantBranchAdmin ? ['BRANCH_ADMIN'] : []),
     ...(canGrantCompanyAdmin ? ['COMPANY_ADMIN'] : []),
   ];
@@ -39,6 +45,9 @@ export default function AccessPage() {
   const [fName, setFName] = useState('');
   const [fOrg, setFOrg] = useState('');
   const [fRole, setFRole] = useState('DISPATCHER');
+  // Контрагенты для ролей кабинета накладных (claim client_ids).
+  const [clients, setClients] = useState<Row[]>([]);
+  const [fClients, setFClients] = useState<string[]>([]);
 
   const orgName = useCallback((rma: string | null) => {
     if (!rma) return '—';
@@ -61,6 +70,8 @@ export default function AccessPage() {
       emps.forEach(e => list.push({ rma: String(e.rma), name: String(e.name ?? ''), kind: 'EMPLOYEE', phone: String(e.phone ?? '') }));
       drs.forEach(d => list.push({ rma: String(d.rma), name: String(d.fullName ?? ''), kind: 'DRIVER', phone: String(d.phone ?? '') }));
       setPeople(list);
+      // Справочник контрагентов — для выдачи логинов грузоотправителю/экспедитору.
+      md.clients().then(list => setClients(list as unknown as Row[])).catch(() => setClients([]));
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
     }
@@ -89,6 +100,7 @@ export default function AccessPage() {
         personRma: fPerson || undefined,
         organizationRma: fOrg,
         role: fRole,
+        clientIds: CLIENT_CABINET_ROLES.includes(fRole) ? fClients : undefined,
       });
       if (created.temporaryPassword) setFreshPassword({ username: created.username, password: created.temporaryPassword });
       setFPerson(''); setFUsername(''); setFName('');
@@ -192,6 +204,22 @@ export default function AccessPage() {
               {grantableRoles.map(r => <option key={r} value={r}>{t('role.' + r)}</option>)}
             </select>
           </div>
+          {/* Кабинет накладных: логин видит документы только выбранных контрагентов. */}
+          {CLIENT_CABINET_ROLES.includes(fRole) && (
+            <div className="full">
+              <label>{t('access.f.clients')}</label>
+              <select multiple value={fClients} size={Math.min(6, Math.max(3, clients.length))}
+                onChange={e => setFClients(Array.from(e.target.selectedOptions).map(o => o.value))}
+                style={{ width: '100%' }}>
+                {clients.map(c => (
+                  <option key={String(c.id)} value={String(c.id)}>
+                    {String(c.name)}{c.number ? ` · ${String(c.number)}` : ''}
+                  </option>
+                ))}
+              </select>
+              <div className="hint" style={{ marginTop: 4 }}>{t('access.f.clients.hint')}</div>
+            </div>
+          )}
           <div className="full">
             <button className="btn" disabled={busy || !fUsername.trim()}>{busy ? t('access.grant.busy') : t('access.grant.btn')}</button>
           </div>

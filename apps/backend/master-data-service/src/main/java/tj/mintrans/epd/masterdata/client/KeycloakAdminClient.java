@@ -134,6 +134,16 @@ public class KeycloakAdminClient {
      */
     public String createUser(String username, String firstName, String lastName, String email,
                              String rma, String organizationRma, String temporaryPassword) {
+        return createUser(username, firstName, lastName, email, rma, organizationRma, temporaryPassword, null);
+    }
+
+    /**
+     * То же с атрибутом {@code clientIds} — контрагенты внешнего пользователя кабинета накладных
+     * (MIGRATION.md 1.1/3.11: claim {@code client_ids} задаёт, чьи накладные он видит).
+     */
+    public String createUser(String username, String firstName, String lastName, String email,
+                             String rma, String organizationRma, String temporaryPassword,
+                             List<String> clientIds) {
         assertEnabled();
         Map<String, Object> payload = new java.util.HashMap<>();
         payload.put("username", username);
@@ -146,7 +156,8 @@ public class KeycloakAdminClient {
         }
         Map<String, Object> attrs = new java.util.HashMap<>();
         if (rma != null && !rma.isBlank()) attrs.put("rma", List.of(rma));
-        attrs.put("organizationRma", List.of(organizationRma));
+        if (organizationRma != null && !organizationRma.isBlank()) attrs.put("organizationRma", List.of(organizationRma));
+        if (clientIds != null && !clientIds.isEmpty()) attrs.put("clientIds", List.of(String.join(",", clientIds)));
         payload.put("attributes", attrs);
         payload.put("credentials", List.of(Map.of(
                 "type", "password", "value", temporaryPassword, "temporary", true)));
