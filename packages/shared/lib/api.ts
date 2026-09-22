@@ -30,7 +30,29 @@ export type PrintTemplateSummary = { name: string; overridden: boolean; note: st
 export type PrintTemplateContent = PrintTemplateSummary & { content: string; builtIn: string };
 
 /** Страница кабинета накладных (GET /consignments). */
-export type ConsignmentPage = { content: Waybill[]; page: number; size: number; totalElements: number; totalPages: number; scope: string };
+/**
+ * Накладная глазами внешнего кабинета. Снимков организации, ТС и водителя здесь нет:
+ * грузоотправителю, экспедитору и таможне не нужны банковские реквизиты перевозчика и
+ * личные данные водителя (паспорт, права, срок медсправки). Остаются только название
+ * предприятия и Ф.И.О. водителя — они печатаются в самой накладной.
+ */
+export type ConsignmentView = {
+  id: string;
+  number: string | null;
+  waybillType: string;
+  status: string;
+  validFrom: string | null;
+  validTo: string | null;
+  organizationRma: string;
+  organizationName: string | null;
+  vehicleRegNumber: string;
+  driverName: string | null;
+  typeData?: Record<string, unknown> | null;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
+export type ConsignmentPage = { content: ConsignmentView[]; page: number; size: number; totalElements: number; totalPages: number; scope: string };
 
 /** Страница реестра ПЛ (GET /waybills/page). */
 export type PagedWaybills = { content: Waybill[]; page: number; size: number; totalElements: number; totalPages: number };
@@ -673,11 +695,11 @@ export const wb = {
         .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(String(v))}`).join('&');
       return fetch(`/wb-api/api/v1/consignments${qs ? '?' + qs : ''}`, { headers: authHeaders() }).then(r => handle<ConsignmentPage>(r));
     },
-    get: (id: string) => fetch(`/wb-api/api/v1/consignments/${id}`, { headers: authHeaders() }).then(r => handle<Waybill>(r)),
+    get: (id: string) => fetch(`/wb-api/api/v1/consignments/${id}`, { headers: authHeaders() }).then(r => handle<ConsignmentView>(r)),
     update: (id: string, body: Record<string, unknown>) => fetch(`/wb-api/api/v1/consignments/${id}`, {
       method: 'PUT', headers: { ...authHeaders(), 'Content-Type': 'application/json' }, body: JSON.stringify(body),
-    }).then(r => handle<Waybill>(r)),
-    customsConfirm: (id: string) => fetch(`/wb-api/api/v1/consignments/${id}/customs-confirm`, { method: 'POST', headers: authHeaders() }).then(r => handle<Waybill>(r)),
+    }).then(r => handle<ConsignmentView>(r)),
+    customsConfirm: (id: string) => fetch(`/wb-api/api/v1/consignments/${id}/customs-confirm`, { method: 'POST', headers: authHeaders() }).then(r => handle<ConsignmentView>(r)),
     printPdf: async (id: string) => {
       const r = await fetch(`/wb-api/api/v1/consignments/${id}/print.pdf`, { headers: authHeaders() });
       if (!r.ok) throw new Error(`Ошибка ${r.status}`);

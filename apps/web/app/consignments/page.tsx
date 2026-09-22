@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { wb, type Waybill, type ConsignmentPage } from '@/lib/api';
+import { wb, type ConsignmentView, type ConsignmentPage } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { useT } from '@/lib/i18n';
 import { Icon, P } from '../icons';
@@ -22,7 +22,7 @@ export default function ConsignmentsPage() {
   const [filters, setFilters] = useState({ from: '', to: '', q: '', unconfirmed: false });
   const [page, setPage] = useState(1);
   const [data, setData] = useState<ConsignmentPage | null>(null);
-  const [current, setCurrent] = useState<Waybill | null>(null);
+  const [current, setCurrent] = useState<ConsignmentView | null>(null);
   const [form, setForm] = useState<Record<string, string>>({});
   const [ops, setOps] = useState<CargoOp[]>([]);
   const [error, setError] = useState('');
@@ -122,7 +122,7 @@ export default function ConsignmentsPage() {
                   <tr key={w.id} style={{ cursor: 'pointer', background: current?.id === w.id ? 'var(--line-soft)' : undefined }} onClick={() => open(w.id)}>
                     <td><span className="number">{w.number ?? '—'}</span></td>
                     <td>{tType(w.waybillType).replace(/\s*\(.*\)/, '')}</td>
-                    <td>{str(w.organizationSnapshot?.name ?? w.organizationRma)}</td>
+                    <td>{str(w.organizationName ?? w.organizationRma)}</td>
                     <td>{w.vehicleRegNumber}</td>
                     <td>{str(x.senderName) || '—'}</td><td>{str(x.receiverName) || '—'}</td><td>{str(x.cargoName) || '—'}</td>
                     {isCustoms && <td>{str(x.customsConfirmedAt) ? <span className="badge green">{t('cs.status.confirmed')}</span> : <span className="badge amber">{t('cs.status.pending')}</span>}</td>}
@@ -150,9 +150,9 @@ export default function ConsignmentsPage() {
               <button className="btn secondary" onClick={() => setCurrent(null)}>×</button>
             </div>
             <dl className="kv">
-              <dt>{t('col.company')}</dt><dd>{str(current.organizationSnapshot?.name ?? current.organizationRma)}</dd>
+              <dt>{t('col.company')}</dt><dd>{str(current.organizationName ?? current.organizationRma)}</dd>
               <dt>{t('col.transport')}</dt><dd>{current.vehicleRegNumber}</dd>
-              <dt>{t('col.driver')}</dt><dd>{str(current.driverSnapshot?.fullName ?? current.driverRma)}</dd>
+              <dt>{t('col.driver')}</dt><dd>{str(current.driverName ?? '—')}</dd>
               <dt>{t('cn.f.sender')}</dt><dd>{str(td.senderName) || '—'}</dd>
               <dt>{t('cn.f.receiver')}</dt><dd>{str(td.receiverName) || '—'}</dd>
               {str(td.forwarderName) && <><dt>{t('cn.f.forwarder')}</dt><dd>{str(td.forwarderName)}</dd></>}

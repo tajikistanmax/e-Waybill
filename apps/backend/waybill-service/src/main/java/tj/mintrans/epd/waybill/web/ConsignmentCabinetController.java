@@ -50,13 +50,13 @@ public class ConsignmentCabinetController {
     }
 
     @GetMapping("/{id}")
-    public Waybill get(@PathVariable UUID id) {
-        return cabinet.get(id);
+    public ConsignmentCabinetService.ConsignmentView get(@PathVariable UUID id) {
+        return cabinet.view(id);
     }
 
     /** Правка накладной отправителем/экспедитором: груз, объём, статкод, документы, операции, число рейсов. */
     @PutMapping("/{id}")
-    public Waybill update(@PathVariable UUID id, @RequestBody WaybillController.ConsignmentRequest req) {
+    public ConsignmentCabinetService.ConsignmentView update(@PathVariable UUID id, @RequestBody WaybillController.ConsignmentRequest req) {
         return cabinet.update(id, new WaybillService.ConsignmentUpdate(
                 null, req.senderAddress(), null, req.receiverAddress(), null,
                 req.cargoVolume(), req.cargoStatCode(), req.submittedDocuments(), null, null, req.cargoOperations(),
@@ -66,7 +66,7 @@ public class ConsignmentCabinetController {
     /** Таможенник: «Тасдиқ кардан» — подтверждение СМР (повтор идемпотентен). */
     @PostMapping("/{id}/customs-confirm")
     @PreAuthorize("hasRole('CUSTOMS_OFFICER')")
-    public Waybill confirmCustoms(@PathVariable UUID id) {
+    public ConsignmentCabinetService.ConsignmentView confirmCustoms(@PathVariable UUID id) {
         return cabinet.confirmCustoms(id);
     }
 

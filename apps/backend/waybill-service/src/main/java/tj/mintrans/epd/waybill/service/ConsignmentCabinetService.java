@@ -36,7 +36,50 @@ public class ConsignmentCabinetService {
     public record Filter(LocalDate from, LocalDate to, String q, boolean onlyUnconfirmed) {
     }
 
-    public record PageResult(List<Waybill> content, int page, int size, long totalElements, int totalPages, String scope) {
+    /**
+     * Накладная глазами внешнего кабинета — только то, что нужно для работы с самой накладной.
+     *
+     * <p>До 22.09.2026 кабинет отдавал документ целиком, вместе со снимками организации (банк,
+     * лицензия, доля дохода), транспортного средства и водителя (паспорт, номер прав, срок
+     * медицинской справки). Грузоотправитель, экспедитор и таможня — внешние стороны, и личные
+     * данные водителя перевозчика им не нужны (находка сквозной приёмки 22.09.2026, блок A8).
+     * Из снимков остаются только название предприятия и Ф.И.О. водителя: они печатаются в самой
+     * накладной.</p>
+     */
+    public record ConsignmentView(
+            UUID id,
+            String number,
+            String waybillType,
+            String status,
+            java.time.OffsetDateTime validFrom,
+            java.time.OffsetDateTime validTo,
+            String organizationRma,
+            String organizationName,
+            String vehicleRegNumber,
+            String driverName,
+            java.util.Map<String, Object> typeData,
+            java.time.OffsetDateTime createdAt,
+            java.time.OffsetDateTime updatedAt) {
+
+        static ConsignmentView of(Waybill wb) {
+            return new ConsignmentView(
+                    wb.getId(), wb.getNumber(),
+                    wb.getWaybillType() == null ? null : wb.getWaybillType().name(),
+                    wb.getStatus() == null ? null : wb.getStatus().name(),
+                    wb.getValidFrom(), wb.getValidTo(),
+                    wb.getOrganizationRma(), snap(wb.getOrganizationSnapshot(), "name"),
+                    wb.getVehicleRegNumber(), snap(wb.getDriverSnapshot(), "fullName"),
+                    wb.getTypeData(), wb.getCreatedAt(), wb.getUpdatedAt());
+        }
+
+        private static String snap(java.util.Map<String, Object> snapshot, String field) {
+            Object v = snapshot == null ? null : snapshot.get(field);
+            return v == null ? null : v.toString();
+        }
+    }
+
+    public record PageResult(List<ConsignmentView> content, int page, int size, long totalElements,
+                             int totalPages, String scope) {
     }
 
     private final WaybillRepository waybills;
@@ -119,12 +162,20 @@ public class ConsignmentCabinetService {
             return cb.and(ps.toArray(Predicate[]::new));
         };
         Page<Waybill> pg = waybills.findAll(spec, PageRequest.of(p, s, Sort.by(Sort.Direction.DESC, "createdAt")));
-        return new PageResult(pg.getContent(), p, s, pg.getTotalElements(), pg.getTotalPages(),
+        return new PageResult(pg.getContent().stream().map(ConsignmentView::of).toList(),
+                p, s, pg.getTotalElements(), pg.getTotalPages(),
                 customs ? "customs" : sender && forwarder ? "sender+forwarder" : sender ? "sender" : "forwarder");
     }
 
+    /** Карточка накладной для внешнего кабинета (без снимков организации, ТС и водителя). */
     @Transactional(readOnly = true)
-    public Waybill get(UUID id) {
+    public ConsignmentView view(UUID id) {
+        return ConsignmentView.of(entity(id));
+    }
+
+    /** Документ целиком — только для внутренних нужд службы (печать, правка). Наружу не отдаётся. */
+    @Transactional(readOnly = true)
+    public Waybill entity(UUID id) {
         Waybill wb = waybills.findById(id).orElseThrow(() -> new NotFoundException("Накладная не найдена"));
         if (!ConsignmentAccess.canView(roles(), currentUser.clientIds(), wb)) {
             throw new NotFoundException("Накладная не найдена");   // не раскрываем существование чужих ПЛ
@@ -133,26 +184,27 @@ public class ConsignmentCabinetService {
     }
 
     @Transactional
-    public Waybill update(UUID id, WaybillService.ConsignmentUpdate data) {
-        Waybill wb = get(id);
+    public ConsignmentView update(UUID id, WaybillService.ConsignmentUpdate data) {
+        Waybill wb = entity(id);
         if (!ConsignmentAccess.canEdit(roles(), currentUser.clientIds(), wb)) {
             throw new ForbiddenException("Правка накладной доступна только её отправителю/экспедитору");
         }
-        return waybillService.updateConsignmentByClient(wb.getId(), data);
+        return ConsignmentView.of(waybillService.updateConsignmentByClient(wb.getId(), data));
     }
 
     @Transactional
-    public Waybill confirmCustoms(UUID id) {
-        Waybill wb = get(id);
+    public ConsignmentView confirmCustoms(UUID id) {
+        Waybill wb = entity(id);
         if (!ConsignmentAccess.canConfirmCustoms(roles(), wb)) {
             throw new ForbiddenException("Таможенное подтверждение — только таможенник и только СМР");
         }
-        return waybillService.confirmCustoms(wb.getId(), currentUser.fullName().orElse(null), currentUser.username().orElse("customs"));
+        return ConsignmentView.of(waybillService.confirmCustoms(
+                wb.getId(), currentUser.fullName().orElse(null), currentUser.username().orElse("customs")));
     }
 
     @Transactional(readOnly = true)
     public byte[] printPdf(UUID id) {
-        return print.renderConsignmentPdf(get(id));
+        return print.renderConsignmentPdf(entity(id));
     }
 
     private static Expression<String> json(CriteriaBuilder cb, Path<?> column, String key) {
