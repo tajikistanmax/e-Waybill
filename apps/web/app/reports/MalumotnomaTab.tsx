@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { wb, authHeaders, type Malumotnoma, type MalumotnomaRoute, type MalumotnomaReport } from '@/lib/api';
 import { downloadCsv } from '@/lib/csv';
+import { Pager, usePaged } from '../Pager';
 import { useAuth } from '@/lib/auth';
 import { useT } from '@/lib/i18n';
 
@@ -42,6 +43,10 @@ export default function MalumotnomaTab() {
   const [from, setFrom] = useState(today(-30));
   const [to, setTo] = useState(today());
   const [report, setReport] = useState<MalumotnomaReport | null>(null);
+  // Постраничный вывод длинных списков (владелец, 22.09): реестр справок, кассиры, тарифы маршрутов.
+  const listPage = usePaged(list, 20);
+  const groupsPage = usePaged(report?.groups ?? [], 5);
+  const routesPage = usePaged(routes, 20);
 
   const priceOf = useCallback((r: MalumotnomaRoute, t: number) =>
     t === 1 ? r.busPrice : t === 3 ? r.mbusPrice : t === 4 ? r.carPrice : 0, []);
@@ -198,7 +203,7 @@ export default function MalumotnomaTab() {
           <table>
             <thead><tr><th>{t('rj.date')}</th><th>{t('rm.fio')}</th><th>{t('rm.transport')}</th><th>{t('rm.sum')}</th><th></th></tr></thead>
             <tbody>
-              {list.map(m => (
+              {listPage.view.map(m => (
                 <tr key={m.id}>
                   <td>{new Date(m.createdAt).toLocaleString('ru-RU')}</td>
                   <td>{m.fio}{m.age === 1 ? ` (${t('rm.benefit').toLowerCase()})` : ''}</td>
@@ -213,6 +218,7 @@ export default function MalumotnomaTab() {
               {list.length === 0 && <tr><td colSpan={5} style={{ textAlign: 'center', color: 'var(--muted)', padding: 16 }}>{t('rm.empty.issued')}</td></tr>}
             </tbody>
           </table>
+          <Pager {...listPage} />
         </div>
       </div>
 
@@ -230,7 +236,7 @@ export default function MalumotnomaTab() {
         <table>
           <thead><tr><th>{t('rm.cashier')}</th><th>{t('rm.fio')}</th><th>{t('rm.transport')}</th><th>{t('rm.benefit')}</th><th>{t('rj.date')}</th><th>{t('rm.routes')}</th><th>{t('rm.cost')}</th></tr></thead>
           <tbody>
-            {(report?.groups ?? []).flatMap(g => [
+            {groupsPage.view.flatMap(g => [
               <tr key={`g-${g.issuerRma}`} style={{ background: 'var(--amber-050, #fef9e7)', fontWeight: 700 }}>
                 <td>Кассир: {g.issuerName ?? g.issuerRma}</td><td colSpan={5}>справок: {g.count}</td>
                 <td>{g.amount.toLocaleString('ru-RU')}</td>
@@ -253,6 +259,7 @@ export default function MalumotnomaTab() {
             {(!report || report.groups.length === 0) && <tr><td colSpan={7} style={{ textAlign: 'center', color: 'var(--muted)', padding: 16 }}>{t('rj.nodata')}</td></tr>}
           </tbody>
         </table>
+        <Pager {...groupsPage} unitLabel={t('rm.cashier')} />
       </div>
 
       {isAdmin && (
@@ -269,7 +276,7 @@ export default function MalumotnomaTab() {
           <table>
             <thead><tr><th>{t('rm.route')}</th><th>{t('rm.km')}</th><th>{t('rm.bus')}</th><th>{t('rm.minibus')}</th><th>{t('rm.car')}</th><th></th></tr></thead>
             <tbody>
-              {routes.map(r => (
+              {routesPage.view.map(r => (
                 <tr key={r.id}>
                   <td>{r.name}{r.active === false ? ` (${t('rm.inactive')})` : ''}</td>
                   <td>{r.distanceKm}</td>
@@ -282,6 +289,7 @@ export default function MalumotnomaTab() {
               {routes.length === 0 && <tr><td colSpan={6} style={{ textAlign: 'center', color: 'var(--muted)', padding: 14 }}>{t('rm.empty.routes')}</td></tr>}
             </tbody>
           </table>
+          <Pager {...routesPage} />
         </div>
       )}
     </>

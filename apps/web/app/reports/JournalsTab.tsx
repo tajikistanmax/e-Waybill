@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { wb, authHeaders, type MechanicJournal, type DoctorJournal } from '@/lib/api';
 import { downloadCsv } from '@/lib/csv';
 import { useT } from '@/lib/i18n';
+import { Pager, usePaged } from '../Pager';
 
 function today(offset = 0) {
   const d = new Date();
@@ -63,6 +64,10 @@ export default function JournalsTab() {
   }
 
   const rows = kind === 'mechanic' ? mech?.rows ?? [] : doc?.rows ?? [];
+  // Журналы за месяц на боевом объёме — тысячи строк; выводим постранично (владелец, 22.09).
+  // Страницы считаем для каждого журнала отдельно: строки механика и врача — разные наборы полей.
+  const mechPage = usePaged(mech?.rows ?? [], 20);
+  const docPage = usePaged(doc?.rows ?? [], 20);
 
   return (
     <>
@@ -84,7 +89,7 @@ export default function JournalsTab() {
           <table>
             <thead><tr><th>{t('rj.date')}</th><th>{t('rj.wbnum')}</th><th>{t('rj.vehicle')}</th><th>{t('rj.driver')}</th><th>{t('rj.odometer')}</th><th>{t('rj.conclusion')}</th><th>{t('rj.mechanicname')}</th><th>{t('rj.signed')}</th><th>{t('rj.indicators')}</th></tr></thead>
             <tbody>
-              {(mech?.rows ?? []).map((r, i) => (
+              {mechPage.view.map((r, i) => (
                 <tr key={i}>
                   <td>{r.date}</td><td><span className="number">{r.number}</span></td>
                   <td>{r.vehicle}</td><td>{r.driver}</td><td>{r.odometerExit ?? '—'}</td>
@@ -100,7 +105,7 @@ export default function JournalsTab() {
           <table>
             <thead><tr><th>{t('rj.date')}</th><th>{t('rj.wbnum')}</th><th>{t('rj.vehicle')}</th><th>{t('rj.driver')}</th><th>{t('rj.preinspect')}</th><th>{t('rj.postinspect')}</th></tr></thead>
             <tbody>
-              {(doc?.rows ?? []).map((r, i) => (
+              {docPage.view.map((r, i) => (
                 <tr key={i}>
                   <td>{r.date}</td><td><span className="number">{r.number}</span></td>
                   <td>{r.vehicle}</td><td>{r.driver}</td>
@@ -112,6 +117,7 @@ export default function JournalsTab() {
             </tbody>
           </table>
         )}
+        <Pager {...(kind === 'mechanic' ? mechPage : docPage)} />
       </div>
     </>
   );

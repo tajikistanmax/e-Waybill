@@ -7,6 +7,7 @@ import type { RegionalCount, RegionalCounts } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 import { downloadCsv } from '@/lib/csv';
 import { Icon, P } from '../icons';
+import { Pager, usePaged } from '../Pager';
 import MalumotnomaTab from './MalumotnomaTab';
 import JournalsTab from './JournalsTab';
 import PlansEditor from './PlansEditor';
@@ -224,6 +225,17 @@ export default function ReportsView({ tab }: { tab: ReportTab }) {
   }, []);
 
   /** Скачать XLSX по URL (токен в заголовке → fetch + Blob). */
+  // Постраничный вывод длинных таблиц отчётов (замечание владельца 22.09). Итоговые строки
+  // остаются под таблицей: они считаются по всему периоду, а не по видимой странице.
+  // Сводные по регионам листаются по регионам — иерархия «регион → город → предприятие» не рвётся.
+  const journalPage = usePaged(journal, 20);
+  const byUnitPage = usePaged(tab === 'driver' ? byDriver : byVehicle, 20);
+  const typedPage = usePaged(typedReport?.rows ?? [], 20);
+  const normPage = usePaged(norm?.rows ?? [], 20);
+  const fuelPage = usePaged(fuel, 20);
+  const regionalCountPage = usePaged(regionalCount?.regions ?? [], 3);
+  const regionalPage = usePaged(regional?.regions ?? [], 3);
+
   async function downloadXlsx(path: string, name: string) {
     try {
       const r = await fetch(path, { headers: authHeaders() });
@@ -487,7 +499,7 @@ export default function ReportsView({ tab }: { tab: ReportTab }) {
           <table>
             <thead><tr><th>{t('col.number')}</th><th>{t('col.type')}</th><th>{t('col.vehicle')}</th><th>{t('col.driver')}</th><th>{t('col.status')}</th><th>{t('rep.col.odoexit')}</th><th>{t('rep.col.odoentry')}</th></tr></thead>
             <tbody>
-              {journal.map((r, i) => {
+              {journalPage.view.map((r, i) => {
                 const s = STATUS_LABELS[r.status] ?? { label: r.status, color: 'gray' };
                 return (
                   <tr key={i}>
@@ -504,6 +516,7 @@ export default function ReportsView({ tab }: { tab: ReportTab }) {
               {journal.length === 0 && <tr><td colSpan={7} style={{ textAlign: 'center', color: 'var(--muted)', padding: 20 }}>{t('common.norecords')}</td></tr>}
             </tbody>
           </table>
+          <Pager {...journalPage} />
         </div>
       )}
 
@@ -513,7 +526,7 @@ export default function ReportsView({ tab }: { tab: ReportTab }) {
           <table>
             <thead><tr><th>{tab === 'driver' ? t('col.driver') : t('col.vehicle')}</th><th>{t('rep.col.wbtotal')}</th><th>{t('kpi.done')}</th><th>{t('drv.kpi.km')}</th></tr></thead>
             <tbody>
-              {(tab === 'driver' ? byDriver : byVehicle).map((r, i) => (
+              {byUnitPage.view.map((r, i) => (
                 <tr key={i}>
                   <td style={{ fontWeight: 600, color: 'var(--ink)' }}>{tab === 'driver' ? `${r.fullName ?? ''} (${r.driverRma ?? ''})` : r.vehicleRegNumber}</td>
                   <td>{r.waybills}</td><td>{r.completed}</td><td>{r.distanceKm.toLocaleString('ru-RU')}</td>
@@ -522,6 +535,7 @@ export default function ReportsView({ tab }: { tab: ReportTab }) {
               {(tab === 'driver' ? byDriver : byVehicle).length === 0 && <tr><td colSpan={4} style={{ textAlign: 'center', color: 'var(--muted)', padding: 20 }}>{t('common.norecords')}</td></tr>}
             </tbody>
           </table>
+          <Pager {...byUnitPage} />
         </div>
       )}
 
@@ -531,7 +545,7 @@ export default function ReportsView({ tab }: { tab: ReportTab }) {
           <table>
             <thead><tr>{typedCols.map(c => <th key={c.key}>{c.label}</th>)}</tr></thead>
             <tbody>
-              {(typedReport?.rows ?? []).map((r, i) => (
+              {typedPage.view.map((r, i) => (
                 <tr key={i}>
                   {typedCols.map(c => {
                     const v = r[c.key];
@@ -552,6 +566,7 @@ export default function ReportsView({ tab }: { tab: ReportTab }) {
               {(!typedReport || typedReport.rows.length === 0) && <tr><td colSpan={typedCols.length} style={{ textAlign: 'center', color: 'var(--muted)', padding: 20 }}>{t('common.norecords')}</td></tr>}
             </tbody>
           </table>
+          <Pager {...typedPage} />
         </div>
       )}
 
@@ -565,7 +580,7 @@ export default function ReportsView({ tab }: { tab: ReportTab }) {
           <table>
             <thead><tr><th>{t('rep.h.level')}</th><th>{t('rep.h.name')}</th>{rcCols.map(c => <th key={c.key}>{c.label}</th>)}</tr></thead>
             <tbody>
-              {(regionalCount?.regions ?? []).flatMap(reg => [
+              {regionalCountPage.view.flatMap(reg => [
                 <tr key={`rc-${reg.title}`} style={{ background: 'var(--amber-050, #fef9e7)', fontWeight: 700 }}>
                   <td>{t('col.region')}</td><td>{reg.title}</td>
                   {rcCols.map(c => <td key={c.key}>{reg.totals[c.key].toLocaleString('ru-RU')}</td>)}
@@ -592,6 +607,7 @@ export default function ReportsView({ tab }: { tab: ReportTab }) {
               {(!regionalCount || regionalCount.regions.length === 0) && <tr><td colSpan={rcCols.length + 2} style={{ textAlign: 'center', color: 'var(--muted)', padding: 20 }}>{t('common.norecords')}</td></tr>}
             </tbody>
           </table>
+          <Pager {...regionalCountPage} unitLabel={t('rep.regions.total')} />
         </div>
       )}
 
@@ -604,7 +620,7 @@ export default function ReportsView({ tab }: { tab: ReportTab }) {
           <table>
             <thead><tr><th>{t('col.org')}</th><th>{t('col.region')}</th><th>{t('rep.norm.issued')}</th><th>{t('rep.norm.parkings')}</th><th>{t('rep.norm.perparking')}</th><th>{t('rep.norm.norm')}</th><th>{t('rep.norm.deviation')}</th></tr></thead>
             <tbody>
-              {(norm?.rows ?? []).map(r => (
+              {normPage.view.map(r => (
                 <tr key={r.organizationRma}>
                   <td style={{ fontWeight: 600, color: 'var(--ink)' }}>{r.organizationName}</td>
                   <td>{r.regionTitle}</td>
@@ -622,6 +638,7 @@ export default function ReportsView({ tab }: { tab: ReportTab }) {
               {(!norm || norm.rows.length === 0) && <tr><td colSpan={7} style={{ textAlign: 'center', color: 'var(--muted)', padding: 20 }}>{t('common.norecords')}</td></tr>}
             </tbody>
           </table>
+          <Pager {...normPage} />
         </div>
       )}
 
@@ -636,7 +653,7 @@ export default function ReportsView({ tab }: { tab: ReportTab }) {
           <table>
             <thead><tr><th>{t('rep.h.level')}</th><th>{t('rep.h.name')}</th>{regCols.map(c => <th key={c.key}>{c.label}</th>)}</tr></thead>
             <tbody>
-              {(regional?.regions ?? []).flatMap(reg => [
+              {regionalPage.view.flatMap(reg => [
                 <tr key={`r-${reg.title}`} style={{ background: 'var(--amber-050, #fef9e7)', fontWeight: 700 }}>
                   <td>{t('col.region')}</td><td>{reg.title}</td>
                   {regCols.map(c => <td key={c.key}>{(Math.round(reg.totals[c.key] * 100) / 100).toLocaleString('ru-RU')}</td>)}
@@ -663,6 +680,7 @@ export default function ReportsView({ tab }: { tab: ReportTab }) {
               {(!regional || regional.regions.length === 0) && <tr><td colSpan={regCols.length + 2} style={{ textAlign: 'center', color: 'var(--muted)', padding: 20 }}>{t('common.norecords')}</td></tr>}
             </tbody>
           </table>
+          <Pager {...regionalPage} unitLabel={t('rep.regions.total')} />
         </div>
       )}
 
@@ -672,12 +690,13 @@ export default function ReportsView({ tab }: { tab: ReportTab }) {
           <table>
             <thead><tr><th>{t('rep.col.fueltype')}</th><th>{t('rep.col.given')}</th><th>{t('rep.col.remain')}</th></tr></thead>
             <tbody>
-              {fuel.map((r, i) => (
+              {fuelPage.view.map((r, i) => (
                 <tr key={i}><td style={{ fontWeight: 600, color: 'var(--ink)' }}>{r.fuelName ?? t('fuel.type.' + r.fuelType)}</td><td>{r.given.toLocaleString('ru-RU')}</td><td>{r.remainEnd.toLocaleString('ru-RU')}</td></tr>
               ))}
               {fuel.length === 0 && <tr><td colSpan={3} style={{ textAlign: 'center', color: 'var(--muted)', padding: 20 }}>{t('common.norecords')}</td></tr>}
             </tbody>
           </table>
+          <Pager {...fuelPage} />
         </div>
       )}
     </>
