@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useT } from '@/lib/i18n';
+import { useAuth } from '@/lib/auth';
 import { Icon, P } from '../../icons';
 import { SettingsEditor } from '../SettingsEditor';
 
@@ -15,6 +16,8 @@ const FORMS: { key: string; icon: keyof typeof P; ic: string; status: 'on' | 'pl
 
 export default function PrintSettingsPage() {
   const { t } = useT();
+  const { roles } = useAuth();
+  const sysAdmin = roles.includes('SYSTEM_ADMIN');
 
   return (
     <>
@@ -53,7 +56,12 @@ export default function PrintSettingsPage() {
         ))}
       </div>
 
-      <div style={{ marginTop: 18 }}>
+      <div style={{ marginTop: 18, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+        {sysAdmin && (
+          <Link href="/settings/print/templates" className="btn" style={{ textDecoration: 'none' }}>
+            <Icon d={P.book} cls="" style={{ width: 15, height: 15 }} /> {t('setprint.editor')}
+          </Link>
+        )}
         <Link href="/waybills" className="btn secondary" style={{ textDecoration: 'none' }}>
           <Icon d={P.doc} cls="" style={{ width: 15, height: 15 }} /> {t('setprint.open')}
         </Link>

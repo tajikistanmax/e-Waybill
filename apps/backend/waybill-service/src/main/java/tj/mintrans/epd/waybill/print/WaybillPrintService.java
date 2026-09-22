@@ -119,6 +119,18 @@ public class WaybillPrintService {
     }
 
     /**
+     * Рендер БЕЗ регистрации печати (счётчик «Копия» не трогается) — проверка и предпросмотр редактируемых
+     * шаблонов (MIGRATION.md 7.1). {@code template} — имя шаблона ({@code print/…}); null — бланк вида ПЛ.
+     */
+    @Transactional(readOnly = true)
+    public byte[] renderPreview(java.util.UUID id, String template) {
+        Waybill wb = waybills.get(id);
+        Map<String, Object> m = model(wb);
+        m.put("isCopy", false);
+        return pdf.render(template == null ? templateFor(wb.getWaybillType()) : template, m);
+    }
+
+    /**
      * Накладная (приложение к 2-Б, борхат): виды 1 (корбай/сдельно) и 2 (соатбай/повременно)
      * — тот же шаблон, различие полей (экспедитор) задаётся флагом {@code shipmentKind}
      * в модели. Только для WB_TRUCK/WB_DANGEROUS — 2-Б хранит эту форму рейса.

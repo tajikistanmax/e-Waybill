@@ -25,6 +25,10 @@ export function authHeadersFullScope(extra?: Record<string, string>): Record<str
   return { ...(extra ?? {}), ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}) };
 }
 
+/** Печатные шаблоны бланков (GET /print-templates). */
+export type PrintTemplateSummary = { name: string; overridden: boolean; note: string | null; updatedBy: string | null; updatedAt: string | null; previewable: boolean };
+export type PrintTemplateContent = PrintTemplateSummary & { content: string; builtIn: string };
+
 /** Страница реестра ПЛ (GET /waybills/page). */
 export type PagedWaybills = { content: Waybill[]; page: number; size: number; totalElements: number; totalPages: number };
 
@@ -602,6 +606,23 @@ export const wb = {
       .filter(([, v]) => v !== undefined && v !== '' && v !== false)
       .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(String(v))}`).join('&');
     return fetch(`/wb-api/api/v1/waybills/page${qs ? '?' + qs : ''}`, { headers: authHeaders() }).then(r => handle<PagedWaybills>(r));
+  },
+  // Редактируемые печатные шаблоны бланков (MIGRATION.md 7.1): SYSTEM_ADMIN.
+  printTemplates: {
+    list: () => fetch('/wb-api/api/v1/print-templates', { headers: authHeaders() }).then(r => handle<PrintTemplateSummary[]>(r)),
+    get: (name: string) => fetch(`/wb-api/api/v1/print-templates/${encodeURIComponent(name)}`, { headers: authHeaders() }).then(r => handle<PrintTemplateContent>(r)),
+    save: (name: string, content: string, note: string, validateWith?: string) => fetch(`/wb-api/api/v1/print-templates/${encodeURIComponent(name)}`, {
+      method: 'PUT', headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content, note: note || null, validateWith: validateWith || null }),
+    }).then(r => handle<PrintTemplateSummary>(r)),
+    reset: (name: string) => fetch(`/wb-api/api/v1/print-templates/${encodeURIComponent(name)}`, { method: 'DELETE', headers: authHeaders() }).then(r => handle<PrintTemplateSummary>(r)),
+    preview: async (name: string, content: string, waybillId: string) => {
+      const r = await fetch(`/wb-api/api/v1/print-templates/${encodeURIComponent(name)}/preview`, {
+        method: 'POST', headers: { ...authHeaders(), 'Content-Type': 'application/json' }, body: JSON.stringify({ content, waybillId }),
+      });
+      if (!r.ok) { const p = await r.json().catch(() => null); throw new Error(p?.detail ?? p?.message ?? `Ошибка ${r.status}`); }
+      return r.blob();
+    },
   },
   // Счётчики по статусам в области пользователя (без архива) — карточки над реестром.
   statusCounts: (organizationRma?: string) => fetch(

@@ -23,6 +23,12 @@ public interface WaybillRepository extends JpaRepository<Waybill, UUID>,
 
     Optional<Waybill> findByNumber(String number);
 
+    /** Последний не-архивный ПЛ (образец для проверки/предпросмотра печатных шаблонов, 7.1). */
+    Optional<Waybill> findFirstBySourceNotOrderByCreatedAtDesc(String source);
+
+    Optional<Waybill> findFirstByWaybillTypeInAndSourceNotOrderByCreatedAtDesc(
+            Collection<tj.mintrans.epd.waybill.domain.WaybillType> types, String source);
+
     // --- Серверная пагинация реестра (MIGRATION.md 8.4): страницы — через Specification (findAll(spec, pageable)),
     //     карточки-счётчики — агрегат по статусам в БД (без архива source='MIGRATED'). ---
 
