@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import dynamic from 'next/dynamic';
-import { md, wb, TYPE_LABELS, type LivePosition } from '@/lib/api';
+import { md, wb, TYPE_LABELS, GPS_EVENT_STATES, type LivePosition, type GpsEventPage } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 import { Icon, P } from '../icons';
 
@@ -35,7 +35,12 @@ export default function MonitoringPage() {
   const [typeFilter, setTypeFilter] = useState('');
   const [onlineFilter, setOnlineFilter] = useState<'' | 'online' | 'offline'>('');
   const [orgs, setOrgs] = useState<{ rma: string; name: string }[]>([]);
-  const [view, setView] = useState<'list' | 'map'>('map');
+  const [view, setView] = useState<'list' | 'map' | 'events'>('map');
+  // Журнал GPS-событий Smart-city (MIGRATION.md 9.7/8.9 — legacy admin/gpsevent): серверная выборка с фильтрами.
+  const [evFilter, setEvFilter] = useState({ state: '', from: '', to: '', q: '' });
+  const [evPage, setEvPage] = useState(1);
+  const [events, setEvents] = useState<GpsEventPage | null>(null);
+  const [evError, setEvError] = useState('');
 
   // Организации для фильтра — весь справочник (а не только ТС на линии), чтобы можно было выбрать
   // любую фирму и увидеть её ТС на карте, даже если сейчас онлайн их немного. Тенант видит только
@@ -66,6 +71,14 @@ export default function MonitoringPage() {
       .then(list => setOrgs(list.map(o => ({ rma: String(o.rma), name: String(o.name ?? o.rma) }))))
       .catch(() => { /* справочник недоступен — фильтр по компании просто не покажем */ });
   }, []);
+
+  const loadEvents = useCallback(() => {
+    if (view !== 'events') return;
+    wb.gpsEvents({ organizationRma: orgFilter, state: evFilter.state, from: evFilter.from, to: evFilter.to, q: evFilter.q.trim(), page: evPage - 1, size: 50 })
+      .then(p => { setEvents(p); setEvError(''); })
+      .catch(e => setEvError((e as Error).message));
+  }, [view, orgFilter, evFilter, evPage]);
+  useEffect(() => { const h = setTimeout(loadEvents, 250); return () => clearTimeout(h); }, [loadEvents]);
 
   const ago = (sec: number | null) => {
     if (sec == null) return t('mon.nosignal');
@@ -124,30 +137,84 @@ export default function MonitoringPage() {
 
       <div className="card">
         <div className="card-h">
-          <h2>{view === 'map' ? t('mon.map.h') : t('mon.table.h')}</h2>
+          <h2>{view === 'map' ? t('mon.map.h') : view === 'events' ? t('mon.ev.h') : t('mon.table.h')}</h2>
           <div className="seg" style={{ marginLeft: 'auto', display: 'flex', gap: 0 }}>
             <button className={`btn ${view === 'map' ? '' : 'secondary'}`} style={{ borderTopRightRadius: 0, borderBottomRightRadius: 0 }} onClick={() => setView('map')}>{t('mon.view.map')}</button>
-            <button className={`btn ${view === 'list' ? '' : 'secondary'}`} style={{ borderTopLeftRadius: 0, borderBottomLeftRadius: 0 }} onClick={() => setView('list')}>{t('mon.view.list')}</button>
+            <button className={`btn ${view === 'list' ? '' : 'secondary'}`} style={{ borderRadius: 0 }} onClick={() => setView('list')}>{t('mon.view.list')}</button>
+            <button className={`btn ${view === 'events' ? '' : 'secondary'}`} style={{ borderTopLeftRadius: 0, borderBottomLeftRadius: 0 }} onClick={() => setView('events')}>{t('mon.view.events')}</button>
           </div>
           {orgOptions.length > 1 && (
-            <select value={orgFilter} onChange={e => setOrgFilter(e.target.value)} style={{ maxWidth: 220 }}>
+            <select value={orgFilter} onChange={e => { setOrgFilter(e.target.value); setEvPage(1); }} style={{ maxWidth: 220 }}>
               <option value="">{t('reg.allorgs')}</option>
               {orgOptions.map(([rma, name]) => <option key={rma} value={rma}>{name}</option>)}
             </select>
           )}
-          <select value={typeFilter} onChange={e => setTypeFilter(e.target.value)} style={{ maxWidth: 220 }}>
-            <option value="">{t('flt.alltransporttypes')}</option>
-            {typeOptions.map(type => <option key={type} value={type}>{TYPE_LABELS[type] ?? type}</option>)}
-          </select>
-          <select value={onlineFilter} onChange={e => setOnlineFilter(e.target.value as '' | 'online' | 'offline')} style={{ maxWidth: 150 }}>
-            <option value="">{t('flt.allvehstatus')}</option>
-            <option value="online">{t('flt.online')}</option>
-            <option value="offline">{t('flt.offline')}</option>
-          </select>
-          <input value={q} onChange={e => setQ(e.target.value)} placeholder={t('mon.search')} style={{ maxWidth: 240 }} />
+          {view !== 'events' && (
+            <>
+              <select value={typeFilter} onChange={e => setTypeFilter(e.target.value)} style={{ maxWidth: 220 }}>
+                <option value="">{t('flt.alltransporttypes')}</option>
+                {typeOptions.map(type => <option key={type} value={type}>{TYPE_LABELS[type] ?? type}</option>)}
+              </select>
+              <select value={onlineFilter} onChange={e => setOnlineFilter(e.target.value as '' | 'online' | 'offline')} style={{ maxWidth: 150 }}>
+                <option value="">{t('flt.allvehstatus')}</option>
+                <option value="online">{t('flt.online')}</option>
+                <option value="offline">{t('flt.offline')}</option>
+              </select>
+              <input value={q} onChange={e => setQ(e.target.value)} placeholder={t('mon.search')} style={{ maxWidth: 240 }} />
+            </>
+          )}
+          {view === 'events' && (
+            <>
+              <select value={evFilter.state} onChange={e => { setEvFilter(f => ({ ...f, state: e.target.value })); setEvPage(1); }} style={{ maxWidth: 200 }}>
+                <option value="">{t('mon.ev.allstates')}</option>
+                {GPS_EVENT_STATES.map(s => <option key={s} value={s}>{t(`mon.ev.state.${s}`)}</option>)}
+              </select>
+              <input type="date" value={evFilter.from} onChange={e => { setEvFilter(f => ({ ...f, from: e.target.value })); setEvPage(1); }} />
+              <input type="date" value={evFilter.to} onChange={e => { setEvFilter(f => ({ ...f, to: e.target.value })); setEvPage(1); }} />
+              <input value={evFilter.q} onChange={e => { setEvFilter(f => ({ ...f, q: e.target.value })); setEvPage(1); }} placeholder={t('mon.ev.search')} style={{ maxWidth: 260 }} />
+            </>
+          )}
         </div>
 
-        {view === 'map' ? (
+        {view === 'events' ? (
+          <>
+            <div className="page-lead" style={{ marginTop: 0 }}>{t('mon.ev.lead')}</div>
+            {evError && <div className="error">{evError}</div>}
+            <table>
+              <thead>
+                <tr>
+                  <th>{t('col.vehiclenum')}</th><th>{t('col.driver')}</th><th>{t('col.company')}</th><th>{t('col.route')}</th>
+                  <th>{t('mon.ev.col.direction')}</th><th>{t('mon.ev.col.event')}</th><th>{t('mon.ev.col.time')}</th><th>{t('mon.ev.col.distance')}</th><th>{t('mon.ev.col.created')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(events?.content ?? []).map(ev => (
+                  <tr key={ev.id}>
+                    <td><span className="number" style={{ fontFamily: 'var(--mono)', fontWeight: 700 }}>{ev.vehicleRegNumber}</span></td>
+                    <td>{ev.driverName ?? ev.driverRma ?? '—'}</td>
+                    <td>{ev.organizationName ?? ev.organizationRma}</td>
+                    <td>{ev.route ?? '—'}</td>
+                    <td>{ev.direction ?? '—'}</td>
+                    <td><span className={`badge ${ev.state.startsWith('ENTER') ? 'green' : 'amber'}`}>{t(`mon.ev.state.${ev.state}`)}</span></td>
+                    <td>{new Date(ev.eventTime).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</td>
+                    <td>{ev.distanceKm != null ? Number(ev.distanceKm).toFixed(2) : '—'}</td>
+                    <td>{new Date(ev.createdAt).toLocaleString('ru-RU')}</td>
+                  </tr>
+                ))}
+                {events && events.content.length === 0 && (
+                  <tr><td colSpan={9} style={{ color: 'var(--muted)', textAlign: 'center', padding: 26 }}>{t('mon.ev.empty')}</td></tr>
+                )}
+              </tbody>
+            </table>
+            <div style={{ display: 'flex', alignItems: 'center', paddingTop: 12, fontSize: 13, color: 'var(--muted)' }}>
+              <span>{t('dict.totalrecords')}: <b style={{ color: 'var(--ink)' }}>{events?.totalElements ?? 0}</b></span>
+              <span style={{ flex: 1 }} />
+              <button className="btn secondary" disabled={evPage <= 1} onClick={() => setEvPage(p => p - 1)} style={{ padding: '6px 12px' }}>‹</button>
+              <span style={{ margin: '0 12px' }}>{evPage} / {Math.max(1, events?.totalPages ?? 1)}</span>
+              <button className="btn secondary" disabled={evPage >= Math.max(1, events?.totalPages ?? 1)} onClick={() => setEvPage(p => p + 1)} style={{ padding: '6px 12px' }}>›</button>
+            </div>
+          </>
+        ) : view === 'map' ? (
           <>
             <LeafletMap rows={shown} t={t} tStatus={tStatus} />
             <div style={{ display: 'flex', gap: 18, flexWrap: 'wrap', alignItems: 'center', marginTop: 12, fontSize: 12.5, color: 'var(--ink-soft)' }}>

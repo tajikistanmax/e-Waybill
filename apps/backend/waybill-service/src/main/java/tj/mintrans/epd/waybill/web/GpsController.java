@@ -17,11 +17,17 @@ import tj.mintrans.epd.waybill.config.TenantScope;
 import tj.mintrans.epd.waybill.domain.GpsPing;
 import tj.mintrans.epd.waybill.domain.Waybill;
 import tj.mintrans.epd.waybill.domain.WaybillStatus;
+import tj.mintrans.epd.waybill.domain.GpsEventState;
 import tj.mintrans.epd.waybill.repository.GpsPingRepository;
 import tj.mintrans.epd.waybill.repository.WaybillRepository;
+import tj.mintrans.epd.waybill.service.GpsEventService;
 import tj.mintrans.epd.waybill.web.error.ApiErrors.NotFoundException;
+import tj.mintrans.epd.waybill.web.error.ApiErrors.UnprocessableException;
+import com.fasterxml.jackson.annotation.JsonAlias;
+import org.springframework.format.annotation.DateTimeFormat;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.EnumSet;
 import java.util.List;
@@ -43,13 +49,55 @@ public class GpsController {
     private final WaybillRepository waybills;
     private final MasterDataClient masterData;
     private final TenantScope tenantScope;
+    private final GpsEventService gpsEvents;
 
     public GpsController(GpsPingRepository repository, WaybillRepository waybills,
-                         MasterDataClient masterData, TenantScope tenantScope) {
+                         MasterDataClient masterData, TenantScope tenantScope, GpsEventService gpsEvents) {
         this.repository = repository;
         this.waybills = waybills;
         this.masterData = masterData;
         this.tenantScope = tenantScope;
+        this.gpsEvents = gpsEvents;
+    }
+
+    /**
+     * GPS-событие Smart-city (MIGRATION.md 9.7 / 12.12 — legacy {@code POST /api/gps/gps_data}): поля принимаются
+     * и в legacy-именах ({@code registration_number}, {@code distance}), состояние — snake_case или enum.
+     */
+    public record GpsEventRequest(
+            @JsonAlias("registration_number") @NotBlank String vehicleRegNumber,
+            @NotBlank String state,
+            String direction,
+            @JsonAlias("distance") BigDecimal distanceKm,
+            OffsetDateTime eventTime) {
+    }
+
+    /** Регистрация события заезда/выезда (маршрут / предприятие). Только сервисный аккаунт интеграции. */
+    @PostMapping("/events")
+    @PreAuthorize("hasAnyRole('API_INTEGRATOR','SYSTEM_ADMIN')")
+    public ResponseEntity<GpsEventService.Result> registerEvent(@Valid @RequestBody GpsEventRequest req) {
+        GpsEventState state = GpsEventState.parse(req.state());
+        if (state == null) {
+            throw new UnprocessableException("state: допустимые значения enter_into_route, exit_from_route, enter_into_company, exit_from_company");
+        }
+        var result = gpsEvents.register(new GpsEventService.Request(
+                req.vehicleRegNumber(), state, req.direction(), req.distanceKm(), req.eventTime()));
+        return ResponseEntity.status(HttpStatus.CREATED).body(result);
+    }
+
+    /** Журнал GPS-событий (legacy admin/gpsevent, MIGRATION.md 8.9): фильтр по организации/ТС/состоянию/периоду. */
+    @GetMapping("/events")
+    @PreAuthorize("hasAnyRole('DISPATCHER','COMPANY_ADMIN','SYSTEM_ADMIN','INSPECTOR','MINTRANS_ANALYST')")
+    public GpsEventService.PageResult events(@RequestParam(required = false) String organizationRma,
+                                             @RequestParam(required = false) String vehicleRegNumber,
+                                             @RequestParam(required = false) String state,
+                                             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+                                             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
+                                             @RequestParam(required = false) String q,
+                                             @RequestParam(defaultValue = "0") int page,
+                                             @RequestParam(defaultValue = "50") int size) {
+        return gpsEvents.list(new GpsEventService.Filter(organizationRma, vehicleRegNumber, GpsEventState.parse(state), from, to, q),
+                page, size);
     }
 
     public record GpsPingRequest(

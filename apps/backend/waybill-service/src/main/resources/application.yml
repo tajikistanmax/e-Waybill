@@ -102,6 +102,13 @@ epd:
     # выключено; true — проверять рабочий день (одометр въезда − выезда) и возврат однодневного ПЛ.
     # См. MIGRATION.md 12.5 / Вопрос 20.
     daily-km-enabled: ${LIMITS_DAILY_KM_ENABLED:false}
+  gps:
+    # GPS-события Smart-city (MIGRATION.md 9.7 / 12.12 — legacy gps_data): повтор того же состояния (для
+    # маршрутных — того же направления) и выезд с маршрута после въезда — не раньше, чем через N минут (legacy 20).
+    event-cooldown-minutes: ${GPS_EVENT_COOLDOWN_MINUTES:20}
+    # Виды ПЛ, к которым привязывается событие (ПЛ дня по госномеру). Legacy — только Waybill1ad (Т 1-АД);
+    # троллейбус — та же форма. Через запятую, например WB_BUS,WB_TROLLEYBUS,WB_MINIBUS.
+    event-waybill-types: ${GPS_EVENT_WAYBILL_TYPES:WB_BUS,WB_TROLLEYBUS}
   meddata:
     # Ключ шифрования медицинских показателей (AES-256-GCM, ИБ-13.1.3) — 256 бит, Base64.
     # Обязателен всегда (нет dev-заглушки — см. MedicalDataCrypto): отсутствие шифрования

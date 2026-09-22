@@ -10,6 +10,7 @@ import org.springframework.data.jpa.repository.QueryHints;
 import org.springframework.data.repository.query.Param;
 import tj.mintrans.epd.waybill.domain.Waybill;
 import tj.mintrans.epd.waybill.domain.WaybillStatus;
+import tj.mintrans.epd.waybill.domain.WaybillType;
 
 import java.time.OffsetDateTime;
 import java.util.Collection;
@@ -51,6 +52,10 @@ public interface WaybillRepository extends JpaRepository<Waybill, UUID>,
     Optional<Waybill> findByIdForUpdate(UUID id);
 
     List<Waybill> findByVehicleRegNumberAndStatusIn(String vehicleRegNumber, Collection<WaybillStatus> statuses);
+
+    /** ПЛ дня для ТС (GPS-события Smart-city, MIGRATION.md 9.7): последний ПЛ заданных видов, созданный не раньше {@code from}. */
+    Optional<Waybill> findFirstByVehicleRegNumberAndWaybillTypeInAndSourceNotAndCreatedAtGreaterThanEqualOrderByCreatedAtDesc(
+            String vehicleRegNumber, Collection<WaybillType> types, String source, OffsetDateTime from);
 
     List<Waybill> findByDriverRmaAndStatusIn(String driverRma, Collection<WaybillStatus> statuses);
 

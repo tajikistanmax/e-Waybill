@@ -750,6 +750,12 @@ export const wb = {
     .then(async r => r.ok ? (r.json() as Promise<GpsPing>) : null),
   // Живой мониторинг: ТС на линии (выданные/активные ПЛ) с последней GPS-координатой (org-скоуп на бэкенде).
   gpsLive: () => fetch('/wb-api/api/v1/gps/live', { headers: authHeaders() }).then(r => handle<LivePosition[]>(r)),
+  // Журнал GPS-событий Smart-city (MIGRATION.md 9.7/8.9): заезд/выезд на маршрут / в предприятие; org-скоуп на бэкенде.
+  gpsEvents: (params: Record<string, string | number | undefined>) => {
+    const qs = Object.entries(params).filter(([, v]) => v !== undefined && v !== '')
+      .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(String(v))}`).join('&');
+    return fetch(`/wb-api/api/v1/gps/events${qs ? '?' + qs : ''}`, { headers: authHeaders() }).then(r => handle<GpsEventPage>(r));
+  },
   // Расходы рейса (§12): список/добавление/подтверждение бухгалтером/удаление.
   expenses: (id: string) => fetch(`/wb-api/api/v1/waybills/${id}/expenses`, { headers: authHeaders() }).then(r => handle<Expense[]>(r)),
   addExpense: (id: string, body: Record<string, unknown>) => fetch(`/wb-api/api/v1/waybills/${id}/expenses`, {
@@ -992,3 +998,13 @@ export type LivePosition = {
   organizationRma: string | null; organizationName: string | null;
   lat: number | null; lon: number | null; speedKmh: number | null; recordedAt: string | null;
 };
+
+/** GPS-событие Smart-city (legacy gps_data). */
+export type GpsEventState = 'ENTER_INTO_ROUTE' | 'EXIT_FROM_ROUTE' | 'ENTER_INTO_COMPANY' | 'EXIT_FROM_COMPANY';
+export type GpsEvent = {
+  id: string; waybillId: string; organizationRma: string; organizationName: string | null;
+  vehicleRegNumber: string; driverRma: string | null; driverName: string | null; route: string | null;
+  state: GpsEventState; direction: 'A' | 'B' | null; distanceKm: number | null; eventTime: string; createdAt: string;
+};
+export type GpsEventPage = { content: GpsEvent[]; page: number; size: number; totalElements: number; totalPages: number };
+export const GPS_EVENT_STATES: GpsEventState[] = ['ENTER_INTO_ROUTE', 'EXIT_FROM_ROUTE', 'ENTER_INTO_COMPANY', 'EXIT_FROM_COMPANY'];
