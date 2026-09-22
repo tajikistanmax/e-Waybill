@@ -11,7 +11,7 @@ import { Icon, P } from '../icons';
 type Row = Record<string, unknown>;
 export type DictTab = 'routes' | 'clients' | 'fuel-norms' | 'coefficients' | 'tariffs' | 'cargos'
   | 'brands' | 'winter-coefs' | 'mountain-coefs' | 'city-coefs' | 'used-coefs' | 'drive-classes'
-  | 'directions' | 'route-tariffs';
+  | 'directions' | 'route-tariffs' | 'cities';
 
 const LABEL_KEY: Record<DictTab, string> = {
   routes: 'dict.sec.routes', clients: 'dict.sec.clients', 'fuel-norms': 'dict.sec.fuelnorms',
@@ -19,6 +19,7 @@ const LABEL_KEY: Record<DictTab, string> = {
   brands: 'dict.sec.brands', 'winter-coefs': 'dict.sec.wintercoefs', 'mountain-coefs': 'dict.sec.mountaincoefs',
   'city-coefs': 'dict.sec.citycoefs', 'used-coefs': 'dict.sec.usedcoefs', 'drive-classes': 'dict.sec.driveclasses',
   directions: 'dict.sec.directions', 'route-tariffs': 'dict.sec.routetariffs',
+  cities: 'dict.sec.cities',
 };
 
 const TT: Record<number, string> = { 1: 'Автобус', 2: 'Троллейбус', 3: 'Микроавтобус', 4: 'Легковой', 5: 'Грузовой', 6: 'Грузовой международный' };
@@ -36,11 +37,19 @@ const ORG_TABS: DictTab[] = ['routes', 'clients'];
 const PER_PAGE = 20;
 
 function apiBase(tab: DictTab): string {
+  // Города живут своим контроллером (/api/v1/cities), остальные — под dictionaries/legacy-ref.
+  if (tab === 'cities') return '';
   return LEGACY_REF_TABS.includes(tab) ? 'legacy-ref' : 'dictionaries';
 }
 
+/** Путь справочника: у городов — без промежуточного сегмента. */
+function apiPath(tab: DictTab): string {
+  const base = apiBase(tab);
+  return base ? `${base}/${tab}` : tab;
+}
+
 async function api<T>(tab: DictTab, body?: unknown): Promise<T> {
-  const r = await fetch(`/md-api/api/v1/${apiBase(tab)}/${tab}`, body ? {
+  const r = await fetch(`/md-api/api/v1/${apiPath(tab)}`, body ? {
     method: 'POST',
     headers: authHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify(body),
@@ -54,7 +63,7 @@ async function api<T>(tab: DictTab, body?: unknown): Promise<T> {
 
 /** Удаление записи справочника (DELETE /{base}/{tab}/{id}). */
 async function apiDelete(tab: DictTab, id: string): Promise<void> {
-  const r = await fetch(`/md-api/api/v1/${apiBase(tab)}/${tab}/${encodeURIComponent(id)}`, {
+  const r = await fetch(`/md-api/api/v1/${apiPath(tab)}/${encodeURIComponent(id)}`, {
     method: 'DELETE', headers: authHeaders(),
   });
   if (!r.ok && r.status !== 204) {
@@ -64,7 +73,7 @@ async function apiDelete(tab: DictTab, id: string): Promise<void> {
 }
 
 /** Нац. справочники (правит только SYSTEM_ADMIN): нормы/коэфф./тарифы + весь расчётный блок. */
-const NATIONAL_TABS: DictTab[] = ['fuel-norms', 'coefficients', 'tariffs', ...LEGACY_REF_TABS];
+const NATIONAL_TABS: DictTab[] = ['fuel-norms', 'coefficients', 'tariffs', 'cities', ...LEGACY_REF_TABS];
 
 const s = (v: unknown) => (v == null || v === '' ? '—' : String(v));
 
@@ -161,6 +170,8 @@ export default function DictionariesView({ tab }: { tab: DictTab }) {
     try {
       const body: Record<string, unknown> = { ...form };
       for (const k of ['transportType', 'regionId', 'routeTypeCode', 'fuelType', 'monthFrom', 'monthTo',
+          // города: регион — число; остальные ключи общие
+
           'typeId', 'capacity', 'carrying', 'costServices', 'fuelInteriorHeating', 'tariffRate',
           'price', 'cargoClass', 'winterCoefId', 'mountainCoefId', 'inCityCoefId', 'fuelId',
           'distanceA', 'distanceB', 'beginPathA', 'beginPathB', 'plannedLap', 'coeUseCapacity', 'averageLengthPassSeat',
@@ -302,6 +313,10 @@ export default function DictionariesView({ tab }: { tab: DictTab }) {
           <datalist id="route-cities">{cities.map(c => <option key={String(c.id)} value={String(c.name)} />)}</datalist>
         </div>
         <div><label>{t('route.f.validcert')}</label><input type="date" {...f('validCert')} /></div>
+        {/* План выручки по дням недели (legacy week_days_earnings) — справочное поле, V72. */}
+        <div className="full"><label>{t('route.f.weekdays')}</label>
+          <input {...f('weekDaysEarnings')} placeholder='[{"week_day":1,"earning":1200}]' />
+        </div>
         <div><label>{t('route.f.timelapa')}</label><input type="time" {...f('timeOneLapA')} /></div>
         <div><label>{t('route.f.timelapb')}</label><input type="time" {...f('timeOneLapB')} /></div>
         <div><label>{t('route.f.latitude')}</label><input type="number" step="0.000001" min={-90} max={90} {...f('latitude')} /></div>
@@ -413,6 +428,16 @@ export default function DictionariesView({ tab }: { tab: DictTab }) {
           <label>{t('col.checked')}</label><input type="checkbox" {...fCheck('checked')} />
         </div>
       </>}
+      {tab === 'cities' && <>
+        <div><label>{t('f.region')}</label>
+          <select required {...f('regionId')}>
+            <option value="">—</option>
+            {[1, 2, 3, 4, 5, 6, 7].map(n => <option key={n} value={String(n)}>{t('region.' + n)}</option>)}
+          </select>
+        </div>
+        <div><label>{t('col.code')}</label><input maxLength={20} {...f('code')} placeholder="01" /></div>
+        <div><label>{t('col.name')}</label><input required {...f('name')} placeholder="Душанбе" /></div>
+      </>}
       {tab === 'route-tariffs' && <>
         <div><label>{t('col.routeid')}</label>
           <select required {...f('routeId')}>
@@ -473,6 +498,7 @@ export default function DictionariesView({ tab }: { tab: DictTab }) {
             {tab === 'drive-classes' && <tr><th>{t('col.driveclass')}</th><th>{t('col.coef')}</th><th>{t('col.actions')}</th></tr>}
             {tab === 'directions' && <tr><th>{t('col.title')}</th><th>{t('col.number')}</th><th>{t('col.checked')}</th><th>{t('col.actions')}</th></tr>}
             {tab === 'route-tariffs' && <tr><th>{t('col.routeid')}</th><th>{t('col.fuel')}</th><th>{t('dict.f.pricepermkm')}</th><th>{t('dict.f.priceonetime')}</th><th>{t('dict.f.advcoe')}</th><th>{t('col.actions')}</th></tr>}
+            {tab === 'cities' && <tr><th>{t('col.region')}</th><th>{t('col.code')}</th><th>{t('col.name')}</th><th>{t('col.actions')}</th></tr>}
           </thead>
           <tbody>
             {view.map((r, i) => (
@@ -489,6 +515,7 @@ export default function DictionariesView({ tab }: { tab: DictTab }) {
                 {tab === 'used-coefs' && <><td>{String(r.year ?? '—')}</td><td>{String(r.km ?? '—')}</td><td><b>{String(r.coef ?? '—')}</b></td></>}
                 {tab === 'drive-classes' && <><td style={{ fontWeight: 600, color: 'var(--ink)' }}>{String(r.driveClass)}</td><td><b>{String(r.coef ?? '—')}</b></td></>}
                 {tab === 'directions' && <><td style={{ fontWeight: 600, color: 'var(--ink)' }}>{String(r.title)}</td><td>{String(r.number ?? '—')}</td><td>{r.checked ? t('st.yes') : '—'}</td></>}
+                {tab === 'cities' && <><td>{r.regionId != null ? t('region.' + Number(r.regionId)) : '—'}</td><td><span className="number">{s(r.code)}</span></td><td style={{ fontWeight: 600, color: 'var(--ink)' }}>{String(r.name)}</td></>}
                 {tab === 'route-tariffs' && <><td>{(() => { const rt = routeList.find(x => String(x.id) === String(r.routeId)); return rt ? `${String(rt.number)} — ${String(rt.name)}` : String(r.routeId); })()}</td><td>{r.fuelId != null ? String(r.fuelId) : t('dict.any')}</td><td><b>{String(r.pricePer1Mkm)}</b></td><td>{String(r.priceOneTime)}</td><td>{r.advCoe != null ? String(r.advCoe) : '—'}</td></>}
                 {actionsCell(r)}
               </tr>

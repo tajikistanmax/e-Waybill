@@ -135,6 +135,14 @@ public class Route {
     @Column(name = "city_name")
     private String cityName;
 
+    /**
+     * План выручки по дням недели (legacy {@code routes.week_days_earnings}): JSON
+     * {@code [{"week_day":1..7,"earning":число}]}. Справочное поле — в расчётах и отчётах не участвует
+     * (в оригинале тоже), перенесено по решению владельца 22.09. См. V72.
+     */
+    @Column(name = "week_days_earnings")
+    private String weekDaysEarnings;
+
     /** Координаты маршрута (legacy latitude/longitude — строки; здесь NUMERIC(10,6)). */
     private BigDecimal latitude;
 
@@ -205,6 +213,8 @@ public class Route {
     public void setValidCert(LocalDate validCert) { this.validCert = validCert; }
     public String getCityName() { return cityName; }
     public void setCityName(String cityName) { this.cityName = cityName; }
+    public String getWeekDaysEarnings() { return weekDaysEarnings; }
+    public void setWeekDaysEarnings(String weekDaysEarnings) { this.weekDaysEarnings = weekDaysEarnings; }
     public BigDecimal getLatitude() { return latitude; }
     public void setLatitude(BigDecimal latitude) { this.latitude = latitude; }
     public BigDecimal getLongitude() { return longitude; }

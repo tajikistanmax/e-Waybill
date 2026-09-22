@@ -28,6 +28,9 @@ const SECTIONS: { href: string; labelKey: string; descKey: string; icon: string;
   // Справочник типов маршрутов (RouteTypeController, /api/v1/route-types) — плоская классификация
   // маршрута по дальности сообщения; единый для платформы, правит только SYSTEM_ADMIN.
   { href: '/dictionaries/route-types', labelKey: 'dict.sec.routetypes', descKey: 'dict.sec.routetypes.d', icon: P.route, cls: 'ic-blue' },
+  // Города и районы (CityController, /api/v1/cities) — подсказки для «Город» организации и маршрута;
+  // в старой платформе велись в админке, у нас раздел был только для чтения (владелец, 22.09).
+  { href: '/dictionaries/cities', labelKey: 'dict.sec.cities', descKey: 'dict.sec.cities.d', icon: P.building, cls: 'ic-green' },
 ];
 
 /** Каркас справочников: заголовок + карточки-ссылки. У каждого справочника свой адрес. */

@@ -27,7 +27,8 @@ class RouteRequestValidationTest {
                 null, null, null, null, null, null, null, null, null, null,
                 12d, 12d, 0d, 0d, (short) 8, 0.7d, 4d,
                 "Вокзал", "Аэропорт", LocalTime.of(0, 45), LocalTime.of(0, 50), LocalDate.of(2027, 1, 1),
-                "Душанбе", lat, lon);
+                // cityName, weekDaysEarnings (V72 — справочный план выручки по дням недели), координаты
+                "Душанбе", "[{\"week_day\":1,\"earning\":1200}]", lat, lon);
     }
 
     @Test

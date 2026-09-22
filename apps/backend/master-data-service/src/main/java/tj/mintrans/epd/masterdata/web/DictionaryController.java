@@ -130,6 +130,8 @@ public class DictionaryController {
             java.time.LocalTime timeOneLapB,
             java.time.LocalDate validCert,
             @Size(max = 200) String cityName,
+            // План выручки по дням недели (legacy week_days_earnings) — справочный JSON, V72.
+            @Size(max = 2000) String weekDaysEarnings,
             @DecimalMin(value = "-90", message = "Широта: −90…90") @jakarta.validation.constraints.DecimalMax(value = "90", message = "Широта: −90…90") BigDecimal latitude,
             @DecimalMin(value = "-180", message = "Долгота: −180…180") @jakarta.validation.constraints.DecimalMax(value = "180", message = "Долгота: −180…180") BigDecimal longitude) {
     }
@@ -183,6 +185,7 @@ public class DictionaryController {
         route.setTimeOneLapB(req.timeOneLapB());
         route.setValidCert(req.validCert());
         route.setCityName(trimToNull(req.cityName()));
+        route.setWeekDaysEarnings(trimToNull(req.weekDaysEarnings()));
         route.setLatitude(req.latitude());
         route.setLongitude(req.longitude());
         var savedRoute = routes.save(route);
