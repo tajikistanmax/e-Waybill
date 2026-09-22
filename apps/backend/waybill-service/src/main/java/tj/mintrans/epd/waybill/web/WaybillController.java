@@ -52,6 +52,7 @@ public class WaybillController {
     private final WaybillCalcAssembler waybillCalc;
     private final CurrentUser currentUser;
     private final TenantScope tenantScope;
+    private final tj.mintrans.epd.waybill.service.WaybillRegistryService registry;
 
     /** Защитный лимит листинга реестра (после миграции Ф5 в waybill ~2.3 млн архивных ПЛ). */
     private static final int LIST_CAP = 1000;
@@ -61,7 +62,8 @@ public class WaybillController {
                              WaybillTitleRepository titles, WaybillStatusEventRepository events,
                              QrTokenService qr, FuelCalculationService fuelCalculation,
                              WaybillCalcAssembler waybillCalc, CurrentUser currentUser,
-                             TenantScope tenantScope) {
+                             TenantScope tenantScope,
+                             tj.mintrans.epd.waybill.service.WaybillRegistryService registry) {
         this.service = service;
         this.waybills = waybills;
         this.titles = titles;
@@ -71,6 +73,7 @@ public class WaybillController {
         this.waybillCalc = waybillCalc;
         this.currentUser = currentUser;
         this.tenantScope = tenantScope;
+        this.registry = registry;
     }
 
     // ------------------------------------------------------------- запросы
@@ -420,6 +423,41 @@ public class WaybillController {
     @PreAuthorize(READ_ROLES)
     public Waybill get(@PathVariable UUID id) {
         return service.get(id);
+    }
+
+    /**
+     * Серверная пагинация реестра ПЛ (MIGRATION.md 8.4, legacy DataTables server-side): фильтры в SQL
+     * (в т.ч. по JSON-полям typeData/снимков), страница + общее число. Область — как у {@link #list}:
+     * тенант — своя организация с филиалами, водитель — только свои ПЛ, платформенные роли — все
+     * (с необязательным {@code organizationRma}). Архив (source=MIGRATED) — только при {@code archived=true}.
+     */
+    @GetMapping("/page")
+    @PreAuthorize(READ_ROLES)
+    public tj.mintrans.epd.waybill.service.WaybillRegistryService.PageResult page(
+            @RequestParam(required = false) String organizationRma,
+            @RequestParam(required = false) WaybillStatus status,
+            @RequestParam(required = false) WaybillType type,
+            @RequestParam(required = false) String vehicle,
+            @RequestParam(required = false) String driver,
+            @RequestParam(required = false) String svc,
+            @RequestParam(required = false) String docKind,
+            @RequestParam(required = false) String client,
+            @RequestParam(required = false) @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE) java.time.LocalDate from,
+            @RequestParam(required = false) @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE) java.time.LocalDate to,
+            @RequestParam(required = false) String q,
+            @RequestParam(required = false, defaultValue = "false") boolean archived,
+            @RequestParam(required = false, defaultValue = "0") int page,
+            @RequestParam(required = false, defaultValue = "20") int size) {
+        var filter = new tj.mintrans.epd.waybill.service.WaybillRegistryService.Filter(
+                organizationRma, status, type, vehicle, driver, svc, docKind, client, from, to, q, archived);
+        return registry.page(filter, page, size);
+    }
+
+    /** Число ПЛ по статусам в области вызывающего без архива — карточки-счётчики реестра (8.4). */
+    @GetMapping("/status-counts")
+    @PreAuthorize(READ_ROLES)
+    public Map<String, Long> statusCounts(@RequestParam(required = false) String organizationRma) {
+        return registry.statusCounts(organizationRma);
     }
 
     @GetMapping

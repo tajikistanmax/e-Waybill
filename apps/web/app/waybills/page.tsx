@@ -1,12 +1,13 @@
 'use client';
 
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import Link from 'next/link';
-import { wb, md, Waybill, STATUS_LABELS, TYPE_LABELS } from '@/lib/api';
+import { wb, md, Waybill, PagedWaybills, STATUS_LABELS, TYPE_LABELS } from '@/lib/api';
 import { Icon, P } from '../icons';
 import { useT } from '@/lib/i18n';
 
-const PER_PAGE = 10;
+const PER_PAGE = 20;
+const EXPORT_CAP = 1000;
 
 /** Один шаг степпера согласования (Диспетчер → Мед → Тех) — виден в реестре без открытия карточки. */
 function Stage({ state, label }: { state: 'ok' | 'bad' | 'wait'; label: string }) {
@@ -34,95 +35,61 @@ function Stages({ w, t }: { w: Waybill; t: (k: string) => string }) {
   );
 }
 
+/** Параметры отбора реестра — все уходят на сервер (MIGRATION.md 8.4: серверная пагинация, фильтры в SQL). */
+type Filters = {
+  org: string; status: string; type: string; vehicle: string; driver: string; svc: string;
+  docKind: '' | 'attachment' | 'cmr'; client: string; dateFrom: string; dateTo: string; q: string; archived: boolean;
+};
+const EMPTY: Filters = { org: '', status: '', type: '', vehicle: '', driver: '', svc: '', docKind: '', client: '', dateFrom: '', dateTo: '', q: '', archived: false };
+
 export default function WaybillsPage() {
-  const [items, setItems] = useState<Waybill[]>([]);
   const [orgs, setOrgs] = useState<Record<string, unknown>[]>([]);
   const [error, setError] = useState('');
-  const [status, setStatus] = useState('');
-  const [type, setType] = useState('');
-  const [org, setOrg] = useState('');
-  const [dateFrom, setDateFrom] = useState('');
-  const [dateTo, setDateTo] = useState('');
-  const [q, setQ] = useState('');
-  // Select-фильтры legacy-реестров (MIGRATION.md 8.1): ТС (parking_id), водитель (timesheet_id), вид обслуживания 3-С (type_service).
-  const [vehicle, setVehicle] = useState('');
-  const [driver, setDriver] = useState('');
-  const [svc, setSvc] = useState('');
-  // Реестры накладных (MIGRATION.md 8.8): legacy cmr (СМР к 5Б-БМ) и cargowaybill1/2attachment (борхаты к 2-Б)
-  // с фильтрами «клиент» и «период» — у нас как отбор реестра ПЛ: документ (борхат / СМР) + клиент из накладной.
-  const [docKind, setDocKind] = useState<'' | 'attachment' | 'cmr'>('');
-  const [client, setClient] = useState('');
+  const [filters, setFilters] = useState<Filters>(EMPTY);
   const [page, setPage] = useState(1);
+  const [data, setData] = useState<PagedWaybills | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [counts, setCounts] = useState<Record<string, number>>({});
   const { t, tType, tStatus } = useT();
 
-  // Накладная заполнена: есть стороны или операции погрузки-разгрузки (POST /consignment).
-  const hasConsignment = (w: Waybill): boolean => {
-    const td = w.typeData ?? {};
-    const ops = td.cargoOperations;
-    return !!(td.senderName || td.receiverName || td.forwarderName || (Array.isArray(ops) && ops.length > 0));
-  };
-  const clientsOf = (w: Waybill): string[] => {
-    const td = w.typeData ?? {};
-    return [td.senderName, td.receiverName, td.forwarderName, td.clientName].filter((x): x is string => typeof x === 'string' && x.trim() !== '');
-  };
-
-  // Вид услуги 3-С: живые ПЛ несут typeData.serviceKind (TAXI/ROUTE/HOURLY), мигрированные — числовой
-  // typeService (1 такси, 2 хатсайр, 3 соатбай) — приводим к одному коду.
-  const svcOf = (w: Waybill): string => {
-    const kind = w.typeData?.serviceKind;
-    if (typeof kind === 'string' && kind) return kind;
-    const n = Number(w.typeData?.typeService);
-    return n === 1 ? 'TAXI' : n === 2 ? 'ROUTE' : n === 3 ? 'HOURLY' : '';
-  };
-
-  useEffect(() => { wb.list().then(setItems).catch(e => setError(e.message)); }, []);
   // Список организаций — для фильтра по компании (платформенные роли видят все ПЛ).
   useEffect(() => { md.organizations().then(setOrgs).catch(() => setOrgs([])); }, []);
 
-  const day = (d: string | null) => d ? d.slice(0, 10) : '';
+  const query = useCallback((f: Filters, p: number, size: number) => wb.page({
+    organizationRma: f.org, status: f.status, type: f.type, vehicle: f.vehicle.trim(), driver: f.driver.trim(),
+    svc: f.svc, docKind: f.docKind, client: f.client.trim(), from: f.dateFrom, to: f.dateTo, q: f.q.trim(),
+    archived: f.archived, page: p - 1, size,
+  }), []);
 
-  const filtered = useMemo(() => items.filter(w => {
-    if (status && w.status !== status) return false;
-    if (type && w.waybillType !== type) return false;
-    if (org && w.organizationRma !== org) return false;
-    if (vehicle && w.vehicleRegNumber !== vehicle) return false;
-    if (driver && w.driverRma !== driver && w.secondDriverRma !== driver) return false;
-    if (svc && svcOf(w) !== svc) return false;
-    if (docKind === 'attachment' && !((w.waybillType === 'WB_TRUCK' || w.waybillType === 'WB_DANGEROUS') && hasConsignment(w))) return false;
-    if (docKind === 'cmr' && !(w.waybillType === 'WB_TRUCK_INTL' && hasConsignment(w))) return false;
-    if (client && !clientsOf(w).includes(client)) return false;
-    const d = day(w.validFrom) || day(w.createdAt);
-    if (dateFrom && d && d < dateFrom) return false;
-    if (dateTo && d && d > dateTo) return false;
-    if (q) {
-      const s = q.toLowerCase();
-      // Поиск по ИНН/РМА компании (organizationRma) — тот же идентификатор, что в фильтре
-      // «Компания» и колонке «ИНН/РМА»; плюс название, № ПЛ, транспорт и водитель.
-      const hay = `${w.number ?? ''} ${w.vehicleRegNumber} ${String(w.driverSnapshot?.fullName ?? w.driverRma)} ${String(w.organizationSnapshot?.name ?? '')} ${w.organizationRma ?? ''}`.toLowerCase();
-      if (!hay.includes(s)) return false;
-    }
-    return true;
-  }), [items, status, type, org, dateFrom, dateTo, q, vehicle, driver, svc, docKind, client]);
+  // Страница реестра — с сервера; текстовые поля дебаунсим, чтобы не слать запрос на каждую букву.
+  useEffect(() => {
+    let alive = true;
+    setLoading(true);
+    const h = setTimeout(() => {
+      query(filters, page, PER_PAGE)
+        .then(d => { if (alive) { setData(d); setError(''); } })
+        .catch(e => { if (alive) setError((e as Error).message); })
+        .finally(() => { if (alive) setLoading(false); });
+    }, 250);
+    return () => { alive = false; clearTimeout(h); };
+  }, [filters, page, query]);
 
-  // Варианты select-фильтров — из загруженного реестра (с учётом выбранных компании и типа), как в
-  // legacy: список ТС/водителей компании; вид обслуживания — только у 3-С.
-  const options = useMemo(() => {
-    const base = items.filter(w => (!org || w.organizationRma === org) && (!type || w.waybillType === type));
-    const vehicles = Array.from(new Set(base.map(w => w.vehicleRegNumber).filter(Boolean))).sort();
-    const drivers = new Map<string, string>();
-    base.forEach(w => { if (w.driverRma && !drivers.has(w.driverRma)) drivers.set(w.driverRma, String(w.driverSnapshot?.fullName ?? w.driverRma)); });
-    const clients = Array.from(new Set(base.flatMap(clientsOf))).sort((a, b) => a.localeCompare(b));
-    return { vehicles, drivers: Array.from(drivers.entries()).sort((a, b) => a[1].localeCompare(b[1])), clients };
-  }, [items, org, type]);
-  const svcApplicable = !type || type === 'WB_CAR' || type === 'WB_TAXI';
+  // Карточки-счётчики — по всей области видимости (без архива), в разрезе выбранной компании.
+  useEffect(() => {
+    wb.statusCounts(filters.org || undefined).then(setCounts).catch(() => setCounts({}));
+  }, [filters.org]);
 
-  // Карточки-счётчики над фильтрами — по всему набору (не по текущей странице/фильтру).
-  const stat = useMemo(() => ({
-    total: items.length,
-    active: items.filter(w => ['ISSUED', 'ACTIVE', 'RETURNED'].includes(w.status)).length,
-    pending: items.filter(w => ['CREATED', 'MED_REJECTED', 'TECH_REJECTED'].includes(w.status)).length,
-    done: items.filter(w => ['COMPLETED', 'ARCHIVED'].includes(w.status)).length,
-  }), [items]);
+  const set = <K extends keyof Filters>(k: K, v: Filters[K]) => { setFilters(f => ({ ...f, [k]: v })); setPage(1); };
+  const reset = () => { setFilters(EMPTY); setPage(1); };
+  const svcApplicable = !filters.type || filters.type === 'WB_CAR' || filters.type === 'WB_TAXI';
+
+  const sum = (keys: string[]) => keys.reduce((a, k) => a + (counts[k] ?? 0), 0);
+  const stat = {
+    total: sum(Object.keys(counts)),
+    active: sum(['ISSUED', 'ACTIVE', 'RETURNED']),
+    pending: sum(['CREATED', 'MED_REJECTED', 'TECH_REJECTED']),
+    done: sum(['COMPLETED', 'ARCHIVED']),
+  };
   const statCards = [
     { label: t('wb.stat.total'), value: stat.total, icon: P.doc, cls: 'ic-blue' },
     { label: t('wb.stat.active'), value: stat.active, icon: P.car, cls: 'ic-green' },
@@ -130,9 +97,9 @@ export default function WaybillsPage() {
     { label: t('wb.stat.done'), value: stat.done, icon: P.check, cls: 'ic-cyan' },
   ];
 
-  const pages = Math.max(1, Math.ceil(filtered.length / PER_PAGE));
-  const view = filtered.slice((page - 1) * PER_PAGE, page * PER_PAGE);
-  const reset = () => { setStatus(''); setType(''); setOrg(''); setDateFrom(''); setDateTo(''); setQ(''); setVehicle(''); setDriver(''); setSvc(''); setDocKind(''); setClient(''); setPage(1); };
+  const view = data?.content ?? [];
+  const total = data?.totalElements ?? 0;
+  const pages = Math.max(1, data?.totalPages ?? 1);
   const fmt = (d: string | null) => d ? new Date(d).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—';
   const snapStr = (o: Record<string, unknown> | undefined, k: string) => {
     const v = o?.[k];
@@ -193,12 +160,15 @@ export default function WaybillsPage() {
       WB_TRUCK: cargo, WB_DANGEROUS: cargo, WB_TRUCK_INTL: cargo,
       WB_SPECIAL: all,
     };
-    return (LAYOUTS[type] ?? all).map(k => C[k]);
-  }, [type, t, tType, tStatus]);
+    return (LAYOUTS[filters.type] ?? all).map(k => C[k]);
+  }, [filters.type, t, tType, tStatus]);
 
-  function exportCsv() {
+  // Экспорт — по текущему отбору с сервера, до EXPORT_CAP строк (не только видимая страница).
+  async function exportCsv() {
+    let rowsSrc: Waybill[] = [];
+    try { rowsSrc = (await query(filters, 1, EXPORT_CAP)).content; } catch (e) { setError((e as Error).message); return; }
     const head = ['Номер', 'Тип', 'Компания', 'РМА компании', 'Транспорт', 'Водитель', 'Начало', 'Медосмотр', 'Техконтроль', 'Статус'];
-    const rows = filtered.map(w => [
+    const rows = rowsSrc.map(w => [
       w.number ?? '', tType(w.waybillType), String(w.organizationSnapshot?.name ?? ''), w.organizationRma,
       `${String(w.vehicleSnapshot?.brand ?? '')} ${w.vehicleRegNumber}`.trim(),
       String(w.driverSnapshot?.fullName ?? w.driverRma), fmt(w.validFrom),
@@ -223,7 +193,7 @@ export default function WaybillsPage() {
             печати здесь нет: window.print() печатал бы экран целиком (меню, фильтры), а не документ.
             Печать самого путевого листа — в его карточке (серверный PDF-бланк). */}
         <Link className="btn secondary" href="/waybills/journal" style={{ textDecoration: 'none' }}><Icon d={P.book} cls="" style={{ width: 16, height: 16 }} /> {t('jrn.btn')}</Link>
-        <button className="btn secondary" onClick={exportCsv}><Icon d={P.chart} cls="" style={{ width: 16, height: 16 }} /> Экспорт CSV</button>
+        <button className="btn secondary" onClick={exportCsv} title={t('wb.export.cap')}><Icon d={P.chart} cls="" style={{ width: 16, height: 16 }} /> Экспорт CSV</button>
       </div>
 
       {error && <div className="error">{error}</div>}
@@ -246,42 +216,36 @@ export default function WaybillsPage() {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14, alignItems: 'end' }}>
           <div>
             <label>{t('col.company')}</label>
-            <select value={org} onChange={e => { setOrg(e.target.value); setPage(1); }}>
+            <select value={filters.org} onChange={e => set('org', e.target.value)}>
               <option value="">{t('flt.allcompanies')}</option>
               {orgs.map(o => <option key={String(o.rma)} value={String(o.rma)}>{String(o.name ?? o.rma)}</option>)}
             </select>
           </div>
           <div>
             <label>{t('col.status')}</label>
-            <select value={status} onChange={e => { setStatus(e.target.value); setPage(1); }}>
+            <select value={filters.status} onChange={e => set('status', e.target.value)}>
               <option value="">{t('wb.f.allstatuses')}</option>
               {Object.entries(STATUS_LABELS).map(([v]) => <option key={v} value={v}>{tStatus(v)}</option>)}
             </select>
           </div>
           <div>
             <label>{t('col.wbtype')}</label>
-            <select value={type} onChange={e => { setType(e.target.value); setPage(1); }}>
+            <select value={filters.type} onChange={e => set('type', e.target.value)}>
               <option value="">{t('wb.f.alltypes')}</option>
               {Object.entries(TYPE_LABELS).map(([v]) => <option key={v} value={v}>{tType(v)}</option>)}
             </select>
           </div>
           <div>
             <label>{t('col.transport')}</label>
-            <select value={vehicle} onChange={e => { setVehicle(e.target.value); setPage(1); }}>
-              <option value="">{t('wb.f.allvehicles')}</option>
-              {options.vehicles.map(v => <option key={v} value={v}>{v}</option>)}
-            </select>
+            <input value={filters.vehicle} onChange={e => set('vehicle', e.target.value.toUpperCase())} placeholder={t('wb.f.vehicle.ph')} />
           </div>
           <div>
             <label>{t('col.driver')}</label>
-            <select value={driver} onChange={e => { setDriver(e.target.value); setPage(1); }}>
-              <option value="">{t('wb.f.alldrivers')}</option>
-              {options.drivers.map(([rma, name]) => <option key={rma} value={rma}>{name} ({rma})</option>)}
-            </select>
+            <input value={filters.driver} onChange={e => set('driver', e.target.value)} placeholder={t('wb.f.driver.ph')} />
           </div>
           <div>
             <label>{t('wb.svc.label')} (3-С)</label>
-            <select value={svc} onChange={e => { setSvc(e.target.value); setPage(1); }} disabled={!svcApplicable} title={svcApplicable ? '' : t('wb.f.svconly3c')}>
+            <select value={filters.svc} onChange={e => set('svc', e.target.value)} disabled={!svcApplicable} title={svcApplicable ? '' : t('wb.f.svconly3c')}>
               <option value="">{t('wb.f.allsvc')}</option>
               <option value="TAXI">{t('wb.svc.taxi')}</option>
               <option value="ROUTE">{t('wb.svc.route')}</option>
@@ -290,7 +254,7 @@ export default function WaybillsPage() {
           </div>
           <div>
             <label>{t('wb.f.doc')}</label>
-            <select value={docKind} onChange={e => { setDocKind(e.target.value as '' | 'attachment' | 'cmr'); setPage(1); }}>
+            <select value={filters.docKind} onChange={e => set('docKind', e.target.value as '' | 'attachment' | 'cmr')}>
               <option value="">{t('wb.f.doc.any')}</option>
               <option value="attachment">{t('wb.f.doc.attachment')}</option>
               <option value="cmr">{t('wb.f.doc.cmr')}</option>
@@ -298,23 +262,24 @@ export default function WaybillsPage() {
           </div>
           <div>
             <label>{t('wb.f.client')}</label>
-            <select value={client} onChange={e => { setClient(e.target.value); setPage(1); }}>
-              <option value="">{t('wb.f.allclients')}</option>
-              {options.clients.map(c => <option key={c} value={c}>{c}</option>)}
-            </select>
+            <input value={filters.client} onChange={e => set('client', e.target.value)} placeholder={t('wb.f.client.ph')} />
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingBottom: 8 }}>
+            <input type="checkbox" id="wb-archived" checked={filters.archived} onChange={e => set('archived', e.target.checked)} />
+            <label htmlFor="wb-archived" style={{ margin: 0 }}>{t('wb.f.archived')}</label>
           </div>
           <div>
             <label>{t('flt.datefrom')}</label>
-            <input type="date" value={dateFrom} onChange={e => { setDateFrom(e.target.value); setPage(1); }} />
+            <input type="date" value={filters.dateFrom} onChange={e => set('dateFrom', e.target.value)} />
           </div>
           <div>
             <label>{t('flt.dateto')}</label>
-            <input type="date" value={dateTo} onChange={e => { setDateTo(e.target.value); setPage(1); }} />
+            <input type="date" value={filters.dateTo} onChange={e => set('dateTo', e.target.value)} />
           </div>
           <div style={{ display: 'flex', gap: 10, alignItems: 'end' }}>
             <div style={{ flex: 1 }}>
               <label>{t('wb.f.search')}</label>
-              <input value={q} onChange={e => { setQ(e.target.value); setPage(1); }} placeholder={t('wb.search.ph')} />
+              <input value={filters.q} onChange={e => set('q', e.target.value)} placeholder={t('wb.search.ph')} />
             </div>
             <button className="btn secondary" onClick={reset}>{t('wb.resetfilters')}</button>
           </div>
@@ -333,15 +298,15 @@ export default function WaybillsPage() {
             ))}
             {view.length === 0 && (
               <tr><td colSpan={cols.length} style={{ textAlign: 'center', color: 'var(--muted)', padding: 34 }}>
-                {t('wb.empty')}
+                {loading ? t('wb.loading') : t('wb.empty')}
               </td></tr>
             )}
           </tbody>
         </table>
 
-        {/* Пагинация */}
+        {/* Пагинация — серверная: страница PER_PAGE строк, общее число — с сервера */}
         <div style={{ display: 'flex', alignItems: 'center', padding: '14px 16px', borderTop: '1px solid var(--line)', fontSize: 13, color: 'var(--muted)' }}>
-          <span>{t('dict.totalrecords')}: <b style={{ color: 'var(--ink)' }}>{filtered.length}</b></span>
+          <span>{t('dict.totalrecords')}: <b style={{ color: 'var(--ink)' }}>{total.toLocaleString('ru-RU')}</b>{loading ? ` · ${t('wb.loading')}` : ''}</span>
           <span style={{ flex: 1 }} />
           <button className="btn secondary" disabled={page <= 1} onClick={() => setPage(p => p - 1)} style={{ padding: '6px 12px' }}>‹</button>
           <span style={{ margin: '0 12px' }}>{page} / {pages}</span>

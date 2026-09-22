@@ -18,9 +18,21 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Stream;
 
-public interface WaybillRepository extends JpaRepository<Waybill, UUID> {
+public interface WaybillRepository extends JpaRepository<Waybill, UUID>,
+        org.springframework.data.jpa.repository.JpaSpecificationExecutor<Waybill> {
 
     Optional<Waybill> findByNumber(String number);
+
+    // --- Серверная пагинация реестра (MIGRATION.md 8.4): страницы — через Specification (findAll(spec, pageable)),
+    //     карточки-счётчики — агрегат по статусам в БД (без архива source='MIGRATED'). ---
+
+    @Query("select w.status, count(w) from Waybill w where w.source <> :source group by w.status")
+    List<Object[]> countByStatusExcludingSource(@Param("source") String source);
+
+    @Query("select w.status, count(w) from Waybill w where w.organizationRma in :rmas and w.source <> :source "
+            + "group by w.status")
+    List<Object[]> countByStatusForOrganizationsExcludingSource(@Param("rmas") Collection<String> organizationRmas,
+                                                                @Param("source") String source);
 
     /**
      * Загрузка с блокировкой строки (SELECT … FOR UPDATE) — сериализует конкурентные

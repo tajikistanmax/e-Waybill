@@ -25,6 +25,9 @@ export function authHeadersFullScope(extra?: Record<string, string>): Record<str
   return { ...(extra ?? {}), ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}) };
 }
 
+/** Страница реестра ПЛ (GET /waybills/page). */
+export type PagedWaybills = { content: Waybill[]; page: number; size: number; totalElements: number; totalPages: number };
+
 export type Waybill = {
   id: string;
   number: string | null;
@@ -593,6 +596,17 @@ export type WaybillRequest = {
 
 export const wb = {
   list: () => fetch('/wb-api/api/v1/waybills', { headers: authHeaders() }).then(r => handle<Waybill[]>(r)),
+  // Серверная пагинация реестра ПЛ (MIGRATION.md 8.4): фильтры в SQL, страница + общее число.
+  page: (params: Record<string, string | number | boolean | undefined>) => {
+    const qs = Object.entries(params)
+      .filter(([, v]) => v !== undefined && v !== '' && v !== false)
+      .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(String(v))}`).join('&');
+    return fetch(`/wb-api/api/v1/waybills/page${qs ? '?' + qs : ''}`, { headers: authHeaders() }).then(r => handle<PagedWaybills>(r));
+  },
+  // Счётчики по статусам в области пользователя (без архива) — карточки над реестром.
+  statusCounts: (organizationRma?: string) => fetch(
+    `/wb-api/api/v1/waybills/status-counts${organizationRma ? `?organizationRma=${encodeURIComponent(organizationRma)}` : ''}`,
+    { headers: authHeaders() }).then(r => handle<Record<string, number>>(r)),
   // Эксплуатационная сводка waybill-service (Настройки → Производительность/Интеграции/Нумерация).
   ops: () => fetch('/wb-api/api/v1/ops/overview', { headers: authHeaders() }).then(r => handle<WbOps>(r)),
   // Доступные типы ПЛ для организации (по лицензии/виду субъекта) — для шага выбора типа.

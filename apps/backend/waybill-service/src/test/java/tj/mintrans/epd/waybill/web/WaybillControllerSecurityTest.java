@@ -50,6 +50,7 @@ class WaybillControllerSecurityTest {
     @MockitoBean WaybillCalcAssembler waybillCalc;
     @MockitoBean CurrentUser currentUser;
     @MockitoBean TenantScope tenantScope;
+    @MockitoBean tj.mintrans.epd.waybill.service.WaybillRegistryService registry;
     @MockitoBean JwtDecoder jwtDecoder;
 
     private static final String ID = "/00000000-0000-0000-0000-000000000000";
