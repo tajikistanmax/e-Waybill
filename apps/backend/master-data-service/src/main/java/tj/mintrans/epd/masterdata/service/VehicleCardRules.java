@@ -28,6 +28,26 @@ public class VehicleCardRules {
         this.vehicles = vehicles;
     }
 
+    /** Вид ТС «легковой» (transport_type_id = 4 в legacy): госномер строго 3–4 цифры + 2 латинские буквы + 2 цифры. */
+    public static final short TRANSPORT_TYPE_CAR = 4;
+    private static final java.util.regex.Pattern CAR_PLATE = java.util.regex.Pattern.compile("^\\d{3,4}[A-Z]{2}\\d{2}$");
+
+    /**
+     * Формат госномера (MIGRATION.md 12.2, legacy {@code ParkingRequest::withValidator}): только для легковых
+     * (тип 4) — {@code 234AB01} / {@code 1234AB01}; прочие виды ТС в legacy формат не проверяют. Номер уже
+     * канонизирован (верхний регистр). Нарушение → 422 с текстом legacy.
+     */
+    public static void assertPlateFormat(Short transportType, String canonicalNumber) {
+        if (transportType == null || transportType != TRANSPORT_TYPE_CAR || canonicalNumber == null) {
+            return;
+        }
+        if (!CAR_PLATE.matcher(canonicalNumber).matches()) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                    "Госномер легкового ТС: 3 или 4 цифры, 2 латинские буквы и 2 цифры, например 234AB01 или 1234AB01 "
+                            + "(Рақами автомобил бояд 3 ё 4 рақам, 2 ҳарфи калони англисӣ ва 2 рақам дошта бошад)");
+        }
+    }
+
     /** Год выпуска: пусто — допустимо; иначе 1900 … текущий год + 1. */
     public void assertYearManufacture(Short year) {
         if (year == null) {

@@ -113,6 +113,8 @@ public class VehicleController {
         // Госномер канонизируется (обрезка пробелов + верхний регистр), иначе "0114TJ01"
         // и "0114tj01 " создали бы два физически одинаковых ТС и раздвоили бы поиск при выдаче ПЛ.
         var canonicalNumber = canonical(req.registrationNumber());
+        // Легковые (тип 4): строгий формат госномера legacy 234AB01 / 1234AB01 (MIGRATION.md 12.2) — 422.
+        tj.mintrans.epd.masterdata.service.VehicleCardRules.assertPlateFormat(req.transportType(), canonicalNumber);
         var existing = vehicles.findByRegistrationNumber(canonicalNumber);
         assertNotForeign(existing.map(Vehicle::getOrganizationId).orElse(null), org.getId(), "ТС");
         String oldBrand = existing.map(Vehicle::getBrand).orElse(null); // до мутации (existing и vehicle — один объект)

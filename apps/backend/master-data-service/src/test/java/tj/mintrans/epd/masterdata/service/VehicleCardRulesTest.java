@@ -42,6 +42,22 @@ class VehicleCardRulesTest {
     }
 
     @Test
+    @DisplayName("госномер легкового (тип 4): 1234AB01 и 234AB01 — ок; дефис, кириллица, 5 цифр — 422; другие виды ТС не проверяются")
+    void carPlateFormat() {
+        assertThatCode(() -> VehicleCardRules.assertPlateFormat((short) 4, "1234AB01")).doesNotThrowAnyException();
+        assertThatCode(() -> VehicleCardRules.assertPlateFormat((short) 4, "234AB01")).doesNotThrowAnyException();
+        for (String bad : new String[]{"12-34AB01", "1234АВ01", "12345AB01", "1234AB1", "1234ab01"}) {
+            assertThatThrownBy(() -> VehicleCardRules.assertPlateFormat((short) 4, bad))
+                    .as(bad).isInstanceOf(ResponseStatusException.class)
+                    .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY));
+        }
+        // Грузовые/автобусы/прицепы — legacy формат не проверяет (в боевой БД 9 600 номеров с дефисами/пробелами).
+        assertThatCode(() -> VehicleCardRules.assertPlateFormat((short) 5, "29-67HB01")).doesNotThrowAnyException();
+        assertThatCode(() -> VehicleCardRules.assertPlateFormat((short) 1, "5550 TQ 10")).doesNotThrowAnyException();
+        assertThatCode(() -> VehicleCardRules.assertPlateFormat(null, "x")).doesNotThrowAnyException();
+    }
+
+    @Test
     @DisplayName("номер стоянки: занят другим ТС организации — 409; свой же номер при обновлении и пустой — ок")
     void parkingNumberUniquePerOrganization() {
         UUID org = UUID.randomUUID();

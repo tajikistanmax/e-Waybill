@@ -656,7 +656,13 @@ function OrgRegistry() {
               )}
               {tab === 'vehicles' && (
                 <form className="grid" onSubmit={submitManual}>
-                  <div><label>{t('comp.f.regnum_req')}</label><input required pattern="[A-Za-zА-Яа-я0-9]{4,20}" placeholder="0101TJ01" {...vm('registrationNumber')} /></div>
+                  {/* Легковые (тип 4): строгий формат legacy 234AB01 / 1234AB01 (MIGRATION.md 12.2); прочие — буквы/цифры. */}
+                  <div><label>{t('comp.f.regnum_req')}</label>
+                    <input required pattern={vehicleManual.transportType === '4' ? '\\d{3,4}[A-Za-z]{2}\\d{2}' : '[A-Za-zА-Яа-я0-9]{4,20}'}
+                      placeholder={vehicleManual.transportType === '4' ? '1234AB01' : '0101TJ01'}
+                      title={vehicleManual.transportType === '4' ? t('comp.f.regnum_car_hint') : ''} {...vm('registrationNumber')} />
+                    {vehicleManual.transportType === '4' && <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>{t('comp.f.regnum_car_hint')}</div>}
+                  </div>
                   <div><label>{t('comp.f.vehtype_req')}</label>
                     <select required {...vm('transportType')}>
                       {Object.entries(TRANSPORT_TYPES).map(([v]) => <option key={v} value={v}>{t('veh.type.' + v)}</option>)}
