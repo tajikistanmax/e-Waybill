@@ -6,6 +6,7 @@ import { md } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 import { useAuth } from '@/lib/auth';
 import { Icon, P } from '../../icons';
+import { ConfirmDialog } from '../../ConfirmDialog';
 
 /** Структурные параметры типов ПЛ (из enum WaybillType) — read-only. Редактируется только НАЗВАНИЕ
  *  (классификатор WAYBILL_TYPE), которое применяется во всём приложении (tType). */
@@ -34,6 +35,8 @@ export default function TypesSettingsPage() {
   const [busy, setBusy] = useState('');
   const [msg, setMsg] = useState('');
   const [err, setErr] = useState('');
+  // Подтверждение включения/выключения вида ПЛ.
+  const [confirmToggle, setConfirmToggle] = useState<{ code: string; sortOrder: number; label: string; next: boolean } | null>(null);
 
   function load() {
     md.classifiers('WAYBILL_TYPE', true)
@@ -55,7 +58,7 @@ export default function TypesSettingsPage() {
   const set = (code: string, field: 'ru' | 'tj', v: string) =>
     setNames(s => ({ ...s, [code]: { ...(s[code] ?? { ru: '', tj: '' }), [field]: v } }));
 
-  // Мгновенное вкл/выкл типа: applied сразу (upsert классификатора), название сохраняется текущее.
+  // Вкл/выкл вида ПЛ: вызывается только после подтверждения в окне с последствиями (владелец, 22.09).
   async function toggle(code: string, sortOrder: number) {
     setBusy(code); setErr(''); setMsg('');
     const next = !(act[code] ?? true);
@@ -152,7 +155,8 @@ export default function TypesSettingsPage() {
                       {busy === x.code ? '…' : t('fleet.save')}
                     </button>{' '}
                     <button className="btn secondary" style={{ padding: '5px 12px', fontSize: 12.5 }} disabled={busy === x.code}
-                      title={t('settypes.togglehint')} onClick={() => toggle(x.code, i + 1)}>
+                      title={t('settypes.togglehint')}
+                      onClick={() => setConfirmToggle({ code: x.code, sortOrder: i + 1, label: `${x.form} · ${tType(x.code)}`, next: !(act[x.code] ?? true) })}>
                       {(act[x.code] ?? true) ? t('settypes.turnoff') : t('settypes.turnon')}
                     </button>
                   </>
@@ -164,6 +168,24 @@ export default function TypesSettingsPage() {
       </div>
 
       <div className="hint" style={{ marginTop: 10 }}>{t('settypes.applynote')}</div>
+
+      {/* Включение/выключение вида ПЛ подтверждается: случайное нажатие убирало вид из формы выписки. */}
+      {confirmToggle && (
+        <ConfirmDialog
+          title={t('cfm.types.title')}
+          changes={[{
+            label: confirmToggle.label,
+            from: confirmToggle.next ? t('settypes.off') : t('settypes.on'),
+            to: confirmToggle.next ? t('settypes.on') : t('settypes.off'),
+          }]}
+          consequences={[confirmToggle.next ? t('cfm.types.on') : t('cfm.types.off'), t('cfm.types.existing'), t('cfm.set.audit')]}
+          busy={busy === confirmToggle.code}
+          danger={!confirmToggle.next}
+          confirmLabel={confirmToggle.next ? t('settypes.turnon') : t('settypes.turnoff')}
+          onCancel={() => setConfirmToggle(null)}
+          onConfirm={() => { const c = confirmToggle; setConfirmToggle(null); toggle(c.code, c.sortOrder); }}
+        />
+      )}
     </>
   );
 }
