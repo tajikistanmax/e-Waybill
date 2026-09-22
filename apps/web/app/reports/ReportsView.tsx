@@ -1,7 +1,8 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
-import { authHeaders, STATUS_LABELS } from '@/lib/api';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { authHeaders, md, STATUS_LABELS } from '@/lib/api';
+import { applyColumnConfig } from '@/lib/reportColumns';
 import type { RegionalCount, RegionalCounts } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 import { downloadCsv } from '@/lib/csv';
@@ -179,6 +180,20 @@ export default function ReportsView({ tab }: { tab: ReportTab }) {
   const [norm, setNorm] = useState<WaybillNorm | null>(null);
   // Разрез «ведомственный/общий» (Organization.typeCompany) — общий фильтр всех сводных отчётов Минтранса.
   const [typeCompany, setTypeCompany] = useState('');
+  // Конфигурируемые колонки отчётов (MIGRATION.md 7.4 / 10.5): настройки категории «reports»
+  // (видимые ключи + подписи) применяются к таблицам и CSV; подписи по умолчанию — i18n.
+  const [reportCfg, setReportCfg] = useState<Record<string, string>>({});
+  useEffect(() => {
+    md.settings('reports')
+      .then(list => setReportCfg(Object.fromEntries(list.map(s => [s.settingKey, s.settingValue ?? '']))))
+      .catch(() => { /* настройки недоступны — колонки по умолчанию */ });
+  }, []);
+  const typedCols = useMemo(() => applyColumnConfig(TYPED_COLS.map(c => ({ ...c, label: t('rep.typed.' + c.key) })),
+    reportCfg.typed_columns, reportCfg.typed_labels, 'label'), [reportCfg, t]);
+  const regCols = useMemo(() => applyColumnConfig(REG_COLS.map(c => ({ ...c, label: t('rep.reg.' + c.key) })),
+    reportCfg.regional_columns, reportCfg.regional_labels), [reportCfg, t]);
+  const rcCols = useMemo(() => applyColumnConfig(RC_COLS.map(c => ({ ...c, label: t('rep.rc.' + c.key) })),
+    reportCfg.regional_count_columns, reportCfg.regional_count_labels), [reportCfg, t]);
 
   const load = useCallback(async () => {
     setError('');
@@ -276,8 +291,8 @@ export default function ReportsView({ tab }: { tab: ReportTab }) {
       fuel.forEach(r => rows.push([r.fuelName ?? FUEL_NAMES[r.fuelType] ?? r.fuelType, r.given, r.remainEnd]));
       downloadCsv(`отчёт-топливо-${from}_${to}.csv`, rows);
     } else if (tab === 'typed' && typedReport) {
-      const rows: unknown[][] = [TYPED_COLS.map(c => c.label)];
-      const line = (r: TypedRow) => TYPED_COLS.map(c => {
+      const rows: unknown[][] = [typedCols.map(c => c.label)];
+      const line = (r: TypedRow) => typedCols.map(c => {
         const v = r[c.key];
         return typeof v === 'number' ? Math.round(v * 100) / 100 : v;
       });
@@ -285,8 +300,8 @@ export default function ReportsView({ tab }: { tab: ReportTab }) {
       if (typedReport.totals) rows.push(line({ ...typedReport.totals, label: 'ИТОГО' }));
       downloadCsv(`отчёт-${typedType.toLowerCase()}-${from}_${to}.csv`, rows);
     } else if (tab === 'regional' && regionalMode === 'count' && regionalCount) {
-      const rows: unknown[][] = [['Уровень', 'Наименование', ...RC_COLS.map(c => c.label)]];
-      const ind = (lvl: string, name: string, t: RegionalCounts) => [lvl, name, ...RC_COLS.map(c => t[c.key])];
+      const rows: unknown[][] = [['Уровень', 'Наименование', ...rcCols.map(c => c.label)]];
+      const ind = (lvl: string, name: string, t: RegionalCounts) => [lvl, name, ...rcCols.map(c => t[c.key])];
       regionalCount.regions.forEach(reg => {
         rows.push(ind('Регион', reg.title, reg.totals));
         reg.cities.forEach(ct => {
@@ -302,8 +317,8 @@ export default function ReportsView({ tab }: { tab: ReportTab }) {
       rows.push(['ИТОГО', '', '', norm.totals.issued, norm.totals.parkings, norm.totals.perParking, norm.totals.mustGive, norm.totals.deviation]);
       downloadCsv(`норматив-выдачи-${normType.toLowerCase()}-${from}_${to}.csv`, rows);
     } else if (tab === 'regional' && regional) {
-      const rows: unknown[][] = [['Уровень', 'Наименование', ...REG_COLS.map(c => c.label)]];
-      const ind = (lvl: string, name: string, t: RegionalInd) => [lvl, name, ...REG_COLS.map(c => Math.round(t[c.key] * 100) / 100)];
+      const rows: unknown[][] = [['Уровень', 'Наименование', ...regCols.map(c => c.label)]];
+      const ind = (lvl: string, name: string, t: RegionalInd) => [lvl, name, ...regCols.map(c => Math.round(t[c.key] * 100) / 100)];
       regional.regions.forEach(reg => {
         rows.push(ind('Регион', reg.title, reg.totals));
         reg.cities.forEach(ct => {
@@ -514,11 +529,11 @@ export default function ReportsView({ tab }: { tab: ReportTab }) {
         <div className="card" style={{ overflowX: 'auto' }}>
           <h2>{typedReport?.typeLabel ?? t('rep.crosscut')} · {typedKind === 'passenger' ? t('rep.pax') : t('rep.cargo')} · {from} — {to}</h2>
           <table>
-            <thead><tr>{TYPED_COLS.map(c => <th key={c.key}>{t('rep.typed.' + c.key)}</th>)}</tr></thead>
+            <thead><tr>{typedCols.map(c => <th key={c.key}>{c.label}</th>)}</tr></thead>
             <tbody>
               {(typedReport?.rows ?? []).map((r, i) => (
                 <tr key={i}>
-                  {TYPED_COLS.map(c => {
+                  {typedCols.map(c => {
                     const v = r[c.key];
                     return <td key={c.key} style={c.key === 'label' ? { fontWeight: 600, color: 'var(--ink)' } : undefined}>
                       {typeof v === 'number' ? (Math.round(v * 100) / 100).toLocaleString('ru-RU') : v}
@@ -528,13 +543,13 @@ export default function ReportsView({ tab }: { tab: ReportTab }) {
               ))}
               {typedReport?.totals && (
                 <tr style={{ fontWeight: 700, borderTop: '2px solid var(--line)' }}>
-                  {TYPED_COLS.map(c => {
+                  {typedCols.map(c => {
                     const v = c.key === 'label' ? t('rep.total') : typedReport.totals![c.key];
                     return <td key={c.key}>{typeof v === 'number' ? (Math.round(v * 100) / 100).toLocaleString('ru-RU') : v}</td>;
                   })}
                 </tr>
               )}
-              {(!typedReport || typedReport.rows.length === 0) && <tr><td colSpan={TYPED_COLS.length} style={{ textAlign: 'center', color: 'var(--muted)', padding: 20 }}>{t('common.norecords')}</td></tr>}
+              {(!typedReport || typedReport.rows.length === 0) && <tr><td colSpan={typedCols.length} style={{ textAlign: 'center', color: 'var(--muted)', padding: 20 }}>{t('common.norecords')}</td></tr>}
             </tbody>
           </table>
         </div>
@@ -548,22 +563,22 @@ export default function ReportsView({ tab }: { tab: ReportTab }) {
             Столбцы 20–21 — грузовые ПЛ (2-Б/5Б-БМ/спецтехника/опасные грузы) за период и сколько из них с заполненной накладной.
           </p>
           <table>
-            <thead><tr><th>{t('rep.h.level')}</th><th>{t('rep.h.name')}</th>{RC_COLS.map(c => <th key={c.key}>{t('rep.rc.' + c.key)}</th>)}</tr></thead>
+            <thead><tr><th>{t('rep.h.level')}</th><th>{t('rep.h.name')}</th>{rcCols.map(c => <th key={c.key}>{c.label}</th>)}</tr></thead>
             <tbody>
               {(regionalCount?.regions ?? []).flatMap(reg => [
                 <tr key={`rc-${reg.title}`} style={{ background: 'var(--amber-050, #fef9e7)', fontWeight: 700 }}>
                   <td>{t('col.region')}</td><td>{reg.title}</td>
-                  {RC_COLS.map(c => <td key={c.key}>{reg.totals[c.key].toLocaleString('ru-RU')}</td>)}
+                  {rcCols.map(c => <td key={c.key}>{reg.totals[c.key].toLocaleString('ru-RU')}</td>)}
                 </tr>,
                 ...reg.cities.flatMap(ct => [
                   <tr key={`cc-${reg.title}-${ct.title}`} style={{ fontStyle: 'italic' }}>
                     <td>&nbsp;&nbsp;{t('rep.city')}</td><td>{ct.title}</td>
-                    {RC_COLS.map(c => <td key={c.key}>{ct.totals[c.key].toLocaleString('ru-RU')}</td>)}
+                    {rcCols.map(c => <td key={c.key}>{ct.totals[c.key].toLocaleString('ru-RU')}</td>)}
                   </tr>,
                   ...ct.companies.map(co => (
                     <tr key={`coc-${co.organizationRma}`}>
                       <td>&nbsp;&nbsp;&nbsp;&nbsp;{t('rep.enterprise')}</td><td>{co.title}</td>
-                      {RC_COLS.map(c => <td key={c.key}>{co.totals[c.key].toLocaleString('ru-RU')}</td>)}
+                      {rcCols.map(c => <td key={c.key}>{co.totals[c.key].toLocaleString('ru-RU')}</td>)}
                     </tr>
                   )),
                 ]),
@@ -571,10 +586,10 @@ export default function ReportsView({ tab }: { tab: ReportTab }) {
               {regionalCount && (
                 <tr style={{ fontWeight: 700, borderTop: '2px solid var(--line)' }}>
                   <td>{t('rep.total')}</td><td>{t('rep.republic')}</td>
-                  {RC_COLS.map(c => <td key={c.key}>{regionalCount.totals[c.key].toLocaleString('ru-RU')}</td>)}
+                  {rcCols.map(c => <td key={c.key}>{regionalCount.totals[c.key].toLocaleString('ru-RU')}</td>)}
                 </tr>
               )}
-              {(!regionalCount || regionalCount.regions.length === 0) && <tr><td colSpan={RC_COLS.length + 2} style={{ textAlign: 'center', color: 'var(--muted)', padding: 20 }}>{t('common.norecords')}</td></tr>}
+              {(!regionalCount || regionalCount.regions.length === 0) && <tr><td colSpan={rcCols.length + 2} style={{ textAlign: 'center', color: 'var(--muted)', padding: 20 }}>{t('common.norecords')}</td></tr>}
             </tbody>
           </table>
         </div>
@@ -619,22 +634,22 @@ export default function ReportsView({ tab }: { tab: ReportTab }) {
             {regionalBill === 'CARGO' ? t('rep.desc.cargo') : t('rep.desc.pax')}
           </p>
           <table>
-            <thead><tr><th>{t('rep.h.level')}</th><th>{t('rep.h.name')}</th>{REG_COLS.map(c => <th key={c.key}>{t('rep.reg.' + c.key)}</th>)}</tr></thead>
+            <thead><tr><th>{t('rep.h.level')}</th><th>{t('rep.h.name')}</th>{regCols.map(c => <th key={c.key}>{c.label}</th>)}</tr></thead>
             <tbody>
               {(regional?.regions ?? []).flatMap(reg => [
                 <tr key={`r-${reg.title}`} style={{ background: 'var(--amber-050, #fef9e7)', fontWeight: 700 }}>
                   <td>{t('col.region')}</td><td>{reg.title}</td>
-                  {REG_COLS.map(c => <td key={c.key}>{(Math.round(reg.totals[c.key] * 100) / 100).toLocaleString('ru-RU')}</td>)}
+                  {regCols.map(c => <td key={c.key}>{(Math.round(reg.totals[c.key] * 100) / 100).toLocaleString('ru-RU')}</td>)}
                 </tr>,
                 ...reg.cities.flatMap(ct => [
                   <tr key={`c-${reg.title}-${ct.title}`} style={{ fontStyle: 'italic' }}>
                     <td>&nbsp;&nbsp;{t('rep.city')}</td><td>{ct.title}</td>
-                    {REG_COLS.map(c => <td key={c.key}>{(Math.round(ct.totals[c.key] * 100) / 100).toLocaleString('ru-RU')}</td>)}
+                    {regCols.map(c => <td key={c.key}>{(Math.round(ct.totals[c.key] * 100) / 100).toLocaleString('ru-RU')}</td>)}
                   </tr>,
                   ...ct.companies.map(co => (
                     <tr key={`co-${co.organizationRma}`}>
                       <td>&nbsp;&nbsp;&nbsp;&nbsp;{t('rep.enterprise')}</td><td>{co.title}</td>
-                      {REG_COLS.map(c => <td key={c.key}>{(Math.round(co.totals[c.key] * 100) / 100).toLocaleString('ru-RU')}</td>)}
+                      {regCols.map(c => <td key={c.key}>{(Math.round(co.totals[c.key] * 100) / 100).toLocaleString('ru-RU')}</td>)}
                     </tr>
                   )),
                 ]),
@@ -642,10 +657,10 @@ export default function ReportsView({ tab }: { tab: ReportTab }) {
               {regional && (
                 <tr style={{ fontWeight: 700, borderTop: '2px solid var(--line)' }}>
                   <td>{t('rep.total')}</td><td>{t('rep.republic')}</td>
-                  {REG_COLS.map(c => <td key={c.key}>{(Math.round(regional.totals[c.key] * 100) / 100).toLocaleString('ru-RU')}</td>)}
+                  {regCols.map(c => <td key={c.key}>{(Math.round(regional.totals[c.key] * 100) / 100).toLocaleString('ru-RU')}</td>)}
                 </tr>
               )}
-              {(!regional || regional.regions.length === 0) && <tr><td colSpan={REG_COLS.length + 2} style={{ textAlign: 'center', color: 'var(--muted)', padding: 20 }}>{t('common.norecords')}</td></tr>}
+              {(!regional || regional.regions.length === 0) && <tr><td colSpan={regCols.length + 2} style={{ textAlign: 'center', color: 'var(--muted)', padding: 20 }}>{t('common.norecords')}</td></tr>}
             </tbody>
           </table>
         </div>

@@ -25,6 +25,7 @@ const MODULES: { key: string; icon: string; cls: string; st: St; href?: string; 
   { key: 'integrations', icon: P.globe, cls: 'ic-blue', st: 'done', href: '/settings/integrations' },
   { key: 'security', icon: P.shield, cls: 'ic-red', st: 'done', href: '/settings/security' },
   { key: 'print', icon: P.doc, cls: 'ic-cyan', st: 'done', href: '/settings/print' },
+  { key: 'reports', icon: P.chart, cls: 'ic-cyan', st: 'done', href: '/settings/reports' },
   { key: 'dictionaries', icon: P.book, cls: 'ic-blue', st: 'done', href: '/dictionaries' },
   { key: 'classifiers', icon: P.globe, cls: 'ic-cyan', st: 'done', href: '/settings/classifiers' },
   { key: 'expiry', icon: P.alert, cls: 'ic-amber', st: 'done', href: '/settings/expiry' },
