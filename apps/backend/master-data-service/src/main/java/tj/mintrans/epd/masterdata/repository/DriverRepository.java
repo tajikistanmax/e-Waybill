@@ -11,7 +11,8 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
-public interface DriverRepository extends JpaRepository<Driver, UUID> {
+public interface DriverRepository extends JpaRepository<Driver, UUID>,
+        org.springframework.data.jpa.repository.JpaSpecificationExecutor<Driver> {
     Optional<Driver> findByRma(String rma);
 
     /** Поиск водителя по части ФИО (перевод парка между организациями: искать можно по ИНН или ФИО). */

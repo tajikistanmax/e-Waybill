@@ -197,6 +197,30 @@ export type ClassifierItem = {
 
 // Справочник внешних (зарубежных) городов — /api/v1/external-cities (master-data-service; V60).
 // Привязан к стране (countryCode — ISO alpha-2, код классификатора COUNTRY).
+/** Параметры страницы реестра (ТС / водители / сотрудники). Пустые не отправляются. */
+export type RegistryPageParams = {
+  page?: number;
+  size?: number;
+  q?: string;
+  organizationRma?: string;
+  /** Вид ТС 1..6 — только для реестра транспорта. */
+  transportType?: string;
+  /** Должность 1..5 — только для реестра сотрудников. */
+  type?: string;
+  regionId?: string;
+  cityName?: string;
+};
+
+/** Ответ постраничного реестра. `assignedVehicles` приходит только у водителей. */
+export type RegistryPage = {
+  content: Record<string, unknown>[];
+  total: number;
+  page: number;
+  size: number;
+  totalPages: number;
+  assignedVehicles?: Record<string, string>;
+};
+
 export type ExternalCity = {
   id: string;
   countryCode: string;
@@ -350,6 +374,21 @@ export const md = {
   allDrivers: () => fetch('/md-api/api/v1/drivers', { headers: authHeaders() }).then(r => handle<Record<string, unknown>[]>(r)),
   allVehicles: () => fetch('/md-api/api/v1/vehicles', { headers: authHeaders() }).then(r => handle<Record<string, unknown>[]>(r)),
   allEmployees: () => fetch('/md-api/api/v1/employees', { headers: authHeaders() }).then(r => handle<Record<string, unknown>[]>(r)),
+  // Постраничные реестры: отбор, поиск и страница считаются на сервере. Полные списки выше
+  // (allVehicles/allDrivers) на боевых данных весят 87/56 МБ — в реестрах не используются.
+  registryPage: (kind: 'vehicles' | 'drivers' | 'employees', params: RegistryPageParams) => {
+    const qs = new URLSearchParams();
+    qs.set('page', String(params.page ?? 0));
+    qs.set('size', String(params.size ?? 20));
+    if (params.q) qs.set('q', params.q);
+    if (params.organizationRma) qs.set('organizationRma', params.organizationRma);
+    if (params.transportType) qs.set('transportType', params.transportType);
+    if (params.type) qs.set('type', params.type);
+    if (params.regionId) qs.set('regionId', params.regionId);
+    if (params.cityName) qs.set('cityName', params.cityName);
+    return fetch(`/md-api/api/v1/${kind}/page?${qs.toString()}`, { headers: authHeaders() })
+      .then(r => handle<RegistryPage>(r));
+  },
   // Справочник городов/районов (перенос из боевого MinTransRT; V54). Опц. фильтр по региону 1..7.
   cities: (region?: number) => fetch(`/md-api/api/v1/cities${region ? `?region=${region}` : ''}`, { headers: authHeaders() }).then(r => handle<Record<string, unknown>[]>(r)),
   // Справочник внешних (зарубежных) городов (V60). Опц. фильтр по стране (ISO alpha-2).

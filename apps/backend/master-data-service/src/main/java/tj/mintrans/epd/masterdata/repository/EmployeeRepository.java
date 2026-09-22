@@ -8,7 +8,8 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
-public interface EmployeeRepository extends JpaRepository<Employee, UUID> {
+public interface EmployeeRepository extends JpaRepository<Employee, UUID>,
+        org.springframework.data.jpa.repository.JpaSpecificationExecutor<Employee> {
     Optional<Employee> findByRma(String rma);
 
     /** Поиск сотрудника по части ФИО (перевод между организациями: по ИНН или ФИО). */

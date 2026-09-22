@@ -47,16 +47,19 @@ public class VehicleController {
     private final TenantScope tenantScope;
     private final AuditService audit;
     private final tj.mintrans.epd.masterdata.service.VehicleCardRules cardRules;
+    private final tj.mintrans.epd.masterdata.service.RegistryQuery registryQuery;
 
     public VehicleController(VehicleRepository vehicles, OrganizationRepository organizations,
                              CurrentUser currentUser, TenantScope tenantScope, AuditService audit,
-                             tj.mintrans.epd.masterdata.service.VehicleCardRules cardRules) {
+                             tj.mintrans.epd.masterdata.service.VehicleCardRules cardRules,
+                             tj.mintrans.epd.masterdata.service.RegistryQuery registryQuery) {
         this.vehicles = vehicles;
         this.organizations = organizations;
         this.currentUser = currentUser;
         this.tenantScope = tenantScope;
         this.audit = audit;
         this.cardRules = cardRules;
+        this.registryQuery = registryQuery;
     }
 
     public record VehicleRequest(
@@ -232,6 +235,30 @@ public class VehicleController {
                     .orElseGet(List::of);
         }
         return vehicles.findAll();
+    }
+
+    /**
+     * Постраничный реестр ТС с отбором на сервере. Заменяет выгрузку всей таблицы в браузер:
+     * у администратора платформы {@code GET /api/v1/vehicles} возвращал 89 287 ТС — 87 МБ за 42 с
+     * (находка приёмки 22.09.2026). Поиск {@code q} — по госномеру, марке, VIN, номеру стоянки
+     * и названию организации; {@code regionId}/{@code cityName} — география организации-владельца.
+     */
+    @GetMapping("/page")
+    public PagedResult<Vehicle> page(@RequestParam(defaultValue = "0") int page,
+                                     @RequestParam(defaultValue = "20") int size,
+                                     @RequestParam(required = false) String q,
+                                     @RequestParam(required = false) String organizationRma,
+                                     @RequestParam(required = false) Short transportType,
+                                     @RequestParam(required = false) Short regionId,
+                                     @RequestParam(required = false) String cityName) {
+        var scope = registryQuery.organizationScope(organizationRma, regionId, cityName);
+        var spec = registryQuery.<Vehicle>specification(scope, q,
+                List.of("registrationNumber", "brand", "vincode", "parkingNumber"),
+                registryQuery.organizationIdsByName(q));
+        if (transportType != null) {
+            spec = spec.and((root, cq, cb) -> cb.equal(root.get("transportType"), transportType));
+        }
+        return PagedResult.of(vehicles.findAll(spec, registryQuery.pageable(page, size, "registrationNumber")));
     }
 
     /**

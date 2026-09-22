@@ -41,13 +41,16 @@ public class EmployeeController {
     private final OrganizationRepository organizations;
     private final TenantScope tenantScope;
     private final AuditService audit;
+    private final tj.mintrans.epd.masterdata.service.RegistryQuery registryQuery;
 
     public EmployeeController(EmployeeRepository employees, OrganizationRepository organizations,
-                              TenantScope tenantScope, AuditService audit) {
+                              TenantScope tenantScope, AuditService audit,
+                              tj.mintrans.epd.masterdata.service.RegistryQuery registryQuery) {
         this.employees = employees;
         this.organizations = organizations;
         this.tenantScope = tenantScope;
         this.audit = audit;
+        this.registryQuery = registryQuery;
     }
 
     public record EmployeeRequest(
@@ -122,6 +125,29 @@ public class EmployeeController {
                     .orElseGet(List::of);
         }
         return employees.findAll();
+    }
+
+    /**
+     * Страница реестра сотрудников с отбором на сервере (симметрично ТС и водителям):
+     * поиск по Ф.И.О., ИНН, табельному номеру, телефону, адресу и названию организации,
+     * отбор по должности ({@code type} 1–5), региону и городу организации.
+     */
+    @GetMapping("/page")
+    public PagedResult<Employee> page(@RequestParam(defaultValue = "0") int page,
+                                      @RequestParam(defaultValue = "20") int size,
+                                      @RequestParam(required = false) String q,
+                                      @RequestParam(required = false) String organizationRma,
+                                      @RequestParam(required = false) Short type,
+                                      @RequestParam(required = false) Short regionId,
+                                      @RequestParam(required = false) String cityName) {
+        var scope = registryQuery.organizationScope(organizationRma, regionId, cityName);
+        var spec = registryQuery.<Employee>specification(scope, q,
+                List.of("name", "rma", "tabNumber", "phone", "address"),
+                registryQuery.organizationIdsByName(q));
+        if (type != null) {
+            spec = spec.and((root, cq, cb) -> cb.equal(root.get("type"), type));
+        }
+        return PagedResult.of(employees.findAll(spec, registryQuery.pageable(page, size, "name")));
     }
 
     @GetMapping("/{id}")

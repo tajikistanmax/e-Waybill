@@ -11,7 +11,8 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
-public interface VehicleRepository extends JpaRepository<Vehicle, UUID> {
+public interface VehicleRepository extends JpaRepository<Vehicle, UUID>,
+        org.springframework.data.jpa.repository.JpaSpecificationExecutor<Vehicle> {
     Optional<Vehicle> findByRegistrationNumber(String registrationNumber);
 
     /** Поиск ТС по части госномера (перевод парка между организациями). */

@@ -30,9 +30,14 @@ const LABEL_KEY: Record<RegistryKind, string> = {
 
 const s = (v: unknown) => (v == null || v === '' ? '—' : String(v));
 
-// Пагинация: рендерим только текущую страницу. Без неё на боевых данных (89k ТС / 68k
-// водителей) браузер вешался, пытаясь отрисовать десятки тысяч строк разом.
+// Пагинация серверная: страницу, отбор и поиск считает master-data. Раньше страница
+// тянула таблицу целиком — на боевых данных это 87 МБ (89 287 ТС) и 56 МБ (68 006
+// водителей), реестр открывался почти минуту, а реестр водителей дополнительно грузил
+// весь справочник ТС ради колонки «Номер транспорта» (находка приёмки 22.09.2026).
 const PER_PAGE = 20;
+// Выгрузка CSV идёт страницами по 200 строк; потолок бережёт браузер от гигабайтной выборки.
+const EXPORT_CHUNK = 200;
+const EXPORT_LIMIT = 5000;
 
 /** Модальное окно с полной карточкой записи (только просмотр). */
 function DetailModal({ kind, row, orgName, assignedVeh, onClose, t }: {
@@ -96,9 +101,13 @@ function DetailModal({ kind, row, orgName, assignedVeh, onClose, t }: {
 export default function RegistryView({ kind }: { kind: RegistryKind }) {
   const { t } = useT();
   const [rows, setRows] = useState<Row[]>([]);
+  const [total, setTotal] = useState(0);
+  const [pages, setPages] = useState(1);
+  const [assignedVehicles, setAssignedVehicles] = useState<Record<string, string>>({});
   const [orgs, setOrgs] = useState<Row[]>([]);
-  const [vehiclesForLink, setVehiclesForLink] = useState<Row[]>([]);
   const [q, setQ] = useState('');
+  // Отправляемая на сервер строка поиска: задерживается, чтобы не слать запрос на каждую букву.
+  const [qSent, setQSent] = useState('');
   const [orgFilter, setOrgFilter] = useState('');
   const [typeFilter, setTypeFilter] = useState('');
   const [posFilter, setPosFilter] = useState('');
@@ -106,64 +115,64 @@ export default function RegistryView({ kind }: { kind: RegistryKind }) {
   const [cityFilter, setCityFilter] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [detail, setDetail] = useState<Row | null>(null);
   const [page, setPage] = useState(1);
 
   useEffect(() => { md.organizations().then(setOrgs).catch(e => setError(e.message)); }, []);
-  // Для реестра водителей — карта ТС (id → госномер) для колонки «Номер транспорта».
+
   useEffect(() => {
-    if (kind !== 'drivers') return;
-    md.allVehicles().then(setVehiclesForLink).catch(() => setVehiclesForLink([]));
-  }, [kind]);
+    const id = setTimeout(() => setQSent(q.trim()), 300);
+    return () => clearTimeout(id);
+  }, [q]);
+
+  // Параметры отбора для сервера. orgFilter хранит РМА организации (не id): по нему
+  // master-data сужает выборку так же, как по токену арендатора.
+  const params = useMemo(() => ({
+    q: qSent || undefined,
+    organizationRma: orgFilter || undefined,
+    transportType: kind === 'vehicles' && typeFilter ? typeFilter : undefined,
+    type: kind === 'employees' && posFilter ? posFilter : undefined,
+    regionId: regionFilter || undefined,
+    cityName: cityFilter || undefined,
+  }), [qSent, orgFilter, typeFilter, posFilter, regionFilter, cityFilter, kind]);
 
   const reload = useCallback(async () => {
     setLoading(true); setError('');
     try {
-      const fn = kind === 'vehicles' ? md.allVehicles : kind === 'drivers' ? md.allDrivers : md.allEmployees;
-      setRows(await fn());
+      const res = await md.registryPage(kind, { ...params, page: page - 1, size: PER_PAGE });
+      setRows(res.content);
+      setTotal(res.total);
+      setPages(Math.max(1, res.totalPages));
+      setAssignedVehicles(res.assignedVehicles ?? {});
+      // Страница могла «уехать» за конец выборки после смены фильтра — возвращаемся на первую.
+      if (res.content.length === 0 && page > res.totalPages) setPage(1);
     } catch (e) {
       setError((e as Error).message);
+      setRows([]); setTotal(0); setPages(1);
     } finally {
       setLoading(false);
     }
-  }, [kind]);
+  }, [kind, params, page]);
 
-  useEffect(() => { setQ(''); setOrgFilter(''); setTypeFilter(''); setPosFilter(''); setRegionFilter(''); setCityFilter(''); reload(); }, [reload]);
+  useEffect(() => { reload(); }, [reload]);
+  // Смена реестра — сброс всех фильтров и страницы.
+  useEffect(() => { setQ(''); setQSent(''); setOrgFilter(''); setTypeFilter(''); setPosFilter(''); setRegionFilter(''); setCityFilter(''); setPage(1); }, [kind]);
+  // Смена любого отбора возвращает на первую страницу.
+  useEffect(() => { setPage(1); }, [qSent, orgFilter, typeFilter, posFilter, regionFilter, cityFilter]);
 
   const orgById = useMemo(() => new Map(orgs.map(o => [String(o.id), String(o.name ?? o.rma)])), [orgs]);
   const orgName = (row: Row) => orgById.get(String(row.organizationId)) ?? '—';
-  // Регион/город записи определяются по организации-владельцу.
-  const orgMeta = useMemo(() => new Map(orgs.map(o => [String(o.id), { region: String(o.regionId ?? ''), city: String(o.cityName ?? '') }])), [orgs]);
   // Каскад регион→город: список городов сужается по выбранному региону (при пустом — все).
   const orgCities = useMemo(() => Array.from(new Set(
     orgs.filter(o => !regionFilter || String(o.regionId ?? '') === regionFilter)
       .map(o => String(o.cityName ?? '')).filter(Boolean),
   )).sort(), [orgs, regionFilter]);
-  // Карта закреплённого ТС (id → госномер) для колонки реестра водителей.
-  const vehRegById = useMemo(() => new Map(vehiclesForLink.map(v => [String(v.id), String(v.registrationNumber ?? '')])), [vehiclesForLink]);
-  const assignedVehReg = (row: Row) => (row.assignedVehicleId ? (vehRegById.get(String(row.assignedVehicleId)) ?? '—') : '—');
+  // Госномер закреплённого ТС приходит вместе со страницей водителей — справочник ТС не грузим.
+  const assignedVehReg = (row: Row) => (row.assignedVehicleId ? (assignedVehicles[String(row.assignedVehicleId)] ?? '—') : '—');
 
-  const filtered = useMemo(() => {
-    const needle = q.trim().toLowerCase();
-    return rows.filter(r => {
-      if (orgFilter && String(r.organizationId) !== orgFilter) return false;
-      if (typeFilter && kind === 'vehicles' && String(r.transportType) !== typeFilter) return false;
-      if (posFilter && kind === 'employees' && String(r.type) !== posFilter) return false;
-      if (regionFilter && (orgMeta.get(String(r.organizationId))?.region ?? '') !== regionFilter) return false;
-      if (cityFilter && (orgMeta.get(String(r.organizationId))?.city ?? '') !== cityFilter) return false;
-      if (!needle) return true;
-      const company = orgById.get(String(r.organizationId)) ?? '';
-      const hay = [company, r.registrationNumber, r.brand, r.vincode, r.fullName, r.name, r.rma, r.licenseNumber, r.tabNumber, r.phone, r.address]
-        .filter(Boolean).map(String).join(' ').toLowerCase();
-      return hay.includes(needle);
-    });
-  }, [rows, q, orgFilter, typeFilter, posFilter, regionFilter, cityFilter, kind, orgById, orgMeta]);
-
-  // Сброс на первую страницу при изменении фильтров/поиска/данных.
-  useEffect(() => { setPage(1); }, [q, orgFilter, typeFilter, posFilter, regionFilter, cityFilter, rows]);
-  const pages = Math.max(1, Math.ceil(filtered.length / PER_PAGE));
+  const view = rows;
   const safePage = Math.min(page, pages);
-  const view = filtered.slice((safePage - 1) * PER_PAGE, safePage * PER_PAGE);
 
   const emptyText = loading ? t('common.loading') : t('common.norecords');
 
@@ -172,11 +181,33 @@ export default function RegistryView({ kind }: { kind: RegistryKind }) {
     (!regionFilter || String(o.regionId ?? '') === regionFilter) && (!cityFilter || String(o.cityName ?? '') === cityFilter)),
   [orgs, regionFilter, cityFilter]);
   useEffect(() => {
-    if (orgFilter && !cascadedOrgs.some(o => String(o.id) === orgFilter)) setOrgFilter('');
+    if (orgFilter && !cascadedOrgs.some(o => String(o.rma) === orgFilter)) setOrgFilter('');
   }, [cascadedOrgs, orgFilter]);
 
   // Экспорт текущей выборки реестра в CSV (8.7, legacy enableExportButtons) — все поля карточки.
-  function exportCsv() {
+  // Строки добираются с сервера страницами по EXPORT_CHUNK: выгружается вся выборка по текущим
+  // фильтрам, а не только видимая страница. Потолок EXPORT_LIMIT защищает браузер.
+  async function exportCsv() {
+    setExporting(true); setError('');
+    try {
+      const all: Row[] = [];
+      for (let p = 0; all.length < EXPORT_LIMIT; p++) {
+        const res = await md.registryPage(kind, { ...params, page: p, size: EXPORT_CHUNK });
+        all.push(...res.content);
+        // Для колонки «Номер транспорта» в выгрузке нужны госномера всех страниц, не только текущей.
+        if (res.assignedVehicles) Object.assign(assignedVehicles, res.assignedVehicles);
+        if (p + 1 >= res.totalPages || res.content.length === 0) break;
+      }
+      writeCsv(all);
+      if (total > EXPORT_LIMIT) setError(t('reg.export.truncated'));
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  function writeCsv(source: Row[]) {
     const src = String;
     const head = kind === 'vehicles'
       ? [t('col.regnum'), t('dt.vehtype'), t('col.brand'), t('col.org'), t('dt.parking'), t('dt.capacity'), t('dt.carrying'), t('col.odometer'), t('dt.year'), t('col.techto'), t('col.cardto'), 'VIN', t('dt.insto'), t('dt.adrto'), t('dt.source')]
@@ -191,7 +222,7 @@ export default function RegistryView({ kind }: { kind: RegistryKind }) {
           ? [r.fullName, r.rma, orgName(r), r.tabNumber, r.phone, r.licenseNumber, r.licenseCategories, r.licenseValidTo, r.degree, r.medCertValidTo, r.safetyCourseValidTo, assignedVehReg(r), r.address, source]
           : [r.name, r.rma, orgName(r), empType(r.type, t), r.tabNumber, r.phone, r.address, source];
     };
-    downloadCsv(`${src(kind)}_${new Date().toISOString().slice(0, 10)}.csv`, [head, ...filtered.map(line)]);
+    downloadCsv(`${src(kind)}_${new Date().toISOString().slice(0, 10)}.csv`, [head, ...source.map(line)]);
   }
 
   return (
@@ -229,10 +260,10 @@ export default function RegistryView({ kind }: { kind: RegistryKind }) {
           {/* Каскад регион→город→компания (MIGRATION.md 8.2): список компаний сужается по региону/городу. */}
           <select value={orgFilter} onChange={e => setOrgFilter(e.target.value)} style={{ width: 240 }}>
             <option value="">{t('reg.allorgs')}</option>
-            {cascadedOrgs.map(o => <option key={String(o.id)} value={String(o.id)}>{String(o.name ?? o.rma)}</option>)}
+            {cascadedOrgs.map(o => <option key={String(o.id)} value={String(o.rma)}>{String(o.name ?? o.rma)}</option>)}
           </select>
           <input value={q} onChange={e => setQ(e.target.value)} placeholder={t('reg.search')} style={{ width: 240 }} />
-          <button type="button" className="btn secondary" onClick={exportCsv} disabled={filtered.length === 0} title={t('rep.export.hint')}>
+          <button type="button" className="btn secondary" onClick={exportCsv} disabled={total === 0 || exporting} title={t('rep.export.hint')}>
             <Icon d={P.chart} cls="" style={{ width: 15, height: 15 }} /> CSV
           </button>
         </div>
@@ -266,7 +297,7 @@ export default function RegistryView({ kind }: { kind: RegistryKind }) {
                 </td>
               </tr>
             ))}
-            {filtered.length === 0 && <tr><td colSpan={8} style={{ textAlign: 'center', color: 'var(--muted)', padding: 22 }}>{emptyText}</td></tr>}
+            {rows.length === 0 && <tr><td colSpan={8} style={{ textAlign: 'center', color: 'var(--muted)', padding: 22 }}>{emptyText}</td></tr>}
           </tbody>
         </table>
       )}
@@ -297,7 +328,7 @@ export default function RegistryView({ kind }: { kind: RegistryKind }) {
                 </td>
               </tr>
             ))}
-            {filtered.length === 0 && <tr><td colSpan={8} style={{ textAlign: 'center', color: 'var(--muted)', padding: 22 }}>{emptyText}</td></tr>}
+            {rows.length === 0 && <tr><td colSpan={8} style={{ textAlign: 'center', color: 'var(--muted)', padding: 22 }}>{emptyText}</td></tr>}
           </tbody>
         </table>
       )}
@@ -327,13 +358,13 @@ export default function RegistryView({ kind }: { kind: RegistryKind }) {
                 </td>
               </tr>
             ))}
-            {filtered.length === 0 && <tr><td colSpan={7} style={{ textAlign: 'center', color: 'var(--muted)', padding: 22 }}>{emptyText}</td></tr>}
+            {rows.length === 0 && <tr><td colSpan={7} style={{ textAlign: 'center', color: 'var(--muted)', padding: 22 }}>{emptyText}</td></tr>}
           </tbody>
         </table>
       )}
 
       <div style={{ display: 'flex', alignItems: 'center', marginTop: 12, fontSize: 12.5, color: 'var(--muted)' }}>
-        <span>{t('dash.total')}: <b style={{ color: 'var(--ink)' }}>{filtered.length}</b>{rows.length !== filtered.length ? ` ${t('paging.of')} ${rows.length}` : ''}</span>
+        <span>{t('dash.total')}: <b style={{ color: 'var(--ink)' }}>{total}</b></span>
         <span style={{ flex: 1 }} />
         <button className="btn secondary" disabled={safePage <= 1} onClick={() => setPage(p => Math.max(1, p - 1))} style={{ padding: '5px 11px' }}>‹</button>
         <span style={{ margin: '0 12px' }}>{safePage} / {pages}</span>

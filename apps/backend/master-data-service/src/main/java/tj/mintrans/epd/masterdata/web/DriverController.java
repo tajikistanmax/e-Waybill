@@ -47,11 +47,14 @@ public class DriverController {
     private final TenantScope tenantScope;
     private final AuditService audit;
     private final tj.mintrans.epd.masterdata.service.DriverTabNumbers tabNumbers;
+    private final tj.mintrans.epd.masterdata.service.RegistryQuery registryQuery;
 
     public DriverController(DriverRepository drivers, OrganizationRepository organizations,
                             tj.mintrans.epd.masterdata.repository.VehicleRepository vehicles,
                             CurrentUser currentUser, TenantScope tenantScope, AuditService audit,
-                            tj.mintrans.epd.masterdata.service.DriverTabNumbers tabNumbers) {
+                            tj.mintrans.epd.masterdata.service.DriverTabNumbers tabNumbers,
+                            tj.mintrans.epd.masterdata.service.RegistryQuery registryQuery) {
+        this.registryQuery = registryQuery;
         this.drivers = drivers;
         this.organizations = organizations;
         this.vehicles = vehicles;
@@ -197,6 +200,39 @@ public class DriverController {
                     .orElseGet(List::of);
         }
         return drivers.findAll();
+    }
+
+    /**
+     * Страница реестра водителей с отбором на сервере. Вместе со строками отдаются госномера
+     * закреплённых ТС ({@code id ТС → госномер}) только для этой страницы: без них интерфейс
+     * тянул ВЕСЬ справочник ТС (87 МБ) ради одной колонки. Поиск {@code q} — по Ф.И.О., ИНН,
+     * табельному номеру, телефону, номеру прав, адресу и названию организации.
+     */
+    @GetMapping("/page")
+    public DriverPage page(@RequestParam(defaultValue = "0") int page,
+                           @RequestParam(defaultValue = "20") int size,
+                           @RequestParam(required = false) String q,
+                           @RequestParam(required = false) String organizationRma,
+                           @RequestParam(required = false) Short regionId,
+                           @RequestParam(required = false) String cityName) {
+        var scope = registryQuery.organizationScope(organizationRma, regionId, cityName);
+        var spec = registryQuery.<Driver>specification(scope, q,
+                List.of("fullName", "rma", "tabNumber", "phone", "licenseNumber", "address"),
+                registryQuery.organizationIdsByName(q));
+        var result = drivers.findAll(spec, registryQuery.pageable(page, size, "fullName"));
+        var vehicleIds = result.getContent().stream()
+                .map(Driver::getAssignedVehicleId).filter(java.util.Objects::nonNull).distinct().toList();
+        var numbers = new java.util.LinkedHashMap<String, String>();
+        for (var v : vehicles.findAllById(vehicleIds)) {
+            numbers.put(v.getId().toString(), v.getRegistrationNumber());
+        }
+        return new DriverPage(result.getContent(), result.getTotalElements(), result.getNumber(),
+                result.getSize(), Math.max(1, result.getTotalPages()), numbers);
+    }
+
+    /** Страница реестра водителей: строки + госномера закреплённых ТС этой страницы. */
+    public record DriverPage(List<Driver> content, long total, int page, int size, int totalPages,
+                             java.util.Map<String, String> assignedVehicles) {
     }
 
     @GetMapping("/{id}")
