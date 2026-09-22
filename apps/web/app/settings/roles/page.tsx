@@ -117,13 +117,33 @@ export default function RolesSettingsPage() {
                   </select>
                 </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 12px' }}>
+                {/* Сетка разделов: строки одинаковой высоты, квадратики в одной вертикали.
+                    Раньше подписи разной длины переносились и «разъезжались» (решение владельца 22.09). */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 6, alignItems: 'stretch' }}>
                   {SECTIONS.map(s => {
                     const locked = r.role === 'SYSTEM_ADMIN' && s === 'settings';
+                    const label = t(NAV_KEY[s]);
+                    const on = d.nav.has(s);
                     return (
-                      <label key={s} style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 12.5, cursor: canEdit && !locked ? 'pointer' : 'default', opacity: locked ? 0.7 : 1 }}>
-                        <input type="checkbox" checked={d.nav.has(s)} disabled={!canEdit || locked} onChange={() => toggle(r.role, s)} />
-                        {t(NAV_KEY[s])}
+                      <label
+                        key={s}
+                        title={label}
+                        style={{
+                          display: 'grid', gridTemplateColumns: '16px minmax(0, 1fr)', alignItems: 'center', gap: 8,
+                          minHeight: 32, padding: '0 9px', borderRadius: 8,
+                          border: `1px solid ${on ? 'var(--blue-500)' : 'var(--line)'}`,
+                          background: on ? 'var(--line-soft)' : 'transparent',
+                          fontSize: 12.5, cursor: canEdit && !locked ? 'pointer' : 'default', opacity: locked ? 0.7 : 1,
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={on}
+                          disabled={!canEdit || locked}
+                          onChange={() => toggle(r.role, s)}
+                          style={{ width: 16, height: 16, margin: 0, flex: 'none', accentColor: 'var(--blue-600)' }}
+                        />
+                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label}</span>
                       </label>
                     );
                   })}
