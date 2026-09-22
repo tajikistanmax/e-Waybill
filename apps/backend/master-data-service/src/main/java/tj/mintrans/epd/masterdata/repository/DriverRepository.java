@@ -13,6 +13,9 @@ import java.util.UUID;
 
 public interface DriverRepository extends JpaRepository<Driver, UUID> {
     Optional<Driver> findByRma(String rma);
+
+    /** Поиск водителя по части ФИО (перевод парка между организациями: искать можно по ИНН или ФИО). */
+    List<Driver> findTop20ByFullNameContainingIgnoreCaseOrderByFullNameAsc(String part);
     List<Driver> findByOrganizationId(UUID organizationId);
     List<Driver> findByOrganizationIdIn(Collection<UUID> organizationIds);
 

@@ -13,6 +13,9 @@ import java.util.UUID;
 
 public interface VehicleRepository extends JpaRepository<Vehicle, UUID> {
     Optional<Vehicle> findByRegistrationNumber(String registrationNumber);
+
+    /** Поиск ТС по части госномера (перевод парка между организациями). */
+    List<Vehicle> findTop20ByRegistrationNumberContainingIgnoreCaseOrderByRegistrationNumberAsc(String part);
     List<Vehicle> findByOrganizationId(UUID organizationId);
     List<Vehicle> findByOrganizationIdIn(Collection<UUID> organizationIds);
 

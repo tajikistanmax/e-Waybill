@@ -10,6 +10,9 @@ import java.util.UUID;
 
 public interface EmployeeRepository extends JpaRepository<Employee, UUID> {
     Optional<Employee> findByRma(String rma);
+
+    /** Поиск сотрудника по части ФИО (перевод между организациями: по ИНН или ФИО). */
+    List<Employee> findTop20ByNameContainingIgnoreCaseOrderByNameAsc(String part);
     List<Employee> findByOrganizationId(UUID organizationId);
     List<Employee> findByOrganizationIdIn(Collection<UUID> organizationIds);
 }

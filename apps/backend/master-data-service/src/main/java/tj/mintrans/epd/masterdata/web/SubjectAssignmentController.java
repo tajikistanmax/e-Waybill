@@ -22,6 +22,7 @@ import tj.mintrans.epd.masterdata.repository.VehicleRepository;
 import tj.mintrans.epd.masterdata.service.AuditService;
 import tj.mintrans.epd.masterdata.web.error.NotFoundException;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -92,6 +93,54 @@ public class SubjectAssignmentController {
             case employees -> employees.findByRma(k).map(e -> ref(kind, e.getId(), e.getRma(), e.getName(), e.getOrganizationId()))
                     .orElseThrow(() -> new NotFoundException("Сотрудник с ИНН %s не найден".formatted(k)));
         };
+    }
+
+    /**
+     * Поиск субъекта по началу ИНН **или по части ФИО** (для транспорта — по части госномера):
+     * перевозчик ищет уже заведённого водителя/сотрудника, не зная его ИНН наизусть.
+     * Возвращает до 20 кратких карточек; пустой запрос — пустой список.
+     */
+    @GetMapping("/{kind}/search")
+    public List<SubjectRef> search(@PathVariable SubjectKind kind, @RequestParam String q) {
+        String needle = q == null ? "" : q.trim();
+        if (needle.length() < 2) {
+            return List.of();
+        }
+        return switch (kind) {
+            case drivers -> {
+                var byRma = drivers.findByRma(needle)
+                        .map(d -> ref(kind, d.getId(), d.getRma(), d.getFullName(), d.getOrganizationId()));
+                var byName = drivers.findTop20ByFullNameContainingIgnoreCaseOrderByFullNameAsc(needle).stream()
+                        .map(d -> ref(kind, d.getId(), d.getRma(), d.getFullName(), d.getOrganizationId()))
+                        .toList();
+                yield merge(byRma.orElse(null), byName);
+            }
+            case vehicles -> vehicles.findTop20ByRegistrationNumberContainingIgnoreCaseOrderByRegistrationNumberAsc(needle.toUpperCase()).stream()
+                    .map(v -> ref(kind, v.getId(), v.getRegistrationNumber(), v.getBrand(), v.getOrganizationId()))
+                    .toList();
+            case employees -> {
+                var byRma = employees.findByRma(needle)
+                        .map(e -> ref(kind, e.getId(), e.getRma(), e.getName(), e.getOrganizationId()));
+                var byName = employees.findTop20ByNameContainingIgnoreCaseOrderByNameAsc(needle).stream()
+                        .map(e -> ref(kind, e.getId(), e.getRma(), e.getName(), e.getOrganizationId()))
+                        .toList();
+                yield merge(byRma.orElse(null), byName);
+            }
+        };
+    }
+
+    /** Точное совпадение по ИНН — первым, дальше найденные по имени (без повторов). */
+    private static List<SubjectRef> merge(SubjectRef exact, List<SubjectRef> others) {
+        List<SubjectRef> out = new java.util.ArrayList<>();
+        if (exact != null) {
+            out.add(exact);
+        }
+        for (SubjectRef r : others) {
+            if (exact == null || !r.id().equals(exact.id())) {
+                out.add(r);
+            }
+        }
+        return out.size() > 20 ? out.subList(0, 20) : out;
     }
 
     /** Закрепить субъекта за организацией (перевод из другой организации — только системный администратор). */

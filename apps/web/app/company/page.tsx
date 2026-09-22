@@ -272,6 +272,7 @@ function OrgRegistry() {
   const [attachOpen, setAttachOpen] = useState(false);
   const [attachKey, setAttachKey] = useState('');
   const [attachFound, setAttachFound] = useState<SubjectRef | null>(null);
+  const [attachList, setAttachList] = useState<SubjectRef[]>([]);
   const [attachError, setAttachError] = useState('');
   const [confirmRow, setConfirmRow] = useState<{ row: Row; action: 'detach' | 'delete' } | null>(null);
   const [busy, setBusy] = useState(false);
@@ -464,10 +465,16 @@ function OrgRegistry() {
 
   const subjectKind: SubjectKind = tab;
 
+  /** Поиск по ИНН, ФИО (водитель/сотрудник) или части госномера (ТС) — как просил владелец 22.09. */
   async function lookupSubject() {
-    setAttachError(''); setAttachFound(null);
+    setAttachError(''); setAttachFound(null); setAttachList([]);
+    const q = attachKey.trim();
+    if (q.length < 2) { setAttachError(t('comp.attach.short')); return; }
     try {
-      setAttachFound(await md.subjects.lookup(subjectKind, attachKey.trim()));
+      const found = await md.subjects.search(subjectKind, q);
+      if (found.length === 0) { setAttachError(t('comp.attach.notfound')); return; }
+      if (found.length === 1) { setAttachFound(found[0]); return; }
+      setAttachList(found);
     } catch (err) {
       setAttachError((err as Error).message);
     }
@@ -479,7 +486,7 @@ function OrgRegistry() {
     try {
       const res = await md.subjects.attach(subjectKind, attachFound.id, orgRma);
       setOk(`${res.key} — ${t('comp.attach.done')} «${res.organizationName ?? orgRma}»`);
-      setAttachOpen(false); setAttachKey(''); setAttachFound(null);
+      setAttachOpen(false); setAttachKey(''); setAttachFound(null); setAttachList([]);
       await loadOrgs().catch(() => {});
       await reload();
     } catch (err) {
@@ -720,7 +727,7 @@ function OrgRegistry() {
         <span className="spacer" />
         {org && <span style={{ color: 'var(--muted)', fontSize: 12.5, marginRight: 4 }}>{String(org.name)}</span>}
         {/* Уже существующий в базе субъект не регистрируется заново — его прикрепляют по ИНН/госномеру. */}
-        <button className="btn secondary" disabled={!orgRma} onClick={() => { setAttachOpen(true); setAttachKey(''); setAttachFound(null); setAttachError(''); }}>
+        <button className="btn secondary" disabled={!orgRma} onClick={() => { setAttachOpen(true); setAttachKey(''); setAttachFound(null); setAttachList([]); setAttachError(''); }}>
           {t('comp.attach.btn')}
         </button>
         <button className="btn" disabled={!orgRma} onClick={() => { setShowForm(true); setEntityMode('manual'); setEditingKey(null); }}>{t('btn.add')}</button>
@@ -911,13 +918,30 @@ function OrgRegistry() {
           <p className="hint" style={{ marginBottom: 12 }}>{t('comp.attach.hint')}</p>
           <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', marginBottom: 12 }}>
             <div style={{ flex: 1 }}>
-              <label>{tab === 'vehicles' ? t('col.regnum') : t('col.innrma')}</label>
+              <label>{tab === 'vehicles' ? t('comp.attach.q.vehicle') : t('comp.attach.q.person')}</label>
               <input value={attachKey} onChange={e => setAttachKey(e.target.value)}
-                placeholder={tab === 'vehicles' ? '0101TJ01' : '461930031'} style={{ width: '100%' }} />
+                onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); lookupSubject(); } }}
+                placeholder={tab === 'vehicles' ? '0101TJ01' : '461930031 / Иванов'} style={{ width: '100%' }} />
             </div>
             <button type="button" className="btn secondary" onClick={lookupSubject} disabled={!attachKey.trim()}>{t('comp.attach.find')}</button>
           </div>
           {attachError && <div className="error">{attachError}</div>}
+          {/* Нашлось несколько — выбираем нужного из списка. */}
+          {attachList.length > 0 && !attachFound && (
+            <table>
+              <thead><tr><th>{tab === 'vehicles' ? t('col.regnum') : t('col.innrma')}</th><th>{tab === 'vehicles' ? t('col.brand') : t('col.fio')}</th><th>{t('col.org')}</th><th /></tr></thead>
+              <tbody>
+                {attachList.map(s => (
+                  <tr key={s.id}>
+                    <td><span className="number">{s.key}</span></td>
+                    <td>{s.name ?? '—'}</td>
+                    <td>{s.attached ? (s.organizationName ?? s.organizationRma) : t('comp.attach.free')}</td>
+                    <td><button type="button" className="btn secondary" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => { setAttachFound(s); setAttachList([]); }}>{t('btn.select')}</button></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
           {attachFound && (
             <>
               <dl className="kv">

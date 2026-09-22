@@ -171,8 +171,19 @@ export default function ReportsView({ tab }: { tab: ReportTab }) {
   // Отбор типового отчёта по одному ТС / водителю (legacy report_details, MIGRATION.md 6.7).
   const [typedVehicle, setTypedVehicle] = useState('');
   const [typedDriver, setTypedDriver] = useState('');
+  // Отбор по предприятию (legacy /report: фильтр «Корхона», «*» = все) — виден тем, кто видит
+  // больше одной организации; тенанту список сужен токеном, поэтому селектор не показываем.
+  const [typedOrg, setTypedOrg] = useState('');
+  const [orgs, setOrgs] = useState<{ rma: string; name: string }[]>([]);
+  useEffect(() => {
+    md.organizations()
+      .then(list => setOrgs(list.map(o => ({ rma: String(o.rma), name: String(o.name ?? o.rma) }))
+        .sort((a, b) => a.name.localeCompare(b.name, 'ru'))))
+      .catch(() => setOrgs([]));
+  }, []);
   const typedFilterQs = (typedVehicle.trim() ? `&vehicleRegNumber=${encodeURIComponent(typedVehicle.trim())}` : '')
-    + (typedDriver.trim() ? `&driverRma=${encodeURIComponent(typedDriver.trim())}` : '');
+    + (typedDriver.trim() ? `&driverRma=${encodeURIComponent(typedDriver.trim())}` : '')
+    + (typedOrg ? `&organizationRma=${encodeURIComponent(typedOrg)}` : '');
   const [regional, setRegional] = useState<RegionalReport | null>(null);
   const [regionalMode, setRegionalMode] = useState<'trans' | 'count' | 'norm'>('trans');
   const [regionalBill, setRegionalBill] = useState<'PASSENGER' | 'CARGO'>('PASSENGER');
@@ -436,6 +447,13 @@ export default function ReportsView({ tab }: { tab: ReportTab }) {
             {typedTypes.map(rt => <option key={rt.code} value={rt.code}>{rt.label}</option>)}
           </select>
           <span className="spacer" style={{ flex: 1 }} />
+          {/* Отбор по предприятию — как фильтр «Корхона» в старой платформе. */}
+          {orgs.length > 1 && (
+            <select value={typedOrg} onChange={e => setTypedOrg(e.target.value)} style={{ width: 230 }} title={t('rep.typed.filter.org')}>
+              <option value="">{t('reg.allorgs')}</option>
+              {orgs.map(o => <option key={o.rma} value={o.rma}>{o.name}</option>)}
+            </select>
+          )}
           <input type="text" style={{ width: 150 }} value={typedVehicle} onChange={e => setTypedVehicle(e.target.value)}
             placeholder={t('rep.typed.filter.vehicle')} title={t('rep.typed.filter.vehicle')} />
           <input type="text" style={{ width: 150 }} value={typedDriver} onChange={e => setTypedDriver(e.target.value)}

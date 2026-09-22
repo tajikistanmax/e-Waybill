@@ -389,6 +389,10 @@ export const md = {
     lookup: (kind: SubjectKind, key: string) =>
       fetch(`/md-api/api/v1/subjects/${kind}/lookup?key=${encodeURIComponent(key)}`, { headers: authHeaders() })
         .then(r => handle<SubjectRef>(r)),
+    // Поиск по части ИНН/ФИО (для ТС — по части госномера): до 20 кратких карточек.
+    search: (kind: SubjectKind, q: string) =>
+      fetch(`/md-api/api/v1/subjects/${kind}/search?q=${encodeURIComponent(q)}`, { headers: authHeaders() })
+        .then(r => handle<SubjectRef[]>(r)),
     attach: (kind: SubjectKind, id: string, organizationRma: string) =>
       mdPost(`subjects/${kind}/${id}/attach`, { organizationRma }) as Promise<SubjectRef>,
     detach: (kind: SubjectKind, id: string) =>
