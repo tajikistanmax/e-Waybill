@@ -62,7 +62,9 @@ export default function WaybillCard({ params }: { params: Promise<{ id: string }
   const [fuelCalc, setFuelCalc] = useState<Record<string, unknown> | null>(null);
   const [workDays, setWorkDays] = useState<Record<string, unknown>[]>([]);
   const [dayForm, setDayForm] = useState({ workDate: '', exitTime: '06:00', entryTime: '', odometerExit: '', odometerEntry: '', laps: '', revenue: '' });
-  const [fuelForm, setFuelForm] = useState({ fuelType: '1', fuelGiven: '', remainBeforeExit: '', additionalGiven: '', returned: '', coefBelow0: '', beGiven: '' });
+  const [fuelForm, setFuelForm] = useState({ fuelType: '1', fuelGiven: '', remainBeforeExit: '', additionalGiven: '', returned: '', coefBelow0: '', beGiven: '', workDayId: '' });
+  // Посуточный расчёт топлива многодневных 1-А/3-С (MIGRATION.md 5.4, B10): разбивка по дням из POST /calculation.
+  const [dailyCalc, setDailyCalc] = useState<Record<string, unknown> | null>(null);
   // Подсказка «из предыдущего ПЛ этого ТС» (legacy parking_fuel_left/parking_fuel_give) — текст под формой топлива.
   const [fuelHint, setFuelHint] = useState('');
   const [replacement, setReplacement] = useState(''); // РМА нового водителя или госномер нового ТС
@@ -716,8 +718,17 @@ export default function WaybillCard({ params }: { params: Promise<{ id: string }
                       returned: fuelForm.returned ? Number(fuelForm.returned) : null,
                       coefBelow0: fuelForm.coefBelow0 ? Number(fuelForm.coefBelow0) : null,
                       beGiven: fuelForm.beGiven ? Number(fuelForm.beGiven) : null,
+                      workDayId: fuelForm.workDayId || null,
                     }));
                   }}>
+                    {workDays.length > 0 && (
+                      <div><label>{t('wb.f.workday')}</label>
+                        <select value={fuelForm.workDayId} onChange={e => setFuelForm({ ...fuelForm, workDayId: e.target.value })}>
+                          <option value="">{t('wb.f.workday.whole')}</option>
+                          {workDays.map(d => <option key={String(d.id)} value={String(d.id)}>{String(d.workDate)}</option>)}
+                        </select>
+                      </div>
+                    )}
                     <div><label>{t('rep.col.fueltype')}</label>
                       <select value={fuelForm.fuelType} onChange={e => setFuelForm({ ...fuelForm, fuelType: e.target.value })}>
                         <option value="1">{t('wb.fuel.petrol')}</option><option value="2">{t('wb.fuel.diesel')}</option>
@@ -783,6 +794,52 @@ export default function WaybillCard({ params }: { params: Promise<{ id: string }
                   {fuelCalc.tripCost != null && <><dt>{t('wb.tripcost')}</dt><dd>{String(fuelCalc.tripCost)} сомони ({String(fuelCalc.tariffPerKm)} сомони/км)</dd></>}
                 </dl>
               )}
+            </div>
+          )}
+
+          {/* Посуточный расчёт топлива (B10): 1-А / 3-С с рабочими днями — строки топлива, привязанные к дням */}
+          {workDays.length > 0 && ['WB_MINIBUS', 'WB_CAR', 'WB_TAXI'].includes(w.waybillType) && (
+            <div className="card">
+              <h2>{t('wb.daily.h')}</h2>
+              {!dailyCalc ? (
+                <button className="btn secondary" onClick={async () => {
+                  try {
+                    const { authHeaders } = await import('@/lib/api');
+                    const r = await fetch(`/wb-api/api/v1/waybills/${id}/calculation`, { method: 'POST', headers: { ...authHeaders(), 'Content-Type': 'application/json' }, body: '{}' });
+                    if (!r.ok) { const p = await r.json().catch(() => null); throw new Error(p?.detail ?? `${t('wb.error')} ${r.status}`); }
+                    setDailyCalc(await r.json());
+                  } catch (e) { setError((e as Error).message); }
+                }}>{t('wb.daily.btn')}</button>
+              ) : (() => {
+                const days = (Array.isArray(dailyCalc.dailyFuel) ? dailyCalc.dailyFuel : []) as Record<string, unknown>[];
+                if (days.length === 0) return <div style={{ color: 'var(--muted)', fontSize: 13 }}>{t('wb.daily.empty')}</div>;
+                const num = (v: unknown, d = 2) => (typeof v === 'number' ? (Math.round(v * 10 ** d) / 10 ** d).toLocaleString('ru-RU') : String(v ?? ''));
+                const FN: Record<string, string> = { 1: t('wb.fuel.petrol'), 2: t('wb.fuel.diesel'), 3: t('wb.fuel.lpg'), 4: t('wb.fuel.cng') };
+                const total = days.reduce((s, d) => s + ((d.lines as Record<string, unknown>[]) ?? []).reduce((a, l) => a + Number(l.consumption ?? 0), 0), 0);
+                return (
+                  <table>
+                    <thead><tr>
+                      <th>{t('wb.daily.col.date')}</th><th>{t('wb.daily.col.km')}</th><th>{t('wb.daily.col.coef')}</th><th>{t('wb.daily.col.fuel')}</th>
+                      <th>{t('wb.daily.col.given')}</th><th>{t('wb.daily.col.add')}</th><th>{t('wb.daily.col.before')}</th>
+                      <th>{t('wb.daily.col.norm100')}</th><th>{t('wb.daily.col.consumption')}</th><th>{t('wb.daily.col.remain')}</th>
+                    </tr></thead>
+                    <tbody>
+                      {days.map((d, i) => {
+                        const lines = ((d.lines as Record<string, unknown>[]) ?? []);
+                        if (lines.length === 0) return <tr key={i}><td>{String(d.date)}</td><td>{num(d.distanceKm, 0)}</td><td>{num(d.multiplier, 3)}</td><td colSpan={7} style={{ color: 'var(--muted)' }}>—</td></tr>;
+                        return lines.map((l, j) => (
+                          <tr key={`${i}-${j}`}>
+                            <td>{j === 0 ? String(d.date) : ''}</td><td>{j === 0 ? num(d.distanceKm, 0) : ''}</td><td>{j === 0 ? num(d.multiplier, 3) : ''}</td>
+                            <td>{FN[String(l.fuelId)] ?? String(l.fuelId)}</td><td>{num(l.given)}</td><td>{num(l.additional)}</td><td>{num(l.remainBeforeExit)}</td>
+                            <td>{num(l.norm100)}</td><td><b>{num(l.consumption)}</b></td><td>{num(l.remainEntry)}</td>
+                          </tr>
+                        ));
+                      })}
+                      <tr style={{ fontWeight: 700, borderTop: '2px solid var(--line)' }}><td colSpan={8}>{t('wb.daily.total')}</td><td>{num(total)}</td><td></td></tr>
+                    </tbody>
+                  </table>
+                );
+              })()}
             </div>
           )}
         </>

@@ -165,6 +165,41 @@ public class WaybillCalcEngine {
                 CalcUtils.round(totalNorm, CalcUtils.FUEL_SCALE), salary, metrics, tariff);
     }
 
+    /**
+     * Посуточный расход топлива многодневного пассажирского ПЛ 1-А/3-С (MIGRATION.md 5.4, B10) — перенос
+     * {@code MBusTrait::calcFuel}: таблица нормативов — {@code fuel_100_dushanbe}, если организация в регионе 1
+     * (Душанбе), иначе {@code fuel_100} (в legacy выбор именно по региону компании, не по {@code excluding_coef});
+     * множитель дня — 1 без маршрута / при {@code excluding_coef}, иначе {@code 1 + 0.01·K} по дате дня
+     * (зимний период — по календарю дня). Без надбавок {@code additional_fuel_100}/кондиционера/отопления — как в legacy.
+     *
+     * @param in            вход расчёта (марка, маршрут, год выпуска)
+     * @param dushanbeTable брать таблицу нормативов Душанбе (регион организации = 1)
+     * @param routeAbsent   маршрут не задан → множитель 1
+     * @param days          рабочие дни со строками топлива дня (пробег дня и одометр выезда дня)
+     */
+    public List<DailyFuelCalc.DayResult> passengerDaily(PassengerCalcInput in, boolean dushanbeTable, boolean routeAbsent,
+                                                        List<DailySpec> days) {
+        BrandNorms brand = brandNorms.forName(in.brandName());
+        Map<Long, Double> base = new java.util.HashMap<>();
+        for (FuelNorm n : fuel.resolveNorms(brand, dushanbeTable)) {
+            base.put(n.fuelId(), n.consumption());
+        }
+        RouteCoefRef routeCoef = new RouteCoefRef(in.routeWinterCoefId(), in.routeMountainCoefValue(),
+                in.routeInCityCoefValue(), in.routeStationCoef(), in.routeRoadQuality());
+        boolean neutral = routeAbsent || in.routeExcludingCoef();
+        List<DailyFuelCalc.DayInput> inputs = new ArrayList<>();
+        for (DailySpec d : days) {
+            double multiplier = neutral ? 1d
+                    : coefficients.passengerCoefficient(routeCoef, in.vehicleYearManufacture(), d.odometerExit(), d.date()).multiplier();
+            inputs.add(new DailyFuelCalc.DayInput(d.date(), d.distanceKm(), multiplier, d.lines()));
+        }
+        return DailyFuelCalc.calculate(inputs, base);
+    }
+
+    /** Рабочий день для посуточного расчёта: дата, пробег дня, одометр выезда дня (для износа), строки топлива дня. */
+    public record DailySpec(LocalDate date, long distanceKm, Long odometerExit, List<DailyFuelCalc.DayLine> lines) {
+    }
+
     // ============================================================ грузовая ветка
 
     /** Первые цифры кода марки, соответствующие бортовому кузову. */

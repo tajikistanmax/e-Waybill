@@ -6,6 +6,7 @@ import org.springframework.stereotype.Service;
 import tj.mintrans.epd.waybill.calc.model.CalcFuelLine;
 import tj.mintrans.epd.waybill.calc.model.CargoCalcInput;
 import tj.mintrans.epd.waybill.calc.model.CargoCalcResult;
+import tj.mintrans.epd.waybill.calc.model.FuelConsumption;
 import tj.mintrans.epd.waybill.calc.model.PassengerCalcInput;
 import tj.mintrans.epd.waybill.calc.model.PassengerCalcResult;
 import tj.mintrans.epd.waybill.calc.model.PassengerDay;
@@ -41,23 +42,33 @@ public class WaybillCalcAssembler {
     private static final Logger log = LoggerFactory.getLogger(WaybillCalcAssembler.class);
 
     /**
-     * Гейт придержанной правки B10 (посуточные показатели многодневных пассажирских 1-А/3-С).
-     * {@code false} — ветка дормантна, живой расчёт байт-в-байт прежний (решение о придержании,
-     * см. заметку B10). Код B10 сохранён; включать только по явному одобрению.
+     * B10 — посуточный расчёт многодневных пассажирских 1-А/3-С (MIGRATION.md 5.4): показатели перевозки по
+     * дням ({@link MultiDayPassengerCalc}) и посуточный расход топлива по строкам топлива, привязанным к рабочим
+     * дням ({@link DailyFuelCalc}). Включён по решению владельца 22.09 (`epd.calc.multiday-passenger`,
+     * {@code MULTIDAY_PASSENGER_ENABLED}); {@code false} — прежнее однодневное приближение.
      */
-    private static final boolean MULTIDAY_PASSENGER_ENABLED = false;
+    private final boolean multidayEnabled;
 
     private final WaybillCalcEngine engine;
     private final MasterDataClient masterData;
     private final WorkDayRepository workDays;
     private final FuelRecordRepository fuelRecords;
 
+    /** Конструктор для тестов/ручной сборки: посуточный расчёт включён (как в проде по умолчанию). */
     public WaybillCalcAssembler(WaybillCalcEngine engine, MasterDataClient masterData,
                                 WorkDayRepository workDays, FuelRecordRepository fuelRecords) {
+        this(engine, masterData, workDays, fuelRecords, true);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public WaybillCalcAssembler(WaybillCalcEngine engine, MasterDataClient masterData,
+                                WorkDayRepository workDays, FuelRecordRepository fuelRecords,
+                                @org.springframework.beans.factory.annotation.Value("${epd.calc.multiday-passenger:true}") boolean multidayEnabled) {
         this.engine = engine;
         this.masterData = masterData;
         this.workDays = workDays;
         this.fuelRecords = fuelRecords;
+        this.multidayEnabled = multidayEnabled;
     }
 
     /** Дополнение к данным ПЛ — всё необязательно. */
@@ -92,8 +103,15 @@ public class WaybillCalcAssembler {
         }
     }
 
-    /** Результат: одна из веток заполнена. */
-    public record View(String kind, PassengerCalcResult passenger, CargoCalcResult cargo, List<String> notes) {
+    /**
+     * Результат: одна из веток заполнена. {@code dailyFuel} — посуточный расход топлива многодневного
+     * пассажирского ПЛ (B10, MIGRATION.md 5.4), пусто для однодневных/грузовых.
+     */
+    public record View(String kind, PassengerCalcResult passenger, CargoCalcResult cargo, List<String> notes,
+                       List<DailyFuelCalc.DayResult> dailyFuel) {
+        public View(String kind, PassengerCalcResult passenger, CargoCalcResult cargo, List<String> notes) {
+            this(kind, passenger, cargo, notes, List.of());
+        }
     }
 
     public View calculate(Waybill wb, Supplement sup) {
@@ -122,7 +140,8 @@ public class WaybillCalcAssembler {
             revenue = s.earning();
         }
 
-        List<CalcFuelLine> fuels = fuelLines(wb.getId());
+        List<FuelRecord> records = fuelRecords.findByWaybillIdOrderByCreatedAt(wb.getId());
+        List<CalcFuelLine> fuels = toCalcFuelLines(records);
         LocalDate calcDate = s.calcDate() != null ? s.calcDate() : calcDate(wb);
 
         Map<String, Object> route = masterData.findRoute(wb.getRoute()).orElse(null);
@@ -138,8 +157,9 @@ public class WaybillCalcAssembler {
             CargoCalcResult r = engine.cargo(buildCargo(wb, s, brandName, year, exitOdo, entryOdo, revenue, fuels, calcDate));
             return new View("CARGO", null, r, notes);
         }
-        PassengerCalcResult r = engine.passenger(buildPassenger(wb, s, brandName, year, capacity,
-                exitOdo, entryOdo, workMinutes, laps, revenue, fuels, calcDate, route));
+        PassengerCalcInput passengerInput = buildPassenger(wb, s, brandName, year, capacity,
+                exitOdo, entryOdo, workMinutes, laps, revenue, fuels, calcDate, route);
+        PassengerCalcResult r = engine.passenger(passengerInput);
 
         // Показатели «свободного» такси (METER, type_service=1) и почасовой аренды (HOURLY=3)
         // маршрутный движок НЕ считает (нет маршрута → нули). Считаем их спец-формулой оригинала
@@ -169,7 +189,7 @@ public class WaybillCalcAssembler {
         // формы (автобус/троллейбус/междугородний) идут прежним путём — показатели движка не
         // трогаем (массовый случай остаётся байт-в-байт прежним). Замещаются ТОЛЬКО показатели
         // перевозки; топливо/зарплата/коэффициенты/тариф остаются из движка.
-        if (MULTIDAY_PASSENGER_ENABLED && days.size() > 1) {
+        if (multidayEnabled && days.size() > 1) {
             PassengerMetrics multiDay = multiDayPassengerMetrics(wb, type, days, capacity, revenue, route);
             if (multiDay != null) {
                 r = new PassengerCalcResult(r.distanceKm(), r.workTimeMinutes(), r.workHours(),
@@ -178,7 +198,54 @@ public class WaybillCalcAssembler {
                         + ", рабочих дней " + days.size());
             }
         }
-        return new View("PASSENGER", r, null, notes);
+        // B10, топливо: у 1-А/3-С со строками топлива, привязанными к рабочим дням, расход считается
+        // посуточно (DailyFuelCalc = MBusTrait::calcFuel), свод по видам топлива замещает результат движка.
+        List<DailyFuelCalc.DayResult> dailyFuel = List.of();
+        if (multidayEnabled && !days.isEmpty()
+                && (type == WaybillType.WB_MINIBUS || type == WaybillType.WB_CAR || type == WaybillType.WB_TAXI)) {
+            dailyFuel = dailyFuel(wb, days, records, passengerInput, route == null);
+            if (!dailyFuel.isEmpty()) {
+                List<FuelConsumption> agg = DailyFuelCalc.aggregate(dailyFuel);
+                r = new PassengerCalcResult(r.distanceKm(), r.workTimeMinutes(), r.workHours(),
+                        r.coefficients(), agg, DailyFuelCalc.totalNorm(agg), r.salary(), r.passengerMetrics(), r.tariff());
+                notes.add("Топливо рассчитано посуточно по строкам рабочих дней: дней " + dailyFuel.size());
+            }
+        }
+        return new View("PASSENGER", r, null, notes, dailyFuel);
+    }
+
+    /**
+     * Посуточный расход топлива (B10): строки топлива с {@code workDayId} группируются по рабочим дням; дни без
+     * строк дают пробег без расхода. Нет ни одной строки, привязанной к дню, — пусто (остаётся расчёт движка
+     * по листу целиком). Таблица нормативов Душанбе — по региону организации (legacy {@code company.region_id == 1}).
+     * Довыдача и надбавка ниже 0 °C входят в выданное (как в однодневном {@code fuel_calc}).
+     */
+    private List<DailyFuelCalc.DayResult> dailyFuel(Waybill wb, List<WorkDay> days, List<FuelRecord> records,
+                                                    PassengerCalcInput input, boolean routeAbsent) {
+        Map<java.util.UUID, List<FuelRecord>> byDay = new java.util.LinkedHashMap<>();
+        for (FuelRecord f : records) {
+            if (f.getWorkDayId() != null) {
+                byDay.computeIfAbsent(f.getWorkDayId(), k -> new ArrayList<>()).add(f);
+            }
+        }
+        if (byDay.isEmpty()) {
+            return List.of();
+        }
+        List<WaybillCalcEngine.DailySpec> specs = new ArrayList<>();
+        for (WorkDay d : days) {
+            long dist = d.getOdometerExit() != null && d.getOdometerEntry() != null
+                    ? Math.max(0, d.getOdometerEntry() - d.getOdometerExit()) : 0;
+            List<DailyFuelCalc.DayLine> lines = new ArrayList<>();
+            for (FuelRecord f : byDay.getOrDefault(d.getId(), List.of())) {
+                lines.add(new DailyFuelCalc.DayLine(f.getFuelType(),
+                        dbl(f.getFuelGiven()) + dbl(f.getCoefBelow0()), dbl(f.getAdditionalGiven()),
+                        f.getRemainBeforeExit() == null ? null : f.getRemainBeforeExit().doubleValue()));
+            }
+            specs.add(new WaybillCalcEngine.DailySpec(d.getWorkDate(), dist,
+                    d.getOdometerExit() == null ? null : d.getOdometerExit().longValue(), lines));
+        }
+        Integer orgRegion = intOf(get(wb.getOrganizationSnapshot(), "regionId"));
+        return engine.passengerDaily(input, orgRegion != null && orgRegion == 1, routeAbsent, specs);
     }
 
     /**
@@ -306,6 +373,11 @@ public class WaybillCalcAssembler {
                                                       Integer capacity, BigDecimal kassa,
                                                       Map<String, Object> route) {
         RoutePassengerRef ref = routePassengerRef(route);
+        if (ref == null) {
+            // Без маршрута посуточный движок даёт нули (нет длины/вместимости маршрута) — оставляем
+            // показатели однодневного движка (пробег/круги/время по дням он уже суммирует).
+            return null;
+        }
         List<PassengerDay> passengerDays = passengerDays(days);
         return switch (type) {
             case WB_MINIBUS -> MultiDayPassengerCalc.forMinibus(ref, capacity, passengerDays, null, null, kassa);
@@ -495,10 +567,6 @@ public class WaybillCalcAssembler {
             }
         }
         return total;
-    }
-
-    private List<CalcFuelLine> fuelLines(java.util.UUID waybillId) {
-        return toCalcFuelLines(fuelRecords.findByWaybillIdOrderByCreatedAt(waybillId));
     }
 
     /**
