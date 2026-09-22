@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { authHeaders, md } from '@/lib/api';
+import { authHeaders, md, type SubjectKind, type SubjectRef } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { useT, WAYBILL_TYPE_CODES } from '@/lib/i18n';
 import { Icon, P } from '../icons';
@@ -41,16 +41,22 @@ async function postJson(url: string, body: unknown) {
 }
 
 /** Готовит payload ручной формы: пустые поля → null, числовые ключи → число. */
+// Поля-флажки ручных форм: в состоянии хранятся строками 'true'/'false', на сервер уходят boolean.
+const BOOLEAN_KEYS = ['giveFuel'];
+
 function clean(obj: Record<string, string>, numeric: string[]): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(obj)) {
+    if (BOOLEAN_KEYS.includes(k)) { out[k] = v === 'true'; continue; }
     out[k] = v === '' ? null : (numeric.includes(k) ? Number(v) : v);
   }
   return out;
 }
 
 // Наборы полей ручных форм — для предзаполнения при редактировании существующей записи.
-const ORG_KEYS = ['rma', 'name', 'kpp', 'typeCompany', 'regionId', 'cityName', 'address', 'phone', 'email', 'nameHead', 'bank', 'licenseFrom', 'licenseTo', 'carrierLicenseNumber', 'percentIncome', 'cat1', 'cat2', 'cat3', 'allowedWaybillTypes', 'ownership', 'latitude', 'longitude', 'registrationCertNumber', 'extractNumber', 'vatCertNumber', 'planPassVolume', 'planPassTraffic'];
+const ORG_KEYS = ['rma', 'name', 'kpp', 'typeCompany', 'regionId', 'cityName', 'address', 'phone', 'email', 'nameHead', 'bank', 'licenseFrom', 'licenseTo', 'carrierLicenseNumber', 'percentIncome', 'cat1', 'cat2', 'cat3', 'allowedWaybillTypes', 'ownership', 'latitude', 'longitude', 'registrationCertNumber', 'extractNumber', 'vatCertNumber', 'planPassVolume', 'planPassTraffic',
+  // Поля карточки старой платформы (V71): «Рамзи корхона», «Харита», «Сӯзишворӣ».
+  'internalNumber', 'mapPoints', 'giveFuel'];
 // birthDate/experienceYears/medRestrictions нет в видимой форме (их нет в боевой карточке), но
 // держим их в ключах, чтобы при РЕДАКТИРОВАНИИ водителя они round-trip'ились, а не затирались в null.
 const DRIVER_KEYS = ['rma', 'fullName', 'tabNumber', 'licenseNumber', 'licenseCategories', 'licenseValidTo', 'degree', 'medCertNumber', 'medCertValidTo', 'safetyCourseValidTo', 'safetyCourseNumber', 'phone', 'passport', 'address', 'email', 'powerAttorney', 'visaValidTo', 'contractNumber', 'contractValidTo', 'assignedVehicleId', 'birthDate', 'experienceYears', 'medRestrictions'];
@@ -81,8 +87,26 @@ function orgViewRows(o: Row, t: (k: string) => string): [string, string][] {
     [t('comp.f.bank'), sv(o.bank)],
     [t('comp.kv.carrierlic'), `${sv(o.licenseFrom)} → ${sv(o.licenseTo)}`],
     [t('dt.carrierlicnum'), sv(o.carrierLicenseNumber)],
+    [t('org.f.internalnumber'), sv(o.internalNumber)],
+    [t('org.f.mappoints'), sv(o.mapPoints)],
+    [t('org.f.givefuel'), o.giveFuel ? t('st.yes') : '—'],
     [t('dt.source'), String(o.source) === 'UNIFIED' ? t('reg.src.unified') : t('dt.src.manual')],
   ];
+}
+
+/** Модальное окно: формы добавления/правки открываются поверх страницы, а не разворачиваются снизу. */
+function Modal({ title, onClose, children, wide }: { title: string; onClose: () => void; children: React.ReactNode; wide?: boolean }) {
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(15,32,60,.45)', zIndex: 65, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '5vh 16px', overflowY: 'auto' }}>
+      <div onClick={e => e.stopPropagation()} className="card" style={{ maxWidth: wide ? 900 : 560, width: '100%', margin: 0 }}>
+        <div className="card-h">
+          <h2>{title}</h2>
+          <button type="button" className="btn secondary" style={{ marginLeft: 'auto' }} onClick={onClose}>✕</button>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
 }
 
 /** Строка справочника → значения ручной формы (для кнопки «Изменить»). */
@@ -156,6 +180,8 @@ function OrgFields({ f, t }: { f: (k: string) => Field; t: (k: string) => string
       <div><label>{t('comp.f.rmainn')}</label><input required pattern="\d{9,10}" placeholder="025680800" {...f('rma')} /></div>
       <div><label>{t('comp.f.name_req')}</label><input required placeholder="ООО «ТрансЛогистик»" {...f('name')} /></div>
       <div><label>{t('comp.f.kpp')}</label><input {...f('kpp')} /></div>
+      {/* «Рамзи корхона» — внутренний код предприятия из карточки старой платформы (V71). */}
+      <div><label>{t('org.f.internalnumber')}</label><input maxLength={20} {...f('internalNumber')} /></div>
       <div><label>{t('comp.f.typecompany')}</label><input type="number" placeholder="1" {...f('typeCompany')} /></div>
       <div><label>{t('f.region')}</label><input type="number" min={1} max={7} {...f('regionId')} /></div>
       <div><label>{t('comp.f.city')}</label>
@@ -188,6 +214,13 @@ function OrgFields({ f, t }: { f: (k: string) => Field; t: (k: string) => string
       <div><label>{t('org.f.plantraffic')}</label><input type="number" step="0.01" min={0} {...f('planPassTraffic')} /></div>
       <div><label>{t('org.f.latitude')}</label><input type="number" step="0.0000001" placeholder="38.5598" {...f('latitude')} /></div>
       <div><label>{t('org.f.longitude')}</label><input type="number" step="0.0000001" placeholder="68.7870" {...f('longitude')} /></div>
+      {/* «Харита» и «Сӯзишворӣ» — поля карточки старой платформы (V71). */}
+      <div className="full"><label>{t('org.f.mappoints')}</label><input maxLength={500} {...f('mapPoints')} /></div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <input id="org-give-fuel" type="checkbox" checked={f('giveFuel').value === 'true'}
+          onChange={e => f('giveFuel').onChange({ target: { value: e.target.checked ? 'true' : 'false' } } as React.ChangeEvent<HTMLInputElement>)} />
+        <label htmlFor="org-give-fuel" style={{ margin: 0 }}>{t('org.f.givefuel')}</label>
+      </div>
       <WaybillTypesPicker field={f('allowedWaybillTypes')} />
     </>
   );
@@ -234,6 +267,13 @@ function OrgRegistry() {
 
   // Добавление — только идентификаторы; данные приходят из единой платформы
   const [orgInn, setOrgInn] = useState('');
+  // Прикрепление уже существующего субъекта к организации и открепление/удаление (владелец, 22.09).
+  const [attachOpen, setAttachOpen] = useState(false);
+  const [attachKey, setAttachKey] = useState('');
+  const [attachFound, setAttachFound] = useState<SubjectRef | null>(null);
+  const [attachError, setAttachError] = useState('');
+  const [confirmRow, setConfirmRow] = useState<{ row: Row; action: 'detach' | 'delete' } | null>(null);
+  const [busy, setBusy] = useState(false);
   const [driverForm, setDriverForm] = useState({ inn: '', tabNumber: '' });
   const [vehicleForm, setVehicleForm] = useState({ registrationNumber: '', parkingNumber: '' });
   const [employeeForm, setEmployeeForm] = useState({ inn: '', type: '1', tabNumber: '' });
@@ -417,6 +457,69 @@ function OrgRegistry() {
       setError((err as Error).message);
     }
   }
+  // --- Прикрепление существующего субъекта, открепление и удаление (владелец, 22.09) ---
+
+  const subjectKind: SubjectKind = tab;
+
+  async function lookupSubject() {
+    setAttachError(''); setAttachFound(null);
+    try {
+      setAttachFound(await md.subjects.lookup(subjectKind, attachKey.trim()));
+    } catch (err) {
+      setAttachError((err as Error).message);
+    }
+  }
+
+  async function attachSubject() {
+    if (!attachFound || !orgRma) return;
+    setBusy(true); setAttachError('');
+    try {
+      const res = await md.subjects.attach(subjectKind, attachFound.id, orgRma);
+      setOk(`${res.key} — ${t('comp.attach.done')} «${res.organizationName ?? orgRma}»`);
+      setAttachOpen(false); setAttachKey(''); setAttachFound(null);
+      await loadOrgs().catch(() => {});
+      await reload();
+    } catch (err) {
+      setAttachError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function applyRowAction() {
+    if (!confirmRow) return;
+    const { row, action } = confirmRow;
+    setBusy(true); setError(''); setOk('');
+    try {
+      if (action === 'detach') {
+        await md.subjects.detach(subjectKind, String(row.id));
+        setOk(t('comp.detach.done'));
+      } else {
+        const del = tab === 'drivers' ? md.deleteDriver : tab === 'vehicles' ? md.deleteVehicle : md.deleteEmployee;
+        await del(String(row.id));
+        setOk(t('comp.removed'));
+      }
+      setConfirmRow(null);
+      await loadOrgs().catch(() => {});
+      await reload();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /** Кнопки строки субъекта: изменить · открепить · удалить. */
+  const rowActions = (r: Row) => (
+    <td style={{ whiteSpace: 'nowrap' }}>
+      <button type="button" className="btn secondary" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => editEntity(r)}>{t('btn.edit')}</button>{' '}
+      <button type="button" className="btn secondary" style={{ padding: '4px 10px', fontSize: 12 }} title={t('comp.detach.hint')} onClick={() => setConfirmRow({ row: r, action: 'detach' })}>{t('comp.detach')}</button>{' '}
+      <button type="button" className="btn secondary" style={{ padding: '4px 9px', fontSize: 12, color: 'var(--red)' }} title={t('btn.delete')} onClick={() => setConfirmRow({ row: r, action: 'delete' })}>
+        <Icon d={P.trash} cls="" style={{ width: 14, height: 14 }} />
+      </button>
+    </td>
+  );
+
   function editEntity(row: Row) {
     setError(''); setOk('');
     setEntityMode('manual');
@@ -585,21 +688,20 @@ function OrgRegistry() {
         </div>
       </div>
 
-      {/* Добавление организации — только ручной ввод (временно, на период тестирования;
-          позже данные будут поступать из единой платформы Минтранса, синк-логика ниже
-          в syncOrganization сохранена для будущей интеграции).
-          Форма скрыта по умолчанию — раскрывается кнопкой «Добавить» у фильтров списка. */}
+      {/* Добавление организации — отдельным окном поверх страницы (замечание владельца 22.09:
+          раньше форма разворачивалась прямо под списком и терялась среди таблиц).
+          Ввод ручной; синк-логика syncOrganization сохранена для будущей интеграции. */}
       {showAddOrg && (
-        <div className="card">
-          <div className="card-h">
-            <h2>{t('comp.addorg')}</h2>
-          </div>
+        <Modal wide title={t('comp.addorg')} onClose={() => setShowAddOrg(false)}>
           <p className="hint">{t('comp.hint.manualorg')}</p>
           <form className="grid" onSubmit={createOrgManual}>
             <OrgFields f={om} t={t} />
-            <div className="full"><button className="btn" type="submit">{t('comp.btn.saveorg')}</button></div>
+            <div className="full" style={{ display: 'flex', gap: 8 }}>
+              <button className="btn" type="submit">{t('comp.btn.saveorg')}</button>
+              <button className="btn secondary" type="button" onClick={() => setShowAddOrg(false)}>{t('btn.cancel')}</button>
+            </div>
           </form>
-        </div>
+        </Modal>
       )}
 
       {/* Профиль выбранной организации показывается по иконке глаза (окно просмотра), а не карточкой снизу.
@@ -612,15 +714,19 @@ function OrgRegistry() {
         <button className={`btn ${tab === 'employees' ? '' : 'secondary'}`} onClick={() => { setTab('employees'); setShowForm(false); }}>{t('col.employees')}</button>
         <span className="spacer" />
         {org && <span style={{ color: 'var(--muted)', fontSize: 12.5, marginRight: 4 }}>{String(org.name)}</span>}
-        <button className="btn" disabled={!orgRma} onClick={() => setShowForm(f => !f)}>{showForm ? t('comp.btn.hideform') : t('btn.add')}</button>
+        {/* Уже существующий в базе субъект не регистрируется заново — его прикрепляют по ИНН/госномеру. */}
+        <button className="btn secondary" disabled={!orgRma} onClick={() => { setAttachOpen(true); setAttachKey(''); setAttachFound(null); setAttachError(''); }}>
+          {t('comp.attach.btn')}
+        </button>
+        <button className="btn" disabled={!orgRma} onClick={() => { setShowForm(true); setEntityMode('manual'); }}>{t('btn.add')}</button>
       </div>
 
       {showForm && (
-        <div className="card" style={{ borderColor: 'var(--blue-500)' }}>
-          <div className="card-h">
-            <h2>{tab === 'drivers' ? t('comp.add.driver') : tab === 'vehicles' ? t('comp.add.vehicle') : t('comp.add.employee')}</h2>
-          </div>
-
+        <Modal
+          wide
+          title={tab === 'drivers' ? t('comp.add.driver') : tab === 'vehicles' ? t('comp.add.vehicle') : t('comp.add.employee')}
+          onClose={() => setShowForm(false)}
+        >
           {(
             <>
               <p className="hint">{t('comp.hint.manual.pre')} «{org ? String(org.name) : ''}»{t('comp.hint.manual.post')}</p>
@@ -651,7 +757,10 @@ function OrgRegistry() {
                       {orgVehicles.map(v => <option key={String(v.id)} value={String(v.id)}>{String(v.registrationNumber)}{v.brand ? ` · ${String(v.brand)}` : ''}</option>)}
                     </select>
                   </div>
-                  <div className="full"><button className="btn" type="submit">{t('comp.btn.savedriver')}</button></div>
+                  <div className="full" style={{ display: 'flex', gap: 8 }}>
+                    <button className="btn" type="submit">{t('comp.btn.savedriver')}</button>
+                    <button className="btn secondary" type="button" onClick={() => setShowForm(false)}>{t('btn.cancel')}</button>
+                  </div>
                 </form>
               )}
               {tab === 'vehicles' && (
@@ -695,7 +804,10 @@ function OrgRegistry() {
                   <div><label>{t('veh.f.tr2brand')}</label><input {...vm('trailer2Brand')} /></div>
                   <div><label>{t('veh.f.tr2carrying')}</label><input type="number" step="0.01" {...vm('trailer2Carrying')} /></div>
                   <div><label>{t('veh.f.tr2weight')}</label><input type="number" step="0.01" {...vm('trailer2Weight')} /></div>
-                  <div className="full"><button className="btn" type="submit">{t('comp.btn.savevehicle')}</button></div>
+                  <div className="full" style={{ display: 'flex', gap: 8 }}>
+                    <button className="btn" type="submit">{t('comp.btn.savevehicle')}</button>
+                    <button className="btn secondary" type="button" onClick={() => setShowForm(false)}>{t('btn.cancel')}</button>
+                  </div>
                 </form>
               )}
               {tab === 'employees' && (
@@ -710,12 +822,15 @@ function OrgRegistry() {
                   <div><label>{t('f.tab')}</label><input {...em('tabNumber')} /></div>
                   <div><label>{t('col.phone')}</label><input {...em('phone')} /></div>
                   <div className="full"><label>{t('col.address')}</label><input placeholder="г. Душанбе, ул. …" {...em('address')} /></div>
-                  <div className="full"><button className="btn" type="submit">{t('comp.btn.saveemployee')}</button></div>
+                  <div className="full" style={{ display: 'flex', gap: 8 }}>
+                    <button className="btn" type="submit">{t('comp.btn.saveemployee')}</button>
+                    <button className="btn secondary" type="button" onClick={() => setShowForm(false)}>{t('btn.cancel')}</button>
+                  </div>
                 </form>
               )}
             </>
           )}
-        </div>
+        </Modal>
       )}
 
       <div className="card">
@@ -729,7 +844,7 @@ function OrgRegistry() {
                   <td>{String(r.licenseNumber ?? '—')}</td><td>{String(r.licenseCategories ?? '—')}</td>
                   <td>{String(r.licenseValidTo ?? '—')}</td><td>{String(r.medCertValidTo ?? '—')}</td>
                   <td><span className="number">{orgVehicles.find(v => String(v.id) === String(r.assignedVehicleId))?.registrationNumber as string ?? '—'}</span></td>
-                  <td><button type="button" className="btn secondary" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => editEntity(r)}>{t('btn.edit')}</button></td>
+                  {rowActions(r)}
                 </tr>
               ))}
               {rows.length === 0 && <tr><td colSpan={9} style={{ textAlign: 'center', color: 'var(--muted)', padding: 20 }}>{t('comp.empty.drivers')}</td></tr>}
@@ -745,7 +860,7 @@ function OrgRegistry() {
                   <td><span className="number">{String(r.registrationNumber)}</span></td><td>{vehTypeC(r.transportType, t)}</td>
                   <td>{String(r.brand ?? '—')}</td><td>{String(r.parkingNumber ?? '—')}</td><td>{String(r.odometer)}</td>
                   <td>{String(r.techInspectionValidTo ?? '—')}</td><td>{String(r.controlCardValidTo ?? '—')}</td>
-                  <td><button type="button" className="btn secondary" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => editEntity(r)}>{t('btn.edit')}</button></td>
+                  {rowActions(r)}
                 </tr>
               ))}
               {rows.length === 0 && <tr><td colSpan={8} style={{ textAlign: 'center', color: 'var(--muted)', padding: 20 }}>{t('comp.empty.vehicles')}</td></tr>}
@@ -760,7 +875,7 @@ function OrgRegistry() {
                 <tr key={String(r.id)}>
                   <td style={{ fontWeight: 600, color: 'var(--ink)' }}>{String(r.name)}</td><td><span className="number">{String(r.rma)}</span></td><td>{empTypeC(r.type, t)}</td>
                   <td>{String(r.tabNumber ?? '—')}</td><td>{String(r.phone ?? '—')}</td>
-                  <td><button type="button" className="btn secondary" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => editEntity(r)}>{t('btn.edit')}</button></td>
+                  {rowActions(r)}
                 </tr>
               ))}
               {rows.length === 0 && <tr><td colSpan={6} style={{ textAlign: 'center', color: 'var(--muted)', padding: 20 }}>{t('comp.empty.employees')}</td></tr>}
@@ -776,6 +891,60 @@ function OrgRegistry() {
           <button className="btn secondary" disabled={rowsPage >= rowsPages} onClick={() => setRowsPage(p => p + 1)} style={{ padding: '6px 12px' }}>›</button>
         </div>
       </div>
+
+      {/* Прикрепление уже существующего субъекта: поиск по ИНН (водитель/сотрудник) или
+          госномеру (ТС) и закрепление за выбранной организацией. */}
+      {attachOpen && (
+        <Modal title={t('comp.attach.title')} onClose={() => setAttachOpen(false)}>
+          <p className="hint" style={{ marginBottom: 12 }}>{t('comp.attach.hint')}</p>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', marginBottom: 12 }}>
+            <div style={{ flex: 1 }}>
+              <label>{tab === 'vehicles' ? t('col.regnum') : t('col.innrma')}</label>
+              <input value={attachKey} onChange={e => setAttachKey(e.target.value)}
+                placeholder={tab === 'vehicles' ? '0101TJ01' : '461930031'} style={{ width: '100%' }} />
+            </div>
+            <button type="button" className="btn secondary" onClick={lookupSubject} disabled={!attachKey.trim()}>{t('comp.attach.find')}</button>
+          </div>
+          {attachError && <div className="error">{attachError}</div>}
+          {attachFound && (
+            <>
+              <dl className="kv">
+                <dt>{tab === 'vehicles' ? t('col.regnum') : t('col.innrma')}</dt><dd><span className="number">{attachFound.key}</span></dd>
+                <dt>{tab === 'vehicles' ? t('col.brand') : t('col.fio')}</dt><dd>{attachFound.name ?? '—'}</dd>
+                <dt>{t('col.org')}</dt><dd>{attachFound.attached ? `${attachFound.organizationName ?? ''} (${attachFound.organizationRma ?? ''})` : t('comp.attach.free')}</dd>
+              </dl>
+              {attachFound.attached && attachFound.organizationRma !== orgRma && (
+                <div className="hint" style={{ marginTop: 10 }}>{t('comp.attach.busy')}</div>
+              )}
+              <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
+                <button type="button" className="btn" disabled={busy || attachFound.organizationRma === orgRma} onClick={attachSubject}>
+                  {busy ? '…' : `${t('comp.attach.do')} «${org ? String(org.name) : orgRma}»`}
+                </button>
+                <button type="button" className="btn secondary" onClick={() => setAttachOpen(false)}>{t('btn.cancel')}</button>
+              </div>
+            </>
+          )}
+        </Modal>
+      )}
+
+      {/* Подтверждение открепления или удаления субъекта. */}
+      {confirmRow && (
+        <Modal title={confirmRow.action === 'detach' ? t('comp.detach.title') : t('comp.delete.title')} onClose={() => setConfirmRow(null)}>
+          <p style={{ marginBottom: 12 }}>
+            {confirmRow.action === 'detach' ? t('comp.detach.q') : t('comp.delete.q')}{' '}
+            <b>{String(confirmRow.row.fullName ?? confirmRow.row.name ?? confirmRow.row.registrationNumber ?? confirmRow.row.rma)}</b>?
+          </p>
+          <div className="hint" style={{ marginBottom: 14 }}>
+            {confirmRow.action === 'detach' ? t('comp.detach.note') : t('comp.delete.note')}
+          </div>
+          <div style={{ display: 'flex', gap: 10 }}>
+            <button className="btn" style={confirmRow.action === 'delete' ? { background: 'var(--red)' } : undefined} disabled={busy} onClick={applyRowAction}>
+              {busy ? '…' : confirmRow.action === 'detach' ? t('comp.detach') : t('btn.delete')}
+            </button>
+            <button className="btn secondary" onClick={() => setConfirmRow(null)}>{t('btn.cancel')}</button>
+          </div>
+        </Modal>
+      )}
 
       {/* Окно правки организации: открывается по кнопке «Изменить» в таблице,
           поверх страницы, а не разворачивается формой снизу. */}

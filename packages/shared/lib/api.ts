@@ -383,6 +383,17 @@ export const md = {
   deleteVehicle: (id: string) => mdDelete(`vehicles/${id}`),
   deleteEmployee: (id: string) => mdDelete(`employees/${id}`),
   deleteOrganization: (id: string) => mdDelete(`organizations/${id}`),
+  // Перевод субъектов между организациями (замечание владельца 22.09): поиск уже существующего
+  // водителя/ТС/сотрудника по ИНН или госномеру, закрепление и открепление.
+  subjects: {
+    lookup: (kind: SubjectKind, key: string) =>
+      fetch(`/md-api/api/v1/subjects/${kind}/lookup?key=${encodeURIComponent(key)}`, { headers: authHeaders() })
+        .then(r => handle<SubjectRef>(r)),
+    attach: (kind: SubjectKind, id: string, organizationRma: string) =>
+      mdPost(`subjects/${kind}/${id}/attach`, { organizationRma }) as Promise<SubjectRef>,
+    detach: (kind: SubjectKind, id: string) =>
+      mdPost(`subjects/${kind}/${id}/detach`, {}) as Promise<SubjectRef>,
+  },
   // Движок бизнес-правил (политик) — административная подсистема «Настройки».
   policies: () => fetch('/md-api/api/v1/policies', { headers: authHeaders() }).then(r => handle<Policy[]>(r)),
   savePolicy: (body: Record<string, unknown>) => mdPost('policies', body) as Promise<Policy>,
@@ -997,6 +1008,13 @@ export type LivePosition = {
   waybillType: string | null;
   organizationRma: string | null; organizationName: string | null;
   lat: number | null; lon: number | null; speedKmh: number | null; recordedAt: string | null;
+};
+
+/** Субъект парка для перевода между организациями (drivers | vehicles | employees). */
+export type SubjectKind = 'drivers' | 'vehicles' | 'employees';
+export type SubjectRef = {
+  id: string; kind: SubjectKind; key: string; name: string | null;
+  organizationRma: string | null; organizationName: string | null; attached: boolean;
 };
 
 /** GPS-событие Smart-city (legacy gps_data). */

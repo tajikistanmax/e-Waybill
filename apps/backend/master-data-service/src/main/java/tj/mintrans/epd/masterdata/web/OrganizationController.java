@@ -89,7 +89,12 @@ public class OrganizationController {
             String extractNumber,
             String vatCertNumber,
             java.math.BigDecimal planPassVolume,
-            java.math.BigDecimal planPassTraffic) {
+            java.math.BigDecimal planPassTraffic,
+            // Поля карточки старой платформы (V71, решение владельца 22.09 «перенести все поля»):
+            // «Рамзи корхона», «Харита», «Сӯзишворӣ».
+            @jakarta.validation.constraints.Size(max = 20) String internalNumber,
+            @jakarta.validation.constraints.Size(max = 500) String mapPoints,
+            Boolean giveFuel) {
     }
 
     @PostMapping
@@ -139,6 +144,9 @@ public class OrganizationController {
         org.setVatCertNumber(orgTrimToNull(req.vatCertNumber()));
         org.setPlanPassVolume(req.planPassVolume());
         org.setPlanPassTraffic(req.planPassTraffic());
+        org.setInternalNumber(orgTrimToNull(req.internalNumber()));
+        org.setMapPoints(orgTrimToNull(req.mapPoints()));
+        org.setGiveFuel(Boolean.TRUE.equals(req.giveFuel()));
         applyPayroll(org, req);
         var saved = repository.save(org);
         audit.record(existing.isPresent() ? AuditService.UPDATE : AuditService.CREATE,

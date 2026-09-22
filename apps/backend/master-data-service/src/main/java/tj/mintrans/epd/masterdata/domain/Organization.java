@@ -118,6 +118,18 @@ public class Organization {
     @Column(name = "plan_pass_traffic")
     private java.math.BigDecimal planPassTraffic;
 
+    /** «Рамзи корхона» — внутренний код предприятия (legacy {@code companies.number}). */
+    @Column(name = "internal_number")
+    private String internalNumber;
+
+    /** «Харита» — отметка на карте: точки/описание (legacy {@code companies.points}). */
+    @Column(name = "map_points")
+    private String mapPoints;
+
+    /** «Сӯзишворӣ» — предприятие само выдаёт топливо (legacy {@code companies.give_fuel}). */
+    @Column(name = "give_fuel", nullable = false)
+    private boolean giveFuel;
+
     /** PHYSICAL (физлицо) | IP (индивидуальный предприниматель) | LEGAL (юрлицо). */
     @Column(name = "subject_type", nullable = false)
     private String subjectType = "LEGAL";
@@ -204,6 +216,12 @@ public class Organization {
     public void setExtractNumber(String extractNumber) { this.extractNumber = extractNumber; }
     public String getVatCertNumber() { return vatCertNumber; }
     public void setVatCertNumber(String vatCertNumber) { this.vatCertNumber = vatCertNumber; }
+    public String getInternalNumber() { return internalNumber; }
+    public void setInternalNumber(String internalNumber) { this.internalNumber = internalNumber; }
+    public String getMapPoints() { return mapPoints; }
+    public void setMapPoints(String mapPoints) { this.mapPoints = mapPoints; }
+    public boolean isGiveFuel() { return giveFuel; }
+    public void setGiveFuel(boolean giveFuel) { this.giveFuel = giveFuel; }
     public java.math.BigDecimal getPlanPassVolume() { return planPassVolume; }
     public void setPlanPassVolume(java.math.BigDecimal planPassVolume) { this.planPassVolume = planPassVolume; }
     public java.math.BigDecimal getPlanPassTraffic() { return planPassTraffic; }

@@ -41,9 +41,11 @@ import java.util.UUID;
 public class OrganizationDocumentController {
 
     /** Фиксированный перечень видов документов (значение + подпись — на фронте). */
+    // EXTRACT / VAT_CERT / SEAL — вложения карточки предприятия старой платформы
+    // (iktibos_attach, aai_attach, seal_attach); решение владельца 22.09 «перенести все поля».
     private static final Set<String> DOC_TYPES = Set.of(
             "REGISTRATION_CERT", "CHARTER", "CARRIER_LICENSE", "TAX_CERT",
-            "DIRECTOR_ORDER", "BANK_DETAILS", "OTHER");
+            "DIRECTOR_ORDER", "BANK_DETAILS", "EXTRACT", "VAT_CERT", "SEAL", "OTHER");
     private static final long MAX_BYTES = 12_000_000;
     private static final Set<String> ALLOWED_TYPES = Set.of(
             "application/pdf", "image/jpeg", "image/png", "image/tiff", "image/heic",

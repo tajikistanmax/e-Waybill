@@ -6,7 +6,10 @@ import { useAuth } from '@/lib/auth';
 import { useT } from '@/lib/i18n';
 
 // Значения — ключи словаря (переводятся через t()), порядок = порядок в выпадающем списке.
-const DOC_TYPES: string[] = ['REGISTRATION_CERT', 'CHARTER', 'CARRIER_LICENSE', 'TAX_CERT', 'DIRECTOR_ORDER', 'BANK_DETAILS', 'OTHER'];
+// Виды вложений карточки предприятия: перечень совпадает с DOC_TYPES бэкенда
+// (включая перенесённые из старой платформы EXTRACT / VAT_CERT / SEAL).
+const DOC_TYPES: string[] = ['REGISTRATION_CERT', 'CHARTER', 'CARRIER_LICENSE', 'TAX_CERT',
+  'DIRECTOR_ORDER', 'BANK_DETAILS', 'EXTRACT', 'VAT_CERT', 'SEAL', 'OTHER'];
 const STATUS_COLOR: Record<string, string> = { PENDING: 'amber', APPROVED: 'green', REJECTED: 'red' };
 
 const fmtSize = (b: number) => (b < 1024 ? `${b} Б` : b < 1_048_576 ? `${(b / 1024).toFixed(0)} КБ` : `${(b / 1_048_576).toFixed(1)} МБ`);
