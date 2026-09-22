@@ -176,6 +176,8 @@ export default function ReportsView({ tab }: { tab: ReportTab }) {
   const [regional, setRegional] = useState<RegionalReport | null>(null);
   const [regionalMode, setRegionalMode] = useState<'trans' | 'count' | 'norm'>('trans');
   const [regionalBill, setRegionalBill] = useState<'PASSENGER' | 'CARGO'>('PASSENGER');
+  // Форма ПЛ внутри разреза (Шакли 3-С / 1-А / 2-Б / 5Б-БМ) — как в старой платформе; пусто = все формы.
+  const [regionalForm, setRegionalForm] = useState('');
   const [regionalCount, setRegionalCount] = useState<RegionalCount | null>(null);
   const [normType, setNormType] = useState('WB_MINIBUS');
   const [norm, setNorm] = useState<WaybillNorm | null>(null);
@@ -209,14 +211,15 @@ export default function ReportsView({ tab }: { tab: ReportTab }) {
       }
       if (tab === 'regional') {
         const tc = typeCompany ? `&typeCompany=${typeCompany}` : '';
-        if (regionalMode === 'trans') setRegional(await getJson(`/wb-api/api/v1/reports/regional?bill=${regionalBill}&from=${from}&to=${to}${tc}`));
-        else if (regionalMode === 'count') setRegionalCount(await getJson(`/wb-api/api/v1/reports/regional-count?bill=ALL&from=${from}&to=${to}${tc}`));
+        const fm = regionalForm ? `&type=${regionalForm}` : '';
+        if (regionalMode === 'trans') setRegional(await getJson(`/wb-api/api/v1/reports/regional?bill=${regionalBill}&from=${from}&to=${to}${tc}${fm}`));
+        else if (regionalMode === 'count') setRegionalCount(await getJson(`/wb-api/api/v1/reports/regional-count?bill=${regionalForm || 'ALL'}&from=${from}&to=${to}${tc}`));
         else setNorm(await getJson(`/wb-api/api/v1/reports/waybill-norm?type=${normType}&from=${from}&to=${to}${tc}`));
       }
     } catch (e) {
       setError((e as Error).message);
     }
-  }, [tab, from, to, journalDate, typedKind, typedType, typedFilterQs, regionalMode, regionalBill, normType, typeCompany]);
+  }, [tab, from, to, journalDate, typedKind, typedType, typedFilterQs, regionalMode, regionalBill, regionalForm, normType, typeCompany]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -256,10 +259,11 @@ export default function ReportsView({ tab }: { tab: ReportTab }) {
     `отчёт-${typedType.toLowerCase()}-${from}_${to}.xlsx`);
   const downloadRegionalXlsx = () => {
     const tc = typeCompany ? `&typeCompany=${typeCompany}` : '';
+    const fm = regionalForm ? `&type=${regionalForm}` : '';
     return regionalMode === 'trans'
-      ? downloadXlsx(`/wb-api/api/v1/reports/regional.xlsx?bill=${regionalBill}&from=${from}&to=${to}${tc}`, `сводный-перевозки-${regionalBill.toLowerCase()}-${from}_${to}.xlsx`)
+      ? downloadXlsx(`/wb-api/api/v1/reports/regional.xlsx?bill=${regionalBill}&from=${from}&to=${to}${tc}${fm}`, `сводный-перевозки-${regionalBill.toLowerCase()}-${from}_${to}.xlsx`)
       : regionalMode === 'count'
-        ? downloadXlsx(`/wb-api/api/v1/reports/regional-count.xlsx?bill=ALL&from=${from}&to=${to}${tc}`, `сводный-количество-${from}_${to}.xlsx`)
+        ? downloadXlsx(`/wb-api/api/v1/reports/regional-count.xlsx?bill=${regionalForm || 'ALL'}&from=${from}&to=${to}${tc}`, `сводный-количество-${from}_${to}.xlsx`)
         : downloadXlsx(`/wb-api/api/v1/reports/waybill-norm.xlsx?type=${normType}&from=${from}&to=${to}${tc}`, `норматив-выдачи-${normType.toLowerCase()}-${from}_${to}.xlsx`);
   };
 
@@ -390,9 +394,21 @@ export default function ReportsView({ tab }: { tab: ReportTab }) {
           <button className={`btn ${regionalMode === 'norm' ? '' : 'secondary'}`} onClick={() => setRegionalMode('norm')}>{t('rep.mode.norm')}</button>
           <span className="spacer" style={{ flex: 1 }} />
           {regionalMode === 'trans' && (
-            <select value={regionalBill} onChange={e => setRegionalBill(e.target.value as 'PASSENGER' | 'CARGO')} style={{ width: 160 }}>
+            <select value={regionalBill} onChange={e => { setRegionalBill(e.target.value as 'PASSENGER' | 'CARGO'); setRegionalForm(''); }} style={{ width: 160 }}>
               <option value="PASSENGER">{t('rep.opt.passenger')}</option>
               <option value="CARGO">{t('rep.opt.cargo')}</option>
+            </select>
+          )}
+          {/* Отбор конкретной формы ПЛ внутри разреза — как в старой платформе (Шакли 3-С / 1-А / 2-Б / 5Б-БМ). */}
+          {(regionalMode === 'trans' || regionalMode === 'count') && (
+            <select value={regionalForm} onChange={e => setRegionalForm(e.target.value)} style={{ width: 210 }} title={t('rep.form.title')}>
+              <option value="">{t('rep.form.all')}</option>
+              {(regionalMode === 'count'
+                ? ['WB_BUS', 'WB_TROLLEYBUS', 'WB_MINIBUS', 'WB_CAR', 'WB_TAXI', 'WB_PAX_INTL', 'WB_TRUCK', 'WB_TRUCK_INTL', 'WB_SPECIAL', 'WB_DANGEROUS']
+                : regionalBill === 'CARGO'
+                  ? ['WB_TRUCK', 'WB_TRUCK_INTL', 'WB_SPECIAL', 'WB_DANGEROUS']
+                  : ['WB_BUS', 'WB_TROLLEYBUS', 'WB_MINIBUS', 'WB_CAR', 'WB_TAXI', 'WB_PAX_INTL']
+              ).map(code => <option key={code} value={code}>{tType(code)}</option>)}
             </select>
           )}
           {regionalMode === 'norm' && (

@@ -193,10 +193,11 @@ public class ReportController {
             @RequestParam(defaultValue = "PASSENGER") String bill,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
-            @RequestParam(required = false) Short typeCompany) {
-        return "CARGO".equalsIgnoreCase(bill)
-                ? regionalReports.cargoTransportation(from, to, typeCompany)
-                : regionalReports.transportation(from, to, typeCompany);
+            @RequestParam(required = false) Short typeCompany,
+            // Отбор конкретной формы ПЛ внутри разреза (Шакли 3-С / 1-А / 2-Б / 5Б-БМ), как в
+            // старой платформе; не передан — все формы разреза.
+            @RequestParam(required = false) tj.mintrans.epd.waybill.domain.WaybillType type) {
+        return regionalReports.transportation(bill, from, to, typeCompany, type);
     }
 
     /** Сводный отчёт «Количество путевых листов» (§6.3, 19 счётчиков + 2 доп. счётчика накладных). */
@@ -250,10 +251,9 @@ public class ReportController {
             @RequestParam(defaultValue = "PASSENGER") String bill,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
-            @RequestParam(required = false) Short typeCompany) {
-        RegionalReport report = "CARGO".equalsIgnoreCase(bill)
-                ? regionalReports.cargoTransportation(from, to, typeCompany)
-                : regionalReports.transportation(from, to, typeCompany);
+            @RequestParam(required = false) Short typeCompany,
+            @RequestParam(required = false) tj.mintrans.epd.waybill.domain.WaybillType type) {
+        RegionalReport report = regionalReports.transportation(bill, from, to, typeCompany, type);
         return fileXlsx(xlsx.writeRegional(report),
                 "regional-transportation-" + bill.toLowerCase() + "-" + from + "_" + to + ".xlsx");
     }

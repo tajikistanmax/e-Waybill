@@ -166,20 +166,30 @@ public class RegionalReportService {
     /** Пассажирский сводный отчёт (объём тыс. пасс., оборот млн пасс-км). */
     @Transactional(readOnly = true)
     public RegionalReport transportation(LocalDate from, LocalDate to, Short typeCompany) {
-        return transportationReport("PASSENGER", from, to, typeCompany);
+        return transportationReport("PASSENGER", from, to, typeCompany, null);
+    }
+
+    /**
+     * Сводный отчёт по перевозкам с отбором конкретной формы ПЛ (Шакли 3-С / 1-А / 2-Б / 5Б-БМ),
+     * как в старой платформе: {@code bill} задаёт разрез (PASSENGER/CARGO), {@code type} —
+     * форму внутри разреза ({@code null} — все формы разреза). MIGRATION.md 6.3.
+     */
+    @Transactional(readOnly = true)
+    public RegionalReport transportation(String bill, LocalDate from, LocalDate to, Short typeCompany, WaybillType type) {
+        return transportationReport("CARGO".equalsIgnoreCase(bill) ? "CARGO" : "PASSENGER", from, to, typeCompany, type);
     }
 
     /** Грузовой сводный отчёт (объём тыс. тонн, оборот млн т-км) — формы 2-Б / 5Б-БМ. */
     @Transactional(readOnly = true)
     public RegionalReport cargoTransportation(LocalDate from, LocalDate to, Short typeCompany) {
-        return transportationReport("CARGO", from, to, typeCompany);
+        return transportationReport("CARGO", from, to, typeCompany, null);
     }
 
     /**
      * @param typeCompany фильтр «ведомственный / общий» ({@code Organization.typeCompany}:
      *        1 — общего пользования, 2 — ведомственная); {@code null} — без фильтра, все организации.
      */
-    private RegionalReport transportationReport(String bill, LocalDate from, LocalDate to, Short typeCompany) {
+    private RegionalReport transportationReport(String bill, LocalDate from, LocalDate to, Short typeCompany, WaybillType only) {
         if (currentUser.isTenantScoped()) {
             throw new ForbiddenException("Сводный региональный отчёт доступен только Минтрансу");
         }
@@ -196,8 +206,8 @@ public class RegionalReportService {
         // Факт: объём и оборот по каждому завершённому ПЛ выбранного вида — два прохода потоком
         // по периоду (текущий и тот же период прошлого года), а не findAll() (Ф5: 2,3 млн ПЛ).
         Map<String, Fact> factByOrg = new LinkedHashMap<>();
-        scan.forEachCompleted(from, to, null, wb -> absorbFact(wb, cargo, true, factByOrg));
-        scan.forEachCompleted(prevFrom, prevTo, null, wb -> absorbFact(wb, cargo, false, factByOrg));
+        scan.forEachCompleted(from, to, null, wb -> absorbFact(wb, cargo, true, factByOrg, only));
+        scan.forEachCompleted(prevFrom, prevTo, null, wb -> absorbFact(wb, cargo, false, factByOrg, only));
 
         // План по предприятиям на оба года: годовая строка (plan_month IS NULL) и, если
         // отчётный период — один месяц, месячная строка на этот месяц (она приоритетнее).
@@ -282,8 +292,9 @@ public class RegionalReportService {
     }
 
     /** Вклад одного завершённого ПЛ в факт сводного отчёта (текущий период — {@code cur}, иначе прошлогодний). */
-    private void absorbFact(Waybill wb, boolean cargo, boolean cur, Map<String, Fact> factByOrg) {
-        boolean typeOk = cargo ? isCargo(wb.getWaybillType()) : isPassenger(wb.getWaybillType());
+    private void absorbFact(Waybill wb, boolean cargo, boolean cur, Map<String, Fact> factByOrg, WaybillType only) {
+        boolean typeOk = (cargo ? isCargo(wb.getWaybillType()) : isPassenger(wb.getWaybillType()))
+                && (only == null || only == wb.getWaybillType());
         if (wb.getStatus() != WaybillStatus.COMPLETED || !typeOk || wb.getCreatedAt() == null) {
             return;
         }
@@ -471,6 +482,11 @@ public class RegionalReportService {
         return new RegionalCountReport(kind, from, to, year, prevYear, regions, grand);
     }
 
+    /**
+     * Отбор по разрезу отчёта: {@code PASSENGER} / {@code CARGO} / {@code ALL} либо имя конкретного
+     * вида ПЛ ({@code WB_TRUCK}, {@code WB_TRUCK_INTL}, …) — как в старой платформе, где сводный
+     * отчёт строился по выбранной форме (Шакли 3-С / 1-А / 2-Б / 5Б-БМ), MIGRATION.md 6.3.
+     */
     private static boolean billMatches(String kind, WaybillType t) {
         boolean passenger = t == WaybillType.WB_BUS || t == WaybillType.WB_TROLLEYBUS || t == WaybillType.WB_MINIBUS
                 || t == WaybillType.WB_CAR || t == WaybillType.WB_TAXI || t == WaybillType.WB_PAX_INTL;
@@ -479,7 +495,8 @@ public class RegionalReportService {
         return switch (kind) {
             case "PASSENGER" -> passenger;
             case "CARGO" -> cargo;
-            default -> passenger || cargo;
+            case "ALL" -> passenger || cargo;
+            default -> t != null && t.name().equals(kind);
         };
     }
 
