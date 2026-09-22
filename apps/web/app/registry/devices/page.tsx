@@ -11,6 +11,10 @@ const PLATFORM_ROLES = ['SYSTEM_ADMIN', 'MINTRANS_ANALYST', 'API_INTEGRATOR'];
 
 const s = (v: unknown) => (v == null || v === '' ? '—' : String(v));
 
+// Постраничный вывод — как в остальных реестрах (решение владельца 22.09): на боевом объёме
+// список устройств рос неограниченно и рендерился целиком.
+const PER_PAGE = 20;
+
 /**
  * Реестр авторизованных мобильных устройств водителей — перенос legacy-справочника «Телефонҳо»
  * (phone_infos). Мультиарендно: платформенная роль видит все организации (с фильтром по
@@ -31,6 +35,7 @@ export default function DevicesRegistryPage() {
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   const [form, setForm] = useState({ organizationRma: '', driverName: '', driverRma: '', brand: '', model: '' });
+  const [page, setPage] = useState(1);
 
   // Список организаций — для колонки «Корхона» (rma → название) и селектора фильтра/формы.
   useEffect(() => {
@@ -65,6 +70,12 @@ export default function DevicesRegistryPage() {
       return hay.includes(needle);
     });
   }, [rows, q, orgName]);
+
+  // Сброс на первую страницу при смене фильтров/данных.
+  useEffect(() => { setPage(1); }, [q, orgFilter, rows]);
+  const pages = Math.max(1, Math.ceil(filtered.length / PER_PAGE));
+  const safePage = Math.min(page, pages);
+  const view = useMemo(() => filtered.slice((safePage - 1) * PER_PAGE, safePage * PER_PAGE), [filtered, safePage]);
 
   const fmt = (iso: string) => {
     const d = new Date(iso);
@@ -103,7 +114,7 @@ export default function DevicesRegistryPage() {
   return (
     <div className="card">
       <div className="card-h">
-        <h2>{t('dev.title')} · {t('reg.shown')} {filtered.length} {t('paging.of')} {rows.length}</h2>
+        <h2>{t('dev.title')}</h2>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           {isPlatform && (
             <select value={orgFilter} onChange={e => setOrgFilter(e.target.value)} style={{ width: 240 }}>
@@ -131,7 +142,7 @@ export default function DevicesRegistryPage() {
           </tr>
         </thead>
         <tbody>
-          {filtered.map(r => (
+          {view.map(r => (
             <tr key={r.id}>
               <td style={{ fontWeight: 600, color: 'var(--ink)' }}>{orgName(r.organizationRma)}</td>
               <td>{s(r.driverName)}</td>
@@ -155,8 +166,12 @@ export default function DevicesRegistryPage() {
         </tbody>
       </table>
 
-      <div style={{ marginTop: 12, fontSize: 12.5, color: 'var(--muted)' }}>
-        {t('dash.total')}: {filtered.length}{rows.length !== filtered.length ? ` ${t('paging.of')} ${rows.length}` : ''}
+      <div style={{ display: 'flex', alignItems: 'center', marginTop: 12, fontSize: 12.5, color: 'var(--muted)' }}>
+        <span>{t('dash.total')}: <b style={{ color: 'var(--ink)' }}>{filtered.length}</b>{rows.length !== filtered.length ? ` ${t('paging.of')} ${rows.length}` : ''}</span>
+        <span style={{ flex: 1 }} />
+        <button className="btn secondary" disabled={safePage <= 1} onClick={() => setPage(p => Math.max(1, p - 1))} style={{ padding: '5px 11px' }}>‹</button>
+        <span style={{ margin: '0 12px' }}>{safePage} / {pages}</span>
+        <button className="btn secondary" disabled={safePage >= pages} onClick={() => setPage(p => Math.min(pages, p + 1))} style={{ padding: '5px 11px' }}>›</button>
       </div>
 
       {!isSysAdmin && (

@@ -2,14 +2,18 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useEffect, useState } from 'react';
+import { md } from '@/lib/api';
 import { Icon, P } from '../icons';
 import { useT } from '@/lib/i18n';
 
-const TABS: { href: string; labelKey: string; icon: string }[] = [
-  { href: '/registry/vehicles', labelKey: 'col.transport', icon: P.car },
-  { href: '/registry/drivers', labelKey: 'col.drivers', icon: P.users },
-  { href: '/registry/employees', labelKey: 'col.employees', icon: P.building },
-  { href: '/registry/devices', labelKey: 'nav.devices', icon: P.phone },
+type CountKey = 'vehicles' | 'drivers' | 'employees' | 'devices';
+
+const TABS: { href: string; labelKey: string; icon: string; key: CountKey }[] = [
+  { href: '/registry/vehicles', labelKey: 'col.transport', icon: P.car, key: 'vehicles' },
+  { href: '/registry/drivers', labelKey: 'col.drivers', icon: P.users, key: 'drivers' },
+  { href: '/registry/employees', labelKey: 'col.employees', icon: P.building, key: 'employees' },
+  { href: '/registry/devices', labelKey: 'nav.devices', icon: P.phone, key: 'devices' },
 ];
 
 /**
@@ -21,6 +25,25 @@ export default function RegistryLayout({ children }: { children: React.ReactNode
   const path = usePathname();
   const { t } = useT();
   const active = TABS.find(s => path.startsWith(s.href)) ?? TABS[0];
+
+  // Счётчики на карточках разделов: ТС/водители/сотрудники — одним агрегатным запросом
+  // (organizations/counts, без N+1), устройства — списком (их немного). Скоуп — по токену:
+  // тенант видит свои организации, платформенная роль — все.
+  const [counts, setCounts] = useState<Partial<Record<CountKey, number>>>({});
+  useEffect(() => {
+    let alive = true;
+    md.organizationCounts()
+      .then(rows => {
+        if (!alive) return;
+        const sum = (f: 'vehicles' | 'drivers' | 'employees') => rows.reduce((acc, r) => acc + Number(r[f] ?? 0), 0);
+        setCounts(c => ({ ...c, vehicles: sum('vehicles'), drivers: sum('drivers'), employees: sum('employees') }));
+      })
+      .catch(() => { /* счётчик не критичен — карточка просто без числа */ });
+    md.mobileDevices()
+      .then(rows => { if (alive) setCounts(c => ({ ...c, devices: rows.length })); })
+      .catch(() => { /* см. выше */ });
+    return () => { alive = false; };
+  }, []);
 
   return (
     <>
@@ -47,8 +70,12 @@ export default function RegistryLayout({ children }: { children: React.ReactNode
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                 <span className="k-ic ic-blue"><Icon d={s.icon} cls="" /></span>
-                <div style={{ minWidth: 0 }}>
+                <div style={{ minWidth: 0, flex: 1 }}>
                   <div style={{ fontWeight: 700, fontSize: 14, color: sel ? 'var(--blue-700)' : 'var(--ink)' }}>{t(s.labelKey)}</div>
+                  {/* Количество записей раздела — под названием (решение владельца 22.09). */}
+                  <div style={{ fontSize: 20, fontWeight: 800, color: 'var(--ink)', lineHeight: 1.2, fontVariantNumeric: 'tabular-nums' }}>
+                    {counts[s.key] === undefined ? '—' : counts[s.key]!.toLocaleString('ru-RU')}
+                  </div>
                   <div style={{ fontSize: 11.5, color: 'var(--muted)' }}>{sel ? t('reg.currentsection') : t('reg.openregistry')}</div>
                 </div>
               </div>

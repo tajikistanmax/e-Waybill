@@ -11,7 +11,7 @@ export type RegistryKind = 'vehicles' | 'drivers' | 'employees';
 
 const EMPLOYEE_TYPES: Record<number, string> = { 1: 'Врач (духтур)', 2: 'Механик', 3: 'Диспетчер (танзимгар)', 4: 'Работник заправочного пункта', 5: 'Работник кассы' };
 const TRANSPORT_TYPES: Record<number, string> = {
-  1: 'Автобус', 2: 'Троллейбус', 3: 'Микроавтобус', 4: 'Легковой (сабукрав)', 5: 'Грузовой (2-Б)', 6: 'Грузовой межд. (5Б-БМ)',
+  1: 'Автобус', 2: 'Троллейбус', 3: 'Микроавтобус', 4: 'Легковой', 5: 'Грузовой', 6: 'Грузовой международный',
 };
 // Переводимые подписи типов: карты выше остаются как проверка допустимости кода и русский фолбэк,
 // а сам текст берётся из словаря (emp.type.* / veh.type.*), поэтому меняется при переключении языка.
@@ -197,7 +197,9 @@ export default function RegistryView({ kind }: { kind: RegistryKind }) {
   return (
     <div className="card">
       <div className="card-h">
-        <h2>{t(LABEL_KEY[kind])} · {t('reg.shown')} {filtered.length} {t('paging.of')} {rows.length}</h2>
+        {/* Счётчик «показано N из M» убран из заголовка (решение владельца 22.09):
+            итог по выборке остаётся в подвале таблицы, рядом со страницами. */}
+        <h2>{t(LABEL_KEY[kind])}</h2>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           {kind === 'vehicles' && (
             <select value={typeFilter} onChange={e => setTypeFilter(e.target.value)} style={{ width: 190 }}>
