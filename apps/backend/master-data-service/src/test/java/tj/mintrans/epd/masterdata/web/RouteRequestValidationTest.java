@@ -22,7 +22,8 @@ class RouteRequestValidationTest {
     private final Validator validator = Validation.buildDefaultValidatorFactory().getValidator();
 
     private static DictionaryController.RouteRequest req(BigDecimal lat, BigDecimal lon) {
-        return new DictionaryController.RouteRequest("3", "Вокзал — Аэропорт", (short) 1, (short) 1, null, null,
+        // Первый компонент — id записи (null = апсерт по номеру в организации, MIGRATION.md 8.11).
+        return new DictionaryController.RouteRequest(null, "3", "Вокзал — Аэропорт", (short) 1, (short) 1, null, null,
                 null, null, null, null, null, null, null, null, null, null,
                 12d, 12d, 0d, 0d, (short) 8, 0.7d, 4d,
                 "Вокзал", "Аэропорт", LocalTime.of(0, 45), LocalTime.of(0, 50), LocalDate.of(2027, 1, 1),

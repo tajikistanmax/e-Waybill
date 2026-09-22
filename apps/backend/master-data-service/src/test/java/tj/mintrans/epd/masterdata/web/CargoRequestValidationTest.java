@@ -22,14 +22,14 @@ class CargoRequestValidationTest {
     @Test
     @DisplayName("все обязательные поля заданы — без нарушений; класс груза необязателен")
     void validCargo() {
-        assertThat(validator.validate(new DictionaryController.CargoRequest("Цемент навалом", "сыпучий", "т", new BigDecimal("10.5"), null))).isEmpty();
+        assertThat(validator.validate(new DictionaryController.CargoRequest(null, "Цемент навалом", "сыпучий", "т", new BigDecimal("10.5"), null))).isEmpty();
     }
 
     @Test
     @DisplayName("пустые тип/единица и отсутствующая цена — три нарушения с понятными текстами")
     void missingRequired() {
         Set<ConstraintViolation<DictionaryController.CargoRequest>> v =
-                validator.validate(new DictionaryController.CargoRequest("Песок", " ", "", null, (short) 1));
+                validator.validate(new DictionaryController.CargoRequest(null, "Песок", " ", "", null, (short) 1));
 
         assertThat(v).extracting(c -> c.getPropertyPath().toString()).containsExactlyInAnyOrder("type", "unit", "price");
         assertThat(v).extracting(ConstraintViolation::getMessage)

@@ -5,7 +5,9 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.data.repository.CrudRepository;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -100,6 +102,8 @@ public class LegacyReferenceController {
     }
 
     public record BrandRequest(
+            // id задан — правится именно эта запись (в т.ч. с переименованием); пусто — апсерт по ключу.
+            Long id,
             @NotBlank String name,
             String number,
             String model,
@@ -119,7 +123,8 @@ public class LegacyReferenceController {
     @PostMapping("/brands")
     @PreAuthorize("hasRole('SYSTEM_ADMIN')")
     public ResponseEntity<Brand> upsertBrand(@Valid @RequestBody BrandRequest req) {
-        var existing = brands.findFirstByNameIgnoreCaseAndModelIgnoreCase(req.name(), req.model() == null ? "" : req.model());
+        var existing = req.id() != null ? Optional.of(byId(brands, req.id(), "Марка"))
+                : brands.findFirstByNameIgnoreCaseAndModelIgnoreCase(req.name(), req.model() == null ? "" : req.model());
         String oldValue = existing.map(Brand::getModel).orElse(null); // до мутации
         var brand = existing.orElseGet(Brand::new);
         brand.setName(req.name());
@@ -148,6 +153,7 @@ public class LegacyReferenceController {
     }
 
     public record FuelWinterCoefRequest(
+            Long id,
             @NotBlank String name,
             LocalDate periodFrom,
             LocalDate periodTo,
@@ -157,7 +163,8 @@ public class LegacyReferenceController {
     @PostMapping("/winter-coefs")
     @PreAuthorize("hasRole('SYSTEM_ADMIN')")
     public ResponseEntity<FuelWinterCoef> upsertWinterCoef(@Valid @RequestBody FuelWinterCoefRequest req) {
-        var existing = winterCoefs.findFirstByNameIgnoreCase(req.name());
+        var existing = req.id() != null ? Optional.of(byId(winterCoefs, req.id(), "Зимний коэффициент"))
+                : winterCoefs.findFirstByNameIgnoreCase(req.name());
         String oldValue = existing.map(c -> String.valueOf(c.getCoef())).orElse(null); // до мутации
         var coef = existing.orElseGet(FuelWinterCoef::new);
         coef.setName(req.name());
@@ -177,13 +184,14 @@ public class LegacyReferenceController {
         return mountainCoefs.findAll();
     }
 
-    public record MountainCoefRequest(@NotBlank String name, @NotNull Short coef) {
+    public record MountainCoefRequest(Long id, @NotBlank String name, @NotNull Short coef) {
     }
 
     @PostMapping("/mountain-coefs")
     @PreAuthorize("hasRole('SYSTEM_ADMIN')")
     public ResponseEntity<MountainCoef> upsertMountainCoef(@Valid @RequestBody MountainCoefRequest req) {
-        var existing = mountainCoefs.findFirstByNameIgnoreCase(req.name());
+        var existing = req.id() != null ? Optional.of(byId(mountainCoefs, req.id(), "Высокогорный коэффициент"))
+                : mountainCoefs.findFirstByNameIgnoreCase(req.name());
         String oldValue = existing.map(c -> String.valueOf(c.getCoef())).orElse(null); // до мутации
         var coef = existing.orElseGet(MountainCoef::new);
         coef.setName(req.name());
@@ -201,13 +209,14 @@ public class LegacyReferenceController {
         return cityCoefs.findAll();
     }
 
-    public record CityCoefRequest(@NotBlank String name, @NotNull Short coef) {
+    public record CityCoefRequest(Long id, @NotBlank String name, @NotNull Short coef) {
     }
 
     @PostMapping("/city-coefs")
     @PreAuthorize("hasRole('SYSTEM_ADMIN')")
     public ResponseEntity<CityCoef> upsertCityCoef(@Valid @RequestBody CityCoefRequest req) {
-        var existing = cityCoefs.findFirstByNameIgnoreCase(req.name());
+        var existing = req.id() != null ? Optional.of(byId(cityCoefs, req.id(), "Внутригородской коэффициент"))
+                : cityCoefs.findFirstByNameIgnoreCase(req.name());
         String oldValue = existing.map(c -> String.valueOf(c.getCoef())).orElse(null); // до мутации
         var coef = existing.orElseGet(CityCoef::new);
         coef.setName(req.name());
@@ -225,14 +234,15 @@ public class LegacyReferenceController {
         return usedCoefs.findAll();
     }
 
-    public record UsedCoefRequest(@NotNull Short year, @NotNull Integer km, @NotNull Short coef) {
+    public record UsedCoefRequest(Long id, @NotNull Short year, @NotNull Integer km, @NotNull Short coef) {
     }
 
     /** Upsert по паре (year, km) — порог возраста/пробега, при превышении которых начисляется coef. */
     @PostMapping("/used-coefs")
     @PreAuthorize("hasRole('SYSTEM_ADMIN')")
     public ResponseEntity<UsedCoef> upsertUsedCoef(@Valid @RequestBody UsedCoefRequest req) {
-        var existing = usedCoefs.findFirstByYearAndKm(req.year(), req.km());
+        var existing = req.id() != null ? Optional.of(byId(usedCoefs, req.id(), "Коэффициент износа"))
+                : usedCoefs.findFirstByYearAndKm(req.year(), req.km());
         String oldValue = existing.map(c -> String.valueOf(c.getCoef())).orElse(null); // до мутации
         var coef = existing.orElseGet(UsedCoef::new);
         coef.setYear(req.year());
@@ -251,13 +261,14 @@ public class LegacyReferenceController {
         return driveClasses.findAll();
     }
 
-    public record DriveClassRequest(@NotBlank String driveClass, @NotNull Short coef) {
+    public record DriveClassRequest(Long id, @NotBlank String driveClass, @NotNull Short coef) {
     }
 
     @PostMapping("/drive-classes")
     @PreAuthorize("hasRole('SYSTEM_ADMIN')")
     public ResponseEntity<DriveClass> upsertDriveClass(@Valid @RequestBody DriveClassRequest req) {
-        var existing = driveClasses.findFirstByDriveClassIgnoreCase(req.driveClass());
+        var existing = req.id() != null ? Optional.of(byId(driveClasses, req.id(), "Класс водителя"))
+                : driveClasses.findFirstByDriveClassIgnoreCase(req.driveClass());
         String oldValue = existing.map(c -> String.valueOf(c.getCoef())).orElse(null); // до мутации
         var driveClass = existing.orElseGet(DriveClass::new);
         driveClass.setDriveClass(req.driveClass());
@@ -282,6 +293,7 @@ public class LegacyReferenceController {
     }
 
     public record DirectionRequest(
+            Long id,
             @NotBlank String title,
             Integer number,
             Long winterCoefId,
@@ -293,7 +305,8 @@ public class LegacyReferenceController {
     @PostMapping("/directions")
     @PreAuthorize("hasRole('SYSTEM_ADMIN')")
     public ResponseEntity<Direction> upsertDirection(@Valid @RequestBody DirectionRequest req) {
-        var existing = directions.findFirstByTitleIgnoreCase(req.title());
+        var existing = req.id() != null ? Optional.of(byId(directions, req.id(), "Направление"))
+                : directions.findFirstByTitleIgnoreCase(req.title());
         String oldValue = existing.map(d -> String.valueOf(d.getNumber())).orElse(null); // до мутации
         var direction = existing.orElseGet(Direction::new);
         direction.setTitle(req.title());
@@ -317,6 +330,7 @@ public class LegacyReferenceController {
     }
 
     public record RouteTariffRequest(
+            Long id,
             @NotNull UUID routeId,
             Short fuelId,
             String number,
@@ -331,7 +345,8 @@ public class LegacyReferenceController {
     @PostMapping("/route-tariffs")
     @PreAuthorize("hasRole('SYSTEM_ADMIN')")
     public ResponseEntity<RouteTariff> upsertRouteTariff(@Valid @RequestBody RouteTariffRequest req) {
-        var existing = req.fuelId() == null
+        var existing = req.id() != null ? Optional.of(byId(routeTariffs, req.id(), "Тариф маршрута"))
+                : req.fuelId() == null
                 ? routeTariffs.findFirstByRouteIdAndFuelIdIsNull(req.routeId())
                 : routeTariffs.findFirstByRouteIdAndFuelId(req.routeId(), req.fuelId());
         String oldValue = existing.map(t -> String.valueOf(t.getPricePer1Mkm())).orElse(null); // до мутации
@@ -350,7 +365,93 @@ public class LegacyReferenceController {
         return saved(existing, savedTariff);
     }
 
+    // ------------------------------------------------------------------ удаление записей
+
+    /**
+     * Удаление записи справочника расчётного ядра (MIGRATION.md 8.11 — в legacy у справочников были
+     * кнопки правки и удаления). Только системный администратор: данные едины для всей платформы.
+     * На уже выписанные путевые листы удаление не влияет — там снимки значений.
+     */
+    @DeleteMapping("/brands/{id}")
+    @PreAuthorize("hasRole('SYSTEM_ADMIN')")
+    public ResponseEntity<Void> deleteBrand(@PathVariable long id) {
+        var brand = byId(brands, id, "Марка");
+        brands.delete(brand);
+        audit.record(AuditService.DELETE, "BRAND", brand.getName(), brand.getModel(), null);
+        return ResponseEntity.noContent().build();
+    }
+
+    @DeleteMapping("/winter-coefs/{id}")
+    @PreAuthorize("hasRole('SYSTEM_ADMIN')")
+    public ResponseEntity<Void> deleteWinterCoef(@PathVariable long id) {
+        var coef = byId(winterCoefs, id, "Зимний коэффициент");
+        winterCoefs.delete(coef);
+        audit.record(AuditService.DELETE, "FUEL_WINTER_COEF", coef.getName(), String.valueOf(coef.getCoef()), null);
+        return ResponseEntity.noContent().build();
+    }
+
+    @DeleteMapping("/mountain-coefs/{id}")
+    @PreAuthorize("hasRole('SYSTEM_ADMIN')")
+    public ResponseEntity<Void> deleteMountainCoef(@PathVariable long id) {
+        var coef = byId(mountainCoefs, id, "Высокогорный коэффициент");
+        mountainCoefs.delete(coef);
+        audit.record(AuditService.DELETE, "MOUNTAIN_COEF", coef.getName(), String.valueOf(coef.getCoef()), null);
+        return ResponseEntity.noContent().build();
+    }
+
+    @DeleteMapping("/city-coefs/{id}")
+    @PreAuthorize("hasRole('SYSTEM_ADMIN')")
+    public ResponseEntity<Void> deleteCityCoef(@PathVariable long id) {
+        var coef = byId(cityCoefs, id, "Внутригородской коэффициент");
+        cityCoefs.delete(coef);
+        audit.record(AuditService.DELETE, "CITY_COEF", coef.getName(), String.valueOf(coef.getCoef()), null);
+        return ResponseEntity.noContent().build();
+    }
+
+    @DeleteMapping("/used-coefs/{id}")
+    @PreAuthorize("hasRole('SYSTEM_ADMIN')")
+    public ResponseEntity<Void> deleteUsedCoef(@PathVariable long id) {
+        var coef = byId(usedCoefs, id, "Коэффициент износа");
+        usedCoefs.delete(coef);
+        audit.record(AuditService.DELETE, "USED_COEF", coef.getYear() + "/" + coef.getKm(), String.valueOf(coef.getCoef()), null);
+        return ResponseEntity.noContent().build();
+    }
+
+    @DeleteMapping("/drive-classes/{id}")
+    @PreAuthorize("hasRole('SYSTEM_ADMIN')")
+    public ResponseEntity<Void> deleteDriveClass(@PathVariable long id) {
+        var driveClass = byId(driveClasses, id, "Класс водителя");
+        driveClasses.delete(driveClass);
+        audit.record(AuditService.DELETE, "DRIVE_CLASS", driveClass.getDriveClass(), String.valueOf(driveClass.getCoef()), null);
+        return ResponseEntity.noContent().build();
+    }
+
+    @DeleteMapping("/directions/{id}")
+    @PreAuthorize("hasRole('SYSTEM_ADMIN')")
+    public ResponseEntity<Void> deleteDirection(@PathVariable long id) {
+        var direction = byId(directions, id, "Направление");
+        directions.delete(direction);
+        audit.record(AuditService.DELETE, "DIRECTION", direction.getTitle(), String.valueOf(direction.getNumber()), null);
+        return ResponseEntity.noContent().build();
+    }
+
+    @DeleteMapping("/route-tariffs/{id}")
+    @PreAuthorize("hasRole('SYSTEM_ADMIN')")
+    public ResponseEntity<Void> deleteRouteTariff(@PathVariable long id) {
+        var tariff = byId(routeTariffs, id, "Тариф маршрута");
+        routeTariffs.delete(tariff);
+        audit.record(AuditService.DELETE, "ROUTE_TARIFF",
+                tariff.getRouteId() + "/" + (tariff.getFuelId() == null ? "*" : tariff.getFuelId()),
+                String.valueOf(tariff.getPricePer1Mkm()), null);
+        return ResponseEntity.noContent().build();
+    }
+
     // ------------------------------------------------------------------ вспомогательное
+
+    /** Запись справочника по идентификатору; нет такой — 404 с понятным текстом. */
+    private static <T, ID> T byId(CrudRepository<T, ID> repo, ID id, String label) {
+        return repo.findById(id).orElseThrow(() -> new NotFoundException(label + " не найден(а): " + id));
+    }
 
     private static <T> ResponseEntity<T> saved(Optional<?> existing, T body) {
         return ResponseEntity.status(existing.isPresent() ? HttpStatus.OK : HttpStatus.CREATED).body(body);

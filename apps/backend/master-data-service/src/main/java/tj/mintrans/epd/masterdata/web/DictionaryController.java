@@ -11,7 +11,10 @@ import jakarta.validation.constraints.Size;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.data.repository.CrudRepository;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -35,6 +38,7 @@ import tj.mintrans.epd.masterdata.service.AuditService;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 
 /**
  * Справочники нормирования и тарификации (spec/notes/02, раздел 3).
@@ -89,6 +93,9 @@ public class DictionaryController {
     // ------------------------------------------------------------------ маршруты
 
     public record RouteRequest(
+            // id задан — правится ИМЕННО эта запись (в т.ч. с изменением номера); пусто — апсерт по
+            // номеру в организации, как раньше (редактирование из UI, MIGRATION.md 8.11).
+            UUID id,
             @NotBlank @Size(max = 10) String number,
             @NotBlank String name,
             Short transportType,
@@ -140,7 +147,10 @@ public class DictionaryController {
     @PreAuthorize("hasAnyRole('COMPANY_ADMIN','SYSTEM_ADMIN')")
     public ResponseEntity<Route> upsertRoute(@Valid @RequestBody RouteRequest req) {
         String org = resolveWriteOrg(req.organizationRma());
-        var existing = routes.findByOrganizationRmaAndNumber(org, req.number());
+        var existing = req.id() != null
+                ? Optional.of(byId(routes, req.id(), "Маршрут"))
+                : routes.findByOrganizationRmaAndNumber(org, req.number());
+        existing.ifPresent(r -> assertOwnOrg(r.getOrganizationRma()));
         String oldValue = existing.map(Route::getName).orElse(null); // до мутации (existing и route — один объект)
         var route = existing.orElseGet(Route::new);
         route.setOrganizationRma(org);
@@ -184,6 +194,7 @@ public class DictionaryController {
     // ------------------------------------------------------------------ клиенты
 
     public record ClientRequest(
+            UUID id,
             @NotBlank @Size(max = 10) String number,
             @NotBlank String name,
             // Адрес и телефон обязательны, как в legacy ClientRequest (MIGRATION.md 12.15).
@@ -214,7 +225,10 @@ public class DictionaryController {
     @PreAuthorize("hasAnyRole('COMPANY_ADMIN','SYSTEM_ADMIN')")
     public ResponseEntity<Client> upsertClient(@Valid @RequestBody ClientRequest req) {
         String org = resolveWriteOrg(req.organizationRma());
-        var existing = clients.findByOrganizationRmaAndNumber(org, req.number());
+        var existing = req.id() != null
+                ? Optional.of(byId(clients, req.id(), "Клиент"))
+                : clients.findByOrganizationRmaAndNumber(org, req.number());
+        existing.ifPresent(c -> assertOwnOrg(c.getOrganizationRma()));
         String oldValue = existing.map(Client::getName).orElse(null); // до мутации
         var client = existing.orElseGet(Client::new);
         client.setOrganizationRma(org);
@@ -239,6 +253,7 @@ public class DictionaryController {
     // ------------------------------------------------------------------ нормы расхода
 
     public record FuelNormRequest(
+            UUID id,
             @NotNull Short transportType,
             String brand,
             @NotNull @DecimalMin(value = "0.0", inclusive = false,
@@ -254,7 +269,8 @@ public class DictionaryController {
     @PreAuthorize("hasRole('SYSTEM_ADMIN')")
     public ResponseEntity<FuelNorm> upsertFuelNorm(@Valid @RequestBody FuelNormRequest req) {
         String brand = req.brand() == null || req.brand().isBlank() ? null : req.brand();
-        var existing = brand == null
+        var existing = req.id() != null ? Optional.of(byId(fuelNorms, req.id(), "Норма расхода"))
+                : brand == null
                 ? fuelNorms.findByTransportTypeAndBrandIsNull(req.transportType())
                 : fuelNorms.findByTransportTypeAndBrand(req.transportType(), brand);
         String oldValue = existing.map(n -> String.valueOf(n.getBaseNorm())).orElse(null); // до мутации
@@ -272,6 +288,7 @@ public class DictionaryController {
     // ------------------------------------------------------------------ коэффициенты
 
     public record CoefficientRequest(
+            UUID id,
             @NotBlank @Pattern(regexp = "WINTER|CITY|HIGHLAND|USAGE",
                     message = "Вид коэффициента: WINTER | CITY | HIGHLAND | USAGE") String kind,
             @NotBlank String name,
@@ -290,7 +307,8 @@ public class DictionaryController {
     @PostMapping("/coefficients")
     @PreAuthorize("hasRole('SYSTEM_ADMIN')")
     public ResponseEntity<Coefficient> upsertCoefficient(@Valid @RequestBody CoefficientRequest req) {
-        var existing = coefficients.findByKindAndName(req.kind(), req.name());
+        var existing = req.id() != null ? Optional.of(byId(coefficients, req.id(), "Коэффициент"))
+                : coefficients.findByKindAndName(req.kind(), req.name());
         String oldValue = existing.map(c -> String.valueOf(c.getValue())).orElse(null); // до мутации
         var coefficient = existing.orElseGet(Coefficient::new);
         coefficient.setKind(req.kind());
@@ -308,6 +326,7 @@ public class DictionaryController {
     // ------------------------------------------------------------------ тарифы (нархнома)
 
     public record TariffRequest(
+            UUID id,
             @NotNull Short transportType,
             Short fuelType,
             @NotNull @DecimalMin(value = "0.0", inclusive = false,
@@ -322,7 +341,8 @@ public class DictionaryController {
     @PostMapping("/tariffs")
     @PreAuthorize("hasRole('SYSTEM_ADMIN')")
     public ResponseEntity<Tariff> upsertTariff(@Valid @RequestBody TariffRequest req) {
-        var existing = req.fuelType() == null
+        var existing = req.id() != null ? Optional.of(byId(tariffs, req.id(), "Тариф"))
+                : req.fuelType() == null
                 ? tariffs.findByTransportTypeAndFuelTypeIsNull(req.transportType())
                 : tariffs.findByTransportTypeAndFuelType(req.transportType(), req.fuelType());
         String oldValue = existing.map(t -> String.valueOf(t.getPricePerKm())).orElse(null); // до мутации
@@ -346,6 +366,7 @@ public class DictionaryController {
      * (как Client), апсерт по названию (регистронезависимо).
      */
     public record CargoRequest(
+            UUID id,
             @NotBlank String name,
             // Тип, единица и цена обязательны, как в legacy CargoRequest (MIGRATION.md 12.15).
             @NotBlank(message = "Укажите тип груза") String type,
@@ -362,7 +383,8 @@ public class DictionaryController {
     @PostMapping("/cargos")
     @PreAuthorize("hasAnyRole('COMPANY_ADMIN','SYSTEM_ADMIN')")
     public ResponseEntity<Cargo> upsertCargo(@Valid @RequestBody CargoRequest req) {
-        var existing = cargos.findFirstByNameIgnoreCase(req.name());
+        var existing = req.id() != null ? Optional.of(byId(cargos, req.id(), "Груз"))
+                : cargos.findFirstByNameIgnoreCase(req.name());
         String oldValue = existing.map(c -> String.valueOf(c.getPrice())).orElse(null); // до мутации
         var cargo = existing.orElseGet(Cargo::new);
         cargo.setName(req.name());
@@ -376,7 +398,94 @@ public class DictionaryController {
         return saved(existing, savedCargo);
     }
 
+    // ------------------------------------------------------------------ удаление записей
+
+    /**
+     * Удаление записи справочника (MIGRATION.md 8.11 — в legacy у каждого справочника были кнопки
+     * правки и удаления). Организационные справочники (маршруты, клиенты) тенант удаляет только свои;
+     * национальные (нормы, коэффициенты, тарифы) — системный администратор.
+     * Запись, на которую ссылаются путевые листы, физически остаётся в их снимках — удаление
+     * справочника не меняет уже выписанные документы.
+     */
+    @DeleteMapping("/routes/{id}")
+    @PreAuthorize("hasAnyRole('COMPANY_ADMIN','SYSTEM_ADMIN')")
+    public ResponseEntity<Void> deleteRoute(@PathVariable UUID id) {
+        var route = byId(routes, id, "Маршрут");
+        assertOwnOrg(route.getOrganizationRma());
+        routes.delete(route);
+        audit.record(AuditService.DELETE, "ROUTE", route.getOrganizationRma() + "/" + route.getNumber(), route.getName(), null);
+        return ResponseEntity.noContent().build();
+    }
+
+    @DeleteMapping("/clients/{id}")
+    @PreAuthorize("hasAnyRole('COMPANY_ADMIN','SYSTEM_ADMIN')")
+    public ResponseEntity<Void> deleteClient(@PathVariable UUID id) {
+        var client = byId(clients, id, "Клиент");
+        assertOwnOrg(client.getOrganizationRma());
+        clients.delete(client);
+        audit.record(AuditService.DELETE, "CLIENT", client.getOrganizationRma() + "/" + client.getNumber(), client.getName(), null);
+        return ResponseEntity.noContent().build();
+    }
+
+    @DeleteMapping("/cargos/{id}")
+    @PreAuthorize("hasAnyRole('COMPANY_ADMIN','SYSTEM_ADMIN')")
+    public ResponseEntity<Void> deleteCargo(@PathVariable UUID id) {
+        var cargo = byId(cargos, id, "Груз");
+        cargos.delete(cargo);
+        audit.record(AuditService.DELETE, "CARGO", cargo.getName(), String.valueOf(cargo.getPrice()), null);
+        return ResponseEntity.noContent().build();
+    }
+
+    @DeleteMapping("/fuel-norms/{id}")
+    @PreAuthorize("hasRole('SYSTEM_ADMIN')")
+    public ResponseEntity<Void> deleteFuelNorm(@PathVariable UUID id) {
+        var norm = byId(fuelNorms, id, "Норма расхода");
+        fuelNorms.delete(norm);
+        audit.record(AuditService.DELETE, "FUEL_NORM",
+                norm.getTransportType() + "/" + (norm.getBrand() == null ? "*" : norm.getBrand()),
+                String.valueOf(norm.getBaseNorm()), null);
+        return ResponseEntity.noContent().build();
+    }
+
+    @DeleteMapping("/coefficients/{id}")
+    @PreAuthorize("hasRole('SYSTEM_ADMIN')")
+    public ResponseEntity<Void> deleteCoefficient(@PathVariable UUID id) {
+        var coefficient = byId(coefficients, id, "Коэффициент");
+        coefficients.delete(coefficient);
+        audit.record(AuditService.DELETE, "COEFFICIENT", coefficient.getKind() + "/" + coefficient.getName(),
+                String.valueOf(coefficient.getValue()), null);
+        return ResponseEntity.noContent().build();
+    }
+
+    @DeleteMapping("/tariffs/{id}")
+    @PreAuthorize("hasRole('SYSTEM_ADMIN')")
+    public ResponseEntity<Void> deleteTariff(@PathVariable UUID id) {
+        var tariff = byId(tariffs, id, "Тариф");
+        tariffs.delete(tariff);
+        audit.record(AuditService.DELETE, "TARIFF",
+                tariff.getTransportType() + "/" + (tariff.getFuelType() == null ? "*" : tariff.getFuelType()),
+                String.valueOf(tariff.getPricePerKm()), null);
+        return ResponseEntity.noContent().build();
+    }
+
     // ------------------------------------------------------------------ вспомогательное
+
+    /** Запись справочника по идентификатору; нет такой — 404 с понятным текстом. */
+    private static <T, ID> T byId(CrudRepository<T, ID> repo, ID id, String label) {
+        return repo.findById(id).orElseThrow(() ->
+                new ResponseStatusException(HttpStatus.NOT_FOUND, label + " не найден(а): " + id));
+    }
+
+    /** Тенант работает только с записями своей организации (правка/удаление по id). */
+    private void assertOwnOrg(String recordOrg) {
+        if (!currentUser.isTenantScoped()) {
+            return;
+        }
+        String own = currentUser.organizationRma().orElse(null);
+        if (own == null || !own.equals(recordOrg)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Запись справочника не найдена");
+        }
+    }
 
     /** Пустая/пробельная строка → {@code null}, иначе обрезанная (реквизиты клиента, 2.24). */
     private static String trimToNull(String s) {

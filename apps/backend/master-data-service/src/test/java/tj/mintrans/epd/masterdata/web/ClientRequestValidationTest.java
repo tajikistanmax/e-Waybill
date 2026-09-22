@@ -19,7 +19,7 @@ class ClientRequestValidationTest {
     private final Validator validator = Validation.buildDefaultValidatorFactory().getValidator();
 
     private static DictionaryController.ClientRequest req(Short type, String mfo) {
-        return new DictionaryController.ClientRequest("000123", "ООО Ромашка", "Душанбе", "900000000", null,
+        return new DictionaryController.ClientRequest(null, "000123", "ООО Ромашка", "Душанбе", "900000000", null,
                 type, "0110001234", "020000123", "20202972000000000001", "20402972316264", mfo, "Амонатбонк");
     }
 
@@ -42,7 +42,7 @@ class ClientRequestValidationTest {
     @Test
     @DisplayName("12.15: адрес и телефон обязательны (legacy ClientRequest: address, phone — required)")
     void addressAndPhoneRequired() {
-        DictionaryController.ClientRequest r = new DictionaryController.ClientRequest("000124", "ООО Лютик", " ", null, null,
+        DictionaryController.ClientRequest r = new DictionaryController.ClientRequest(null, "000124", "ООО Лютик", " ", null, null,
                 (short) 1, null, null, null, null, null, null);
         Set<ConstraintViolation<DictionaryController.ClientRequest>> v = validator.validate(r);
 
