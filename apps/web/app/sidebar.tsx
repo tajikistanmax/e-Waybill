@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Icon, P } from './icons';
 import { useAuth } from '@/lib/auth';
 import { useT } from '@/lib/i18n';
@@ -17,6 +17,19 @@ export function Sidebar() {
   const brand = useBrand();
   const { navFor } = useRoleAccess();
   const [open, setOpen] = useState(pathname.startsWith('/waybills'));
+  // Сворачивание бокового меню (только значки) — выбор пользователя запоминается в браузере.
+  // Чтение только после монтирования: при SSR localStorage нет, иначе разъезжается разметка.
+  const [collapsed, setCollapsed] = useState(false);
+  useEffect(() => {
+    try { setCollapsed(localStorage.getItem('epd.sidebar.collapsed') === '1'); } catch { /* приватный режим */ }
+  }, []);
+  const toggleCollapsed = () => {
+    setCollapsed(v => {
+      const next = !v;
+      try { localStorage.setItem('epd.sidebar.collapsed', next ? '1' : '0'); } catch { /* приватный режим */ }
+      return next;
+    });
+  };
   const nav = navFor(roles);
 
   const active = (h: string) => pathname === h || pathname.startsWith(h + '/');
@@ -33,13 +46,23 @@ export function Sidebar() {
   const canCreate = canCreateWaybill(roles);
 
   return (
-    <aside className="sidebar no-print">
+    <aside className={`sidebar no-print${collapsed ? ' collapsed' : ''}`}>
       <div className="side-brand">
         <span className="mark"><BrandLogo /></span>
         <div>
           <div className="bt">{brand.name}</div>
           <div className="bs">{brand.subtitle || t('brand.sub')}</div>
         </div>
+        <button
+          type="button"
+          className="side-toggle"
+          onClick={toggleCollapsed}
+          title={collapsed ? t('nav.expand') : t('nav.collapse')}
+          aria-label={collapsed ? t('nav.expand') : t('nav.collapse')}
+          aria-expanded={!collapsed}
+        >
+          <Icon d={P.menu} cls="" />
+        </button>
       </div>
 
       <nav className="side-nav">

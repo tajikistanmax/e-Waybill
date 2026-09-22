@@ -114,6 +114,27 @@ a { color: inherit; }
 .subnav a::before { content: ''; width: 5px; height: 5px; border-radius: 50%; background: currentColor; opacity: .5; flex: none; }
 .subnav a:hover { background: rgba(255,255,255,.05); color: #dbe3f2; }
 .subnav a.active { color: #7fb0ff; font-weight: 600; }
+/* Кнопка сворачивания бокового меню (значок «бургер» в шапке меню). */
+.side-toggle {
+  margin-left: auto; flex: none; width: 30px; height: 30px; border-radius: 8px;
+  background: rgba(255,255,255,.07); border: none; color: #c3cee2; cursor: pointer;
+  display: grid; place-items: center; transition: background-color .12s, color .12s;
+}
+.side-toggle:hover { background: rgba(255,255,255,.14); color: #fff; }
+
+/* Свёрнутое меню: только значки. Текст убираем font-size: 0 — значки заданы в CSS и остаются. */
+.sidebar.collapsed { width: 66px; }
+.sidebar.collapsed .side-brand { padding: 18px 0; justify-content: center; gap: 0; }
+.sidebar.collapsed .side-brand > div,
+.sidebar.collapsed .side-nav .group-label,
+.sidebar.collapsed .subnav { display: none; }
+.sidebar.collapsed .side-brand .mark { display: none; }
+.sidebar.collapsed .side-toggle { margin: 0; }
+.sidebar.collapsed .side-nav { padding: 12px 8px 8px; }
+.sidebar.collapsed .snav { font-size: 0; gap: 0; justify-content: center; padding: 9px 0; }
+.sidebar.collapsed .snav .chev { display: none; }
+.sidebar.collapsed .side-foot button { font-size: 0; gap: 0; padding: 9px 0; }
+
 .side-foot { padding: 12px; border-top: 1px solid rgba(255,255,255,.07); }
 .side-foot button { width: 100%; background: rgba(255,255,255,.05); border: none; color: #93a1c2; padding: 9px; border-radius: 8px; cursor: pointer; font-size: 12.5px; font-family: inherit; display: flex; align-items: center; gap: 8px; justify-content: center; }
 .side-foot button:hover { background: rgba(255,255,255,.09); color: #cfd8ea; }
