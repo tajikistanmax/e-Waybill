@@ -99,6 +99,7 @@ public class EmployeeController {
         return ResponseEntity.status(existing.isPresent() ? HttpStatus.OK : HttpStatus.CREATED).body(saved);
     }
 
+    @PreAuthorize(tj.mintrans.epd.masterdata.config.Authorities.REGISTRY_READ)
     @GetMapping
     public List<Employee> list(@RequestParam(required = false) String rma,
                                @RequestParam(required = false) String organizationRma) {
@@ -132,6 +133,7 @@ public class EmployeeController {
      * поиск по Ф.И.О., ИНН, табельному номеру, телефону, адресу и названию организации,
      * отбор по должности ({@code type} 1–5), региону и городу организации.
      */
+    @PreAuthorize(tj.mintrans.epd.masterdata.config.Authorities.REGISTRY_READ)
     @GetMapping("/page")
     public PagedResult<Employee> page(@RequestParam(defaultValue = "0") int page,
                                       @RequestParam(defaultValue = "20") int size,
@@ -150,6 +152,7 @@ public class EmployeeController {
         return PagedResult.of(employees.findAll(spec, registryQuery.pageable(page, size, "name")));
     }
 
+    @PreAuthorize(tj.mintrans.epd.masterdata.config.Authorities.REGISTRY_READ)
     @GetMapping("/{id}")
     public Employee get(@PathVariable UUID id) {
         var employee = employees.findById(id).orElseThrow(() -> new NotFoundException("Сотрудник не найден"));

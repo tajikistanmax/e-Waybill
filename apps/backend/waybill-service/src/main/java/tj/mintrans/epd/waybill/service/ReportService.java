@@ -89,7 +89,9 @@ public class ReportService {
         if (!noAccess(scope)) {
             scan.forEachAll(from, to, scope, wb -> {   // счётная сводка — без лимита строк
                 c[0]++;
-                if (wb.getStatus() == WaybillStatus.COMPLETED) {
+                // «Отработан» = закрыт или уже убран в архив по сроку ретенции: архивный лист —
+                // тот же выполненный рейс, и его пробег обязан попадать в отчёт за прошлый период.
+                if (WaybillStatus.FINISHED.contains(wb.getStatus())) {
                     c[1]++;
                     c[4] += distanceOf(wb);
                 } else if (wb.getStatus() == WaybillStatus.CANCELLED) {
@@ -148,7 +150,7 @@ public class ReportService {
 
         void add(Waybill wb, String label) {
             waybills++;
-            if (wb.getStatus() == WaybillStatus.COMPLETED) {
+            if (WaybillStatus.FINISHED.contains(wb.getStatus())) {
                 completed++;
                 distance += distanceOf(wb);
             }

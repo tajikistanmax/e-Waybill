@@ -126,29 +126,31 @@ public interface WaybillRepository extends JpaRepository<Waybill, UUID>,
                                                    @Param("from") OffsetDateTime from,
                                                    @Param("to") OffsetDateTime to);
 
-    // Те же выборки, но только по одному статусу (отчёты по завершённым ПЛ: сводный перевозок, тренд) —
-    // фильтр в SQL, чтобы не тянуть архив (ARCHIVED) через приложение.
+    // Те же выборки, но только по НАБОРУ статусов (отчёты по отработанным ПЛ: сводный перевозок,
+    // тренд) — фильтр в SQL, чтобы не тянуть через приложение лишние строки. Набор, а не один
+    // статус: отработанный лист может лежать и в COMPLETED, и в ARCHIVED (WaybillStatus.FINISHED).
 
-    long countByStatusAndCreatedAtGreaterThanEqualAndCreatedAtLessThan(WaybillStatus status,
-                                                                       OffsetDateTime from, OffsetDateTime to);
+    long countByStatusInAndCreatedAtGreaterThanEqualAndCreatedAtLessThan(Collection<WaybillStatus> statuses,
+                                                                         OffsetDateTime from, OffsetDateTime to);
 
-    long countByOrganizationRmaInAndStatusAndCreatedAtGreaterThanEqualAndCreatedAtLessThan(
-            Collection<String> organizationRmas, WaybillStatus status, OffsetDateTime from, OffsetDateTime to);
+    long countByOrganizationRmaInAndStatusInAndCreatedAtGreaterThanEqualAndCreatedAtLessThan(
+            Collection<String> organizationRmas, Collection<WaybillStatus> statuses,
+            OffsetDateTime from, OffsetDateTime to);
 
-    @Query("select w from Waybill w where w.status = :status and w.createdAt >= :from and w.createdAt < :to "
+    @Query("select w from Waybill w where w.status in :statuses and w.createdAt >= :from and w.createdAt < :to "
             + "order by w.createdAt")
     @QueryHints(@QueryHint(name = org.hibernate.jpa.HibernateHints.HINT_FETCH_SIZE, value = "500"))
-    Stream<Waybill> streamByPeriodAndStatus(@Param("status") WaybillStatus status,
-                                            @Param("from") OffsetDateTime from,
-                                            @Param("to") OffsetDateTime to);
+    Stream<Waybill> streamByPeriodAndStatuses(@Param("statuses") Collection<WaybillStatus> statuses,
+                                              @Param("from") OffsetDateTime from,
+                                              @Param("to") OffsetDateTime to);
 
-    @Query("select w from Waybill w where w.organizationRma in :rmas and w.status = :status "
+    @Query("select w from Waybill w where w.organizationRma in :rmas and w.status in :statuses "
             + "and w.createdAt >= :from and w.createdAt < :to order by w.createdAt")
     @QueryHints(@QueryHint(name = org.hibernate.jpa.HibernateHints.HINT_FETCH_SIZE, value = "500"))
-    Stream<Waybill> streamByPeriodAndOrganizationsAndStatus(@Param("rmas") Collection<String> organizationRmas,
-                                                            @Param("status") WaybillStatus status,
-                                                            @Param("from") OffsetDateTime from,
-                                                            @Param("to") OffsetDateTime to);
+    Stream<Waybill> streamByPeriodAndOrganizationsAndStatuses(@Param("rmas") Collection<String> organizationRmas,
+                                                              @Param("statuses") Collection<WaybillStatus> statuses,
+                                                              @Param("from") OffsetDateTime from,
+                                                              @Param("to") OffsetDateTime to);
 
     /**
      * Число ПЛ по месяцам ({@code [год, месяц, count]}) за период по видам ПЛ, все статусы —

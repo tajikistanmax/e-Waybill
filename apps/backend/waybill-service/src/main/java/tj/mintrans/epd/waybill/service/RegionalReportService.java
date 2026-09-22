@@ -20,6 +20,7 @@ import tj.mintrans.epd.waybill.web.error.ApiErrors.ForbiddenException;
 
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -208,6 +209,9 @@ public class RegionalReportService {
         Map<String, Fact> factByOrg = new LinkedHashMap<>();
         scan.forEachCompleted(from, to, null, wb -> absorbFact(wb, cargo, true, factByOrg, only));
         scan.forEachCompleted(prevFrom, prevTo, null, wb -> absorbFact(wb, cargo, false, factByOrg, only));
+        // Регион и город — из справочника, если снимок организации в ПЛ их не содержит.
+        Map<String, Map<String, Object>> directory = organizationsByRma();
+        factByOrg.forEach((rma, f) -> f.fillGeographyFrom(directory.get(rma)));
 
         // План по предприятиям на оба года: годовая строка (plan_month IS NULL) и, если
         // отчётный период — один месяц, месячная строка на этот месяц (она приоритетнее).
@@ -295,7 +299,9 @@ public class RegionalReportService {
     private void absorbFact(Waybill wb, boolean cargo, boolean cur, Map<String, Fact> factByOrg, WaybillType only) {
         boolean typeOk = (cargo ? isCargo(wb.getWaybillType()) : isPassenger(wb.getWaybillType()))
                 && (only == null || only == wb.getWaybillType());
-        if (wb.getStatus() != WaybillStatus.COMPLETED || !typeOk || wb.getCreatedAt() == null) {
+        // Отработанный лист — закрытый ИЛИ архивный (архив ставится по сроку ретенции уже после
+        // закрытия). Иначе сводный отчёт Минтранса за прошлые периоды выдавал нули по всей стране.
+        if (!WaybillStatus.FINISHED.contains(wb.getStatus()) || !typeOk || wb.getCreatedAt() == null) {
             return;
         }
         double volume;
@@ -338,6 +344,23 @@ public class RegionalReportService {
      * (1 — общего пользования, 2 — ведомственная). Используется для сужения набора
      * организаций сводных отчётов Минтранса (§1 аудита — «ведомственный/общий» разрез).
      */
+    /**
+     * Справочник организаций по РМА — запасной источник региона и города для отчётов.
+     * Снимок организации в перенесённых путевых листах содержит только РМА и название, поэтому
+     * без этого запаса вся история попадала в группу «Без региона» и разрез Минтранса
+     * «регион → город → предприятие» терял смысл (находка приёмки 22.09.2026).
+     */
+    private Map<String, Map<String, Object>> organizationsByRma() {
+        Map<String, Map<String, Object>> byRma = new HashMap<>();
+        for (Map<String, Object> o : masterData.listOrganizations()) {
+            Object rma = o.get("rma");
+            if (rma != null) {
+                byRma.put(rma.toString(), o);
+            }
+        }
+        return byRma;
+    }
+
     private Set<String> allowedRmas(Short typeCompany) {
         Set<String> out = new HashSet<>();
         for (Map<String, Object> o : masterData.listOrganizations()) {
@@ -409,7 +432,7 @@ public class RegionalReportService {
                 return;
             }
             boolean issued = wb.getNumber() != null;
-            boolean processed = wb.getOdometerEntry() != null || wb.getStatus() == WaybillStatus.COMPLETED;
+            boolean processed = wb.getOdometerEntry() != null || WaybillStatus.FINISHED.contains(wb.getStatus());
             Acc a = byOrg.computeIfAbsent(wb.getOrganizationRma(), k -> new Acc(wb));
             a.absorb(wb);
             String veh = wb.getVehicleRegNumber();
@@ -445,6 +468,9 @@ public class RegionalReportService {
                 }
             }
         });
+        // Регион и город — из справочника, если снимок организации в ПЛ их не содержит.
+        Map<String, Map<String, Object>> directory = organizationsByRma();
+        byOrg.forEach((rma, a) -> a.fillGeographyFrom(directory.get(rma)));
 
         // Фильтр «ведомственный/общий» — на уровне набора организаций, до построения иерархии.
         if (typeCompany != null) {
@@ -541,6 +567,19 @@ public class RegionalReportService {
                 } catch (NumberFormatException ignored) {
                     // регион в снимке не число
                 }
+            }
+            if ((cityName == null || cityName.isBlank()) && org.get("cityName") != null) {
+                cityName = org.get("cityName").toString();
+            }
+        }
+
+        /** Регион и город из справочника организаций — когда снимок в ПЛ их не несёт. */
+        void fillGeographyFrom(Map<String, Object> org) {
+            if (org == null) {
+                return;
+            }
+            if (regionId == null) {
+                regionId = parseShort(org.get("regionId"));
             }
             if ((cityName == null || cityName.isBlank()) && org.get("cityName") != null) {
                 cityName = org.get("cityName").toString();
@@ -727,6 +766,19 @@ public class RegionalReportService {
                 if ((cityName == null || cityName.isBlank()) && org.get("cityName") != null) {
                     cityName = org.get("cityName").toString();
                 }
+            }
+        }
+
+        /** Регион и город из справочника организаций — когда снимок в ПЛ их не несёт. */
+        void fillGeographyFrom(Map<String, Object> org) {
+            if (org == null) {
+                return;
+            }
+            if (regionId == null) {
+                regionId = parseShort(org.get("regionId"));
+            }
+            if ((cityName == null || cityName.isBlank()) && org.get("cityName") != null) {
+                cityName = org.get("cityName").toString();
             }
         }
 

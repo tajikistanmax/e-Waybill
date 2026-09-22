@@ -163,6 +163,7 @@ public class DriverController {
         return ResponseEntity.status(existing.isPresent() ? HttpStatus.OK : HttpStatus.CREATED).body(saved);
     }
 
+    @PreAuthorize(tj.mintrans.epd.masterdata.config.Authorities.REGISTRY_READ)
     @GetMapping
     public List<Driver> list(@RequestParam(required = false) String rma,
                              @RequestParam(required = false) String organizationRma,
@@ -208,6 +209,7 @@ public class DriverController {
      * тянул ВЕСЬ справочник ТС (87 МБ) ради одной колонки. Поиск {@code q} — по Ф.И.О., ИНН,
      * табельному номеру, телефону, номеру прав, адресу и названию организации.
      */
+    @PreAuthorize(tj.mintrans.epd.masterdata.config.Authorities.REGISTRY_READ)
     @GetMapping("/page")
     public DriverPage page(@RequestParam(defaultValue = "0") int page,
                            @RequestParam(defaultValue = "20") int size,
@@ -235,6 +237,7 @@ public class DriverController {
                              java.util.Map<String, String> assignedVehicles) {
     }
 
+    @PreAuthorize(tj.mintrans.epd.masterdata.config.Authorities.REGISTRY_READ)
     @GetMapping("/{id}")
     public Driver get(@PathVariable UUID id) {
         var driver = drivers.findById(id).orElseThrow(() -> new NotFoundException("Водитель не найден"));

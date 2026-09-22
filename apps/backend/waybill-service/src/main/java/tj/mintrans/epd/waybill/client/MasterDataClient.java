@@ -32,6 +32,15 @@ public class MasterDataClient {
     private final TtlCache<Optional<Map<String, Object>>> directionsCache = new TtlCache<>(java.time.Duration.ofSeconds(60));
     /** Подпись водителя (data URI) для печати бланка — по РМА в контексте вызывающего; TTL 60 с. */
     private final TtlCache<Optional<String>> driverSignatureCache = new TtlCache<>(java.time.Duration.ofSeconds(60));
+    /**
+     * Марка ТС по названию и тарифы маршрута — TTL 60 с. Расчёт зовёт их по КАЖДОМУ путевому
+     * листу отчёта: на сводном отчёте Минтранса за месяц это 52 895 обращений к master-data,
+     * которые упирались в ограничитель частоты и роняли отчёт в 503 (находка приёмки 22.09.2026;
+     * проявилась, когда отчёт стал учитывать архивные листы). Справочники марок и тарифов за
+     * время построения одного отчёта не меняются.
+     */
+    private final TtlCache<List<Map<String, Object>>> brandsCache = new TtlCache<>(java.time.Duration.ofSeconds(60));
+    private final TtlCache<List<Map<String, Object>>> routeTariffsCache = new TtlCache<>(java.time.Duration.ofSeconds(60));
 
     public MasterDataClient(@Value("${epd.master-data.base-url}") String baseUrl,
                             ServiceTokenProvider serviceToken) {
@@ -307,7 +316,7 @@ public class MasterDataClient {
     }
 
     public List<Map<String, Object>> listBrands() {
-        return list("/api/v1/legacy-ref/brands");
+        return brandsCache.get(callerKey(), () -> list("/api/v1/legacy-ref/brands"));
     }
 
     public List<Map<String, Object>> listDirections() {
@@ -316,7 +325,15 @@ public class MasterDataClient {
 
     /** Тарифы конкретного маршрута (нархнома). */
     public List<Map<String, Object>> listRouteTariffs(String routeId) {
-        return list("/api/v1/legacy-ref/route-tariffs?routeId={id}", routeId);
+        if (routeId == null || routeId.isBlank()) {
+            return List.of();
+        }
+        // Весь справочник одним запросом и отбор в памяти. Поштучный вызов
+        // «?routeId=» в отчёте за месяц давал сотни обращений (по числу разных маршрутов)
+        // и упирался в ограничитель частоты master-data — отчёт падал в 503 (приёмка 22.09.2026).
+        return routeTariffsCache.get(callerKey(), () -> list("/api/v1/legacy-ref/route-tariffs")).stream()
+                .filter(t -> routeId.equals(str(t.get("routeId"))))
+                .toList();
     }
 
     /**
@@ -352,6 +369,8 @@ public class MasterDataClient {
         routesCache.invalidateAll();
         organizationsCache.invalidateAll();
         directionsCache.invalidateAll();
+        brandsCache.invalidateAll();
+        routeTariffsCache.invalidateAll();
     }
 
     /**
@@ -394,15 +413,17 @@ public class MasterDataClient {
 
     /** Марка ТС по названию (регистронезависимо); 404 → empty. */
     public Optional<Map<String, Object>> findBrandByName(String name) {
-        try {
-            Map<String, Object> brand = client.get()
-                    .uri("/api/v1/legacy-ref/brands?name={n}", name)
-                    .retrieve()
-                    .body(new ParameterizedTypeReference<Map<String, Object>>() {});
-            return Optional.ofNullable(brand);
-        } catch (org.springframework.web.client.HttpClientErrorException.NotFound e) {
+        if (name == null || name.isBlank()) {
             return Optional.empty();
         }
+        // Справочник марок (около 500 строк) забирается одним запросом и ищется в памяти.
+        // Поштучный «?name=» в отчёте за месяц давал обращение на каждую встреченную марку:
+        // кэш по имени не спасал — холодный кэш заполнялся быстрее, чем позволял ограничитель
+        // частоты master-data, и отчёт падал в 503 (приёмка 22.09.2026).
+        String needle = name.trim().toLowerCase();
+        return listBrands().stream()
+                .filter(b -> needle.equals(str(b.get("name")).trim().toLowerCase()))
+                .findFirst();
     }
 
     /** Активные определения доп.полей (конструктор полей) для типа ПЛ — для серверной валидации обязательных. */

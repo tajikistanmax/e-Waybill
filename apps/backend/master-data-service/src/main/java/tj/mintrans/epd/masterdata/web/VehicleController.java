@@ -195,6 +195,7 @@ public class VehicleController {
         return vehicles.save(vehicle);
     }
 
+    @PreAuthorize(tj.mintrans.epd.masterdata.config.Authorities.REGISTRY_READ)
     @GetMapping
     public List<Vehicle> list(@RequestParam(required = false) String registrationNumber,
                               @RequestParam(required = false) String organizationRma,
@@ -243,6 +244,7 @@ public class VehicleController {
      * (находка приёмки 22.09.2026). Поиск {@code q} — по госномеру, марке, VIN, номеру стоянки
      * и названию организации; {@code regionId}/{@code cityName} — география организации-владельца.
      */
+    @PreAuthorize(tj.mintrans.epd.masterdata.config.Authorities.REGISTRY_READ)
     @GetMapping("/page")
     public PagedResult<Vehicle> page(@RequestParam(defaultValue = "0") int page,
                                      @RequestParam(defaultValue = "20") int size,
@@ -266,6 +268,7 @@ public class VehicleController {
      * {@code transportType} (1..6). Одна агрегатная выборка для отчёта «Норматив выдачи ПЛ»
      * (waybill-service) вместо списка ТС каждой организации. Тенант получает только свою область.
      */
+    @PreAuthorize(tj.mintrans.epd.masterdata.config.Authorities.REGISTRY_READ)
     @GetMapping("/count-by-organization")
     public java.util.Map<String, Long> countByOrganization(
             @RequestParam(required = false) Short transportType) {
@@ -290,6 +293,7 @@ public class VehicleController {
         return byRma;
     }
 
+    @PreAuthorize(tj.mintrans.epd.masterdata.config.Authorities.REGISTRY_READ)
     @GetMapping("/{id}")
     public Vehicle get(@PathVariable UUID id) {
         var vehicle = vehicles.findById(id).orElseThrow(() -> new NotFoundException("Транспорт не найден"));

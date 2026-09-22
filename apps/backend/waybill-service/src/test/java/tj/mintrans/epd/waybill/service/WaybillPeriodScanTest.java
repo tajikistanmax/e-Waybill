@@ -120,13 +120,15 @@ class WaybillPeriodScanTest {
     }
 
     @Test
-    @DisplayName("forEachCompleted: фильтр статуса COMPLETED в SQL (count и стрим по статусу), с предохранителем")
+    @DisplayName("forEachCompleted: фильтр отработанных статусов в SQL (закрытые И архивные), с предохранителем")
     void forEachCompletedFiltersInSql() {
         WaybillPeriodScan scan = new WaybillPeriodScan(waybills, em, 1000);
-        when(waybills.countByStatusAndCreatedAtGreaterThanEqualAndCreatedAtLessThan(
-                eq(tj.mintrans.epd.waybill.domain.WaybillStatus.COMPLETED), any(), any())).thenReturn(4L);
-        when(waybills.streamByPeriodAndStatus(
-                eq(tj.mintrans.epd.waybill.domain.WaybillStatus.COMPLETED), any(), any())).thenReturn(stubs(4).stream());
+        // Отбор идёт по набору WaybillStatus.FINISHED: архивный лист — тот же закрытый рейс,
+        // и без него отчёты за прошлые периоды показывали нули (приёмка 22.09.2026).
+        when(waybills.countByStatusInAndCreatedAtGreaterThanEqualAndCreatedAtLessThan(
+                eq(tj.mintrans.epd.waybill.domain.WaybillStatus.FINISHED), any(), any())).thenReturn(4L);
+        when(waybills.streamByPeriodAndStatuses(
+                eq(tj.mintrans.epd.waybill.domain.WaybillStatus.FINISHED), any(), any())).thenReturn(stubs(4).stream());
 
         int[] seen = {0};
         scan.forEachCompleted(LocalDate.of(2026, 8, 1), LocalDate.of(2026, 8, 31), null, wb -> seen[0]++);

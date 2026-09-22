@@ -29,6 +29,19 @@ public enum WaybillStatus {
     public static final Set<WaybillStatus> OPEN_STATUSES =
             EnumSet.of(CREATED, AWAITING_PAYMENT, PAID, READY, ISSUED, ACTIVE);
 
+    /**
+     * Отработанные документы для отчётности: закрытый лист и тот же закрытый лист, убранный
+     * в архив по сроку ретенции ({@code LifecycleScheduler}: COMPLETED → ARCHIVED). Для истории
+     * перевозок это один и тот же факт выполненной работы.
+     *
+     * <p>До 22.09.2026 отчёты считали «завершённым» только {@link #COMPLETED}, поэтому любой
+     * прошедший период показывал нули: на стенде 2,28 млн перенесённых листов имеют статус
+     * ARCHIVED, и сводка за июль 2026 выдавала «52 895 путевых листов, пробег 0» (находка
+     * сквозной приёмки, блок F). Везде, где отчёт имеет в виду «лист отработан», используется
+     * этот набор, а не одиночный статус.</p>
+     */
+    public static final Set<WaybillStatus> FINISHED = EnumSet.of(COMPLETED, ARCHIVED);
+
     public boolean isTerminal() {
         return this == COMPLETED || this == CANCELLED || this == EXPIRED || this == ARCHIVED;
     }

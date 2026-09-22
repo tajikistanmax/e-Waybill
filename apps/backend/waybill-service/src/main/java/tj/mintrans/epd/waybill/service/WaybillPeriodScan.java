@@ -72,20 +72,20 @@ public class WaybillPeriodScan {
         return count(from, to, scope, null);
     }
 
-    private long count(LocalDate from, LocalDate to, Set<String> scope, WaybillStatus status) {
+    private long count(LocalDate from, LocalDate to, Set<String> scope, java.util.Collection<WaybillStatus> statuses) {
         OffsetDateTime lo = lower(from);
         OffsetDateTime hi = upper(to);
         if (scope != null && scope.isEmpty()) {
             return 0;
         }
-        if (status == null) {
+        if (statuses == null) {
             return scope == null
                     ? waybills.countByCreatedAtGreaterThanEqualAndCreatedAtLessThan(lo, hi)
                     : waybills.countByOrganizationRmaInAndCreatedAtGreaterThanEqualAndCreatedAtLessThan(scope, lo, hi);
         }
         return scope == null
-                ? waybills.countByStatusAndCreatedAtGreaterThanEqualAndCreatedAtLessThan(status, lo, hi)
-                : waybills.countByOrganizationRmaInAndStatusAndCreatedAtGreaterThanEqualAndCreatedAtLessThan(scope, status, lo, hi);
+                ? waybills.countByStatusInAndCreatedAtGreaterThanEqualAndCreatedAtLessThan(statuses, lo, hi)
+                : waybills.countByOrganizationRmaInAndStatusInAndCreatedAtGreaterThanEqualAndCreatedAtLessThan(scope, statuses, lo, hi);
     }
 
     /**
@@ -107,13 +107,13 @@ public class WaybillPeriodScan {
         run(from, to, scope, null, false, consumer);
     }
 
-    /** Только завершённые ПЛ периода (фильтр статуса в SQL), с предохранителем. */
+    /** Только отработанные ПЛ периода — закрытые и архивные (фильтр статуса в SQL), с предохранителем. */
     @Transactional(readOnly = true)
     public void forEachCompleted(LocalDate from, LocalDate to, Set<String> scope, Consumer<Waybill> consumer) {
-        run(from, to, scope, WaybillStatus.COMPLETED, true, consumer);
+        run(from, to, scope, WaybillStatus.FINISHED, true, consumer);
     }
 
-    private void run(LocalDate from, LocalDate to, Set<String> scope, WaybillStatus status,
+    private void run(LocalDate from, LocalDate to, Set<String> scope, java.util.Collection<WaybillStatus> statuses,
                      boolean capped, Consumer<Waybill> consumer) {
         if (from == null || to == null || to.isBefore(from)) {
             return;
@@ -122,7 +122,7 @@ public class WaybillPeriodScan {
             return;
         }
         if (capped) {
-            long total = count(from, to, scope, status);
+            long total = count(from, to, scope, statuses);
             if (total > maxRows) {
                 throw new UnprocessableException(
                         "Слишком большой объём для построчного отчёта: %d путевых листов в периоде %s — %s (лимит %d). "
@@ -132,7 +132,7 @@ public class WaybillPeriodScan {
         }
         OffsetDateTime lo = lower(from);
         OffsetDateTime hi = upper(to);
-        try (Stream<Waybill> stream = open(scope, status, lo, hi)) {
+        try (Stream<Waybill> stream = open(scope, statuses, lo, hi)) {
             int[] seen = {0};
             stream.forEach(wb -> {
                 consumer.accept(wb);
@@ -143,14 +143,14 @@ public class WaybillPeriodScan {
         }
     }
 
-    private Stream<Waybill> open(Set<String> scope, WaybillStatus status, OffsetDateTime lo, OffsetDateTime hi) {
-        if (status == null) {
+    private Stream<Waybill> open(Set<String> scope, java.util.Collection<WaybillStatus> statuses, OffsetDateTime lo, OffsetDateTime hi) {
+        if (statuses == null) {
             return scope == null
                     ? waybills.streamByPeriod(lo, hi)
                     : waybills.streamByPeriodAndOrganizations(scope, lo, hi);
         }
         return scope == null
-                ? waybills.streamByPeriodAndStatus(status, lo, hi)
-                : waybills.streamByPeriodAndOrganizationsAndStatus(scope, status, lo, hi);
+                ? waybills.streamByPeriodAndStatuses(statuses, lo, hi)
+                : waybills.streamByPeriodAndOrganizationsAndStatuses(scope, statuses, lo, hi);
     }
 }
