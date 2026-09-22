@@ -29,6 +29,9 @@ export function authHeadersFullScope(extra?: Record<string, string>): Record<str
 export type PrintTemplateSummary = { name: string; overridden: boolean; note: string | null; updatedBy: string | null; updatedAt: string | null; previewable: boolean };
 export type PrintTemplateContent = PrintTemplateSummary & { content: string; builtIn: string };
 
+/** Страница кабинета накладных (GET /consignments). */
+export type ConsignmentPage = { content: Waybill[]; page: number; size: number; totalElements: number; totalPages: number; scope: string };
+
 /** Страница реестра ПЛ (GET /waybills/page). */
 export type PagedWaybills = { content: Waybill[]; page: number; size: number; totalElements: number; totalPages: number };
 
@@ -606,6 +609,24 @@ export const wb = {
       .filter(([, v]) => v !== undefined && v !== '' && v !== false)
       .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(String(v))}`).join('&');
     return fetch(`/wb-api/api/v1/waybills/page${qs ? '?' + qs : ''}`, { headers: authHeaders() }).then(r => handle<PagedWaybills>(r));
+  },
+  // Кабинет накладных внешних пользователей (MIGRATION.md 1.1/3.11): CLIENT_SENDER / CLIENT_FORWARDER / CUSTOMS_OFFICER.
+  consignments: {
+    list: (params: Record<string, string | number | boolean | undefined>) => {
+      const qs = Object.entries(params).filter(([, v]) => v !== undefined && v !== '' && v !== false)
+        .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(String(v))}`).join('&');
+      return fetch(`/wb-api/api/v1/consignments${qs ? '?' + qs : ''}`, { headers: authHeaders() }).then(r => handle<ConsignmentPage>(r));
+    },
+    get: (id: string) => fetch(`/wb-api/api/v1/consignments/${id}`, { headers: authHeaders() }).then(r => handle<Waybill>(r)),
+    update: (id: string, body: Record<string, unknown>) => fetch(`/wb-api/api/v1/consignments/${id}`, {
+      method: 'PUT', headers: { ...authHeaders(), 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    }).then(r => handle<Waybill>(r)),
+    customsConfirm: (id: string) => fetch(`/wb-api/api/v1/consignments/${id}/customs-confirm`, { method: 'POST', headers: authHeaders() }).then(r => handle<Waybill>(r)),
+    printPdf: async (id: string) => {
+      const r = await fetch(`/wb-api/api/v1/consignments/${id}/print.pdf`, { headers: authHeaders() });
+      if (!r.ok) throw new Error(`Ошибка ${r.status}`);
+      return r.blob();
+    },
   },
   // Редактируемые печатные шаблоны бланков (MIGRATION.md 7.1): SYSTEM_ADMIN.
   printTemplates: {

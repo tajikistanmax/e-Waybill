@@ -18,7 +18,7 @@ const ROUTE_NAV: Record<string, NavKey> = {
   dashboard: 'dashboard', waybills: 'waybills', dispatcher: 'dispatcher',
   med: 'med', tech: 'tech', driver: 'driver', inspector: 'inspector',
   company: 'company', registry: 'registry', violations: 'violations',
-  reports: 'reports', dictionaries: 'dictionaries', settings: 'settings',
+  reports: 'reports', dictionaries: 'dictionaries', settings: 'settings', consignments: 'consignments',
 };
 
 /** Каркас приложения: публичные страницы (вход, проверка QR) — на весь экран;

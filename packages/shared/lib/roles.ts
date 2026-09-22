@@ -1,6 +1,9 @@
 // Персональные кабинеты по ролям: стартовая страница и доступные пункты меню.
 
-export type NavKey = 'dashboard' | 'waybills' | 'dispatcher' | 'med' | 'tech' | 'fuel' | 'driver' | 'inspector' | 'company' | 'fleet' | 'monitoring' | 'registry' | 'violations' | 'reports' | 'dictionaries' | 'settings' | 'access';
+export type NavKey = 'dashboard' | 'waybills' | 'dispatcher' | 'med' | 'tech' | 'fuel' | 'driver' | 'inspector' | 'company' | 'fleet' | 'monitoring' | 'registry' | 'violations' | 'reports' | 'dictionaries' | 'settings' | 'access' | 'consignments';
+
+/** Внешние роли накладных (MIGRATION.md 1.1/3.11): грузоотправитель, экспедитор, таможенник. */
+export const EXTERNAL_CONSIGNMENT_ROLES = ['CLIENT_SENDER', 'CLIENT_FORWARDER', 'CUSTOMS_OFFICER'];
 
 /** Куда попадает пользователь после входа — в свой кабинет. */
 export function roleHome(roles: string[]): string {
@@ -13,6 +16,7 @@ export function roleHome(roles: string[]): string {
   if (roles.includes('INSPECTOR')) return '/inspector';
   if (roles.includes('FUEL_STATION')) return '/fuel';
   if (roles.includes('ACCOUNTANT')) return '/reports/summary';
+  if (EXTERNAL_CONSIGNMENT_ROLES.some(r => roles.includes(r))) return '/consignments';
   return '/dashboard';
 }
 
@@ -52,6 +56,8 @@ export function visibleNav(roles: string[]): Set<NavKey> {
   if (roles.includes('INSPECTOR')) add('inspector', 'waybills', 'violations', 'monitoring', 'reports');
   // Аналитик Минтранса — надзор/аналитика по всем организациям (только чтение).
   if (roles.includes('MINTRANS_ANALYST')) add('dashboard', 'reports', 'registry', 'violations', 'monitoring');
+  // Внешние пользователи накладных — только свой кабинет «Накладные» (legacy client_sender/forwarder/customs_officer).
+  if (EXTERNAL_CONSIGNMENT_ROLES.some(r => roles.includes(r))) add('consignments');
 
   if (s.size === 0) s.add('dashboard');
   return s;

@@ -1312,6 +1312,47 @@ public class WaybillService {
     @Transactional
     public Waybill updateConsignment(UUID id, ConsignmentUpdate data) {
         var wb = getForUpdate(id);
+        return applyConsignment(wb, data);
+    }
+
+    /**
+     * Внешний кабинет грузоотправителя/экспедитора (MIGRATION.md 1.1/3.11): правка накладной без тенант-скоупа
+     * (доступ проверяет вызывающий по клиентам пользователя); стороны/id справочников менять нельзя.
+     */
+    @Transactional
+    public Waybill updateConsignmentByClient(UUID id, ConsignmentUpdate data) {
+        var wb = waybills.findByIdForUpdate(id).orElseThrow(() -> new NotFoundException("Путевой лист не найден"));
+        ConsignmentUpdate safe = new ConsignmentUpdate(null, data.senderAddress(), null, data.receiverAddress(), null,
+                data.cargoVolume(), data.cargoStatCode(), data.submittedDocuments(), null, null, data.cargoOperations(),
+                null, null, null, null, data.cargoName(), null, data.tripsCount());
+        return applyConsignment(wb, safe);
+    }
+
+    /**
+     * Таможенное подтверждение СМР (legacy {@code Cargo5bbmCrudController::validatecmr}, роль customs_officer):
+     * только 5Б-БМ; повтор идемпотентен («Тасдиқ шудааст»). Пишется имя/логин таможенника и момент.
+     */
+    @Transactional
+    public Waybill confirmCustoms(UUID id, String officerName, String officerUser) {
+        var wb = waybills.findByIdForUpdate(id).orElseThrow(() -> new NotFoundException("Путевой лист не найден"));
+        if (wb.getWaybillType() != WaybillType.WB_TRUCK_INTL) {
+            throw new UnprocessableException("Таможенное подтверждение — только для СМР к 5Б-БМ");
+        }
+        var td = wb.getTypeData() != null
+                ? new java.util.LinkedHashMap<String, Object>(wb.getTypeData())
+                : new java.util.LinkedHashMap<String, Object>();
+        Object already = td.get("customsConfirmedAt");
+        if (already != null && !already.toString().isBlank()) {
+            return wb;   // уже подтверждено — как в legacy, без ошибки
+        }
+        td.put("customsOfficerName", officerName == null || officerName.isBlank() ? officerUser : officerName);
+        td.put("customsOfficerUser", officerUser);
+        td.put("customsConfirmedAt", java.time.OffsetDateTime.now().toString());
+        wb.setTypeData(td);
+        return waybills.save(wb);
+    }
+
+    private Waybill applyConsignment(Waybill wb, ConsignmentUpdate data) {
         var td = wb.getTypeData() != null
                 ? new java.util.LinkedHashMap<String, Object>(wb.getTypeData())
                 : new java.util.LinkedHashMap<String, Object>();

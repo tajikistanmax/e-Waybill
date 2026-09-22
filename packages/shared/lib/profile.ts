@@ -8,7 +8,9 @@ export type AppProfile = 'waybill' | 'oversight' | 'all';
 
 /** Роли, «принадлежащие» профилю (кому разрешён вход в это приложение). */
 export const PROFILE_ROLES: Record<Exclude<AppProfile, 'all'>, string[]> = {
-  waybill: ['COMPANY_ADMIN', 'BRANCH_ADMIN', 'DISPATCHER', 'DRIVER', 'MECHANIC', 'DOCTOR', 'ACCOUNTANT', 'FUEL_STATION'],
+  waybill: ['COMPANY_ADMIN', 'BRANCH_ADMIN', 'DISPATCHER', 'DRIVER', 'MECHANIC', 'DOCTOR', 'ACCOUNTANT', 'FUEL_STATION',
+    // внешние пользователи накладных (грузоотправитель/экспедитор/таможня) входят через кабинет перевозчика
+    'CLIENT_SENDER', 'CLIENT_FORWARDER', 'CUSTOMS_OFFICER'],
   oversight: ['SYSTEM_ADMIN', 'MINTRANS_ANALYST', 'INSPECTOR'],
 };
 

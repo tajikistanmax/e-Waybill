@@ -150,6 +150,18 @@ public class WaybillPrintService {
         return pdf.render("print/cmr", model(wb));
     }
 
+    /**
+     * Накладная/СМР для внешнего кабинета (грузоотправитель, экспедитор, таможня — MIGRATION.md 1.1/3.11):
+     * лист передаётся сущностью (доступ уже проверен вызывающим по клиентам пользователя), без тенант-скоупа.
+     */
+    public byte[] renderConsignmentPdf(Waybill wb) {
+        if (wb.getWaybillType() == WaybillType.WB_TRUCK_INTL) {
+            return pdf.render("print/cmr", model(wb));
+        }
+        requireType(wb, "накладная (приложение к 2-Б)", WaybillType.WB_TRUCK, WaybillType.WB_DANGEROUS);
+        return pdf.render("print/waybill2b-attachment", model(wb));
+    }
+
     public String attachmentFileName(java.util.UUID id) {
         return "attachment-" + PdfRenderService.fileName(waybills.get(id).getNumber());
     }

@@ -21,7 +21,7 @@ export function Sidebar() {
 
   const active = (h: string) => pathname === h || pathname.startsWith(h + '/');
   const wbActive = pathname === '/waybills' || (pathname.startsWith('/waybills/') && pathname !== '/waybills/new');
-  const showWorkplaces = nav.has('med') || nav.has('tech') || nav.has('fuel') || nav.has('driver') || nav.has('inspector') || nav.has('fleet');
+  const showWorkplaces = nav.has('med') || nav.has('tech') || nav.has('fuel') || nav.has('driver') || nav.has('inspector') || nav.has('fleet') || nav.has('consignments');
   // Мониторинг переехал в «Управление» — но у ролей без управленческих разделов (инспектор)
   // он единственный, поэтому заголовок группы показываем и ради него.
   // «Транспорт и водители» ролево: врач осматривает водителей → «Водители», механик ТС → «Транспорт».
@@ -86,6 +86,7 @@ export function Sidebar() {
         )}
         {nav.has('inspector') && <Link href="/inspector" className={`snav ${active('/inspector') ? 'active' : ''}`}><Icon d={P.shield} /> {t('nav.inspector')}</Link>}
         {nav.has('fleet') && <Link href="/fleet/vehicles" className={`snav ${active('/fleet') ? 'active' : ''}`}><Icon d={fleetIcon} /> {fleetLabel}</Link>}
+        {nav.has('consignments') && <Link href="/consignments" className={`snav ${active('/consignments') ? 'active' : ''}`}><Icon d={P.doc} /> {t('nav.consignments')}</Link>}
 
         {showManagement && <div className="group-label">{t('nav.group.management')}</div>}
         {nav.has('company') && <Link href="/company" className={`snav ${active('/company') && !active('/company/access') ? 'active' : ''}`}><Icon d={P.building} /> {t('nav.company')}</Link>}

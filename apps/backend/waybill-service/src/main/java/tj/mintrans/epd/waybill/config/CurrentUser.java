@@ -32,6 +32,15 @@ public class CurrentUser {
         return Optional.empty();
     }
 
+    /** ФИО из JWT (claim {@code name}, если Keycloak его отдаёт) — для отметок «кто подтвердил». */
+    public Optional<String> fullName() {
+        if (authentication() instanceof JwtAuthenticationToken jwt
+                && jwt.getToken().getClaim("name") instanceof String n && !n.isBlank()) {
+            return Optional.of(n);
+        }
+        return Optional.empty();
+    }
+
     /** preferred_username из JWT — человекочитаемый актор для журналов (created_by/confirmed_by). */
     public Optional<String> username() {
         if (authentication() instanceof JwtAuthenticationToken jwt
@@ -67,6 +76,27 @@ public class CurrentUser {
                         || "ROLE_MINTRANS_ANALYST".equals(a.getAuthority())
                         || "ROLE_INSPECTOR".equals(a.getAuthority())
                         || "ROLE_API_INTEGRATOR".equals(a.getAuthority()));
+    }
+
+    /**
+     * Идентификаторы контрагентов (Client master-data) внешнего пользователя — claim {@code client_ids}
+     * (атрибут Keycloak {@code clientIds}, UUID через запятую). Кабинеты грузоотправителя/экспедитора
+     * (MIGRATION.md 1.1/3.11, legacy {@code has_client_senders/has_client_forwarders}).
+     */
+    public java.util.Set<String> clientIds() {
+        if (authentication() instanceof JwtAuthenticationToken jwt) {
+            Object raw = jwt.getToken().getClaim("client_ids");
+            java.util.Set<String> out = new java.util.LinkedHashSet<>();
+            if (raw instanceof java.util.Collection<?> c) {
+                c.forEach(v -> { if (v != null && !v.toString().isBlank()) out.add(v.toString().trim().toLowerCase()); });
+            } else if (raw instanceof String s) {
+                for (String part : s.split(",")) {
+                    if (!part.isBlank()) out.add(part.trim().toLowerCase());
+                }
+            }
+            return out;
+        }
+        return java.util.Set.of();
     }
 
     /** РМА организации пользователя из claim "organization_rma" (если есть). */

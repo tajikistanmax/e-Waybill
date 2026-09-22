@@ -12,7 +12,7 @@ import { visibleNav as defaultNav, roleHome as defaultHome, type NavKey } from '
  */
 
 /** Приоритет выбора стартовой страницы при нескольких ролях (зеркалит порядок roleHome). */
-const HOME_PRIORITY = ['SYSTEM_ADMIN', 'COMPANY_ADMIN', 'BRANCH_ADMIN', 'MINTRANS_ANALYST', 'DOCTOR', 'MECHANIC', 'DRIVER', 'DISPATCHER', 'INSPECTOR', 'ACCOUNTANT', 'FUEL_STATION'];
+const HOME_PRIORITY = ['SYSTEM_ADMIN', 'COMPANY_ADMIN', 'BRANCH_ADMIN', 'MINTRANS_ANALYST', 'DOCTOR', 'MECHANIC', 'DRIVER', 'DISPATCHER', 'INSPECTOR', 'ACCOUNTANT', 'FUEL_STATION', 'CLIENT_SENDER', 'CLIENT_FORWARDER', 'CUSTOMS_OFFICER'];
 
 type RoleAccessCtx = {
   config: Record<string, RoleAccess> | null;

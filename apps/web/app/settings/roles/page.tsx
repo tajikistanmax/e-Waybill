@@ -10,12 +10,12 @@ import { md, type RoleAccess } from '@/lib/api';
 import { type NavKey } from '@/lib/roles';
 
 /** Порядок разделов в матрице. */
-const SECTIONS: NavKey[] = ['dashboard', 'dispatcher', 'waybills', 'med', 'tech', 'fuel', 'driver', 'inspector', 'fleet', 'monitoring', 'company', 'access', 'registry', 'violations', 'reports', 'dictionaries', 'settings'];
+const SECTIONS: NavKey[] = ['dashboard', 'dispatcher', 'waybills', 'med', 'tech', 'fuel', 'driver', 'inspector', 'fleet', 'consignments', 'monitoring', 'company', 'access', 'registry', 'violations', 'reports', 'dictionaries', 'settings'];
 
 const NAV_KEY: Record<NavKey, string> = {
   dashboard: 'nav.dashboard', dispatcher: 'nav.dispatcher', waybills: 'nav.waybills', med: 'nav.med',
   tech: 'nav.tech', fuel: 'nav.fuel', driver: 'nav.driver', inspector: 'nav.inspector', fleet: 'nav.fleet',
-  monitoring: 'nav.monitoring', company: 'nav.company', access: 'nav.access', registry: 'nav.registry',
+  consignments: 'nav.consignments', monitoring: 'nav.monitoring', company: 'nav.company', access: 'nav.access', registry: 'nav.registry',
   violations: 'nav.violations', reports: 'nav.reports', dictionaries: 'nav.dictionaries', settings: 'nav.settings',
 };
 

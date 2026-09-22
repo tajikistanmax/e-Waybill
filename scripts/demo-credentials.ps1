@@ -15,6 +15,10 @@ $DemoPasswords = @{
     driver     = 'Epd-Qa-Ronanda-2026'
     inspector  = 'Epd-Qa-Nozir-2026'
     fuel       = 'Epd-Qa-FuelStation-2026'
+    # Внешние кабинеты накладных (MIGRATION.md 1.1/3.11): грузоотправитель, экспедитор, таможенник.
+    sender     = 'Epd-Qa-Sender-2026'
+    forwarder  = 'Epd-Qa-Forwarder-2026'
+    customs    = 'Epd-Qa-Customs-2026'
     # admin/analyst/inspector требуют CONFIGURE_TOTP (обязательная 2FA, ИБ-13.2.2) —
     # прямой grant_type=password для них больше не проходит. QA-скрипты используют
     # эти *-automation учётки той же роли, но без 2FA.

@@ -33,7 +33,8 @@ public class RoleAccessController {
     /** Известные разделы меню (соответствуют NavKey на фронте). */
     private static final Set<String> KNOWN_NAV = Set.of(
             "dashboard", "waybills", "dispatcher", "med", "tech", "driver", "inspector", "fuel",
-            "company", "access", "fleet", "monitoring", "registry", "violations", "reports", "dictionaries", "settings");
+            "company", "access", "fleet", "monitoring", "registry", "violations", "reports", "dictionaries", "settings",
+            "consignments");   // кабинет накладных внешних пользователей (грузоотправитель/экспедитор/таможня, 1.1/3.11)
 
     private final RoleAccessRepository repository;
     private final AuditService audit;

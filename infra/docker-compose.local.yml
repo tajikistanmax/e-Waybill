@@ -5,10 +5,20 @@
 #
 # Запуск локального стека:
 #   docker compose -p epd-rt-prod -f docker-compose.prod.yml -f docker-compose.local.yml up -d --build
+#
+# Issuer JWT: realm epd в infra/keycloak/epd-realm.json несёт frontendUrl=http://10.10.29.70:8180
+# (канонический iss токена независимо от хоста запроса). Сервисы сверяют iss с
+# epd.security.expected-issuer (env KEYCLOAK_EXPECTED_ISSUER, по умолчанию localhost:8180) —
+# для локального стека задаём его равным frontendUrl, иначе после (пере)импорта realm все
+# запросы к API получают 401 «The iss claim is not valid».
 services:
   master-data:
     ports:
       - "8081:8081"
+    environment:
+      KEYCLOAK_EXPECTED_ISSUER: ${KEYCLOAK_EXPECTED_ISSUER:-http://10.10.29.70:8180/realms/epd}
   waybill:
     ports:
       - "8082:8082"
+    environment:
+      KEYCLOAK_EXPECTED_ISSUER: ${KEYCLOAK_EXPECTED_ISSUER:-http://10.10.29.70:8180/realms/epd}

@@ -26,7 +26,7 @@
         "providerId": "declarative-user-profile",
         "config": {
           "kc.user.profile.config": [
-            "{\"attributes\":[{\"name\":\"username\",\"displayName\":\"${username}\",\"permissions\":{\"view\":[\"admin\",\"user\"],\"edit\":[\"admin\",\"user\"]}},{\"name\":\"email\",\"displayName\":\"${email}\",\"permissions\":{\"view\":[\"admin\",\"user\"],\"edit\":[\"admin\",\"user\"]}},{\"name\":\"firstName\",\"displayName\":\"${firstName}\",\"permissions\":{\"view\":[\"admin\",\"user\"],\"edit\":[\"admin\",\"user\"]}},{\"name\":\"lastName\",\"displayName\":\"${lastName}\",\"permissions\":{\"view\":[\"admin\",\"user\"],\"edit\":[\"admin\",\"user\"]}},{\"name\":\"rma\",\"displayName\":\"РМА\",\"permissions\":{\"view\":[\"admin\",\"user\"],\"edit\":[\"admin\"]}},{\"name\":\"organizationRma\",\"displayName\":\"РМА организации\",\"permissions\":{\"view\":[\"admin\",\"user\"],\"edit\":[\"admin\"]}}],\"unmanagedAttributePolicy\":\"ADMIN_EDIT\"}"
+            "{\"attributes\":[{\"name\":\"username\",\"displayName\":\"${username}\",\"permissions\":{\"view\":[\"admin\",\"user\"],\"edit\":[\"admin\",\"user\"]}},{\"name\":\"email\",\"displayName\":\"${email}\",\"permissions\":{\"view\":[\"admin\",\"user\"],\"edit\":[\"admin\",\"user\"]}},{\"name\":\"firstName\",\"displayName\":\"${firstName}\",\"permissions\":{\"view\":[\"admin\",\"user\"],\"edit\":[\"admin\",\"user\"]}},{\"name\":\"lastName\",\"displayName\":\"${lastName}\",\"permissions\":{\"view\":[\"admin\",\"user\"],\"edit\":[\"admin\",\"user\"]}},{\"name\":\"rma\",\"displayName\":\"РМА\",\"permissions\":{\"view\":[\"admin\",\"user\"],\"edit\":[\"admin\"]}},{\"name\":\"organizationRma\",\"displayName\":\"РМА организации\",\"permissions\":{\"view\":[\"admin\",\"user\"],\"edit\":[\"admin\"]}},{\"name\":\"clientIds\",\"displayName\":\"Клиенты (id контрагентов через запятую) — грузоотправитель/экспедитор\",\"permissions\":{\"view\":[\"admin\",\"user\"],\"edit\":[\"admin\"]}}],\"unmanagedAttributePolicy\":\"ADMIN_EDIT\"}"
           ]
         }
       }
@@ -45,7 +45,10 @@
       { "name": "ACCOUNTANT", "description": "Бухгалтер (Муҳосиб) — подтверждение оплаты" },
       { "name": "DRIVER", "description": "Водитель (Ронанда) — просмотр своих ПЛ и предъявление QR" },
       { "name": "FUEL_STATION", "description": "Пункт выдачи топлива (Нуқтаи додани сӯзишворӣ) — учёт фактической выдачи" },
-      { "name": "API_INTEGRATOR", "description": "Агрегатор/интегратор (ЧУРА, НЕРУ) — scoped API-доступ" }
+      { "name": "API_INTEGRATOR", "description": "Агрегатор/интегратор (ЧУРА, НЕРУ) — scoped API-доступ" },
+      { "name": "CLIENT_SENDER", "description": "Грузоотправитель (Борфиристонанда) — накладные своих клиентов (атрибут clientIds)" },
+      { "name": "CLIENT_FORWARDER", "description": "Экспедитор (Экспедитор) — накладные своих клиентов (атрибут clientIds)" },
+      { "name": "CUSTOMS_OFFICER", "description": "Таможенник (Гумрукчӣ) — просмотр и подтверждение СМР к 5Б-БМ" }
     ]
   },
   "clients": [
@@ -87,6 +90,20 @@
           "config": {
             "user.attribute": "organizationRma",
             "claim.name": "organization_rma",
+            "jsonType.label": "String",
+            "access.token.claim": "true",
+            "id.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        },
+        {
+          "name": "client_ids",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "user.attribute": "clientIds",
+            "claim.name": "client_ids",
             "jsonType.label": "String",
             "access.token.claim": "true",
             "id.token.claim": "true",
@@ -348,6 +365,42 @@
         "rma": ["777777777"],
         "organizationRma": ["100002000"]
       }
+    },
+    {
+      "username": "sender",
+      "email": "sender@epd.tj",
+      "firstName": "Борфиристонанда",
+      "lastName": "Тестовый",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        { "type": "password", "value": "Epd-Qa-Sender-2026", "temporary": false }
+      ],
+      "realmRoles": ["CLIENT_SENDER"]
+    },
+    {
+      "username": "forwarder",
+      "email": "forwarder@epd.tj",
+      "firstName": "Экспедитор",
+      "lastName": "Тестовый",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        { "type": "password", "value": "Epd-Qa-Forwarder-2026", "temporary": false }
+      ],
+      "realmRoles": ["CLIENT_FORWARDER"]
+    },
+    {
+      "username": "customs",
+      "email": "customs@epd.tj",
+      "firstName": "Гумрукчӣ",
+      "lastName": "Тестовый",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        { "type": "password", "value": "Epd-Qa-Customs-2026", "temporary": false }
+      ],
+      "realmRoles": ["CUSTOMS_OFFICER"]
     }
   ]
 }
