@@ -153,6 +153,21 @@ public class WaybillCalcEngine {
                     normLiters, remainBefore, remainEntry));
         }
 
+        // Выданное топливо показывается и без норматива марки: legacy fuel_calc() суммирует
+        // fuel_given (+coef_below_0) по виду топлива независимо от таблицы fuel_100. Иначе у марки
+        // без нормативов (или не найденной в справочнике) отчёт терял выдачу — «выдано 0».
+        for (FuelRow row : rows) {
+            long fuelId = row.fuelId();
+            if (!given.containsKey(fuelId) || fuels.stream().anyMatch(f -> f.fuelId() == fuelId)) {
+                continue;
+            }
+            double givenLiters = given.get(fuelId);
+            double remainEntry = FuelNormCalculator.remainFuelEntry(
+                    row.remainFuelBeforeExit(), givenLiters + row.additional(), 0d);
+            fuels.add(new FuelConsumption(fuelId, givenLiters, row.additional(),
+                    0d, row.remainFuelBeforeExit(), remainEntry));
+        }
+
         DriverSalary salary = WaybillMath.driverSalary(in.earning(), in.companyPercentIncome(),
                 WaybillMath.classBonus(in.companyCat1(), in.companyCat2(), in.companyCat3(), in.driverDegree()));
 
@@ -328,8 +343,17 @@ public class WaybillCalcEngine {
         boolean noRoute = in.routeDistanceA() == null && in.routeDistanceB() == null
                 && in.routePlannedLap() == null && in.routeCoeUseCapacity() == null;
         if (noRoute) {
-            log.warn("Пассажирские показатели: маршрут не задан — нули");
-            return PassengerMetrics.empty();
+            // Без маршрута нельзя посчитать пассажирооборот и пробег по маршруту (нужны длина/вместимость
+            // маршрута), но рейсы, выручка, касса и отработанное время от маршрута не зависят и в legacy
+            // идут в отчёт как есть. Раньше они тоже обнулялись — архивный лист, чей маршрут не нашёлся
+            // в справочнике по названию, пропадал из выручки и рейсов отчёта.
+            log.debug("Пассажирские показатели: маршрут не задан — пассажирооборот 0, рейсы/выручка сохранены");
+            long laps = Math.max(in.numberLap(), 0L);
+            double total = in.speedometerTotalDistance()
+                    ? Math.max(WaybillMath.distance(in.odometerEntry(), in.odometerExit()), 0) : 0d;
+            return new PassengerMetrics(Math.max(in.workDays(), 1), laps, 0d, 0d, 0d, 0d, total,
+                    Math.max(in.workTimeMinutes(), 0), money(in.earning()), money(in.kassa()),
+                    in.speedometerTotalDistance());
         }
 
         double routeDistance = (nz(in.routeDistanceA()) + nz(in.routeDistanceB())) / 2d;

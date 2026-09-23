@@ -217,15 +217,60 @@ class WaybillCalcEngineTest {
     }
 
     @Test
-    @DisplayName("марка не найдена: расчёт без исключения, топливо пустое, множитель по коэффициентам")
+    @DisplayName("марка не найдена: расчёт без исключения, норма 0, выданное топливо показано (legacy fuel_calc)")
     void missingBrand() {
         when(brandNorms.forName(any())).thenReturn(null);
 
         PassengerCalcResult r = engine.passenger(baseInput().build());
 
-        assertThat(r.fuels()).isEmpty();
+        // legacy fuel_calc() возвращает выданное по виду топлива независимо от нормативов марки
+        assertThat(r.fuels()).hasSize(1);
+        var fuel = r.fuels().getFirst();
+        assertThat(fuel.fuelId()).isEqualTo(2L);
+        assertThat(fuel.given()).isCloseTo(80d, within(1e-9));
+        assertThat(fuel.normLiters()).isZero();
+        assertThat(fuel.remainEntry()).isEqualTo(90d);          // 10 до выезда + 80 выдано − 0
         assertThat(r.totalNormLiters()).isZero();
         assertThat(r.coefficients().k()).isEqualTo(11);
+        assertThat(r.salary().salary()).isEqualByComparingTo("475.00");
+    }
+
+    @Test
+    @DisplayName("вид топлива без норматива у марки: норма 0, выданное (с coef_below_0) показано рядом с нормированным")
+    void fuelWithoutBrandNormStillReported() {
+        // марка знает только дизель (fuel_id=2); лист выдал ещё и бензин (fuel_id=1)
+        PassengerCalcResult r = engine.passenger(baseInput().fuels(List.of(
+                new CalcFuelLine(2L, 80d, 0d, 0d, 10d),
+                new CalcFuelLine(1L, 15d, 1d, 2d, 3d))).build());
+
+        assertThat(r.fuels()).hasSize(2);
+        assertThat(r.fuels().get(0).fuelId()).isEqualTo(2L);
+        assertThat(r.fuels().get(0).normLiters()).isEqualTo(68.82d);   // как в normal()
+        var petrol = r.fuels().get(1);
+        assertThat(petrol.fuelId()).isEqualTo(1L);
+        assertThat(petrol.given()).isCloseTo(16d, within(1e-9));         // 15 + coef_below_0 1
+        assertThat(petrol.additional()).isCloseTo(2d, within(1e-9));
+        assertThat(petrol.normLiters()).isZero();
+        assertThat(petrol.remainEntry()).isEqualTo(21d);                 // 3 + 16 + 2 − 0
+        assertThat(r.totalNormLiters()).isEqualTo(68.82d);
+    }
+
+    @Test
+    @DisplayName("маршрут не задан: пассажирооборот 0, но рейсы, выручка, касса и время сохранены")
+    void noRouteKeepsLapsAndMoney() {
+        PassengerCalcResult r = engine.passenger(baseInput()
+                .routeDistanceA(null).routeDistanceB(null).routePlannedLap(null).routeCoeUseCapacity(null)
+                .kassa(new BigDecimal("1000"))
+                .build());
+
+        var m = r.passengerMetrics();
+        assertThat(m.laps()).isEqualTo(6);
+        assertThat(m.earning()).isEqualByComparingTo("1000.00");
+        assertThat(m.kassa()).isEqualByComparingTo("1000.00");
+        assertThat(m.workTimeMinutes()).isEqualTo(480);
+        assertThat(m.passengerTurnover()).isZero();
+        assertThat(m.passengerCount()).isZero();
+        assertThat(m.routeDistanceKm()).isZero();
         assertThat(r.salary().salary()).isEqualByComparingTo("475.00");
     }
 

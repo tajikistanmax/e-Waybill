@@ -157,6 +157,16 @@ public class WaybillCalcAssembler {
             CargoCalcResult r = engine.cargo(buildCargo(wb, s, brandName, year, exitOdo, entryOdo, revenue, fuels, calcDate));
             return new View("CARGO", null, r, notes);
         }
+        if (capacity == null || capacity <= 0) {
+            // Снимок архивного (перенесённого из legacy) листа не несёт вместимость ТС. Legacy считает
+            // пассажирооборот по вместимости МАРКИ (BusBaseCalc: $row->parking->brand->capacity) — берём
+            // её из справочника марок (кэшированный список master-data), иначе пассажирооборот = 0.
+            Integer brandCapacity = brandCapacity(brandName);
+            if (brandCapacity != null) {
+                capacity = brandCapacity;
+                notes.add("Вместимость взята из справочника марок: " + brandCapacity);
+            }
+        }
         PassengerCalcInput passengerInput = buildPassenger(wb, s, brandName, year, capacity,
                 exitOdo, entryOdo, workMinutes, laps, revenue, fuels, calcDate, route);
         PassengerCalcResult r = engine.passenger(passengerInput);
@@ -244,7 +254,7 @@ public class WaybillCalcAssembler {
             specs.add(new WaybillCalcEngine.DailySpec(d.getWorkDate(), dist,
                     d.getOdometerExit() == null ? null : d.getOdometerExit().longValue(), lines));
         }
-        Integer orgRegion = intOf(get(wb.getOrganizationSnapshot(), "regionId"));
+        Long orgRegion = longOf(get(organization(wb), "regionId"));
         return engine.passengerDaily(input, orgRegion != null && orgRegion == 1, routeAbsent, specs);
     }
 
@@ -302,8 +312,7 @@ public class WaybillCalcAssembler {
                                               Integer capacity, long exitOdo, long entryOdo, int workMinutes,
                                               long laps, BigDecimal revenue, List<CalcFuelLine> fuels,
                                               LocalDate calcDate, Map<String, Object> route) {
-        Map<String, Object> org = wb.getOrganizationSnapshot();
-        Integer orgRegion = intOf(org == null ? null : org.get("regionId"));
+        Long orgRegion = longOf(get(organization(wb), "regionId"));
         boolean speedometer = s.speedometerTotalDistance() != null ? s.speedometerTotalDistance()
                 : (wb.getWaybillType() == WaybillType.WB_BUS && orgRegion != null && orgRegion == 1);
 
@@ -523,14 +532,84 @@ public class WaybillCalcAssembler {
 
     // ------------------------------------------------------------------- helpers
 
-    /** Значение из снимка организации, иначе — из дополнения. */
-    private static Double orgDouble(Waybill wb, String field, Double fallback) {
-        Double v = dbl(wb.getOrganizationSnapshot(), field);
+    /** Вместимость марки из справочника master-data; {@code null} — марка не найдена / справочник недоступен. */
+    private Integer brandCapacity(String brandName) {
+        if (brandName == null || brandName.isBlank()) {
+            return null;
+        }
+        try {
+            Integer c = masterData.findBrandByName(brandName)
+                    .map(b -> longOf(b.get("capacity")))
+                    .map(Long::intValue)
+                    .orElse(null);
+            return c != null && c > 0 ? c : null;
+        } catch (RuntimeException e) {
+            log.warn("Справочник марок недоступен ({}) — вместимость по марке не подставлена", e.toString());
+            return null;
+        }
+    }
+
+    /** Поля организации, которые расчёт берёт из справочника, если архивный снимок их не несёт. */
+    private static final List<String> ORG_CALC_FIELDS = List.of("percentIncome", "cat1", "cat2", "cat3", "regionId");
+
+    /** Индекс организаций по РМА, построенный по последнему (кэшированному) списку master-data. */
+    private volatile List<Map<String, Object>> orgIndexSource;
+    private volatile Map<String, Map<String, Object>> orgIndex = Map.of();
+
+    /**
+     * Организация для расчёта. Для живого листа — его снимок (как было). Снимок архивного листа,
+     * перенесённого из legacy ({@code migrated=true}), несёт только РМА и название: доля дохода,
+     * надбавки за класс и регион дополняются из справочника организаций master-data — так же, как
+     * legacy берёт их у текущей компании ({@code $row->company->percent_income}, {@code cat_N},
+     * {@code region_id}). Справочник недоступен — остаётся снимок.
+     */
+    private Map<String, Object> organization(Waybill wb) {
+        Map<String, Object> snap = wb.getOrganizationSnapshot();
+        if (snap == null || !Boolean.TRUE.equals(snap.get("migrated")) || wb.getOrganizationRma() == null) {
+            return snap;
+        }
+        Map<String, Object> ref;
+        try {
+            ref = organizationIndex().get(wb.getOrganizationRma());
+        } catch (RuntimeException e) {
+            log.warn("Справочник организаций недоступен ({}) — архивный лист считается по снимку", e.toString());
+            return snap;
+        }
+        if (ref == null) {
+            return snap;
+        }
+        Map<String, Object> merged = new java.util.HashMap<>(snap);
+        for (String f : ORG_CALC_FIELDS) {
+            if (merged.get(f) == null && ref.get(f) != null) {
+                merged.put(f, ref.get(f));
+            }
+        }
+        return merged;
+    }
+
+    private Map<String, Map<String, Object>> organizationIndex() {
+        List<Map<String, Object>> list = masterData.listOrganizations();   // кэш 60 с на вызывающего
+        if (list != orgIndexSource) {
+            Map<String, Map<String, Object>> idx = new java.util.HashMap<>();
+            for (Map<String, Object> o : list) {
+                if (o.get("rma") != null) {
+                    idx.putIfAbsent(o.get("rma").toString(), o);
+                }
+            }
+            orgIndex = idx;
+            orgIndexSource = list;
+        }
+        return orgIndex;
+    }
+
+    /** Значение из организации (снимок / справочник для архивного листа), иначе — из дополнения. */
+    private Double orgDouble(Waybill wb, String field, Double fallback) {
+        Double v = dblOf(get(organization(wb), field));
         return v != null ? v : fallback;
     }
 
-    private static Short orgShort(Waybill wb, String field, Short fallback) {
-        Integer v = intOf(get(wb.getOrganizationSnapshot(), field));
+    private Short orgShort(Waybill wb, String field, Short fallback) {
+        Long v = longOf(get(organization(wb), field));
         if (v != null) {
             return v.shortValue();
         }
