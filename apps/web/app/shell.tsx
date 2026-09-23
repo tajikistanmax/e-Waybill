@@ -28,7 +28,7 @@ const ROUTE_NAV: Record<string, NavKey> = {
  *  остальные — за авторизацией и за проверкой доступа роли к разделу. */
 export function Shell({ children }: { children: React.ReactNode }) {
   const { ready, authenticated, roles } = useAuth();
-  const { navFor, homeFor } = useRoleAccess();
+  const { navFor, homeFor, loaded } = useRoleAccess();
   const pathname = usePathname();
   const router = useRouter();
 
