@@ -62,8 +62,12 @@ public class ApiErrors {
      */
     @ExceptionHandler(AccessDeniedException.class)
     public ProblemDetail accessDenied(AccessDeniedException e) {
+        // «Access Denied» — стандартный английский текст Spring Security для @PreAuthorize; до
+        // пользователя он доходил как есть (например, бухгалтер на странице региональных отчётов).
+        String m = e.getMessage();
+        boolean generic = m == null || m.isBlank() || "Access Denied".equalsIgnoreCase(m.trim());
         return problem(HttpStatus.FORBIDDEN, "Доступ запрещён",
-                e.getMessage() != null && !e.getMessage().isBlank() ? e.getMessage() : "Недостаточно прав для этого действия");
+                generic ? "Недостаточно прав для этого действия" : m);
     }
 
     /**

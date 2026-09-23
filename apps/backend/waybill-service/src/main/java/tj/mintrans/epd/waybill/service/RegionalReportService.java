@@ -672,6 +672,28 @@ public class RegionalReportService {
 
         // Пассажирооборот — потоком по завершённым ПЛ периода и области (WaybillPeriodScan), а не findAll();
         // тренд открыт тенантам — их область небольшая, платформенным ролям — весь период n месяцев.
+        // Если завершённых листов больше лимита построчного прохода (у платформенной роли после
+        // переноса архива — сотни тысяч за 7 месяцев), тренд НЕ падает целиком: число листов по
+        // месяцам уже посчитано агрегатом в БД и показывается, пассажирооборот — 0. До 23.09.2026
+        // здесь был 422, и график главной панели Минтранса оставался пустым (находка живой проверки).
+        try {
+            scanTurnover(from, to, scanScope, types, byMonth);
+        } catch (tj.mintrans.epd.waybill.web.error.ApiErrors.UnprocessableException tooMany) {
+            byMonth.replaceAll((k, v) -> 0.0);
+        }
+
+        List<PassengerVolumeTrend.Point> points = new ArrayList<>();
+        for (String key : monthKeys) {
+            points.add(new PassengerVolumeTrend.Point(key, Math.round(byMonth.get(key) * 100.0) / 100.0,
+                    countByMonth.get(key)));
+        }
+        List<WaybillType> typeList = new ArrayList<>(types);
+        typeList.sort(java.util.Comparator.naturalOrder());
+        return new PassengerVolumeTrend(n, typeList, points);
+    }
+
+    private void scanTurnover(LocalDate from, LocalDate to, Set<String> scanScope, Set<WaybillType> types,
+                              Map<String, Double> byMonth) {
         scan.forEachCompleted(from, to, scanScope, wb -> {
             WaybillType type = wb.getWaybillType();
             if (!types.contains(type)) {
@@ -690,15 +712,6 @@ public class RegionalReportService {
             }
             byMonth.merge(key, m.passengerTurnover() / 1_000_000.0, Double::sum); // млн пасс-км
         });
-
-        List<PassengerVolumeTrend.Point> points = new ArrayList<>();
-        for (String key : monthKeys) {
-            points.add(new PassengerVolumeTrend.Point(key, Math.round(byMonth.get(key) * 100.0) / 100.0,
-                    countByMonth.get(key)));
-        }
-        List<WaybillType> typeList = new ArrayList<>(types);
-        typeList.sort(java.util.Comparator.naturalOrder());
-        return new PassengerVolumeTrend(n, typeList, points);
     }
 
     private static String monthKey(LocalDate d) {

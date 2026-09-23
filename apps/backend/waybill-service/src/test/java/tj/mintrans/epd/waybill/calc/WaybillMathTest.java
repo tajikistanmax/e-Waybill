@@ -114,6 +114,23 @@ class WaybillMathTest {
         }
 
         @Test
+        @DisplayName("доля в процентах (30 вместо 0,3) трактуется как 30 %, а не как 30-кратная (находка 23.09)")
+        void percentGivenAsPercent() {
+            DriverSalary asPercent = WaybillMath.driverSalary(new BigDecimal("1250.50"), 30d, (short) 20);
+            DriverSalary asShare = WaybillMath.driverSalary(new BigDecimal("1250.50"), 0.3d, (short) 20);
+
+            // (1250.50/4)*3 = 937.875 ; * 0.3 = 281.3625 ; + 20 = 301.36
+            assertThat(asPercent.salary()).isEqualByComparingTo("301.36");
+            assertThat(asShare.salary()).isEqualByComparingTo(asPercent.salary());
+            // заведомо ошибочная доля (> 100) — без начисления по доле, только надбавка
+            assertThat(WaybillMath.driverSalary(new BigDecimal("1000"), 2132d, (short) 20).salary())
+                    .isEqualByComparingTo("20.00");
+            // граница: ровно 1 — это 100 %
+            assertThat(WaybillMath.driverSalary(new BigDecimal("1000"), 1d, (short) 0).salary())
+                    .isEqualByComparingTo("750.00");
+        }
+
+        @Test
         @DisplayName("округление HALF_UP до 2 знаков")
         void rounding() {
             DriverSalary salary = WaybillMath.driverSalary(new BigDecimal("100"), 0.3333d, (short) 0);

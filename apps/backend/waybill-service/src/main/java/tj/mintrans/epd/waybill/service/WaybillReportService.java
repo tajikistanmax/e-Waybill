@@ -117,6 +117,9 @@ public class WaybillReportService {
             if (!(cargo ? isCargo(wb.getWaybillType()) : isPassenger(wb.getWaybillType()))) {
                 return;
             }
+            if (!countsInReports(wb)) {
+                return;
+            }
             if (!f.matches(wb)) {
                 return;
             }
@@ -201,6 +204,21 @@ public class WaybillReportService {
         }
         String v = snapshot.get(field).toString();
         return v.isBlank() ? null : v;
+    }
+
+    /**
+     * Лист попадает в типовой отчёт, только если он выдан как документ (есть номер — лист прошёл
+     * допуск и оплату) и не аннулирован. Аннулирование в старой платформе — удаление записи, такие
+     * листы в её отчётах не участвуют.
+     *
+     * <p>До 23.09.2026 отчёт брал все листы периода подряд: аннулированные, черновики и недопущенные
+     * врачом/механиком. В «Реестре путевых листов» они выходили строками с внутренним
+     * идентификатором вместо номера, а в «Заработке водителей» каждому начислялась надбавка за
+     * класс — водитель «зарабатывал» на рейсе, которого не было (находка живой проверки).</p>
+     */
+    static boolean countsInReports(Waybill wb) {
+        return wb.getNumber() != null && !wb.getNumber().isBlank()
+                && wb.getStatus() != tj.mintrans.epd.waybill.domain.WaybillStatus.CANCELLED;
     }
 
     private static boolean isPassenger(WaybillType t) {

@@ -104,12 +104,27 @@ public final class WaybillMath {
      * @param classBonus    надбавка за класс водителя ({@code null} → 0)
      * @return разложение заработка
      */
+    /**
+     * Доля дохода компании всегда трактуется как ДОЛЯ (0…1). В перенесённых данных и в карточках
+     * встречаются проценты (30 вместо 0,3: у 10 организаций старой базы — 6, 10, 14, 23, 92), и
+     * формула давала «заработок» в 100 раз больше выручки: 1 250 сомони выручки → 28 156 сомони
+     * водителю (находка живой проверки 23.09.2026). Значение 1 &lt; x ≤ 100 — это проценты и
+     * делится на 100; больше 100 — заведомо ошибочное значение, заработок по доле не начисляется.
+     */
+    static double sharePercent(double percentIncome) {
+        if (percentIncome > 100) {
+            log.warn("Заработок водителя: доля дохода компании {} вне диапазона — применён 0", percentIncome);
+            return 0d;
+        }
+        return percentIncome > 1 ? percentIncome / 100d : percentIncome;
+    }
+
     public static DriverSalary driverSalary(BigDecimal earning, Double percentIncome, Number classBonus) {
         BigDecimal earningValue = earning == null ? BigDecimal.ZERO : earning;
         if (percentIncome == null) {
             log.warn("Заработок водителя: percent_income не заполнен, применён 0");
         }
-        BigDecimal percent = percentIncome == null ? BigDecimal.ZERO : BigDecimal.valueOf(percentIncome);
+        BigDecimal percent = percentIncome == null ? BigDecimal.ZERO : BigDecimal.valueOf(sharePercent(percentIncome));
         BigDecimal bonus = classBonus == null
                 ? BigDecimal.ZERO
                 : BigDecimal.valueOf(classBonus.doubleValue());
