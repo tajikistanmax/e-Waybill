@@ -13,6 +13,33 @@
     { "login": "analyst", "role": "MINTRANS_ANALYST", "note": "Аналитик Минтранса: сводные и региональные отчёты по всей стране" },
     { "login": "customs", "role": "CUSTOMS_OFFICER", "note": "Таможенник: подтверждение CMR к 5Б-БМ" }
   ],
+  "_brandsComment": "Марки демо-парка с нормативами расхода (л/100 км; ton_for_100 — л на 100 т·км; s_for_rais — л на ездку самосвала; work_for_hour — л/ч работы спецтехники). Расчёт по формуле старой платформы ищет марку ТС по названию, поэтому имя = vehicles[].brand. number — код марки: 1-я цифра — кузов (1/2/4 бортовой, фургон, тягач; 3 самосвал; 5 спецтехника), 5-я цифра ≠ 0 — есть прицеп. Душанбинская таблица (маршрут без коэффициентов) равна базовой. cardNorm — норма справочника «Нормы расхода» для кнопки «Рассчитать норму» в карточке (вид ТС + марка). Марка, у которой норматив уже заполнен, скриптом не меняется. Троллейбусы — электротранспорт, нормы топлива нет.",
+  "brands": [
+    { "name": "ЛиАЗ-5292", "model": "5292.65", "typeId": 1, "capacity": 108, "transportType": 1, "cardNorm": 41.0, "heating": 3.0, "fuel100": [ { "fuel_id": 2, "consumption": 41.0 } ] },
+    { "name": "Yutong ZK6118HGA", "model": "ZK6118HGA", "typeId": 1, "capacity": 95, "transportType": 1, "cardNorm": 35.0, "heating": 2.5, "fuel100": [ { "fuel_id": 2, "consumption": 35.0 } ] },
+    { "name": "МАЗ-203", "model": "203", "typeId": 1, "capacity": 102, "transportType": 1, "cardNorm": 38.0, "heating": 2.5, "fuel100": [ { "fuel_id": 2, "consumption": 38.0 } ] },
+    { "name": "Higer KLQ6129G", "model": "KLQ6129G", "typeId": 1, "capacity": 100, "transportType": 1, "cardNorm": 36.0, "heating": 2.5, "fuel100": [ { "fuel_id": 2, "consumption": 36.0 } ] },
+    { "name": "Hyundai County", "model": "County", "typeId": 3, "capacity": 29, "transportType": 3, "cardNorm": 17.5, "fuel100": [ { "fuel_id": 2, "consumption": 17.5 } ] },
+    { "name": "ГАЗель Next", "model": "A64R42", "typeId": 3, "capacity": 19, "transportType": 3, "cardNorm": 15.5, "fuel100": [ { "fuel_id": 1, "consumption": 15.5 }, { "fuel_id": 3, "consumption": 17.5 } ] },
+    { "name": "Toyota Camry", "model": "XV70 2.5", "typeId": 4, "capacity": 4, "transportType": 4, "cardNorm": 10.5, "fuel100": [ { "fuel_id": 1, "consumption": 10.5 } ] },
+    { "name": "Hyundai Sonata", "model": "DN8 2.0 LPi", "typeId": 4, "capacity": 4, "transportType": 4, "cardNorm": 11.2, "fuel100": [ { "fuel_id": 1, "consumption": 9.3 }, { "fuel_id": 3, "consumption": 11.2 } ] },
+    { "name": "Chevrolet Cobalt", "model": "1.5", "typeId": 4, "capacity": 4, "transportType": 4, "cardNorm": 8.9, "fuel100": [ { "fuel_id": 1, "consumption": 8.9 } ] },
+    { "name": "Kia K5", "model": "DL3 2.0 LPi", "typeId": 4, "capacity": 4, "transportType": 4, "cardNorm": 11.3, "fuel100": [ { "fuel_id": 1, "consumption": 9.4 }, { "fuel_id": 3, "consumption": 11.3 } ] },
+    { "name": "Toyota Prius", "model": "XW30 1.8 гибрид", "typeId": 4, "capacity": 4, "transportType": 4, "cardNorm": 5.0, "fuel100": [ { "fuel_id": 1, "consumption": 5.0 } ] },
+    { "name": "Hyundai Elantra", "model": "CN7 1.6", "typeId": 4, "capacity": 4, "transportType": 4, "cardNorm": 8.6, "fuel100": [ { "fuel_id": 1, "consumption": 8.6 } ] },
+    { "name": "КамАЗ-65115 (цистерна)", "model": "65115 АЦ", "number": "20001", "typeId": 5, "carrying": 15, "transportType": 5, "cardNorm": 25.5, "fuel100": [ { "fuel_id": 2, "consumption": 25.5, "ton_for_100": 1.3 } ] },
+    { "name": "MAN TGS 26.400", "model": "TGS 26.400 6x4", "number": "10000", "typeId": 5, "carrying": 20, "transportType": 5, "cardNorm": 27.0, "fuel100": [ { "fuel_id": 2, "consumption": 27.0, "ton_for_100": 1.3 } ] },
+    { "name": "Shacman X3000", "model": "SX3258 самосвал", "number": "30000", "typeId": 6, "carrying": 25, "transportType": 5, "cardNorm": 33.0, "fuel100": [ { "fuel_id": 2, "consumption": 33.0, "ton_for_100": 1.3, "s_for_rais": 0.25 } ] },
+    { "name": "Экскаватор-погрузчик JCB 3CX", "model": "3CX", "number": "50000", "typeId": 8, "carrying": 1, "fuel100": [ { "fuel_id": 2, "consumption": 12.0, "work_for_hour": 6.5 } ] },
+    { "name": "КамАЗ-6520 (самосвал)", "model": "6520", "number": "30000", "typeId": 6, "carrying": 20, "transportType": 5, "cardNorm": 31.0, "fuel100": [ { "fuel_id": 2, "consumption": 31.0, "ton_for_100": 1.3, "s_for_rais": 0.25 } ] },
+    { "name": "Yutong ZK6122H9", "model": "ZK6122H9", "typeId": 1, "capacity": 51, "transportType": 1, "cardNorm": 26.0, "heating": 2.0, "fuel100": [ { "fuel_id": 2, "consumption": 26.0 } ] },
+    { "name": "King Long XMQ6129Y", "model": "XMQ6129Y", "typeId": 1, "capacity": 49, "transportType": 1, "cardNorm": 27.0, "heating": 2.0, "fuel100": [ { "fuel_id": 2, "consumption": 27.0 } ] },
+    { "name": "Higer KLQ6128LQ", "model": "KLQ6128LQ", "typeId": 1, "capacity": 49, "transportType": 1, "cardNorm": 27.0, "heating": 2.0, "fuel100": [ { "fuel_id": 2, "consumption": 27.0 } ] },
+    { "name": "Volvo FH 460", "model": "FH 460 4x2 тягач", "number": "40001", "typeId": 7, "carrying": 22, "transportType": 6, "cardNorm": 26.5, "fuel100": [ { "fuel_id": 2, "consumption": 26.5, "ton_for_100": 1.3 } ] },
+    { "name": "DAF XF 480", "model": "XF 480 FT тягач", "number": "40001", "typeId": 7, "carrying": 24, "transportType": 6, "cardNorm": 27.0, "fuel100": [ { "fuel_id": 2, "consumption": 27.0, "ton_for_100": 1.3 } ] },
+    { "name": "Scania R450", "model": "R450 A4x2NA тягач", "number": "40000", "typeId": 7, "carrying": 24, "transportType": 6, "cardNorm": 26.0, "fuel100": [ { "fuel_id": 2, "consumption": 26.0, "ton_for_100": 1.3 } ] },
+    { "name": "MAN TGX 18.480", "model": "TGX 18.480 4x2 тягач", "number": "40000", "typeId": 7, "carrying": 24, "transportType": 6, "cardNorm": 27.0, "fuel100": [ { "fuel_id": 2, "consumption": 27.0, "ton_for_100": 1.3 } ] }
+  ],
   "units": [
     {
       "code": "bus",

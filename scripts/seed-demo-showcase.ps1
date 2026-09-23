@@ -48,7 +48,9 @@ param(
     [switch]$SkipVerify,
     # Testing aids: pretend today is another day (yyyy-MM-dd) / only retire other days' waybills.
     [string]$DemoDay = '',
-    [switch]$RetireOnly
+    [switch]$RetireOnly,
+    # Only step 0 (brands of the demo fleet with fuel norms + card norms), then exit.
+    [switch]$BrandsOnly
 )
 
 $ErrorActionPreference = 'Stop'
@@ -168,6 +170,63 @@ $AdminTok = $r.Data.access_token
 $InspectorTok = $null
 $r = Get-Login $InspectorUser $InspectorPassword
 if ($r.Status -eq 200) { $InspectorTok = $r.Data.access_token } else { Add-Problem "inspector login '$InspectorUser' failed (HTTP $($r.Status)); blocked-by-inspector waybills will be skipped" }
+
+# ------------------------------------------------------------------ brands (step 0)
+# The legacy calculation engine (reports, POST /calculation) finds the vehicle brand BY NAME in
+# /legacy-ref/brands and takes fuel_100 from it. Demo vehicles use their own brand names, so without
+# these rows every demo waybill had norm 0. A brand whose norm is already filled is left alone.
+function Set-DemoBrands {
+    Write-Host "=== 0. Demo fleet brands: fuel norms (legacy formula) and card norms ===" -ForegroundColor Cyan
+    $all = @((Invoke-Api -Method GET -Url "$MdUrl/api/v1/legacy-ref/brands" -Token $AdminTok).Data)
+    $cardNorms = @((Invoke-Api -Method GET -Url "$MdUrl/api/v1/dictionaries/fuel-norms" -Token $AdminTok).Data)
+    $nB = 0; $nSkip = 0; $nN = 0
+    foreach ($b in @($Data.brands)) {
+        if (-not $b) { continue }
+        $name = [string]$b.name
+        $key = $name.Trim().ToLower()
+        $same = @($all | Where-Object { $_ -and ([string]$_.name).Trim().ToLower() -eq $key })
+        $filled = @($same | Where-Object { $_.fuel100 -and (([string]$_.fuel100).Trim() -notin @('', '[]', 'null')) })
+        if ($filled.Count -gt 0) {
+            $nSkip++
+        } else {
+            $norms = ConvertTo-Json -InputObject @($b.fuel100) -Depth 5 -Compress
+            $body = [ordered]@{
+                name = $name; model = [string]$b.model; number = $null; typeId = [int]$b.typeId
+                capacity = $null; carrying = $null; costServices = $null
+                fuel100 = $norms; fuel100Dushanbe = $norms; fuelHour = $null
+                fuelInteriorHeating = $null; tariffRate = $null
+            }
+            if ($b.number) { $body['number'] = [string]$b.number }
+            if ($null -ne $b.capacity) { $body['capacity'] = [int]$b.capacity }
+            if ($null -ne $b.carrying) { $body['carrying'] = [double]$b.carrying }
+            if ($null -ne $b.heating) { $body['fuelInteriorHeating'] = [double]$b.heating }
+            if ($same.Count -gt 0) {
+                # Same name without a norm: fill that row in place (keep its model and other fields).
+                $old = $same[0]
+                $body['id'] = $old.id; $body['model'] = [string]$old.model
+                foreach ($f in @('number', 'capacity', 'carrying', 'costServices', 'tariffRate')) {
+                    if ($null -ne $old.$f -and [string]$old.$f -ne '') { $body[$f] = $old.$f }
+                }
+            }
+            $br = Invoke-Api -Method POST -Url "$MdUrl/api/v1/legacy-ref/brands" -Token $AdminTok -Body $body -AllowError
+            if ($br.Status -ge 300) { Add-Problem "brand $name : HTTP $($br.Status) $($br.Text)" } else { $nB++ }
+        }
+        if ($null -ne $b.cardNorm -and $null -ne $b.transportType) {
+            $tt = [int]$b.transportType
+            $hasCard = @($cardNorms | Where-Object { $_ -and [int]$_.transportType -eq $tt -and ([string]$_.brand).Trim().ToLower() -eq $key })
+            if ($hasCard.Count -eq 0) {
+                $nr = Invoke-Api -Method POST -Url "$MdUrl/api/v1/dictionaries/fuel-norms" -Token $AdminTok -AllowError -Body ([ordered]@{ transportType = $tt; brand = $name; baseNorm = [double]$b.cardNorm })
+                if ($nr.Status -ge 300) { Add-Problem "card norm $name : HTTP $($nr.Status) $($nr.Text)" } else { $nN++ }
+            }
+        }
+    }
+    Write-Host ("  brands written={0} already with norm={1}; card norms added={2}" -f $nB, $nSkip, $nN)
+}
+Set-DemoBrands
+if ($BrandsOnly) {
+    if ($script:Problems.Count -gt 0) { Write-Host "Problems: $($script:Problems.Count)" -ForegroundColor Yellow; exit 1 }
+    exit 0
+}
 
 # Makes sure the login exists with the given role and ends up with the permanent demo password.
 function Set-DemoUser {
