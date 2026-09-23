@@ -137,6 +137,10 @@ export function Topbar() {
           <div className="u-name">{username}</div>
           <div className="u-role">{roleLabel}</div>
         </div>
+        {/* Смена своего пароля — раньше из интерфейса до неё было не добраться. */}
+        <Link href="/auth/password" className="tb-icon" aria-label={t('pwd.link')} title={t('pwd.link')}>
+          <Icon d={P.shield} />
+        </Link>
         <button className="u-logout" onClick={logout}>{t('sys.logout')}</button>
       </div>
     </header>

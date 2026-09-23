@@ -11,7 +11,10 @@ import { Topbar } from './topbar';
 import { MaintenanceBanner } from './MaintenanceBanner';
 import { LicenseBanner } from './LicenseBanner';
 
-const isPublic = (path: string) => path === '/login' || path.startsWith('/verify/');
+// /auth/* — смена временного пароля при первом входе и старый адрес возврата: пользователь
+// ещё НЕ вошёл, поэтому эти страницы не должны уводить на /login (иначе первый вход нового
+// пользователя замыкался в круг «вход → смена пароля → вход»).
+const isPublic = (path: string) => path === '/login' || path.startsWith('/verify/') || path.startsWith('/auth/');
 
 /** Первый сегмент пути → раздел меню (для проверки доступа по роли). */
 const ROUTE_NAV: Record<string, NavKey> = {

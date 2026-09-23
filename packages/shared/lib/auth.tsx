@@ -1,7 +1,7 @@
 'use client';
 
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
-import { setAuthToken, md } from './api';
+import { setAuthToken, md, AUTH_EXPIRED_EVENT } from './api';
 
 // Аутентификация платформы (с 23.09.2026, вместо Keycloak): вход, обновление сессии, выход
 // и смена пароля — свои точки в master-data. Внешнего сервера входа больше нет, поэтому
@@ -14,6 +14,8 @@ const PASSWORD_URL = `${AUTH_BASE}/password`;
 const RT_KEY = 'dts_rt';
 /** Одноразовый ключ смены временного пароля — живёт только до перехода на страницу смены. */
 const CHANGE_KEY = 'dts_pwd_change';
+/** Логин и выбор «Запомнить меня» того, кто меняет временный пароль (пароль НЕ хранится). */
+const CHANGE_USER_KEY = 'dts_pwd_change_user';
 
 /** Текущий токен доступа — нужен, чтобы вошедший пользователь мог сменить свой пароль. */
 let currentAccessToken = '';
@@ -47,8 +49,11 @@ type AuthState = {
   roles: string[];
   login: (username: string, password: string, remember?: boolean) => Promise<void>;
   logout: () => void;
-  /** Смена пароля: по одноразовому ключу (первый вход) либо своего, уже войдя в систему. */
-  changePassword: (newPassword: string, currentPassword?: string) => Promise<void>;
+  /**
+   * Смена пароля: по одноразовому ключу (первый вход) либо своего, уже войдя в систему.
+   * true — после смены временного пароля вход выполнен автоматически.
+   */
+  changePassword: (newPassword: string, currentPassword?: string) => Promise<boolean>;
 };
 
 /** Временный пароль: вход не даётся, интерфейс ведёт на страницу смены пароля. */
@@ -61,7 +66,7 @@ export class PasswordChangeRequired extends Error {
 
 const AuthContext = createContext<AuthState>({
   ready: false, authenticated: false, username: '', roles: [],
-  login: async () => {}, logout: () => {}, changePassword: async () => {},
+  login: async () => {}, logout: () => {}, changePassword: async () => false,
 });
 
 export const useAuth = () => useContext(AuthContext);
@@ -84,11 +89,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     ready: false, authenticated: false, username: '', roles: [],
   });
   const timer = useRef<number | undefined>(undefined);
+  /** Момент истечения текущего токена доступа (мс), 0 — токена нет. */
+  const expiresAt = useRef(0);
+  /** Идущее обновление: второй одновременный вызов ждёт его, а не шлёт тот же RT повторно. */
+  const inflight = useRef<Promise<void> | null>(null);
 
   const applyToken = useCallback((data: { access_token: string; refresh_token: string; expires_in: number }) => {
     setAuthToken(data.access_token);
     currentAccessToken = data.access_token;
     persistRt(data.refresh_token);
+    expiresAt.current = Date.now() + data.expires_in * 1000;
     const claims = decode(data.access_token);
     setState({
       ready: true, authenticated: true,
@@ -100,24 +110,68 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const refresh = useCallback(async () => {
+  const doRefresh = useCallback(async () => {
+    const post = (token: string) => fetch(REFRESH_URL, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refreshToken: token }),
+      // Не зависать на недоступной службе: иначе ready не станет true и boot-экран держится вечно.
+      signal: AbortSignal.timeout(8000),
+    });
     const rt = readRt();
     if (!rt) { setState(s => ({ ...s, ready: true, authenticated: false })); return; }
     try {
-      const res = await fetch(REFRESH_URL, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ refreshToken: rt }),
-        // Не зависать на недоступной службе: иначе ready не станет true и boot-экран держится вечно.
-        signal: AbortSignal.timeout(8000),
-      });
+      let res = await post(rt);
+      // Токен обновления одноразовый. Если в соседней вкладке его только что обменяли,
+      // в хранилище уже лежит новый — пробуем им, а не выходим из системы во всех вкладках.
+      if (res.status === 401) {
+        const latest = readRt();
+        if (latest && latest !== rt) res = await post(latest);
+      }
       if (!res.ok) throw new Error('expired');
       applyToken(await res.json());
     } catch {
       clearRt();
       setAuthToken('');
+      currentAccessToken = '';
+      expiresAt.current = 0;
       setState(s => ({ ...s, ready: true, authenticated: false }));
     }
   }, [applyToken]);
+
+  const lastRefresh = useRef(0);
+  const refresh = useCallback(() => {
+    if (!inflight.current) {
+      lastRefresh.current = Date.now();
+      inflight.current = doRefresh().finally(() => { inflight.current = null; });
+    }
+    return inflight.current;
+  }, [doRefresh]);
+
+  // Страховка от «уснувшего» таймера: браузер придерживает таймеры фоновых вкладок и
+  // останавливает их на время сна ноутбука. Поэтому срок токена проверяется ещё и
+  // периодически, при возврате на вкладку и по сигналу API «401» — сессия не падает
+  // через полчаса работы, если вкладка была свёрнута.
+  useEffect(() => {
+    const check = () => {
+      if (expiresAt.current && Date.now() > expiresAt.current - 90_000) void refresh();
+    };
+    const onVisible = () => { if (document.visibilityState === 'visible') check(); };
+    // 401 от API: токен уже не принят (истёк во сне). Не чаще раза в 15 с — чтобы серия
+    // отказов одной страницы не превращалась в серию обменов токена.
+    const onExpired = () => {
+      if (expiresAt.current && Date.now() - lastRefresh.current > 15_000) void refresh();
+    };
+    const iv = window.setInterval(check, 20_000);
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('focus', check);
+    window.addEventListener(AUTH_EXPIRED_EVENT, onExpired);
+    return () => {
+      window.clearInterval(iv);
+      document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('focus', check);
+      window.removeEventListener(AUTH_EXPIRED_EVENT, onExpired);
+    };
+  }, [refresh]);
 
   const login = useCallback(async (username: string, password: string, remember = true) => {
     let res: Response;
@@ -135,7 +189,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (res.status === 428) {
       const body = await res.json().catch(() => ({} as { changeToken?: string }));
       const token = String(body.changeToken ?? '');
-      try { sessionStorage.setItem(CHANGE_KEY, token); } catch { /* приватный режим */ }
+      try {
+        sessionStorage.setItem(CHANGE_KEY, token);
+        // Логин (не пароль) — чтобы после смены сразу войти новым паролем, без повторного ввода.
+        sessionStorage.setItem(CHANGE_USER_KEY, JSON.stringify({ username, remember }));
+      } catch { /* приватный режим */ }
       throw new PasswordChangeRequired(token);
     }
     if (!res.ok) {
@@ -152,8 +210,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
    * полученный при попытке входа; уже вошедший пользователь подтверждает текущий пароль.
    */
   const changePassword = useCallback(async (newPassword: string, currentPassword?: string) => {
+    // Ключ смены — только для первого входа. Вошедший пользователь подтверждает текущий
+    // пароль, и завалявшийся в хранилище старый ключ не должен уводить запрос по другой ветке.
     let changeToken: string | null = null;
-    try { changeToken = sessionStorage.getItem(CHANGE_KEY); } catch { /* приватный режим */ }
+    if (currentPassword === undefined) {
+      try { changeToken = sessionStorage.getItem(CHANGE_KEY); } catch { /* приватный режим */ }
+    }
     const res = await fetch(PASSWORD_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...(authHeaderIfAny()) },
@@ -164,8 +226,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const body = await res.json().catch(() => ({} as { detail?: string }));
       throw new Error(String(body.detail ?? 'Не удалось сменить пароль'));
     }
-    try { sessionStorage.removeItem(CHANGE_KEY); } catch { /* приватный режим */ }
-  }, []);
+    let pending: { username?: string; remember?: boolean } = {};
+    try {
+      pending = JSON.parse(sessionStorage.getItem(CHANGE_USER_KEY) ?? '{}');
+      sessionStorage.removeItem(CHANGE_KEY);
+      sessionStorage.removeItem(CHANGE_USER_KEY);
+    } catch { /* приватный режим */ }
+    // Первый вход: пароль только что задан — входим им сразу, пользователь попадает в свой
+    // кабинет. Если не вышло (сеть), страница просто откроет вход.
+    if (changeToken && pending.username) {
+      try { await login(pending.username, newPassword, pending.remember ?? true); return true; } catch { return false; }
+    }
+    return false;
+  }, [login]);
 
   const logout = useCallback(() => {
     window.clearTimeout(timer.current);

@@ -336,7 +336,16 @@ export type NotificationItem = {
   readAt: string | null;
 };
 
+/**
+ * Событие «токен не принят» (401). Его слушает AuthProvider и сразу обновляет сессию —
+ * на случай, если плановое обновление не успело (вкладка спала, ноутбук закрывали).
+ */
+export const AUTH_EXPIRED_EVENT = 'epd-auth-expired';
+
 async function handle<T>(res: Response): Promise<T> {
+  if (res.status === 401 && typeof window !== 'undefined') {
+    window.dispatchEvent(new Event(AUTH_EXPIRED_EVENT));
+  }
   if (!res.ok) {
     let detail = `Ошибка ${res.status}`;
     try {

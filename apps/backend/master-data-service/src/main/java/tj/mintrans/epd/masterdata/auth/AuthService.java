@@ -68,7 +68,11 @@ public class AuthService {
         this.maxFailedAttempts = maxFailedAttempts;
         this.lockMinutes = lockMinutes;
         this.refreshTtlSeconds = refreshTtlSeconds;
+        this.dummyHash = passwords.encode(UUID.randomUUID().toString());
     }
+
+    /** Хеш случайного пароля — для выравнивания времени ответа на несуществующий логин. */
+    private final String dummyHash;
 
     /** Ответ точки выдачи токена — поля те же, что отдавал Keycloak. */
     public record Tokens(String accessToken, long expiresIn, String refreshToken,
@@ -89,12 +93,22 @@ public class AuthService {
         }
     }
 
-    @Transactional
+    /**
+     * Вход по логину и паролю.
+     *
+     * <p>{@code noRollbackFor}: отказ во входе сообщается исключением, но записи, сделанные до
+     * него, обязаны сохраниться — счётчик неудачных попыток (иначе блокировка после N неудач
+     * никогда не срабатывает) и ключ смены временного пароля (иначе страница смены отвечает
+     * «ключ недействителен» и новый пользователь не может войти вообще). До исправления
+     * 23.09.2026 любое из этих исключений откатывало транзакцию вместе с записями.</p>
+     */
+    @Transactional(noRollbackFor = {ResponseStatusException.class, PasswordChangeRequired.class})
     public Tokens login(String username, String password) {
         var user = users.findByUsername(username == null ? "" : username.trim()).orElse(null);
         if (user == null) {
-            // Пароль всё равно «проверяем», чтобы время ответа не выдавало существование логина.
-            passwords.matches(password == null ? "" : password, "$2a$10$invalidinvalidinvalidinvalidinvalidinvalidinvalidinvalidinv");
+            // Пароль всё равно проверяем настоящим BCrypt-хешем, чтобы время ответа не выдавало,
+            // существует ли логин (заглушка неверного формата отвечала мгновенно).
+            passwords.matches(password == null ? "" : password, dummyHash);
             throw invalidCredentials();
         }
         if (user.getLockedUntil() != null && user.getLockedUntil().isAfter(OffsetDateTime.now())) {
@@ -134,7 +148,10 @@ public class AuthService {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Сессия истекла, войдите заново");
         }
         var user = users.findById(stored.getUserId()).orElse(null);
-        if (user == null || !user.isEnabled()) {
+        // mustChangePassword: ключ смены временного пароля лежит в той же таблице, что и токены
+        // обновления. Без этой проверки его можно было предъявить сюда и получить полноценный
+        // вход, так и не сменив временный пароль.
+        if (user == null || !user.isEnabled() || user.isMustChangePassword()) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Сессия истекла, войдите заново");
         }
         // Одноразовость: предъявленный токен гасим и выдаём новую пару.
@@ -168,7 +185,19 @@ public class AuthService {
                             "Ключ смены пароля недействителен, войдите заново"));
             user = users.findById(stored.getUserId()).orElseThrow(() ->
                     new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Учётная запись не найдена"));
+            // Ключ смены годится только пока пароль временный. Иначе обычный токен обновления
+            // (та же таблица) позволял бы сменить пароль, не зная текущего.
+            if (!user.isMustChangePassword()) {
+                throw new ResponseStatusException(HttpStatus.UNAUTHORIZED,
+                        "Ключ смены пароля недействителен, войдите заново");
+            }
         } else {
+            if (userId == null) {
+                // Ни ключа смены, ни действующего входа (например, страницу смены открыли
+                // напрямую или ключ уже израсходован) — просим войти заново, а не падаем в 500.
+                throw new ResponseStatusException(HttpStatus.UNAUTHORIZED,
+                        "Ключ смены пароля недействителен, войдите заново");
+            }
             user = users.findById(userId).orElseThrow(() ->
                     new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Учётная запись не найдена"));
             if (!passwords.matches(currentPassword == null ? "" : currentPassword, user.getPasswordHash())) {
