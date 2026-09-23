@@ -542,13 +542,14 @@ public class WaybillPrintService {
         m.put("extras", extras);
 
         List<Map<String, String>> signed = new ArrayList<>();
-        for (WaybillTitle t : titles.findByWaybillIdOrderBySignedAt(wb.getId())) {
+        List<WaybillTitle> allTitles = titles.findByWaybillIdOrderBySignedAt(wb.getId());
+        for (WaybillTitle t : allTitles) {
             Map<String, Object> data = t.getData() == null ? Map.of() : t.getData();
             Map<String, String> row = new LinkedHashMap<>();
             row.put("title", TITLE_LABEL.getOrDefault(t.getTitleType(), t.getTitleType()));
             row.put("verdict", orDash(str(data.get("verdict"))));
             row.put("signer", firstNonBlank(str(data.get("employeeName")), str(data.get("dispatcher")),
-                    str(data.get("newDriverName")), t.getSignerRma()));
+                    str(data.get("newDriverName")), knownName(allTitles, t.getSignerRma()), t.getSignerRma()));
             row.put("signerRole", ROLE_LABEL.getOrDefault(t.getSignerRole(), t.getSignerRole()) + " · РМА " + t.getSignerRma());
             row.put("signedAt", DT.format(t.getSignedAt()));
             row.put("fingerprint", fingerprint(t.getSignature()));
@@ -591,6 +592,27 @@ public class WaybillPrintService {
     }
 
     // ------------------------------------------------------------------
+
+    /**
+     * Ф.И.О., под которым сотрудник с данным РМА подписал любой другой титул этого листа
+     * (диспетчер — Т1). Нужен для Т4/Т5, подписанных до 23.09.2026: в их данных имени нет, и в
+     * отметках выезда/возврата печатался РМА диспетчера вместо Ф.И.О.
+     */
+    private static String knownName(List<WaybillTitle> all, String rma) {
+        if (rma == null) {
+            return "";
+        }
+        for (WaybillTitle o : all) {
+            if (!rma.equals(o.getSignerRma()) || o.getData() == null) {
+                continue;
+            }
+            String n = firstNonBlank(str(o.getData().get("employeeName")), str(o.getData().get("dispatcher")));
+            if (!n.isBlank()) {
+                return n;
+            }
+        }
+        return "";
+    }
 
     private String signerName(Waybill wb, String titleType) {
         return titles.findByWaybillIdOrderBySignedAt(wb.getId()).stream()

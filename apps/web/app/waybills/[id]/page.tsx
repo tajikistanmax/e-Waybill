@@ -22,9 +22,16 @@ const CANCEL_LIKE_STATUSES = new Set(['CANCELLED', 'EXPIRED', 'BLOCKED']);
 type JournalEvent = { at: string; label: string; who: string; tone: 'ok' | 'bad' };
 
 function buildJournal(titles: Title[], history: StatusEvent[], t: (k: string) => string, tStatus: (s: string) => string): JournalEvent[] {
+  // Т4/Т5, подписанные до 23.09.2026, не несут Ф.И.О. — берём имя того же РМА из другого титула (Т1).
+  const nameByRma = new Map<string, string>();
+  for (const x of titles) {
+    const xd = (x.data ?? {}) as Record<string, unknown>;
+    const n = (xd.employeeName ?? xd.dispatcher) as string | undefined;
+    if (n && !nameByRma.has(x.signerRma)) nameByRma.set(x.signerRma, n);
+  }
   const titleEvents: JournalEvent[] = titles.map(ttl => {
     const d = (ttl.data ?? {}) as Record<string, unknown>;
-    const name = (d.employeeName ?? d.dispatcher) as string | undefined;
+    const name = ((d.employeeName ?? d.dispatcher) as string | undefined) || nameByRma.get(ttl.signerRma);
     const roleLabel = t(`role.${ttl.signerRole}`);
     const who = `${roleLabel || ttl.signerRole} (${name ?? ttl.signerRma})`;
     const baseKey = `wb.title.${ttl.titleType}`;
@@ -351,6 +358,17 @@ export default function WaybillCard({ params }: { params: Promise<{ id: string }
                 {t('wb.btn.t5')}
               </button>
             </span>
+          )}
+          {/* Послерейсовый медосмотр (Т6): врач проводит его в своём кабинете (/med, очередь Т6) —
+              с карточки ведём туда же, как и для Т2. Диспетчеру — подсказка, чего ждёт закрытие. */}
+          {w.status === 'RETURNED' && !titles.some(x => x.titleType === 'T6') && (
+            (has('DOCTOR') || has('SYSTEM_ADMIN'))
+              ? <a className="btn" href={`/med?t6=${id}`} style={{ textDecoration: 'none' }} data-testid="wb-t6-link">
+                  {lang === 'tj' ? 'Гузаронидани ташхиси баъд аз рейс (Т6)' : 'Провести послерейсовый медосмотр (Т6)'}
+                </a>
+              : <span className="hint" style={{ margin: 0, padding: '8px 12px' }}>
+                  {lang === 'tj' ? 'Дар интизори ташхиси тиббии баъд аз рейс (Т6) дар кабинети духтур' : 'Ожидает послерейсового медосмотра (Т6) в кабинете врача'}
+                </span>
           )}
           {w.status === 'RETURNED' && canDispatch && (
             <button className="btn" onClick={() => act(t('wb.act.closed'), () => wb.post(`/${id}/close`, { actor: dispatcher }))}>
@@ -749,7 +767,8 @@ export default function WaybillCard({ params }: { params: Promise<{ id: string }
             </div>
           )}
 
-          {(w.status === 'RETURNED' || w.status === 'COMPLETED') && (
+          {/* Троллейбус — электротранспорт: нормы топлива нет, кнопка расчёта только выдавала бы ошибку. */}
+          {(w.status === 'RETURNED' || w.status === 'COMPLETED') && w.waybillType !== 'WB_TROLLEYBUS' && (
             <div className="card">
               <h2>{t('wb.fuelnorm.h')}</h2>
               {!fuelCalc ? (

@@ -93,7 +93,16 @@ export default function PrintWaybill({ params }: { params: Promise<{ id: string 
   const s = (o: unknown) => (o == null ? '' : String(o));
 
   const signed = [...titles].sort((a, b) => (a.signedAt < b.signedAt ? -1 : 1));
-  const signerName = (t: Title) => s(t.data?.employeeName ?? t.data?.dispatcher ?? t.data?.newDriverName) || t.signerRma;
+  // Ф.И.О. подписанта: из данных титула; у Т4/Т5, подписанных до 23.09.2026, имени в данных нет —
+  // берём имя, под которым тот же сотрудник (тот же РМА) подписал другой титул (обычно Т1), и лишь
+  // затем РМА. Раньше в отметках выезда/возврата печатался РМА диспетчера вместо Ф.И.О.
+  const nameByRma = new Map<string, string>();
+  for (const x of titles) {
+    const n = s(x.data?.employeeName ?? x.data?.dispatcher);
+    if (n && !nameByRma.has(x.signerRma)) nameByRma.set(x.signerRma, n);
+  }
+  const signerName = (t: Title) => s(t.data?.employeeName ?? t.data?.dispatcher ?? t.data?.newDriverName)
+    || nameByRma.get(t.signerRma) || t.signerRma;
   const fingerprint = (t: Title) => (t.signature ? t.signature.replace(/[^A-Za-z0-9]/g, '').slice(0, 16).toUpperCase() : '—');
 
   const isIntlTruck = w.waybillType === 'WB_TRUCK_INTL';

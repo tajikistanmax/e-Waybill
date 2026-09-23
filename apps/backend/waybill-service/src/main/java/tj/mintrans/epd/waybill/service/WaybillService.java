@@ -913,6 +913,11 @@ public class WaybillService {
             return waybills.save(wb);
         }
         if (wb.getStatus() == WaybillStatus.RETURNED) { // послерейсовый (Т6)
+            // Один послерейсовый осмотр на лист: повторное нажатие (двойной клик, повтор после
+            // неудачного закрытия) раньше плодило второй Т6 (находка живой проверки 23.09.2026).
+            if (titles.existsByWaybillIdAndTitleType(id, "T6")) {
+                throw new ConflictException("Послерейсовый медосмотр (Т6) по этому путевому листу уже проведён");
+            }
             addTitle(wb, "T6", doctorRma, "DOCTOR", withMedicalVerdict(indicators, passed, doctor));
             return waybills.save(wb);
         }
@@ -1129,9 +1134,8 @@ public class WaybillService {
     public Waybill activate(UUID id, String dispatcherRma, Integer odometerExit) {
         var wb = getForUpdate(id);
         requireStatus(wb, WaybillStatus.ISSUED);
-        requireEmployee(wb, dispatcherRma, 3, "Диспетчер");
-        Integer lastKnown = wb.getVehicleSnapshot() != null
-                ? intOrNull(wb.getVehicleSnapshot().get("odometer")) : null;
+        var dispatcher = requireEmployee(wb, dispatcherRma, 3, "Диспетчер");
+        Integer lastKnown = lastKnownOdometer(wb);
         // Непрерывность одометра (антифрод): явный выезд не может быть отрицательным и не может
         // быть меньше последнего зафиксированного пробега ТС — иначе это скрутка/подмена показаний.
         if (odometerExit != null) {
@@ -1144,12 +1148,44 @@ public class WaybillService {
                                 .formatted(odometerExit, lastKnown));
             }
         }
-        int exit = odometerExit != null ? odometerExit
-                : lastKnown != null ? lastKnown : 0;
+        // Без явного значения: показание механика при техконтроле (Т3) либо текущий пробег ТС из
+        // справочника — большее из них. До 23.09.2026 здесь брался только снимок карточки ТС на момент
+        // ВЫПИСКИ, а показание механика затиралось: если пробег в карточке с тех пор вырос (другой
+        // лист, правка карточки), лист уезжал с заниженным одометром, и при закрытии справочник
+        // отказывался «уменьшать» пробег — закрытие падало с 500 (находка подготовки демонстрации).
+        int exit = odometerExit != null ? odometerExit : maxOrZero(wb.getOdometerExit(), lastKnown);
         wb.setOdometerExit(exit);
-        addTitle(wb, "T4", dispatcherRma, "DISPATCHER", Map.of("odometerExit", exit));
+        addTitle(wb, "T4", dispatcherRma, "DISPATCHER", Map.of("odometerExit", exit,
+                "dispatcher", str(dispatcher.get("name"))));
         transition(wb, WaybillStatus.ACTIVE, dispatcherRma, "Выезд на линию");
         return waybills.save(wb);
+    }
+
+    /**
+     * Последний известный пробег ТС: больший из снимка карточки на момент выписки и ТЕКУЩЕГО
+     * значения в справочнике мастер-данных (за время между выпиской и выездом его мог увеличить
+     * закрытый лист или правка карточки). Справочник недоступен — только снимок.
+     */
+    private Integer lastKnownOdometer(Waybill wb) {
+        Integer snapshot = wb.getVehicleSnapshot() != null
+                ? intOrNull(wb.getVehicleSnapshot().get("odometer")) : null;
+        Integer current = null;
+        try {
+            current = masterData.findVehicle(wb.getVehicleRegNumber())
+                    .map(v -> intOrNull(v.get("odometer"))).orElse(null);
+        } catch (RuntimeException e) {
+            // справочник недоступен — остаёмся на снимке, выезд не блокируем
+        }
+        if (snapshot == null) return current;
+        if (current == null) return snapshot;
+        return Math.max(snapshot, current);
+    }
+
+    private static int maxOrZero(Integer a, Integer b) {
+        if (a == null && b == null) return 0;
+        if (a == null) return b;
+        if (b == null) return a;
+        return Math.max(a, b);
     }
 
     /** Т5 — возвращение: одометр возврата. */
@@ -1220,7 +1256,7 @@ public class WaybillService {
                               ReturnMetrics metrics) {
         var wb = getForUpdate(id);
         requireStatus(wb, WaybillStatus.ACTIVE);
-        requireEmployee(wb, dispatcherRma, 3, "Диспетчер");
+        var dispatcher = requireEmployee(wb, dispatcherRma, 3, "Диспетчер");
         if (wb.getOdometerExit() != null && odometerEntry < wb.getOdometerExit()) {
             throw new UnprocessableException("Одометр возврата меньше одометра выезда");
         }
@@ -1266,7 +1302,10 @@ public class WaybillService {
         }
         addTitle(wb, "T5", dispatcherRma, "DISPATCHER", Map.of(
                 "odometerEntry", odometerEntry,
-                "distance", wb.getOdometerExit() != null ? odometerEntry - wb.getOdometerExit() : 0));
+                "distance", wb.getOdometerExit() != null ? odometerEntry - wb.getOdometerExit() : 0,
+                // Ф.И.О. в данных титула — чтобы отметка возврата на бланке показывала диспетчера по
+                // имени, а не РМА (Т1 так делал всегда, Т4/Т5 — нет; находка 23.09.2026).
+                "dispatcher", str(dispatcher.get("name"))));
         transition(wb, WaybillStatus.RETURNED, dispatcherRma, "Возвращение");
         return waybills.save(wb);
     }
@@ -1404,14 +1443,29 @@ public class WaybillService {
         boolean requireMedPost = policies.containsKey("require_med_post")
                 ? Boolean.parseBoolean(policies.get("require_med_post"))
                 : wb.getWaybillType().isPassenger();
-        if (requireMedPost && titles.findByWaybillIdAndTitleType(id, "T6").isEmpty()) {
+        // exists…, а не find…: при повторном Т6 «ровно один» бросал исключение, и лист с двумя
+        // послерейсовыми осмотрами навсегда оставался «возвращён» (409 «Неоднозначные данные»).
+        if (requireMedPost && !titles.existsByWaybillIdAndTitleType(id, "T6")) {
             throw new ConflictException("Требуется послерейсовый медосмотр (Т6) перед закрытием путевого листа");
         }
         // Перенос одометра в мастер-данные для следующего ПЛ
+        String note = "Путевой лист закрыт";
         if (wb.getOdometerEntry() != null && wb.getVehicleSnapshot() != null) {
-            masterData.updateVehicleOdometer(str(wb.getVehicleSnapshot().get("id")), wb.getOdometerEntry());
+            try {
+                masterData.updateVehicleOdometer(str(wb.getVehicleSnapshot().get("id")), wb.getOdometerEntry());
+            } catch (org.springframework.web.client.HttpClientErrorException.BadRequest
+                     | org.springframework.web.client.HttpClientErrorException.NotFound e) {
+                // Справочник отказался: пробег в карточке ТС уже БОЛЬШЕ одометра возврата (карточку
+                // поправили вручную или ТС успело отъездить по другому листу) либо ТС удалено.
+                // Справочник пробег не уменьшает — и не должен; но лист уже вернулся, одометр возврата
+                // зафиксирован титулом Т5 и исправлен быть не может. До 23.09.2026 это было 500 и лист
+                // навсегда оставался «возвращён». Теперь лист закрывается, а расхождение фиксируется
+                // в истории статусов, чтобы его видели при разборе.
+                note = "Путевой лист закрыт. Пробег ТС в справочнике не изменён: одометр возврата "
+                        + wb.getOdometerEntry() + " меньше текущего значения в карточке ТС (или ТС нет в справочнике) — проверьте карточку";
+            }
         }
-        transition(wb, WaybillStatus.COMPLETED, actor, "Путевой лист закрыт");
+        transition(wb, WaybillStatus.COMPLETED, actor, note);
         return waybills.save(wb);
     }
 
@@ -1711,7 +1765,8 @@ public class WaybillService {
             throw new UnprocessableException("Показатели доступны только для титулов Т2/Т6");
         }
         var wb = get(id); // тенант-проверка: DOCTOR — только своя организация, SYSTEM_ADMIN — любая
-        var title = titles.findByWaybillIdAndTitleType(wb.getId(), titleType)
+        // Последний осмотр: Т2 повторяется после замены водителя, Т6 — при повторном осмотре.
+        var title = titles.findFirstByWaybillIdAndTitleTypeOrderBySignedAtDesc(wb.getId(), titleType)
                 .orElseThrow(() -> new NotFoundException("Титул " + titleType + " не найден"));
         masterData.recordMedicalAccess(wb.getId().toString(), titleType);
         Map<String, Object> data = title.getData();

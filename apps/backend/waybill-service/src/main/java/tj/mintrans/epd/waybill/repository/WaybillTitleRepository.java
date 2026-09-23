@@ -12,7 +12,18 @@ public interface WaybillTitleRepository extends JpaRepository<WaybillTitle, UUID
 
     List<WaybillTitle> findByWaybillIdOrderBySignedAt(UUID waybillId);
 
+    /**
+     * Ровно один титул данного вида. ВНИМАНИЕ: титулы Т2 и Т6 у листа могут быть повторными
+     * (повторный медосмотр после замены водителя, повторный послерейсовый осмотр) — тогда этот
+     * метод бросает IncorrectResultSizeDataAccessException. В прикладном коде используйте
+     * {@link #existsByWaybillIdAndTitleType} и {@link #findFirstByWaybillIdAndTitleTypeOrderBySignedAtDesc}.
+     */
     Optional<WaybillTitle> findByWaybillIdAndTitleType(UUID waybillId, String titleType);
+
+    boolean existsByWaybillIdAndTitleType(UUID waybillId, String titleType);
+
+    /** Последний подписанный титул данного вида (Т2/Т6 могут повторяться). */
+    Optional<WaybillTitle> findFirstByWaybillIdAndTitleTypeOrderBySignedAtDesc(UUID waybillId, String titleType);
 
     boolean existsByWaybillIdAndTitleTypeAndSignerRma(UUID waybillId, String titleType, String signerRma);
 

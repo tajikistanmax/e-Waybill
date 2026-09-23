@@ -16,6 +16,22 @@ const PRINTER = 'M6 9V3h12v6M6 18H4a1 1 0 0 1-1-1v-5a2 2 0 0 1 2-2h14a2 2 0 0 1 
 
 const PER_PAGE = 10;
 
+/** Подписи очереди послерейсового осмотра (Т6). Держим рядом с кабинетом, пока общий словарь
+ *  правится параллельно; ключи те же по смыслу, что у предрейсовой очереди. */
+const T6_TEXT: Record<string, { ru: string; tj: string }> = {
+  h: { ru: 'Послерейсовый медосмотр (Т6)', tj: 'Ташхиси тиббии баъд аз рейс (Т6)' },
+  lead: { ru: 'Путевые листы после возврата — закрыть лист можно только после этого осмотра',
+    tj: 'Роҳхатҳо пас аз бозгашт — роҳхатро танҳо пас аз ин ташхис бастан мумкин аст' },
+  empty: { ru: 'Нет водителей, ожидающих послерейсового осмотра', tj: 'Ронандае, ки ташхиси баъд аз рейсро интизор аст, нест' },
+  returned: { ru: 'Вернулся', tj: 'Баргашт' },
+  ok: { ru: 'Послерейсовый осмотр (Т6) проведён — диспетчер может закрыть путевой лист',
+    tj: 'Ташхиси баъд аз рейс (Т6) гузаронида шуд — диспетчер роҳхатро баста метавонад' },
+  okDenied: { ru: 'Послерейсовый осмотр (Т6): выявлены нарушения — отмечено в путевом листе',
+    tj: 'Ташхиси баъд аз рейс (Т6): вайронкуниҳо ошкор шуданд — дар роҳхат қайд шуд' },
+  normal: { ru: 'Состояние в норме', tj: 'Ҳолат муқаррарӣ' },
+  abnormal: { ru: 'Выявлены нарушения', tj: 'Вайронкунӣ ошкор шуд' },
+};
+
 function isToday(iso: string) {
   const d = new Date(iso), n = new Date();
   return d.toDateString() === n.toDateString();
@@ -58,10 +74,17 @@ async function medRecordsOf(w: Waybill): Promise<MedRecord[]> {
  * Кабинет медика — панель управления предрейсовыми медосмотрами водителей.
  */
 export default function MedWorkstation() {
-  const { t } = useT();
+  const { t, lang } = useT();
+  const t6 = (k: string) => T6_TEXT[k]?.[lang === 'tj' ? 'tj' : 'ru'] ?? k;
   const [items, setItems] = useState<Waybill[]>([]);
   const [doctors, setDoctors] = useState<Record<string, { rma: string; name: string }[]>>({});
   const [selected, setSelected] = useState<Waybill | null>(null);
+  // Режим осмотра в модалке: предрейсовый (Т2) или послерейсовый (Т6). Эндпоинт один —
+  // confirm-med; какой титул ставить, служба решает по статусу листа (CREATED → Т2, RETURNED → Т6).
+  const [mode, setMode] = useState<'pre' | 'post'>('pre');
+  // Вернувшиеся листы, по которым Т6 ещё не подписан (id). Статус RETURNED остаётся и после Т6,
+  // поэтому наличие титула проверяем по списку титулов каждого вернувшегося листа.
+  const [postPending, setPostPending] = useState<Set<string>>(new Set());
   const [form, setForm] = useState({ pressure: '120/80', pulse: '72', temperature: '36.6', alcotest: '0.00' });
   const [error, setError] = useState('');
   const [ok, setOk] = useState('');
@@ -97,6 +120,21 @@ export default function MedWorkstation() {
   }, []);
 
   const pre = useMemo(() => items.filter(w => w.status === 'CREATED' && !w.medPassed), [items]);
+
+  // Очередь послерейсового осмотра (Т6): вернувшиеся листы без титула Т6. Без неё врач не видел
+  // вернувшихся водителей вовсе, а закрытие пассажирских форм требует Т6 — лист нельзя было закрыть
+  // из интерфейса (находка подготовки демонстрации 23.09.2026).
+  useEffect(() => {
+    const returned = items.filter(w => w.status === 'RETURNED');
+    if (returned.length === 0) { setPostPending(new Set()); return; }
+    let cancelled = false;
+    Promise.all(returned.map(w => wb.titles(w.id)
+      .then(ts => (ts.some(x => x.titleType === 'T6') ? null : w.id))
+      .catch(() => null)))
+      .then(ids => { if (!cancelled) setPostPending(new Set(ids.filter((x): x is string => !!x))); });
+    return () => { cancelled = true; };
+  }, [items]);
+  const post = useMemo(() => items.filter(w => w.status === 'RETURNED' && postPending.has(w.id)), [items, postPending]);
   // Группа риска — у водителя есть незакрытый отклонённый медосмотр (другой его ПЛ всё ещё
   // в статусе MED_REJECTED — не заменён и не аннулирован диспетчером): повод для повышенного
   // внимания врача, а не диагноз. Не ловит случаи, когда отказ уже скорректирован титулом
@@ -121,8 +159,9 @@ export default function MedWorkstation() {
   const passedToday = useMemo(() => items.filter(w => w.medPassed && isToday(w.createdAt)).length, [items]);
   const rejectedToday = useMemo(() => items.filter(w => w.status === 'MED_REJECTED' && isToday(w.createdAt)).length, [items]);
 
-  const openExam = useCallback(async (w: Waybill) => {
+  const openExam = useCallback(async (w: Waybill, m: 'pre' | 'post' = 'pre') => {
     setSelected(w);
+    setMode(m);
     setError('');
     setOk('');
     setForm({ pressure: '120/80', pulse: '72', temperature: '36.6', alcotest: '0.00' });
@@ -145,6 +184,19 @@ export default function MedWorkstation() {
     }
   }, [doctors, items]);
 
+  // Переход с карточки листа «Провести послерейсовый осмотр» — /med?t6=<id>: сразу открыть осмотр.
+  useEffect(() => {
+    if (typeof window === 'undefined' || selected) return;
+    const id = new URLSearchParams(window.location.search).get('t6');
+    if (!id) return;
+    const w = items.find(x => x.id === id && x.status === 'RETURNED');
+    if (w) {
+      openExam(w, 'post');
+      window.history.replaceState(null, '', '/med');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [items]);
+
   async function decide(passed: boolean) {
     if (!selected) return;
     const doctor = doctors[selected.organizationRma]?.[0];
@@ -161,9 +213,11 @@ export default function MedWorkstation() {
           alcotest: Number(form.alcotest),
         },
       });
-      setOk(passed
-        ? `${t('med.ok.allowed')} (${t('med.doctor')} ${doctor.name})`
-        : t('med.ok.denied'));
+      setOk(mode === 'post'
+        ? `${passed ? t6('ok') : t6('okDenied')} (${t('med.doctor')} ${doctor.name})`
+        : passed
+          ? `${t('med.ok.allowed')} (${t('med.doctor')} ${doctor.name})`
+          : t('med.ok.denied'));
       setSelected(null);
       await reload();
     } catch (e) {
@@ -172,7 +226,7 @@ export default function MedWorkstation() {
   }
 
   const kpis = [
-    { label: t('med.kpi.wait'), value: String(pre.length), icon: P.users, cls: 'ic-blue' },
+    { label: t('med.kpi.wait'), value: String(pre.length + post.length), icon: P.users, cls: 'ic-blue' },
     { label: t('med.kpi.passed'), value: String(passedToday), icon: P.check, cls: 'ic-green' },
     { label: t('med.kpi.failed'), value: String(rejectedToday), icon: XMARK, cls: 'ic-red' },
     { label: t('med.kpi.examined'), value: String(passedToday + rejectedToday), icon: P.doc, cls: 'ic-amber' },
@@ -346,6 +400,39 @@ export default function MedWorkstation() {
         </div>
       </div>
 
+      {/* Очередь послерейсового медосмотра (Т6) — вернувшиеся водители */}
+      <div className="card" data-testid="med-post-queue">
+        <div className="card-h">
+          <h2 style={{ display: 'inline-flex', alignItems: 'center', gap: 8, margin: 0 }}>
+            <Icon d={P.med} cls="" style={{ width: 18, height: 18, color: 'var(--blue-600)' }} /> {t6('h')}
+          </h2>
+          <span style={{ marginLeft: 'auto', color: 'var(--muted)', fontSize: 12.5 }}>{post.length} {t('med.inqueue')}</span>
+        </div>
+        <div style={{ color: 'var(--muted)', fontSize: 12.5, marginBottom: 10 }}>{t6('lead')}</div>
+        <table>
+          <thead>
+            <tr><th>{t('col.wbnum')}</th><th>{t('col.driver')}</th><th>{t('col.company')}</th><th>{t('col.transport')}</th><th>{t('col.status')}</th><th></th></tr>
+          </thead>
+          <tbody>
+            {post.map(w => (
+              <tr key={w.id}>
+                <td><span className="number">{w.number ?? t('common.draft')}</span></td>
+                <td>{String(w.driverSnapshot?.fullName ?? w.driverRma)}</td>
+                <td>{String(w.organizationSnapshot?.name ?? w.organizationRma)}</td>
+                <td>{w.vehicleRegNumber}</td>
+                <td><span className="badge amber">{t6('returned')}</span></td>
+                <td style={{ textAlign: 'right' }}>
+                  <button className="btn secondary" onClick={() => openExam(w, 'post')}>{t('med.btn.start')}</button>
+                </td>
+              </tr>
+            ))}
+            {post.length === 0 && (
+              <tr><td colSpan={6} style={{ color: 'var(--muted)', textAlign: 'center', padding: 22 }}>{t6('empty')}</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
       {/* Последние завершённые осмотры */}
       <div className="card">
         <div className="card-h"><h2>{t('med.recent.h')}</h2></div>
@@ -388,7 +475,7 @@ export default function MedWorkstation() {
         >
           <div className="card" onClick={e => e.stopPropagation()} style={{ width: 540, maxWidth: '100%', margin: 0, borderColor: 'var(--blue-500)', boxShadow: 'var(--shadow-lg)' }}>
             <div className="card-h">
-              <h2>{t('med.modal.h')}</h2>
+              <h2>{mode === 'post' ? t6('h') : t('med.modal.h')}</h2>
               <button
                 onClick={() => setSelected(null)}
                 aria-label={t('btn.close')}
@@ -457,10 +544,10 @@ export default function MedWorkstation() {
               </div>
               <div className="full" style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                 <button className="btn success" onClick={() => decide(true)}>
-                  <Icon d={P.check} cls="" style={{ width: 16, height: 16 }} /> {t('med.btn.allow')}
+                  <Icon d={P.check} cls="" style={{ width: 16, height: 16 }} /> {mode === 'post' ? t6('normal') : t('med.btn.allow')}
                 </button>
                 <button className="btn danger" onClick={() => decide(false)}>
-                  <Icon d={XMARK} cls="" style={{ width: 16, height: 16 }} /> {t('med.btn.deny')}
+                  <Icon d={XMARK} cls="" style={{ width: 16, height: 16 }} /> {mode === 'post' ? t6('abnormal') : t('med.btn.deny')}
                 </button>
                 <button className="btn secondary" onClick={() => setSelected(null)}>{t('btn.cancel')}</button>
               </div>

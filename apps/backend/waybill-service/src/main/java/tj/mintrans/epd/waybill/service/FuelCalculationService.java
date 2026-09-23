@@ -137,6 +137,13 @@ public class FuelCalculationService {
                             .findFirst()
                             .orElse(null));
             if (norm == null) {
+                // Троллейбус (вид ТС 2, форма Т(1-АД) троллейбус) — электротранспорт: нормы топлива
+                // для него нет и быть не должно. Раньше диспетчер получал «норма не задана», как будто
+                // забыли заполнить справочник (находка живой проверки 23.09.2026).
+                if (wb.getWaybillType() == WaybillType.WB_TROLLEYBUS || transportType == 2) {
+                    throw new UnprocessableException(
+                            "Троллейбус — электротранспорт: нормирование расхода топлива для него не ведётся");
+                }
                 throw new UnprocessableException("Норма расхода для типа ТС не задана");
             }
             baseNorm = decimal(norm.get("baseNorm"));
