@@ -68,7 +68,14 @@ public class RateLimitFilter extends OncePerRequestFilter {
             @Value("${epd.ratelimit.enabled:true}") boolean enabled,
             @Value("${epd.ratelimit.window-seconds:60}") long windowSeconds,
             @Value("${epd.ratelimit.general-capacity:300}") int generalCapacity,
-            @Value("${epd.ratelimit.public-capacity:60}") int publicCapacity,
+            // 1200, а не 60: браузер ходит к службе через прокси веб-приложения (Next.js), и
+            // адрес клиента до службы не доходит — все публичные запросы платформы приходят с
+            // одного адреса контейнера web. 60 в минуту на ВСЮ платформу — это ~8 входов в
+            // минуту (страница входа и шапка тянут настройки, логотип и фон): при показе
+            // заказчику страница входа теряла контакты поддержки и логотип (429, живая
+            // проверка 23.09.2026). Настоящий адрес клиента даст обратный прокси перед web
+            // с X-Forwarded-For — тогда потолок снова станет «на адрес».
+            @Value("${epd.ratelimit.public-capacity:1200}") int publicCapacity,
             @Value("${epd.ratelimit.ip-capacity:3000}") int ipCapacity,
             @Value("${epd.ratelimit.max-user-keys:50000}") int maxUserKeys) {
         this.enabled = enabled;
