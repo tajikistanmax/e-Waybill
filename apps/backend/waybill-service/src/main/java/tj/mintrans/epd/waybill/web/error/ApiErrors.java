@@ -16,6 +16,8 @@ import java.util.Map;
 @RestControllerAdvice
 public class ApiErrors {
 
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(ApiErrors.class);
+
     public static class NotFoundException extends RuntimeException {
         public NotFoundException(String m) { super(m); }
     }
@@ -127,9 +129,28 @@ public class ApiErrors {
         return problem(HttpStatus.UNPROCESSABLE_ENTITY, "Ошибка валидации", "Некорректный формат даты");
     }
 
-    /** Внутренние сбои (подпись QR/CAdES, сервисный токен) → 500 в едином формате RFC 7807, без утечки деталей. */
+    /**
+     * Внутренние сбои (подпись QR/CAdES, сервисный токен) → 500 в едином формате RFC 7807, без утечки деталей.
+     * Причина обязательно пишется в журнал службы: до 23.09.2026 здесь не было ни строки лога, и
+     * закрытие путевого листа падало с 500 «Внутренняя ошибка сервиса» при полностью чистом
+     * {@code docker logs} — причину (не задан пароль служебной учётной записи) пришлось искать по коду.
+     */
+    /**
+     * Служба не смогла войти служебной учётной записью (закрытие листа переносит одометр ТС в
+     * справочник именно ею). Это не ошибка данных пользователя и не «внутренняя ошибка» —
+     * 503 с понятным текстом, чтобы диспетчер позвал администратора, а не повторял закрытие.
+     */
+    @ExceptionHandler(tj.mintrans.epd.waybill.client.ServiceTokenProvider.ServiceAccountUnavailableException.class)
+    public ProblemDetail serviceAccount(tj.mintrans.epd.waybill.client.ServiceTokenProvider.ServiceAccountUnavailableException e) {
+        log.error("Служебная учётная запись недоступна: {}", e.getMessage());
+        return problem(HttpStatus.SERVICE_UNAVAILABLE, "Служебная учётная запись недоступна",
+                "Служба путевых листов не может обратиться к справочникам от своего имени "
+                        + "(служебная учётная запись не настроена или отклонена) — обратитесь к администратору платформы");
+    }
+
     @ExceptionHandler(IllegalStateException.class)
     public ProblemDetail internal(IllegalStateException e) {
+        log.error("Внутренняя ошибка обработки запроса: {}", e.getMessage(), e);
         return problem(HttpStatus.INTERNAL_SERVER_ERROR, "Внутренняя ошибка", "Внутренняя ошибка сервиса");
     }
 

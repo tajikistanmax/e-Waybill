@@ -35,6 +35,26 @@ public class ServiceTokenProvider {
         this.password = password;
     }
 
+    /**
+     * Служебная учётная запись недоступна (не задана в окружении либо master-data её не принял).
+     * Отдельный тип, чтобы пользователь получил понятное 503 «обратитесь к администратору», а
+     * причина — строку в журнале службы (см. ApiErrors), а не безликое 500.
+     */
+    public static class ServiceAccountUnavailableException extends IllegalStateException {
+        public ServiceAccountUnavailableException(String message, Throwable cause) {
+            super(message, cause);
+        }
+    }
+
+    @jakarta.annotation.PostConstruct
+    void warnIfNotConfigured() {
+        if (username == null || username.isBlank() || password == null || password.isBlank()) {
+            org.slf4j.LoggerFactory.getLogger(ServiceTokenProvider.class).warn(
+                    "Служебная учётная запись не задана (SERVICE_ACCOUNT_USERNAME / SERVICE_ACCOUNT_PASSWORD): "
+                            + "закрытие путевых листов (перенос одометра), агрегатор и планировщик работать не будут");
+        }
+    }
+
     /** Действующий служебный токен доступа (из кэша либо новый). */
     public synchronized String bearer() {
         long now = System.currentTimeMillis();
@@ -42,16 +62,24 @@ public class ServiceTokenProvider {
             return cachedToken;
         }
         if (username == null || username.isBlank() || password == null || password.isBlank()) {
-            throw new IllegalStateException("Служебная учётная запись не настроена: задайте "
-                    + "SERVICE_ACCOUNT_USERNAME и SERVICE_ACCOUNT_PASSWORD");
+            throw new ServiceAccountUnavailableException("Служебная учётная запись не настроена: задайте "
+                    + "SERVICE_ACCOUNT_USERNAME и SERVICE_ACCOUNT_PASSWORD в infra/.env", null);
         }
-        Map<String, Object> resp = tokenClient.post()
-                .contentType(MediaType.APPLICATION_JSON)
-                .body(Map.of("username", username, "password", password))
-                .retrieve()
-                .body(new ParameterizedTypeReference<Map<String, Object>>() {});
+        Map<String, Object> resp;
+        try {
+            resp = tokenClient.post()
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(Map.of("username", username, "password", password))
+                    .retrieve()
+                    .body(new ParameterizedTypeReference<Map<String, Object>>() {});
+        } catch (org.springframework.web.client.RestClientResponseException e) {
+            // 401/423 и т.п.: пароль в окружении не совпадает с записью в master-data, запись
+            // заблокирована или не создана. Пользователю — понятный отказ, в журнал — код ответа.
+            throw new ServiceAccountUnavailableException("Служебная учётная запись «" + username
+                    + "» не принята службой мастер-данных: HTTP " + e.getStatusCode().value(), e);
+        }
         if (resp == null || resp.get("access_token") == null) {
-            throw new IllegalStateException("Не удалось получить служебный токен платформы");
+            throw new ServiceAccountUnavailableException("Не удалось получить служебный токен платформы", null);
         }
         cachedToken = String.valueOf(resp.get("access_token"));
         int expiresIn = resp.get("expires_in") instanceof Number n ? n.intValue() : 60;

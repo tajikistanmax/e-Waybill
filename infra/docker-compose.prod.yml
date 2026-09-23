@@ -159,8 +159,10 @@ services:
       # служба путевых листов, когда пользовательского токена нет.
       # Пароль задаётся ТОЛЬКО в infra/.env (в git не попадает). Значения по умолчанию здесь
       # намеренно нет: пароль в репозитории — это выданный секрет.
+      # ${VAR:?…} — compose откажется стартовать без пароля (как с MEDDATA_ENCRYPTION_KEY):
+      # без него закрытие любого путевого листа падает на переносе одометра (находка 23.09.2026).
       SERVICE_ACCOUNT_USERNAME: ${SERVICE_ACCOUNT_USERNAME:-epd-service}
-      SERVICE_ACCOUNT_PASSWORD: ${SERVICE_ACCOUNT_PASSWORD}
+      SERVICE_ACCOUNT_PASSWORD: ${SERVICE_ACCOUNT_PASSWORD:?SERVICE_ACCOUNT_PASSWORD не задан — добавьте в infra/.env (openssl rand -base64 24)}
       # Единая платформа Минтранса (субъекты из налоговой, ТС из ГАИ).
       # stub — имитация; при подключении реальной платформы: http + UNIFIED_PLATFORM_URL
       UNIFIED_PLATFORM_MODE: ${UNIFIED_PLATFORM_MODE:-stub}
@@ -202,7 +204,7 @@ services:
       # (закрытие ПЛ, НЕРУ/ЧУРА, планировщик). Пароль — только из infra/.env.
       SERVICE_TOKEN_URI: ${SERVICE_TOKEN_URI:-http://master-data:8081/api/v1/auth/token}
       SERVICE_ACCOUNT_USERNAME: ${SERVICE_ACCOUNT_USERNAME:-epd-service}
-      SERVICE_ACCOUNT_PASSWORD: ${SERVICE_ACCOUNT_PASSWORD}
+      SERVICE_ACCOUNT_PASSWORD: ${SERVICE_ACCOUNT_PASSWORD:?SERVICE_ACCOUNT_PASSWORD не задан — добавьте в infra/.env (openssl rand -base64 24)}
       MASTER_DATA_URL: http://master-data:8081
       # Оплата ПЛ включена (AWAITING_PAYMENT → PAID; агрегаторские ПЛ покрыты абонементом)
       PAYMENT_ENABLED: ${PAYMENT_ENABLED:-true}

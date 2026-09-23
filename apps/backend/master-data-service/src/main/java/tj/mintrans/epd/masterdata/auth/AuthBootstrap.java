@@ -68,12 +68,17 @@ public class AuthBootstrap implements ApplicationRunner {
             log.info("Перенос учётных записей выключен (epd.auth.bootstrap.enabled=false)");
             return;
         }
-        if (users.count() > 0) {
+        // Служебная учётная запись сверяется с окружением при КАЖДОМ запуске, а не только на
+        // пустой таблице: иначе пароль, добавленный в infra/.env после первого старта (или
+        // сменённый), никогда не доходил до базы, служба путевых листов получала 401 при входе,
+        // и закрытие любого листа падало с 500 на переносе одометра (находка 23.09.2026).
+        boolean fresh = users.count() == 0;
+        ensureServiceAccountFromEnv();
+        if (!fresh) {
             return; // уже перенесено — повторно не трогаем
         }
         int created = importFromRealmExport();
         created += createAdminFromEnv();
-        created += createServiceAccountFromEnv();
         if (created == 0) {
             log.warn("Учётных записей нет и перенести неоткуда. Задайте EPD_AUTH_ADMIN_USERNAME "
                     + "и EPD_AUTH_ADMIN_PASSWORD, иначе войти в платформу будет некому.");
@@ -159,26 +164,57 @@ public class AuthBootstrap implements ApplicationRunner {
      * перенос одометра при закрытии листа. Раньше эту роль играл client-credentials клиент
      * Keycloak. Пароль — только из окружения; смена пароля для неё не требуется, иначе
      * межсервисные вызовы встанут.
+     *
+     * <p>Окружение — единственный источник правды для этой записи: при каждом запуске она
+     * создаётся, если её нет, а у существующей пароль, роль и признак «включена» приводятся к
+     * заданным. Так смена пароля в infra/.env вступает в силу перезапуском служб, без ручной
+     * правки базы. Возвращает 1, если запись создана.</p>
      */
-    private int createServiceAccountFromEnv() {
+    int ensureServiceAccountFromEnv() {
         if (serviceUsername == null || serviceUsername.isBlank()
                 || servicePassword == null || servicePassword.isBlank()) {
+            log.warn("Служебная учётная запись не задана (SERVICE_ACCOUNT_USERNAME / SERVICE_ACCOUNT_PASSWORD "
+                    + "в infra/.env): служба путевых листов не сможет перенести одометр при закрытии листа "
+                    + "и обслужить вызовы без пользователя (агрегатор, планировщик)");
             return 0;
         }
-        if (users.existsByUsername(serviceUsername)) {
-            return 0;
+        String username = serviceUsername.trim();
+        var existing = users.findByUsername(username);
+        if (existing.isEmpty()) {
+            var user = new AppUser();
+            user.setUsername(username);
+            user.setPasswordHash(passwords.encode(servicePassword));
+            user.setLastName("Служебная");
+            user.setFirstName("учётная запись");
+            user.setRoleList(List.of("API_INTEGRATOR"));
+            user.setEnabled(true);
+            user.setMustChangePassword(false);
+            users.save(user);
+            log.info("Создана служебная учётная запись межсервисных вызовов: {}", username);
+            return 1;
         }
-        var user = new AppUser();
-        user.setUsername(serviceUsername.trim());
-        user.setPasswordHash(passwords.encode(servicePassword));
-        user.setLastName("Служебная");
-        user.setFirstName("учётная запись");
-        user.setRoleList(List.of("API_INTEGRATOR"));
-        user.setEnabled(true);
-        user.setMustChangePassword(false);
-        users.save(user);
-        log.info("Создана служебная учётная запись межсервисных вызовов: {}", serviceUsername);
-        return 1;
+        var user = existing.get();
+        boolean changed = false;
+        if (user.getPasswordHash() == null || !passwords.matches(servicePassword, user.getPasswordHash())) {
+            user.setPasswordHash(passwords.encode(servicePassword));
+            changed = true;
+        }
+        if (!user.roleList().contains("API_INTEGRATOR")) {
+            var roles = new ArrayList<>(user.roleList());
+            roles.add("API_INTEGRATOR");
+            user.setRoleList(roles);
+            changed = true;
+        }
+        if (!user.isEnabled() || user.isMustChangePassword()) {
+            user.setEnabled(true);
+            user.setMustChangePassword(false);
+            changed = true;
+        }
+        if (changed) {
+            users.save(user);
+            log.info("Служебная учётная запись {} приведена к настройкам окружения", username);
+        }
+        return 0;
     }
 
     private static boolean requiresTotp(JsonNode user) {
