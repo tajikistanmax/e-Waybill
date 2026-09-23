@@ -94,7 +94,19 @@ export default function FleetView({ kind }: { kind: FleetKind }) {
     });
   }, [actActive, rows, statRows, q, kind, yearFrom, yearTo, actMode, actMap, actN]);
 
-  useEffect(() => { md.organizations().then(l => { if (l.length) setOrgRma(String(l[0].rma)); }).catch(() => {}); }, []);
+  // Организации области: у администратора компании — компания и филиалы. Раньше новая запись
+  // уходила в первую организацию из ответа (порядок не гарантирован — могла попасть в филиал),
+  // и в форме не было видно, куда именно. Теперь по умолчанию — головная компания (или филиал,
+  // выбранный переключателем в шапке), а при нескольких организациях в форме есть выбор.
+  const [orgs, setOrgs] = useState<Row[]>([]);
+  const headRma = useMemo(() => {
+    const head = orgs.find(o => !o.parentRma || !orgs.some(x => x.rma === o.parentRma)) ?? orgs[0];
+    return head ? String(head.rma) : '';
+  }, [orgs]);
+  useEffect(() => {
+    md.organizations().then(l => { setOrgs(l); }).catch(() => {});
+  }, []);
+  useEffect(() => { if (headRma) setOrgRma(headRma); }, [headRma]);
   // Смена раздела — сброс поиска, формы и сообщений.
   useEffect(() => { setQ(''); setRows([]); setForm(null); setMsg(''); setErr(''); }, [kind]);
   // Полный набор организации для счётчиков (реальные итоги, не ограниченные поиском/страницей).
@@ -185,10 +197,14 @@ export default function FleetView({ kind }: { kind: FleetKind }) {
 
   function openNew() {
     setForm(Object.fromEntries(fields.map(f => [f.key, ''])));
+    setOrgRma(headRma);
     setEditing(false); setMsg(''); setErr('');
   }
   function openEdit(row: Row) {
     setForm(Object.fromEntries(fields.map(f => [f.key, row[f.key] != null ? String(row[f.key]) : ''])));
+    // Правка — в той организации, где запись уже числится (иначе сохранение перенесло бы её).
+    const own = orgs.find(o => String(o.id) === String(row.organizationId));
+    setOrgRma(own ? String(own.rma) : headRma);
     setEditing(true); setMsg(''); setErr('');
   }
 
@@ -302,17 +318,28 @@ export default function FleetView({ kind }: { kind: FleetKind }) {
       {canManage && form && (
         <div className="card" style={{ padding: 18, marginBottom: 16 }}>
           <h2 style={{ marginTop: 0 }}>{editing ? t('fleet.edit') : (kind === 'vehicles' ? t('fleet.new.vehicle') : kind === 'drivers' ? t('fleet.new.driver') : t('fleet.new.employee'))}</h2>
+          {/* Куда записывается: компания или её филиал (видно и выбирается, если организаций несколько). */}
+          {orgs.length > 1 && orgs.length <= 50 && (
+            <div style={{ marginBottom: 12, maxWidth: 460 }}>
+              <label htmlFor="fleet-org" style={{ fontSize: 12.5, color: 'var(--muted)' }}>{t('access.f.org')} *</label>
+              <select id="fleet-org" value={orgRma} disabled={editing} onChange={e => setOrgRma(e.target.value)} style={{ width: '100%', marginTop: 4 }}>
+                {orgs.map(o => (
+                  <option key={String(o.rma)} value={String(o.rma)}>{String(o.name)}{o.parentRma ? t('access.f.branch.suffix') : ''}</option>
+                ))}
+              </select>
+            </div>
+          )}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 12 }}>
             {fields.map(f => (
               <div key={f.key}>
-                <label style={{ fontSize: 12.5, color: 'var(--muted)' }}>{f.label}{f.req ? ' *' : ''}</label>
+                <label htmlFor={`fleet-${f.key}`} style={{ fontSize: 12.5, color: 'var(--muted)' }}>{f.label}{f.req ? ' *' : ''}</label>
                 {f.type === 'select' ? (
-                  <select value={form[f.key] ?? ''} onChange={e => setForm(s => ({ ...s!, [f.key]: e.target.value }))} style={{ width: '100%', marginTop: 4 }}>
+                  <select id={`fleet-${f.key}`} value={form[f.key] ?? ''} onChange={e => setForm(s => ({ ...s!, [f.key]: e.target.value }))} style={{ width: '100%', marginTop: 4 }}>
                     <option value="">—</option>
                     {f.opts!.map(o => <option key={o.v} value={o.v}>{o.l}</option>)}
                   </select>
                 ) : (
-                  <input type={f.type === 'number' ? 'number' : f.type === 'date' ? 'date' : 'text'}
+                  <input id={`fleet-${f.key}`} type={f.type === 'number' ? 'number' : f.type === 'date' ? 'date' : 'text'}
                     value={form[f.key] ?? ''} disabled={editing && f.keyField}
                     onChange={e => setForm(s => ({ ...s!, [f.key]: e.target.value }))} style={{ width: '100%', marginTop: 4 }} />
                 )}

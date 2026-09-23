@@ -12,7 +12,7 @@ const BASE_ROLES = ['DISPATCHER', 'DOCTOR', 'MECHANIC', 'DRIVER', 'ACCOUNTANT', 
 // Роли кабинета накладных, которым нужен список контрагентов (claim client_ids).
 const CLIENT_CABINET_ROLES = ['CLIENT_SENDER', 'CLIENT_FORWARDER'];
 const dim = { color: 'var(--muted)' } as const;
-const smallBtn = { padding: '5px 10px', fontSize: 12 } as const;
+const smallBtn = { padding: '5px 10px', fontSize: 12, whiteSpace: 'nowrap' } as const;
 
 export default function AccessPage() {
   const { t } = useT();
@@ -309,6 +309,8 @@ export default function AccessPage() {
 
       <div className="card">
         <h2>{t('access.list.h')} <span style={dim}>({sortedUsers.length})</span></h2>
+        {/* Таблица шире карточки на ноутбуке — прокрутка внутри карточки, а не за её край. */}
+        <div style={{ overflowX: 'auto' }}>
         <table>
           <thead>
             <tr><th>{t('access.col.login')}</th><th>{t('access.col.fullname')}</th><th>{t('access.col.org')}</th><th>{t('access.col.role')}</th><th>{t('access.col.status')}</th><th>{' '}</th></tr>
@@ -324,13 +326,13 @@ export default function AccessPage() {
                       (CLIENT_* требуют списка контрагентов и выдаются только при создании). */}
                   {u.manageable !== false && grantableRoles.includes(roleOf(u)) && !CLIENT_CABINET_ROLES.includes(roleOf(u)) ? (
                     <select aria-label={t('access.col.role')} value={roleOf(u)} onChange={e => changeRole(u, e.target.value)}
-                      style={{ padding: '3px 6px', fontSize: 12.5 }}>
+                      style={{ padding: '3px 6px', fontSize: 12.5, minWidth: 170 }}>
                       {grantableRoles.filter(r => !CLIENT_CABINET_ROLES.includes(r)).map(r => <option key={r} value={r}>{t('role.' + r)}</option>)}
                     </select>
                   ) : t('role.' + roleOf(u))}
                 </td>
                 <td>{u.enabled ? <span className="badge green">{t('access.status.enabled')}</span> : <span className="badge">{t('access.status.disabled')}</span>}</td>
-                <td style={{ whiteSpace: 'nowrap', textAlign: 'right' }}>
+                <td style={{ textAlign: 'right' }}><div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, justifyContent: 'flex-end' }}>
                   {u.manageable === false ? (
                     <span style={{ ...dim, fontSize: 12 }}>{t('access.notmanageable')}</span>
                   ) : (
@@ -340,7 +342,7 @@ export default function AccessPage() {
                       <button className="btn danger" style={smallBtn} onClick={() => remove(u)}>{t('access.btn.remove')}</button>
                     </>
                   )}
-                </td>
+                </div></td>
               </tr>
             ))}
             {sortedUsers.length === 0 && (
@@ -348,6 +350,7 @@ export default function AccessPage() {
             )}
           </tbody>
         </table>
+        </div>
         <div style={{ ...dim, marginTop: 12, fontSize: 12.5 }}>
           {t('access.footnote.pre')}{' '}
           <Link href="/company">{t('nav.company')}</Link>. {t('access.footnote.post')}

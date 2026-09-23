@@ -63,9 +63,10 @@ export default function PasswordPage() {
   return (
     <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', padding: 16, background: 'var(--bg, #f4f7fb)' }}>
       <main style={{ width: '100%', maxWidth: 440 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
-          <span className="mark" style={{ width: 34, height: 34, display: 'grid', placeItems: 'center' }}><BrandLogo /></span>
-          <span style={{ fontWeight: 700 }}>{brand.name}</span>
+        {/* Та же марка, что на странице входа (стили .login-brand). */}
+        <div className="login-brand" style={{ marginBottom: 18 }}>
+          <span className="mark"><BrandLogo /></span>
+          <span className="lt">{brand.name}</span>
         </div>
         <h1 style={{ margin: '0 0 6px' }}>{t('pwd.h')}</h1>
         <p style={{ color: 'var(--muted)', marginTop: 0 }}>{authenticated ? t('pwd.intro.own') : t('pwd.intro.first')}</p>

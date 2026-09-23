@@ -62,6 +62,7 @@ export default function DriverCabinet() {
   const [reqErr, setReqErr] = useState('');
   const [orgName, setOrgName] = useState('');
   const [orgRma, setOrgRma] = useState('');
+  const [me, setMe] = useState<{ fullName?: string | null; licenseNumber?: string | null; licenseValidTo?: string | null; medCertValidTo?: string | null } | null>(null);
   // Автоподсказка ТС по госномеру: список машин своей компании (появляется при почти полном вводе).
   const [plateOpts, setPlateOpts] = useState<{ reg: string; brand: string }[]>([]);
   const [plateOpen, setPlateOpen] = useState(false);
@@ -167,6 +168,12 @@ export default function DriverCabinet() {
       setOrgName(String(l[0]?.name ?? ''));
       setOrgRma(String(l[0]?.rma ?? ''));
     }).catch(() => {});
+    // Своя карточка водителя (логин привязан к записи водителя по РМА): Ф.И.О. и сроки
+    // удостоверения и медсправки — раньше кабинет не показывал, чей он.
+    fetch('/wb-api/api/v1/mobile/me', { headers: authHeaders() })
+      .then(r => (r.ok ? r.json() : null))
+      .then(p => { if (p) setMe(p); })
+      .catch(() => {});
   }, []);
 
   // Заявка «Ожидает» уже подана → новую подать нельзя (правило «одна заявка в работе»).
@@ -285,6 +292,19 @@ export default function DriverCabinet() {
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: 'var(--blue-700)', fontWeight: 600, background: 'var(--blue-050)', padding: '3px 10px', borderRadius: 999 }}>
                 <Icon d={P.building} cls="" style={{ width: 14, height: 14 }} /> {t('drv.company')}: {company}
               </span>
+            )}
+            {me?.fullName && (
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontWeight: 600 }}>
+                <Icon d={P.user} cls="" style={{ width: 14, height: 14 }} /> {me.fullName}
+              </span>
+            )}
+            {me?.licenseValidTo && (
+              <span className={`badge ${validColor(me.licenseValidTo)}`}>
+                {t('drv.me.license')}{me.licenseNumber ? ` ${me.licenseNumber}` : ''}: {fmtDate(me.licenseValidTo)}
+              </span>
+            )}
+            {me?.medCertValidTo && (
+              <span className={`badge ${validColor(me.medCertValidTo)}`}>{t('drv.me.medcert')}: {fmtDate(me.medCertValidTo)}</span>
             )}
           </div>
         </div>
