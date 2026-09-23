@@ -1,0 +1,67 @@
+{
+  "_comment": "Test fleet for scripts/e2e-all-forms.ps1: organization 025680800 (demo carrier), staff under the demo logins, one vehicle + one driver per waybill form. Upsert-only (POST = create or update), safe to re-run.",
+  "organization": {
+    "rma": "025680800",
+    "name": "КВД «Автобуси Душанбе» (демо-перевозчик)",
+    "typeCompany": 1,
+    "regionId": 1,
+    "cityName": "Душанбе",
+    "address": "ш. Душанбе, кӯч. Айнӣ 14",
+    "phone": "+992372210000",
+    "nameHead": "Раҳимов Фирдавс",
+    "bank": "ҶСП «Ориёнбонк»",
+    "licenseFrom": "2025-01-01",
+    "carrierLicenseNumber": "ЛН-0001234",
+    "percentIncome": 0.3,
+    "cat1": 20,
+    "cat2": 10,
+    "cat3": 5,
+    "ownership": 2
+  },
+  "employees": [
+    { "rma": "111111111", "name": "Раҳимова Сурайё (врач)", "type": 1, "certNumber": "СВ-101" },
+    { "rma": "222222222", "name": "Қосимов Фаррух (механик)", "type": 2 },
+    { "rma": "333333333", "name": "Назарова Мунира (диспетчер)", "type": 3 },
+    { "rma": "444444444", "name": "Шарипова Гулнора (касса)", "type": 5 },
+    { "rma": "777777777", "name": "Саидов Бахтиёр (заправка)", "type": 4 }
+  ],
+  "forms": [
+    { "type": "WB_BUS",        "plate": "9911QA01", "tt": 1, "brand": "МАЗ",       "capacity": 40, "driverRma": "555555555", "driverName": "Тестовый Ронанда",          "fuelType": 2, "route": "QA1" },
+    { "type": "WB_TROLLEYBUS", "plate": "9912QA01", "tt": 2, "brand": "ЛиАЗ", "capacity": 90, "driverRma": "990000002", "driverName": "Каримов Даврон Саидович",   "fuelType": 5, "route": "QA2" },
+    { "type": "WB_MINIBUS",    "plate": "9913QA01", "tt": 3, "brand": "ГАЗель",     "capacity": 13, "driverRma": "990000003", "driverName": "Юсупов Шерали Раҳимович",   "fuelType": 1, "route": "QA3" },
+    { "type": "WB_CAR",        "plate": "9914QA01", "tt": 4, "brand": "Hyundai",     "capacity": 4,  "driverRma": "990000004", "driverName": "Назаров Сино Ҳамидович",    "fuelType": 1, "route": "QA4" },
+    { "type": "WB_TAXI",       "plate": "9915QA01", "tt": 4, "brand": "Opel Astra",      "capacity": 4,  "driverRma": "990000005", "driverName": "Одинаев Фаридун Каримович", "fuelType": 1 },
+    { "type": "WB_TRUCK",      "plate": "9916QA01", "tt": 5, "brand": "КамАЗ-5320", "carrying": 10000, "driverRma": "990000006", "driverName": "Ҳасанов Далер Олимович", "fuelType": 2 },
+    { "type": "WB_TRUCK_INTL", "plate": "9917QA01", "tt": 6, "brand": "Volvo",        "carrying": 20000, "driverRma": "990000007", "driverName": "Шарипов Бахром Ёрович", "fuelType": 2 },
+    { "type": "WB_PAX_INTL",   "plate": "9918QA01", "tt": 1, "brand": "Акиа",      "capacity": 50, "driverRma": "990000008", "driverName": "Мирзоев Ҷамшед Азизович",   "fuelType": 2, "route": "QA5" },
+    { "type": "WB_SPECIAL",    "plate": "9919QA01", "tt": 5, "brand": "КамАЗ",        "carrying": 6000, "driverRma": "990000009", "driverName": "Раҷабов Искандар Тоирович", "fuelType": 2 }
+  ],
+  "routes": [
+    { "number": "QA1", "name": "Душанбе: Вокзал - Зарафшон", "transportType": 1, "regionId": 1, "distanceA": 18, "distanceB": 18, "plannedLap": 6, "nameA": "Вокзал", "nameB": "Зарафшон", "averageLengthPassSeat": 7, "coeUseCapacity": 1 },
+    { "number": "QA2", "name": "Душанбе: Шоҳмансур - Сино", "transportType": 2, "regionId": 1, "distanceA": 12, "distanceB": 12, "plannedLap": 8, "nameA": "Шоҳмансур", "nameB": "Сино", "averageLengthPassSeat": 5, "coeUseCapacity": 1 },
+    { "number": "QA3", "name": "Душанбе - Ваҳдат", "transportType": 3, "regionId": 1, "distanceA": 22, "distanceB": 22, "plannedLap": 5, "nameA": "Душанбе", "nameB": "Ваҳдат", "averageLengthPassSeat": 15, "coeUseCapacity": 1 },
+    { "number": "QA4", "name": "Душанбе - Ҳисор (хатсайр)", "transportType": 4, "regionId": 1, "distanceA": 26, "distanceB": 26, "plannedLap": 4, "nameA": "Душанбе", "nameB": "Ҳисор", "averageLengthPassSeat": 20, "coeUseCapacity": 1 },
+    { "number": "QA5", "name": "Душанбе - Тошканд", "transportType": 1, "regionId": 1, "distanceA": 320, "distanceB": 320, "plannedLap": 1, "nameA": "Душанбе", "nameB": "Тошканд", "averageLengthPassSeat": 300, "coeUseCapacity": 1 }
+  ],
+  "text": {
+    "loadCity": "Душанбе",
+    "unloadCity": "Тошканд",
+    "cargoName": "Пахта (нахи пахта)",
+    "sender": "ҶДММ «Пахтаи Вахш»",
+    "receiver": "ООО «Toshkent Textile»",
+    "senderAddress": "ш. Бохтар, кӯч. Ваҳдат 5",
+    "receiverAddress": "г. Ташкент, ул. Навои 12",
+    "workObject": "Объект: ш. Душанбе, кӯч. Сомонӣ 50",
+    "specialMark": "Санҷиши QA",
+    "cancelReason": "Хатогии диспетчер (QA)",
+    "blockReason": "Санҷиши роҳ: ҳуҷҷат нодуруст (QA)"
+  },
+  "negative": [
+    { "key": "med",     "plate": "9921QA01", "tt": 1, "brand": "МАЗ",   "capacity": 40, "driverRma": "990000011", "driverName": "Табаров Нозим (недопуск врачом)" },
+    { "key": "tech",    "plate": "9922QA01", "tt": 1, "brand": "МАЗ",   "capacity": 40, "driverRma": "990000012", "driverName": "Латифов Умед (недопуск механиком)" },
+    { "key": "block",   "plate": "9923QA01", "tt": 1, "brand": "МАЗ",   "capacity": 40, "driverRma": "990000013", "driverName": "Самадов Ориф (блокировка)" },
+    { "key": "cancel",  "plate": "9924QA01", "tt": 1, "brand": "МАЗ",   "capacity": 40, "driverRma": "990000014", "driverName": "Файзуллоев Рустам (аннулирование)" },
+    { "key": "expired", "plate": "9925QA01", "tt": 1, "brand": "МАЗ",   "capacity": 40, "driverRma": "990000015", "driverName": "Абдуллоев Меҳроб (просрочка)", "expired": true },
+    { "key": "reserve", "plate": "9926QA01", "tt": 1, "brand": "МАЗ",   "capacity": 40, "driverRma": "990000016", "driverName": "Исмоилов Анвар (замена водителя)" }
+  ]
+}
