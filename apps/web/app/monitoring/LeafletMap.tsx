@@ -4,19 +4,27 @@ import { useEffect, useRef } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import type { LivePosition } from '@/lib/api';
+import tjBorder from './tajikistan-border.geo.json';
 
 /**
  * Настоящая карта (Leaflet) для GPS-мониторинга. Источник тайлов КОНФИГУРИРУЕМ через env:
- *   NEXT_PUBLIC_MAP_TILES_URL  — шаблон тайлов ({z}/{x}/{y}); в проде это тайлы госЦОД РТ или
- *                                карта GPS-платформы Минтранса (при интеграции — просто их URL),
- *                                либо самостоятельно поднятые офлайн-OSM-тайлы Таджикистана.
- *   NEXT_PUBLIC_MAP_ATTRIBUTION — подпись источника.
- * По умолчанию (демо, без настройки) — OpenStreetMap, чтобы карта работала сразу. Для гос-контура
- * ОБЯЗАТЕЛЬНО задать свой источник (не зависеть от зарубежных облаков).
+ *   NEXT_PUBLIC_MAP_TILES_URL  — шаблон тайлов ({z}/{x}/{y}); в проде — тайлы госЦОД РТ, карта
+ *                                ГП «Мониторинг» Минтранса, либо самостоятельно поднятый офлайн
+ *                                тайл-сервер в закрытом контуре (например TileServer GL).
+ *   NEXT_PUBLIC_MAP_ATTRIBUTION — подпись источника тайлов (если он задан).
+ * По умолчанию (переменная НЕ задана) внешние тайлы НЕ запрашиваются — платформа работает в
+ * закрытом гос-контуре без интернета (см. changelog/2026-09-23-локальные-шрифты-и-карты.md).
+ * Вместо растровых тайлов — офлайн-подложка: однотонный фон + контур границы Таджикистана
+ * (GeoJSON, вшит в сборку из tajikistan-border.geo.json, упрощённые координаты) — точки ТС и их
+ * взаимное расположение видны и без интернет-карты. Если NEXT_PUBLIC_MAP_TILES_URL задан —
+ * используются обычные растровые тайлы с указанного (в т.ч. локального) сервера.
  */
-const TILES = process.env.NEXT_PUBLIC_MAP_TILES_URL || 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
-const ATTR = process.env.NEXT_PUBLIC_MAP_ATTRIBUTION || '© OpenStreetMap · демо (в проде — тайлы госЦОД РТ)';
+const TILES = process.env.NEXT_PUBLIC_MAP_TILES_URL || '';
+const ATTR = process.env.NEXT_PUBLIC_MAP_ATTRIBUTION || '';
 const DUSHANBE: [number, number] = [38.5598, 68.7870];
+// Грубые границы Таджикистана с запасом — чтобы без тайловой подложки нельзя было ускакать в
+// пустой океан карты (офлайн-режим).
+const TJ_BOUNDS = L.latLngBounds([36.0, 66.3], [41.6, 75.5]);
 
 function agoSec(iso: string | null): number | null {
   if (!iso) return null;
@@ -44,7 +52,21 @@ export default function LeafletMap({ rows, t, tStatus, height = 560 }: Props) {
   useEffect(() => {
     if (!boxRef.current || mapRef.current) return;
     const map = L.map(boxRef.current, { center: DUSHANBE, zoom: 12, zoomControl: true, attributionControl: true });
-    L.tileLayer(TILES, { attribution: ATTR, maxZoom: 19 }).addTo(map);
+    if (TILES) {
+      // Настроенный тайл-сервер (свой/локальный) — обычные растровые тайлы.
+      L.tileLayer(TILES, { attribution: ATTR, maxZoom: 19 }).addTo(map);
+    } else {
+      // Офлайн: без внешних тайлов. Однотонный фон (см. .leaflet-offline в globals.css) + контур
+      // границы Таджикистана, чтобы точки ТС были видны на местности без интернета.
+      boxRef.current.classList.add('leaflet-offline');
+      L.geoJSON(tjBorder as GeoJSON.GeoJsonObject, {
+        style: { color: '#2563eb', weight: 1.5, fillColor: '#dbe7fe', fillOpacity: 0.5 },
+      }).addTo(map);
+      map.attributionControl.setPrefix(false);
+      map.attributionControl.addAttribution('Контур границы РТ — упрощённая офлайн-подложка');
+      map.setMaxBounds(TJ_BOUNDS.pad(0.15));
+      map.setMinZoom(6);
+    }
     layerRef.current = L.layerGroup().addTo(map);
     mapRef.current = map;
     setTimeout(() => map.invalidateSize(), 120); // корректный размер после раскладки

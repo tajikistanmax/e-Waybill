@@ -31,11 +31,13 @@ WORKDIR /repo/apps/public
 RUN npm run build
 
 # «Запекаем» static в дерево standalone по пути, который ждёт сервер (<standalone>/apps/public/
-# .next/static) — так же, как в apps/web/Dockerfile. public-статику (отдельной папки public нет).
+# .next/static) — так же, как в apps/web/Dockerfile. Плюс public/ (локальные шрифты Inter/
+# JetBrains Mono, см. changelog/2026-09-23-локальные-шрифты-и-карты.md — без Google Fonts CDN).
 RUN set -eux; \
     APP=".next/standalone/apps/public"; \
     mkdir -p "${APP}/.next/static"; \
     cp -r ".next/static/." "${APP}/.next/static/"; \
+    cp -r public "${APP}/public"; \
     mkdir -p /out; \
     cp -r ".next/standalone" /out/standalone
 
