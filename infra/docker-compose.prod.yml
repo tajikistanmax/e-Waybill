@@ -163,6 +163,11 @@ services:
       # без него закрытие любого путевого листа падает на переносе одометра (находка 23.09.2026).
       SERVICE_ACCOUNT_USERNAME: ${SERVICE_ACCOUNT_USERNAME:-epd-service}
       SERVICE_ACCOUNT_PASSWORD: ${SERVICE_ACCOUNT_PASSWORD:?SERVICE_ACCOUNT_PASSWORD не задан — добавьте в infra/.env (openssl rand -base64 24)}
+      # Учётная запись внешнего агрегатора (канал /api/v1/aggregator при AGGREGATOR_OPEN=false).
+      # Агрегатор получает токен POST /api/v1/auth/token этим логином. Необязательна: пустой
+      # пароль — запись не создаётся. Пароль — только в infra/.env.
+      AGGREGATOR_USERNAME: ${AGGREGATOR_USERNAME:-epd-aggregator}
+      AGGREGATOR_PASSWORD: ${AGGREGATOR_PASSWORD:-}
       # Единая платформа Минтранса (субъекты из налоговой, ТС из ГАИ).
       # stub — имитация; при подключении реальной платформы: http + UNIFIED_PLATFORM_URL
       UNIFIED_PLATFORM_MODE: ${UNIFIED_PLATFORM_MODE:-stub}

@@ -43,6 +43,8 @@ public class AuthBootstrap implements ApplicationRunner {
     private final String adminPassword;
     private final String serviceUsername;
     private final String servicePassword;
+    private final String aggregatorUsername;
+    private final String aggregatorPassword;
 
     public AuthBootstrap(AppUserRepository users, PasswordEncoder passwords,
                          @Value("${epd.auth.bootstrap.enabled:true}") boolean enabled,
@@ -50,7 +52,9 @@ public class AuthBootstrap implements ApplicationRunner {
                          @Value("${epd.auth.bootstrap.admin-username:}") String adminUsername,
                          @Value("${epd.auth.bootstrap.admin-password:}") String adminPassword,
                          @Value("${epd.auth.bootstrap.service-username:}") String serviceUsername,
-                         @Value("${epd.auth.bootstrap.service-password:}") String servicePassword) {
+                         @Value("${epd.auth.bootstrap.service-password:}") String servicePassword,
+                         @Value("${epd.auth.bootstrap.aggregator-username:}") String aggregatorUsername,
+                         @Value("${epd.auth.bootstrap.aggregator-password:}") String aggregatorPassword) {
         this.users = users;
         this.passwords = passwords;
         this.enabled = enabled;
@@ -59,6 +63,8 @@ public class AuthBootstrap implements ApplicationRunner {
         this.adminPassword = adminPassword;
         this.serviceUsername = serviceUsername;
         this.servicePassword = servicePassword;
+        this.aggregatorUsername = aggregatorUsername;
+        this.aggregatorPassword = aggregatorPassword;
     }
 
     @Override
@@ -74,6 +80,7 @@ public class AuthBootstrap implements ApplicationRunner {
         // и закрытие любого листа падало с 500 на переносе одометра (находка 23.09.2026).
         boolean fresh = users.count() == 0;
         ensureServiceAccountFromEnv();
+        ensureAggregatorAccountFromEnv();
         if (!fresh) {
             return; // уже перенесено — повторно не трогаем
         }
@@ -178,25 +185,56 @@ public class AuthBootstrap implements ApplicationRunner {
                     + "и обслужить вызовы без пользователя (агрегатор, планировщик)");
             return 0;
         }
-        String username = serviceUsername.trim();
+        return ensureIntegratorAccount(serviceUsername.trim(), servicePassword,
+                "Служебная", "учётная запись", "служебная учётная запись межсервисных вызовов");
+    }
+
+    /**
+     * Учётная запись внешней системы-агрегатора (канал {@code /api/v1/aggregator/**}, роль
+     * {@code API_INTEGRATOR}). Раньше агрегатор получал токен как client-credentials клиент
+     * Keycloak {@code epd-aggregator}; после отказа от Keycloak ему негде было взять токен, и при
+     * {@code AGGREGATOR_OPEN=false} (по умолчанию в боевом compose) канал был недоступен.
+     * Теперь агрегатор входит обычным {@code POST /api/v1/auth/token} этой учётной записью.
+     * Отдельная запись, а не служебная: внутренний секрет платформы внешней стороне не выдаётся,
+     * и доступ агрегатора можно отозвать, не останавливая межсервисные вызовы.
+     * Необязательна: без пароля в окружении ничего не создаётся.
+     */
+    int ensureAggregatorAccountFromEnv() {
+        if (aggregatorUsername == null || aggregatorUsername.isBlank()
+                || aggregatorPassword == null || aggregatorPassword.isBlank()) {
+            log.info("Учётная запись агрегатора не задана (AGGREGATOR_USERNAME / AGGREGATOR_PASSWORD): "
+                    + "канал /api/v1/aggregator доступен только при AGGREGATOR_OPEN=true");
+            return 0;
+        }
+        return ensureIntegratorAccount(aggregatorUsername.trim(), aggregatorPassword,
+                "Агрегатор", "внешняя система", "учётная запись агрегатора");
+    }
+
+    /**
+     * Создаёт учётную запись интеграции с ролью {@code API_INTEGRATOR}, если её нет, а у
+     * существующей приводит пароль, роль и признак «включена» к окружению. Возвращает 1, если
+     * запись создана.
+     */
+    private int ensureIntegratorAccount(String username, String password,
+                                        String lastName, String firstName, String label) {
         var existing = users.findByUsername(username);
         if (existing.isEmpty()) {
             var user = new AppUser();
             user.setUsername(username);
-            user.setPasswordHash(passwords.encode(servicePassword));
-            user.setLastName("Служебная");
-            user.setFirstName("учётная запись");
+            user.setPasswordHash(passwords.encode(password));
+            user.setLastName(lastName);
+            user.setFirstName(firstName);
             user.setRoleList(List.of("API_INTEGRATOR"));
             user.setEnabled(true);
             user.setMustChangePassword(false);
             users.save(user);
-            log.info("Создана служебная учётная запись межсервисных вызовов: {}", username);
+            log.info("Создана {}: {}", label, username);
             return 1;
         }
         var user = existing.get();
         boolean changed = false;
-        if (user.getPasswordHash() == null || !passwords.matches(servicePassword, user.getPasswordHash())) {
-            user.setPasswordHash(passwords.encode(servicePassword));
+        if (user.getPasswordHash() == null || !passwords.matches(password, user.getPasswordHash())) {
+            user.setPasswordHash(passwords.encode(password));
             changed = true;
         }
         if (!user.roleList().contains("API_INTEGRATOR")) {
@@ -212,7 +250,7 @@ public class AuthBootstrap implements ApplicationRunner {
         }
         if (changed) {
             users.save(user);
-            log.info("Служебная учётная запись {} приведена к настройкам окружения", username);
+            log.info("Приведена к настройкам окружения: {} {}", label, username);
         }
         return 0;
     }

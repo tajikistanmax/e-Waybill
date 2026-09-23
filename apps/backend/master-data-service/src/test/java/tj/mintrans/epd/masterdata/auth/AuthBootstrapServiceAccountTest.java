@@ -35,7 +35,42 @@ class AuthBootstrapServiceAccountTest {
     }
 
     private AuthBootstrap bootstrap(String username, String password) {
-        return new AuthBootstrap(users, encoder, true, "", "", "", username, password);
+        return new AuthBootstrap(users, encoder, true, "", "", "", username, password, "", "");
+    }
+
+    private AuthBootstrap bootstrapWithAggregator(String aggUsername, String aggPassword) {
+        return new AuthBootstrap(users, encoder, true, "", "", "", "", "", aggUsername, aggPassword);
+    }
+
+    /**
+     * Агрегатор (канал /api/v1/aggregator) раньше брал токен у Keycloak как client-credentials
+     * клиент epd-aggregator; после отказа от Keycloak учётной записи для него не было, и при
+     * AGGREGATOR_OPEN=false канал был недоступен (находка регрессии 24.09.2026).
+     */
+    @Test
+    void createsSeparateAggregatorAccountWithIntegratorRole() {
+        when(users.count()).thenReturn(17L);
+        when(users.findByUsername("epd-aggregator")).thenReturn(Optional.empty());
+
+        bootstrapWithAggregator("epd-aggregator", "Agg-Secret-2026").run(null);
+
+        var saved = org.mockito.ArgumentCaptor.forClass(AppUser.class);
+        verify(users).save(saved.capture());
+        assertThat(saved.getValue().getUsername()).isEqualTo("epd-aggregator");
+        assertThat(saved.getValue().roleList()).containsExactly("API_INTEGRATOR");
+        assertThat(saved.getValue().isEnabled()).isTrue();
+        assertThat(saved.getValue().isMustChangePassword()).isFalse();
+        assertThat(encoder.matches("Agg-Secret-2026", saved.getValue().getPasswordHash())).isTrue();
+    }
+
+    @Test
+    void withoutAggregatorPasswordNoAggregatorAccountIsCreated() {
+        when(users.count()).thenReturn(17L);
+
+        bootstrapWithAggregator("epd-aggregator", "").run(null);
+
+        verify(users, never()).findByUsername("epd-aggregator");
+        verify(users, never()).save(any());
     }
 
     @Test

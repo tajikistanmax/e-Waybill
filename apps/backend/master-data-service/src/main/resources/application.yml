@@ -71,6 +71,10 @@ epd:
       # служба путевых листов, когда пользовательского токена нет.
       service-username: ${SERVICE_ACCOUNT_USERNAME:}
       service-password: ${SERVICE_ACCOUNT_PASSWORD:}
+      # Учётная запись внешнего агрегатора (канал /api/v1/aggregator, роль API_INTEGRATOR),
+      # замена client-credentials клиента Keycloak epd-aggregator. Без пароля не создаётся.
+      aggregator-username: ${AGGREGATOR_USERNAME:epd-aggregator}
+      aggregator-password: ${AGGREGATOR_PASSWORD:}
   keycloak:
     # ОТКЛЮЧЕНО с 23.09.2026: аутентификация перенесена в платформу (epd.auth выше).
     # Блок оставлен, чтобы классы прежней интеграции собирались и не мешали запуску;
