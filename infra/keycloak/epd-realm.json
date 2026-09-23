@@ -17,9 +17,7 @@
   "quickLoginCheckMilliSeconds": 1000,
   "maxDeltaTimeSeconds": 43200,
   "failureFactor": 5,
-  "attributes": {
-    "frontendUrl": "http://10.10.29.70:8180"
-  },
+  "attributes" : { },
   "components": {
     "org.keycloak.userprofile.UserProfileProvider": [
       {

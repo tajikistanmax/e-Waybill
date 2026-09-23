@@ -6,19 +6,27 @@
 # Запуск локального стека:
 #   docker compose -p epd-rt-prod -f docker-compose.prod.yml -f docker-compose.local.yml up -d --build
 #
-# Issuer JWT: realm epd в infra/keycloak/epd-realm.json несёт frontendUrl=http://10.10.29.70:8180
-# (канонический iss токена независимо от хоста запроса). Сервисы сверяют iss с
-# epd.security.expected-issuer (env KEYCLOAK_EXPECTED_ISSUER, по умолчанию localhost:8180) —
-# для локального стека задаём его равным frontendUrl, иначе после (пере)импорта realm все
-# запросы к API получают 401 «The iss claim is not valid».
+# ВНЕШНИЙ АДРЕС KEYCLOAK. Keycloak подставляет его во ВСЕ страницы, которые открывает браузер
+# (форма входа, смена временного пароля, настройка второго фактора), и в claim `iss` токена.
+# Пока адрес был жёстко записан в realm как http://10.10.29.70:8180, форма входа на локальной
+# машине отправлялась на недоступный хост: пользователь вводил логин и пароль и оставался на
+# :8180 (находка владельца 23.09.2026). Путь через страницу Keycloak включается для учёток с
+# незавершённым действием — временный пароль у КАЖДОГО нового пользователя и обязательный
+# второй фактор у привилегированных ролей, то есть ломался вход всем новым пользователям.
+#
+# Здесь задаём адрес, по которому Keycloak открыт с этой машины, и тот же адрес — в проверке
+# `iss` у служб. Значения обязаны совпадать, иначе API отвечает 401 «The iss claim is not valid».
 services:
+  keycloak:
+    environment:
+      KC_HOSTNAME: ${KC_HOSTNAME:-http://localhost:8180}
   master-data:
     ports:
       - "8081:8081"
     environment:
-      KEYCLOAK_EXPECTED_ISSUER: ${KEYCLOAK_EXPECTED_ISSUER:-http://10.10.29.70:8180/realms/epd}
+      KEYCLOAK_EXPECTED_ISSUER: ${KEYCLOAK_EXPECTED_ISSUER:-http://localhost:8180/realms/epd}
   waybill:
     ports:
       - "8082:8082"
     environment:
-      KEYCLOAK_EXPECTED_ISSUER: ${KEYCLOAK_EXPECTED_ISSUER:-http://10.10.29.70:8180/realms/epd}
+      KEYCLOAK_EXPECTED_ISSUER: ${KEYCLOAK_EXPECTED_ISSUER:-http://localhost:8180/realms/epd}
