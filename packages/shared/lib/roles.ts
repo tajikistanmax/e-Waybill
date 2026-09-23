@@ -27,7 +27,10 @@ export function visibleNav(roles: string[]): Set<NavKey> {
 
   // Админ надзирает и настраивает — осмотры НЕ проводит (Т2/Т3 подписывают врач/механик
   // своими РМА в /med и /tech). Поэтому у админов нет АРМ врача/механика в меню.
-  if (roles.includes('SYSTEM_ADMIN')) add('dashboard', 'waybills', 'company', 'monitoring', 'registry', 'violations', 'reports', 'dictionaries', 'settings');
+  // 'access' — обязательно: учётные записи заводит в том числе администратор платформы
+  // (первый администратор новой компании-перевозчика выдаётся только им). Без этого ключа
+  // пункта «Доступы» в меню не было вовсе, и завести пользователя было нельзя (находка 23.09.2026).
+  if (roles.includes('SYSTEM_ADMIN')) add('dashboard', 'waybills', 'company', 'access', 'monitoring', 'registry', 'violations', 'reports', 'dictionaries', 'settings');
   // Админ компании-перевозчика ведёт свою организацию и все её филиалы: парк и персонал (fleet),
   // доступы сотрудников (access), свои ПЛ/отчёты/нарушения/GPS, реестр и справочники расчёта —
   // на просмотр. НЕ платформенные Настройки §29 и нац. справочники.

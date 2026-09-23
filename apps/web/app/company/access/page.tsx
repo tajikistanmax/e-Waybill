@@ -55,27 +55,52 @@ export default function AccessPage() {
     return o ? String(o.name) : rma;
   }, [orgs]);
 
+  // Организация, с которой работаем. Перевозчик видит одну — свою; администратор платформы
+  // выбирает из списка. Без выбора список пользователей на бэкенде пуст: выгружать учётки всех
+  // 604 организаций разом нельзя (см. OrgUserController.scopeFor).
+  const [org, setOrg] = useState('');
+
+  // Список организаций — один раз при открытии страницы.
+  useEffect(() => {
+    let alive = true;
+    md.orgUsers.provisioningEnabled()
+      .then(on => {
+        if (!alive) return;
+        setAvailable(on);
+        if (!on) return;
+        return md.organizations().then(ol => {
+          if (!alive) return;
+          setOrgs(ol);
+          const first = String((ol.find(o => !o.parentRma) ?? ol[0])?.rma ?? '');
+          setOrg(prev => prev || first);
+          setFOrg(prev => prev || first);
+        });
+      })
+      .catch(e => { if (alive) setErr(e instanceof Error ? e.message : String(e)); });
+    md.clients().then(list => setClients(list as unknown as Row[])).catch(() => setClients([]));
+    return () => { alive = false; };
+  }, []);
+
+  // Пользователи и список людей — по выбранной организации. Именно по организации, а не
+  // «все»: полные справочники водителей и сотрудников на боевых данных весят десятки мегабайт.
   const load = useCallback(async () => {
+    if (!org) return;
     setErr('');
     try {
-      const on = await md.orgUsers.provisioningEnabled();
-      setAvailable(on);
-      if (!on) return;
-      const [ol, ul] = await Promise.all([md.organizations(), md.orgUsers.list()]);
-      setOrgs(ol);
+      const [ul, emps, drs] = await Promise.all([
+        md.orgUsers.list(org),
+        md.employees(org),
+        md.drivers(org),
+      ]);
       setUsers(ul);
-      setFOrg(prev => prev || String((ol.find(o => !o.parentRma) ?? ol[0])?.rma ?? ''));
-      const [emps, drs] = await Promise.all([md.allEmployees(), md.allDrivers()]);
       const list: { rma: string; name: string; kind: 'EMPLOYEE' | 'DRIVER'; phone: string }[] = [];
       emps.forEach(e => list.push({ rma: String(e.rma), name: String(e.name ?? ''), kind: 'EMPLOYEE', phone: String(e.phone ?? '') }));
       drs.forEach(d => list.push({ rma: String(d.rma), name: String(d.fullName ?? ''), kind: 'DRIVER', phone: String(d.phone ?? '') }));
       setPeople(list);
-      // Справочник контрагентов — для выдачи логинов грузоотправителю/экспедитору.
-      md.clients().then(list => setClients(list as unknown as Row[])).catch(() => setClients([]));
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
     }
-  }, []);
+  }, [org]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -158,6 +183,24 @@ export default function AccessPage() {
       </p>
 
       {err && <div className="error">{err}</div>}
+
+      {/* Выбор организации — для тех, кто видит больше одной (администратор платформы).
+          Перевозчику список сужен токеном, и переключать нечего. */}
+      {orgs.length > 1 && (
+        <div className="card">
+          <div className="card-h">
+            <h2>{t('access.org.h')}</h2>
+            <select
+              value={org}
+              onChange={e => { setOrg(e.target.value); setFOrg(e.target.value); setFPerson(''); }}
+              style={{ marginLeft: 'auto', minWidth: 320 }}
+            >
+              {orgs.map(o => <option key={String(o.rma)} value={String(o.rma)}>{String(o.name ?? o.rma)} · {String(o.rma)}</option>)}
+            </select>
+          </div>
+          <p style={{ ...dim, margin: 0 }}>{t('access.org.hint')}</p>
+        </div>
+      )}
 
       {freshPassword && (
         <div className="card" style={{ borderColor: 'var(--green)', background: 'var(--green-050)' }}>
