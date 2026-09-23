@@ -62,7 +62,7 @@ services:
       - ./keycloak:/opt/keycloak/data/import:ro
 
   minio:
-    image: minio/minio:latest
+    image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z   # Docker Hub больше не раздаёт minio/minio
     container_name: epd-minio
     command: server /data --console-address ":9001"
     environment:
