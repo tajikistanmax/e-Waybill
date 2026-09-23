@@ -62,6 +62,13 @@ public class WaybillPrintService {
             "T1", "Выпуск (Т1)", "T2", "Предрейсовый медосмотр (Т2)", "T3", "Предрейсовый техконтроль (Т3)",
             "T4", "Выезд на линию (Т4)", "T5", "Возвращение (Т5)", "T6", "Послерейсовый медосмотр (Т6)",
             "CORRECTION", "Корректировка");
+    private static final Map<String, String> STATUS_LABEL = Map.ofEntries(
+            Map.entry("DRAFT", "Черновик"), Map.entry("CREATED", "Ожидает осмотров"),
+            Map.entry("MED_REJECTED", "Не допущен врачом"), Map.entry("TECH_REJECTED", "Не допущен механиком"),
+            Map.entry("AWAITING_PAYMENT", "Ожидает оплаты"), Map.entry("PAID", "Оплачен"),
+            Map.entry("READY", "Готов к выдаче"), Map.entry("ISSUED", "Выдан"), Map.entry("ACTIVE", "На линии"),
+            Map.entry("RETURNED", "Возвращён"), Map.entry("COMPLETED", "Завершён"), Map.entry("CANCELLED", "Аннулирован"),
+            Map.entry("EXPIRED", "Просрочен"), Map.entry("BLOCKED", "Заблокирован"), Map.entry("ARCHIVED", "В архиве"));
     private static final Map<String, String> ROLE_LABEL = Map.of(
             "DISPATCHER", "Диспетчер", "DOCTOR", "Медработник", "MECHANIC", "Механик");
 
@@ -242,8 +249,11 @@ public class WaybillPrintService {
         m.put("ownershipName", subjectTypeName(str(org.get("subjectType"))));
         m.put("orgRegion", str(org.get("regionId")));
 
-        OffsetDateTime from = wb.getValidFrom() != null ? wb.getValidFrom() : wb.getCreatedAt();
-        OffsetDateTime to = wb.getValidTo() != null ? wb.getValidTo() : from;
+        // Даты и время бланка — в местном поясе (PrintZone), а не в поясе контейнера (UTC).
+        OffsetDateTime fromUtc = wb.getValidFrom() != null ? wb.getValidFrom() : wb.getCreatedAt();
+        OffsetDateTime toUtc = wb.getValidTo() != null ? wb.getValidTo() : fromUtc;
+        java.time.ZonedDateTime from = PrintZone.local(fromUtc);
+        java.time.ZonedDateTime to = PrintZone.local(toUtc);
         if (from != null) {
             m.put("day", from.getDayOfMonth());
             m.put("monthName", MONTHS_TJ[from.getMonthValue() - 1]);
@@ -551,12 +561,14 @@ public class WaybillPrintService {
             row.put("signer", firstNonBlank(str(data.get("employeeName")), str(data.get("dispatcher")),
                     str(data.get("newDriverName")), knownName(allTitles, t.getSignerRma()), t.getSignerRma()));
             row.put("signerRole", ROLE_LABEL.getOrDefault(t.getSignerRole(), t.getSignerRole()) + " · РМА " + t.getSignerRma());
-            row.put("signedAt", DT.format(t.getSignedAt()));
+            row.put("signedAt", PrintZone.dateTime(t.getSignedAt()));
             row.put("fingerprint", fingerprint(t.getSignature()));
             signed.add(row);
         }
         m.put("titles", signed);
-        m.put("status", wb.getStatus().name());
+        // Статус на бланке — словом, а не кодом перечисления («COMPLETED» печатался как есть).
+        m.put("status", STATUS_LABEL.getOrDefault(wb.getStatus().name(), wb.getStatus().name()));
+        m.put("statusCode", wb.getStatus().name());
         m.put("route", orDash(wb.getRoute()));
         m.put("odometer", m.get("counterExit") + " → " + m.get("counterEntry") + " (пробег " + distanceKm + " км)");
         m.put("orgName", str(org.get("name")));
@@ -576,8 +588,8 @@ public class WaybillPrintService {
         // Подпись водителя (одобренный документ SIGNATURE в master-data) — графа «Ронанда (имзо)»,
         // перенос legacy signature_attach (MIGRATION.md 2.6); нет/недоступна → пустая линия для подписи от руки.
         m.put("driverSignature", masterData.findDriverSignatureDataUri(wb.getDriverRma()).orElse(null));
-        m.put("printedAt", DT.format(java.time.LocalDateTime.now()));
-        m.put("generatedAt", DT.format(java.time.LocalDateTime.now()));
+        m.put("printedAt", PrintZone.now());
+        m.put("generatedAt", PrintZone.now());
 
         // --- Водяной знак и отметка о формировании (B4, НЕ-ЭЦП часть).
         // Настройки категории print из master-data — тот же механизм, что и
@@ -647,7 +659,7 @@ public class WaybillPrintService {
         m.put("name", orDash(firstNonBlank(str(d.get("employeeName")), str(d.get("dispatcher")), t.getSignerRma())));
         m.put("verdict", orDash(str(d.get("verdict"))));
         m.put("fingerprint", fingerprint(t.getSignature()));
-        m.put("signedAt", DT.format(t.getSignedAt()));
+        m.put("signedAt", PrintZone.dateTime(t.getSignedAt()));
         return m;
     }
 

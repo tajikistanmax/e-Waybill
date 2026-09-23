@@ -239,7 +239,6 @@ public class ReportXlsxWriter {
             grandStyle.setFont(grandFont);
             grandStyle.setBorderTop(BorderStyle.DOUBLE);
 
-            DateTimeFormatter dt = DateTimeFormatter.ofPattern("dd.MM.yyyy HH:mm");
             int r = 0;
             cell(sheet.createRow(r++), 0, "Отчёт по справкам · " + D.format(report.from()) + " — "
                     + D.format(report.to()) + "   справок: " + report.count()
@@ -261,7 +260,7 @@ public class ReportXlsxWriter {
                     cell(row, 1, it.fio(), null);
                     cell(row, 2, it.transportType(), null);
                     cell(row, 3, it.privileged() ? "да" : "", null);
-                    cell(row, 4, it.issuedAt() == null ? "" : dt.format(it.issuedAt()), null);
+                    cell(row, 4, it.issuedAt() == null ? "" : PrintZone.dateTime(it.issuedAt()), null);
                     cell(row, 5, it.routes(), null);
                     num(row, 6, it.price() == null ? 0 : it.price().doubleValue(), null);
                 }
@@ -288,7 +287,7 @@ public class ReportXlsxWriter {
                     r.date(), r.number(), r.vehicle(), r.driver(),
                     r.odometerExit() == null ? "" : String.valueOf(r.odometerExit()),
                     r.control().verdict(), r.control().employeeName(), r.control().employeeRma(),
-                    r.control().signedAt(), r.control().fingerprint(), r.control().details()
+                    PrintZone.isoToLocal(r.control().signedAt()), r.control().fingerprint(), r.control().details()
             });
         }
         return simpleSheet("Журнал механика",
@@ -323,7 +322,7 @@ public class ReportXlsxWriter {
             s.append(" · ").append(m.employeeName());
         }
         if (!"—".equals(m.signedAt())) {
-            s.append(" · ").append(m.signedAt());
+            s.append(" · ").append(PrintZone.isoToLocal(m.signedAt()));
         }
         if (m.details() != null && !m.details().isBlank()) {
             s.append(" · ").append(m.details());

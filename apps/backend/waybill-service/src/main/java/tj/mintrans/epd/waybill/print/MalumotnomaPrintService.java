@@ -52,7 +52,7 @@ public class MalumotnomaPrintService {
         model.put("fio", m.getFio());
         model.put("transportType", TYPE_NAME.getOrDefault(m.getTransportTypeId(), "—"));
         model.put("privileged", m.getAge() == 1);
-        model.put("issuedAt", m.getCreatedAt() != null ? DT.format(m.getCreatedAt()) : "—");
+        model.put("issuedAt", PrintZone.dateTime(m.getCreatedAt()));
         model.put("issuer", m.getIssuerName() != null ? m.getIssuerName()
                 : (m.getIssuerRma() != null ? m.getIssuerRma() : "—"));
         model.put("orgRma", m.getOrganizationRma() != null ? m.getOrganizationRma() : "—");
@@ -67,7 +67,7 @@ public class MalumotnomaPrintService {
         // Водяной знак и отметка о формировании (B4, НЕ-ЭЦП часть) — те же настройки
         // категории print, что и у бланков ПЛ (WaybillPrintService), чтобы справка не
         // оставалась без футера «Сформировано: …» и водяного знака.
-        model.put("generatedAt", DT.format(java.time.LocalDateTime.now()));
+        model.put("generatedAt", PrintZone.now());
         model.put("showWatermark", "true".equalsIgnoreCase(printSettings.getOrDefault("show_watermark", "false")));
         String watermarkText = printSettings.get("watermark_text");
         model.put("watermarkText", watermarkText == null ? "" : watermarkText.trim());
