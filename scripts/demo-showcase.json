@@ -1,0 +1,307 @@
+{
+  "_comment": "Демо-набор для показа заказчику (24.09.2026). Читается scripts/seed-demo-showcase.ps1. Все организации помечены «(демо)», РМА 99240xxxxx, госномера xxxxDM01 — реальные перенесённые данные не затрагиваются. Даты действия документов (лицензии, техосмотр, ВУ, медсправки, визы) скрипт считает от сегодняшнего дня.",
+  "password": "Demo-Rohkhat-2026",
+  "text": {
+    "techBroken": "НЕИСПРАВНО",
+    "retireReason": "Демо: смена завершена, лист снят перед новым демо-днём",
+    "unblockReason": "Демо: нарушение устранено, разблокировано администратором Минтранса",
+    "closeActor": "демо-сценарий"
+  },
+  "platformLogins": [
+    { "login": "admin", "role": "SYSTEM_ADMIN", "note": "Администратор платформы (Минтранс): все компании, настройки, разблокировка" },
+    { "login": "inspector", "role": "INSPECTOR", "note": "Инспектор дорожного контроля: проверка QR, блокировка листа" },
+    { "login": "analyst", "role": "MINTRANS_ANALYST", "note": "Аналитик Минтранса: сводные и региональные отчёты по всей стране" },
+    { "login": "customs", "role": "CUSTOMS_OFFICER", "note": "Таможенник: подтверждение CMR к 5Б-БМ" }
+  ],
+  "units": [
+    {
+      "code": "bus",
+      "kind": "Городской автобусный парк (головная компания с 2 филиалами)",
+      "org": {
+        "rma": "9924010000", "name": "ГУП «Душанбинский автобусный парк» (демо)", "typeCompany": 1, "regionId": 1,
+        "cityName": "Душанбе", "address": "г. Душанбе, ул. Айни, 45", "phone": "+992 37 221-00-01",
+        "email": "bus-demo@rohkhat.tj", "nameHead": "Шарипов Бахтиёр Каримович", "bank": "ОАО «Ориёнбонк»",
+        "carrierLicenseNumber": "ДЕМО-ЛП-0001", "percentIncome": 30, "cat1": 10, "cat2": 5, "cat3": 0,
+        "allowedWaybillTypes": "WB_BUS,WB_TROLLEYBUS,WB_MINIBUS", "ownership": 1, "internalNumber": "Д-01", "giveFuel": true
+      },
+      "admin": { "login": "bus.admin", "firstName": "Бахтиёр", "lastName": "Шарипов" }
+    },
+    {
+      "code": "bus1",
+      "parent": "bus",
+      "kind": "Филиал: Автобусный парк №1 (Т(1-АД) автобус)",
+      "org": {
+        "rma": "9924011000", "name": "Автобусный парк №1 ГУП «Душанбинский автобусный парк» (демо)", "typeCompany": 1, "regionId": 1,
+        "cityName": "Душанбе", "address": "г. Душанбе, пр. Сомони, 12", "phone": "+992 37 221-00-11",
+        "nameHead": "Юсуфов Далер Назарович", "carrierLicenseNumber": "ДЕМО-ЛП-0001-1", "percentIncome": 30,
+        "cat1": 10, "cat2": 5, "cat3": 0, "allowedWaybillTypes": "WB_BUS", "ownership": 1, "giveFuel": true
+      },
+      "admin": { "login": "bus1.admin", "firstName": "Далер", "lastName": "Юсуфов" },
+      "employees": [
+        { "rma": "9924011101", "type": 1, "name": "Назарова Мадина Рустамовна", "login": "bus1.doctor", "certNumber": "МС-ДЕМО-1101" },
+        { "rma": "9924011102", "type": 2, "name": "Қосимов Фарҳод Саидович", "login": "bus1.mech" },
+        { "rma": "9924011103", "type": 3, "name": "Раҳимов Шерзод Абдуллоевич", "login": "bus1.disp" },
+        { "rma": "9924011104", "type": 4, "name": "Азизов Беҳзод Қаҳҳорович", "login": "bus1.azs" },
+        { "rma": "9924011105", "type": 5, "name": "Шарипова Нигина Давлатовна", "login": "bus1.buh" }
+      ],
+      "drivers": [
+        { "rma": "9924011201", "fullName": "Аҳмадзода Зоҳид Шарифович", "cats": "B,C,D", "login": "bus1.drv1", "birthDate": "1984-03-12", "experienceYears": 16, "degree": 1, "phone": "+992 93 501-12-01" },
+        { "rma": "9924011202", "fullName": "Каримов Дилшод Раҳматович", "cats": "B,C,D", "login": "bus1.drv2", "birthDate": "1988-07-21", "experienceYears": 12, "degree": 2, "phone": "+992 93 501-12-02" },
+        { "rma": "9924011203", "fullName": "Сафаров Баҳром Олимович", "cats": "B,D", "birthDate": "1979-11-02", "experienceYears": 21, "degree": 1 },
+        { "rma": "9924011204", "fullName": "Юсупов Фаррух Аминович", "cats": "B,C,D", "birthDate": "1990-01-15", "experienceYears": 9, "degree": 2 },
+        { "rma": "9924011205", "fullName": "Назриев Комрон Саидович", "cats": "B,D", "birthDate": "1986-05-30", "experienceYears": 14, "degree": 1 },
+        { "rma": "9924011206", "fullName": "Мирзоев Суҳроб Толибович", "cats": "B,C,D", "birthDate": "1992-09-09", "experienceYears": 7, "degree": 3 },
+        { "rma": "9924011207", "fullName": "Холов Ориф Ғафурович", "cats": "B,D", "birthDate": "1983-12-19", "experienceYears": 17, "degree": 1 }
+      ],
+      "vehicles": [
+        { "reg": "1101DM01", "type": 1, "brand": "ЛиАЗ-5292", "fuelType": 2, "capacity": 108, "odometer": 184250, "year": 2018, "airConditioner": 0 },
+        { "reg": "1102DM01", "type": 1, "brand": "ЛиАЗ-5292", "fuelType": 2, "capacity": 108, "odometer": 201340, "year": 2018 },
+        { "reg": "1103DM01", "type": 1, "brand": "Yutong ZK6118HGA", "fuelType": 2, "capacity": 95, "odometer": 96410, "year": 2021, "airConditioner": 100 },
+        { "reg": "1104DM01", "type": 1, "brand": "Yutong ZK6118HGA", "fuelType": 2, "capacity": 95, "odometer": 88120, "year": 2021, "airConditioner": 100 },
+        { "reg": "1105DM01", "type": 1, "brand": "МАЗ-203", "fuelType": 2, "capacity": 102, "odometer": 243900, "year": 2016 },
+        { "reg": "1106DM01", "type": 1, "brand": "Higer KLQ6129G", "fuelType": 2, "capacity": 100, "odometer": 51200, "year": 2023, "airConditioner": 100 },
+        { "reg": "1107DM01", "type": 1, "brand": "Higer KLQ6129G", "fuelType": 2, "capacity": 100, "odometer": 47850, "year": 2023, "airConditioner": 100 }
+      ],
+      "routes": [
+        { "number": "8", "name": "Автовокзал — ТЦ «Садбарг»", "transportType": 1, "regionId": 1, "routeTypeCode": 1, "nameA": "Автовокзал", "nameB": "ТЦ «Садбарг»", "distanceA": 14.5, "distanceB": 14.5, "plannedLap": 6, "cityName": "Душанбе" },
+        { "number": "3", "name": "Шоҳмансур — 102 мкр", "transportType": 1, "regionId": 1, "routeTypeCode": 1, "nameA": "Шоҳмансур", "nameB": "102 мкр", "distanceA": 11.2, "distanceB": 11.2, "plannedLap": 7, "cityName": "Душанбе" },
+        { "number": "29", "name": "Зарафшон — Аэропорт", "transportType": 1, "regionId": 1, "routeTypeCode": 1, "nameA": "Зарафшон", "nameB": "Аэропорт", "distanceA": 16.8, "distanceB": 16.8, "plannedLap": 5, "cityName": "Душанбе" }
+      ],
+      "waybills": [
+        { "key": "BUS1-DONE", "type": "WB_BUS", "vehicle": "1101DM01", "driver": "9924011201", "comm": "URBAN", "route": "№8 Автовокзал — ТЦ «Садбарг»", "schedule": "06:00–14:00, 1-я смена", "typeData": { "columnNumber": "1", "brigadeNumber": "8", "routeTypeCode": 1 }, "target": "COMPLETED", "km": 186, "fuel": { "fuelType": 2, "given": 64, "before": 30, "entry": 29 }, "ret": { "conditionerHours": 0 } },
+        { "key": "BUS1-LINE", "type": "WB_BUS", "vehicle": "1101DM01", "driver": "9924011201", "comm": "URBAN", "route": "№8 Автовокзал — ТЦ «Садбарг»", "schedule": "14:00–22:00, 2-я смена", "typeData": { "columnNumber": "1", "brigadeNumber": "8", "routeTypeCode": 1 }, "target": "ACTIVE", "fuel": { "fuelType": 2, "given": 100, "before": 28 }, "gps": { "lat": 38.5760, "lon": 68.7840, "speed": 34 }, "inspectionOk": { "place": "пр. Рудаки, ост. «Филармония»", "description": "Документы в порядке" } },
+        { "key": "BUS1-CANCEL", "type": "WB_BUS", "vehicle": "1102DM01", "driver": "9924011202", "comm": "URBAN", "route": "№3 Шоҳмансур — 102 мкр", "typeData": { "routeTypeCode": 1 }, "target": "CANCELLED", "cancelReason": "Автобус снят с линии по графику ремонта, лист перевыписан" },
+        { "key": "BUS1-READY", "type": "WB_BUS", "vehicle": "1102DM01", "driver": "9924011202", "comm": "URBAN", "route": "№3 Шоҳмансур — 102 мкр", "schedule": "15:00–23:00", "typeData": { "columnNumber": "2", "brigadeNumber": "3", "routeTypeCode": 1 }, "target": "READY" },
+        { "key": "BUS1-PAY", "type": "WB_BUS", "vehicle": "1103DM01", "driver": "9924011203", "comm": "URBAN", "route": "№29 Зарафшон — Аэропорт", "typeData": { "routeTypeCode": 1 }, "target": "AWAITING_PAYMENT" },
+        { "key": "BUS1-MED", "type": "WB_BUS", "vehicle": "1104DM01", "driver": "9924011204", "comm": "URBAN", "route": "№8 Автовокзал — ТЦ «Садбарг»", "typeData": { "routeTypeCode": 1 }, "target": "WAIT_MED" },
+        { "key": "BUS1-BLOCK", "type": "WB_BUS", "vehicle": "1105DM01", "driver": "9924011205", "comm": "URBAN", "route": "№29 Зарафшон — Аэропорт", "typeData": { "routeTypeCode": 1 }, "target": "BLOCKED", "fuel": { "fuelType": 2, "given": 90, "before": 20 }, "block": { "reasonCode": "TECH_CONDITION", "description": "Течь масла из двигателя, не работает стеклоочиститель", "place": "ул. Айни, ост. «Зарафшон»", "protocolNumber": "ДЕМО-АКТ-0001", "lat": 38.5415, "lon": 68.8240 } },
+        { "key": "BUS1-DRAFT", "type": "WB_BUS", "vehicle": "1106DM01", "driver": "9924011206", "comm": "URBAN", "route": "№3 Шоҳмансур — 102 мкр", "typeData": { "routeTypeCode": 1 }, "target": "DRAFT" }
+      ]
+    },
+    {
+      "code": "bus2",
+      "parent": "bus",
+      "kind": "Филиал: Троллейбусно-маршрутный парк №2 (троллейбус, 1-А маршрутное такси)",
+      "org": {
+        "rma": "9924012000", "name": "Троллейбусно-маршрутный парк №2 ГУП «Душанбинский автобусный парк» (демо)", "typeCompany": 1, "regionId": 1,
+        "cityName": "Душанбе", "address": "г. Душанбе, ул. Н. Қарабоев, 80", "phone": "+992 37 221-00-22",
+        "nameHead": "Одинаев Фирӯз Мансурович", "carrierLicenseNumber": "ДЕМО-ЛП-0001-2", "percentIncome": 30,
+        "cat1": 10, "cat2": 5, "cat3": 0, "allowedWaybillTypes": "WB_TROLLEYBUS,WB_MINIBUS", "ownership": 1
+      },
+      "admin": { "login": "bus2.admin", "firstName": "Фирӯз", "lastName": "Одинаев" },
+      "employees": [
+        { "rma": "9924012101", "type": 1, "name": "Саидова Гулноза Азимовна", "login": "bus2.doctor", "certNumber": "МС-ДЕМО-2101" },
+        { "rma": "9924012102", "type": 2, "name": "Бобоев Рустам Ҳакимович", "login": "bus2.mech" },
+        { "rma": "9924012103", "type": 3, "name": "Ғаниева Малика Шодиевна", "login": "bus2.disp" },
+        { "rma": "9924012104", "type": 4, "name": "Тоиров Абдулло Сафарович", "login": "bus2.azs" },
+        { "rma": "9924012105", "type": 5, "name": "Раупова Зарина Икромовна", "login": "bus2.buh" }
+      ],
+      "drivers": [
+        { "rma": "9924012201", "fullName": "Исмоилов Умед Назарович", "cats": "B,D", "login": "bus2.drv1", "birthDate": "1985-02-17", "experienceYears": 15, "degree": 1, "phone": "+992 93 502-22-01" },
+        { "rma": "9924012202", "fullName": "Ҷӯраев Бахтовар Салимович", "cats": "B,D", "birthDate": "1991-06-04", "experienceYears": 8, "degree": 2 },
+        { "rma": "9924012203", "fullName": "Раҷабов Некрӯз Ҳамидович", "cats": "B,C,D", "login": "bus2.drv2", "birthDate": "1989-10-10", "experienceYears": 11, "degree": 2, "phone": "+992 93 502-22-03" },
+        { "rma": "9924012204", "fullName": "Қурбонов Алишер Файзуллоевич", "cats": "B,D", "birthDate": "1982-04-25", "experienceYears": 19, "degree": 1 },
+        { "rma": "9924012205", "fullName": "Давлатов Шоҳрух Бахтиёрович", "cats": "B,D", "birthDate": "1994-08-08", "experienceYears": 5, "degree": 3 },
+        { "rma": "9924012206", "fullName": "Нуров Ҷамшед Олимович", "cats": "B,D", "birthDate": "1987-03-03", "experienceYears": 13, "degree": 1 }
+      ],
+      "vehicles": [
+        { "reg": "1201DM01", "type": 2, "brand": "Тролза-5265 «Мегаполис»", "fuelType": 5, "capacity": 90, "odometer": 312400, "year": 2015 },
+        { "reg": "1202DM01", "type": 2, "brand": "БКМ-321", "fuelType": 5, "capacity": 94, "odometer": 145700, "year": 2019 },
+        { "reg": "1205DM01", "type": 2, "brand": "БКМ-321", "fuelType": 5, "capacity": 94, "odometer": 132050, "year": 2019 },
+        { "reg": "1203DM01", "type": 3, "brand": "Hyundai County", "fuelType": 2, "capacity": 29, "odometer": 276300, "year": 2014 },
+        { "reg": "1204DM01", "type": 3, "brand": "ГАЗель Next", "fuelType": 1, "capacity": 19, "odometer": 158900, "year": 2020 }
+      ],
+      "routes": [
+        { "number": "1", "name": "Вокзал — Аэропорт (троллейбус)", "transportType": 2, "regionId": 1, "routeTypeCode": 1, "nameA": "Ж/д вокзал", "nameB": "Аэропорт", "distanceA": 12.4, "distanceB": 12.4, "plannedLap": 6, "cityName": "Душанбе" },
+        { "number": "4", "name": "Вокзал — 91 мкр (троллейбус)", "transportType": 2, "regionId": 1, "routeTypeCode": 1, "nameA": "Ж/д вокзал", "nameB": "91 мкр", "distanceA": 10.9, "distanceB": 10.9, "plannedLap": 7, "cityName": "Душанбе" },
+        { "number": "18", "name": "Корвон — Испечак (маршрутное такси)", "transportType": 3, "regionId": 1, "routeTypeCode": 1, "nameA": "Корвон", "nameB": "Испечак", "distanceA": 18.0, "distanceB": 18.0, "plannedLap": 5, "cityName": "Душанбе" }
+      ],
+      "waybills": [
+        { "key": "TB-DONE", "type": "WB_TROLLEYBUS", "vehicle": "1201DM01", "driver": "9924012201", "comm": "URBAN", "route": "№1 Вокзал — Аэропорт", "schedule": "06:00–14:00", "typeData": { "columnNumber": "3", "brigadeNumber": "1", "routeTypeCode": 1 }, "target": "COMPLETED", "km": 142 },
+        { "key": "TB-LINE", "type": "WB_TROLLEYBUS", "vehicle": "1201DM01", "driver": "9924012201", "comm": "URBAN", "route": "№1 Вокзал — Аэропорт", "schedule": "14:00–22:00", "typeData": { "columnNumber": "3", "brigadeNumber": "1", "routeTypeCode": 1 }, "target": "ACTIVE", "gps": { "lat": 38.5530, "lon": 68.7960, "speed": 28 } },
+        { "key": "TB-TECH", "type": "WB_TROLLEYBUS", "vehicle": "1202DM01", "driver": "9924012202", "comm": "URBAN", "route": "№4 Вокзал — 91 мкр", "typeData": { "routeTypeCode": 1 }, "target": "WAIT_TECH" },
+        { "key": "MB-RET", "type": "WB_MINIBUS", "vehicle": "1204DM01", "driver": "9924012204", "comm": "URBAN", "route": "№18 Корвон — Испечак", "typeData": { "routeTypeCode": 1 }, "target": "RETURNED", "km": 214, "fuel": { "fuelType": 1, "given": 40, "before": 12, "entry": 9 } },
+        { "key": "MB-ISSUED", "type": "WB_MINIBUS", "vehicle": "1203DM01", "driver": "9924012203", "comm": "URBAN", "route": "№18 Корвон — Испечак", "typeData": { "routeTypeCode": 1 }, "target": "ISSUED", "fuel": { "fuelType": 2, "given": 45, "before": 15 } },
+        { "key": "MB-MEDREJ", "type": "WB_MINIBUS", "vehicle": "1204DM01", "driver": "9924012205", "comm": "URBAN", "route": "№18 Корвон — Испечак", "typeData": { "routeTypeCode": 1 }, "target": "MED_REJECTED" }
+      ]
+    },
+    {
+      "code": "taxi",
+      "kind": "Такси и легковые перевозки (3-С)",
+      "org": {
+        "rma": "9924020000", "name": "ООО «Сомон Такси» (демо)", "typeCompany": 1, "regionId": 1,
+        "cityName": "Душанбе", "address": "г. Душанбе, ул. Бохтар, 37", "phone": "+992 37 227-77-77",
+        "email": "taxi-demo@rohkhat.tj", "nameHead": "Мирзоева Дилноза Абдуллоевна", "carrierLicenseNumber": "ДЕМО-ЛП-0002",
+        "percentIncome": 40, "cat1": 8, "cat2": 4, "cat3": 0, "allowedWaybillTypes": "WB_TAXI,WB_CAR", "ownership": 2
+      },
+      "admin": { "login": "taxi.admin", "firstName": "Дилноза", "lastName": "Мирзоева" },
+      "employees": [
+        { "rma": "9924020101", "type": 1, "name": "Ҳасанова Фарангис Умаровна", "login": "taxi.doctor", "certNumber": "МС-ДЕМО-0201" },
+        { "rma": "9924020102", "type": 2, "name": "Ализода Ҷамшед Раҳимович", "login": "taxi.mech" },
+        { "rma": "9924020103", "type": 3, "name": "Султонов Азиз Муродович", "login": "taxi.disp" },
+        { "rma": "9924020104", "type": 4, "name": "Каримов Сорбон Ашурович", "login": "taxi.azs" },
+        { "rma": "9924020105", "type": 5, "name": "Хайруллоева Мавзуна Саидовна", "login": "taxi.buh" }
+      ],
+      "drivers": [
+        { "rma": "9924020201", "fullName": "Норов Бехруз Икромович", "cats": "B", "login": "taxi.drv1", "birthDate": "1990-05-14", "experienceYears": 10, "degree": 2, "phone": "+992 93 520-02-01" },
+        { "rma": "9924020202", "fullName": "Шукуров Парвиз Олимович", "cats": "B,C", "login": "taxi.drv2", "birthDate": "1987-09-27", "experienceYears": 13, "degree": 1, "phone": "+992 93 520-02-02" },
+        { "rma": "9924020203", "fullName": "Самадов Фаридун Акрамович", "cats": "B", "birthDate": "1995-01-08", "experienceYears": 6, "degree": 3 },
+        { "rma": "9924020204", "fullName": "Иброҳимов Сино Раҳимович", "cats": "B", "birthDate": "1983-07-19", "experienceYears": 18, "degree": 1 },
+        { "rma": "9924020205", "fullName": "Абдуллоев Муҳаммад Шарифович", "cats": "B", "birthDate": "1993-11-30", "experienceYears": 7, "degree": 2 },
+        { "rma": "9924020206", "fullName": "Турсунов Далер Қодирович", "cats": "B", "birthDate": "1989-02-02", "experienceYears": 11, "degree": 2 }
+      ],
+      "vehicles": [
+        { "reg": "2101DM01", "type": 4, "brand": "Toyota Camry", "fuelType": 1, "capacity": 4, "odometer": 142300, "year": 2019, "airConditioner": 100 },
+        { "reg": "2102DM01", "type": 4, "brand": "Hyundai Sonata", "fuelType": 3, "capacity": 4, "odometer": 98700, "year": 2020, "airConditioner": 100 },
+        { "reg": "2103DM01", "type": 4, "brand": "Chevrolet Cobalt", "fuelType": 1, "capacity": 4, "odometer": 211500, "year": 2017 },
+        { "reg": "2104DM01", "type": 4, "brand": "Kia K5", "fuelType": 3, "capacity": 4, "odometer": 67400, "year": 2021, "airConditioner": 100 },
+        { "reg": "2105DM01", "type": 4, "brand": "Toyota Prius", "fuelType": 1, "capacity": 4, "odometer": 156000, "year": 2016 },
+        { "reg": "2106DM01", "type": 4, "brand": "Hyundai Elantra", "fuelType": 1, "capacity": 4, "odometer": 43800, "year": 2022, "airConditioner": 100 }
+      ],
+      "waybills": [
+        { "key": "TX-DONE", "type": "WB_TAXI", "vehicle": "2101DM01", "driver": "9924020201", "comm": "URBAN", "route": "По заказам диспетчерской службы, г. Душанбе", "typeData": { "serviceKind": "TAXI", "workRegions": [1] }, "target": "COMPLETED", "km": 235, "fuel": { "fuelType": 1, "given": 24, "before": 10, "entry": 10 }, "kassa": true },
+        { "key": "TX-LINE", "type": "WB_TAXI", "vehicle": "2101DM01", "driver": "9924020201", "comm": "URBAN", "route": "По заказам диспетчерской службы, г. Душанбе", "typeData": { "serviceKind": "TAXI", "workRegions": [1, 7] }, "target": "ACTIVE", "fuel": { "fuelType": 1, "given": 30, "before": 8 }, "gps": { "lat": 38.5840, "lon": 68.7710, "speed": 52 } },
+        { "key": "CAR-READY", "type": "WB_CAR", "vehicle": "2102DM01", "driver": "9924020202", "comm": "SUBURBAN", "route": "Душанбе — Варзоб (хатсайр)", "typeData": { "serviceKind": "ROUTE", "workRegions": [1, 7] }, "target": "READY" },
+        { "key": "TX-PAY", "type": "WB_TAXI", "vehicle": "2103DM01", "driver": "9924020203", "comm": "URBAN", "route": "По заказам диспетчерской службы, г. Душанбе", "typeData": { "serviceKind": "TAXI", "workRegions": [1] }, "target": "AWAITING_PAYMENT" },
+        { "key": "TX-CANCEL", "type": "WB_TAXI", "vehicle": "2104DM01", "driver": "9924020204", "comm": "URBAN", "route": "По заказам диспетчерской службы, г. Душанбе", "typeData": { "serviceKind": "TAXI" }, "target": "CANCELLED", "cancelReason": "Водитель заболел, выход на линию отменён" },
+        { "key": "CAR-RET", "type": "WB_CAR", "vehicle": "2104DM01", "driver": "9924020204", "comm": "URBAN", "route": "Почасовое обслуживание: министерство, г. Душанбе", "typeData": { "serviceKind": "HOURLY", "workRegions": [1] }, "target": "RETURNED", "km": 96, "fuel": { "fuelType": 3, "given": 10, "before": 6, "entry": 6 } },
+        { "key": "CAR-DRAFT", "type": "WB_CAR", "vehicle": "2105DM01", "driver": "9924020205", "comm": "URBAN", "route": "Почасовое обслуживание: гостиница «Душанбе»", "typeData": { "serviceKind": "HOURLY" }, "target": "DRAFT" }
+      ]
+    },
+    {
+      "code": "cargo",
+      "kind": "Грузовой перевозчик (2-Б, опасный груз, спецтехника)",
+      "org": {
+        "rma": "9924030000", "name": "ООО «Бороварон Логистик» (демо)", "typeCompany": 1, "regionId": 5,
+        "cityName": "Бохтар", "address": "г. Бохтар, ул. Вахдат, 15", "phone": "+992 32 222-33-44",
+        "email": "cargo-demo@rohkhat.tj", "nameHead": "Ҳамидов Сайфулло Ҳамидович", "carrierLicenseNumber": "ДЕМО-ЛП-0003",
+        "percentIncome": 35, "cat1": 10, "cat2": 5, "cat3": 0, "allowedWaybillTypes": "WB_TRUCK,WB_SPECIAL,WB_DANGEROUS", "ownership": 2
+      },
+      "admin": { "login": "cargo.admin", "firstName": "Сайфулло", "lastName": "Ҳамидов" },
+      "employees": [
+        { "rma": "9924030101", "type": 1, "name": "Мадаминова Шаҳло Ҳабибовна", "login": "cargo.doctor", "certNumber": "МС-ДЕМО-0301" },
+        { "rma": "9924030102", "type": 2, "name": "Назаров Искандар Ботурович", "login": "cargo.mech" },
+        { "rma": "9924030103", "type": 3, "name": "Олимов Ҷаҳонгир Ашурович", "login": "cargo.disp" },
+        { "rma": "9924030104", "type": 4, "name": "Раҳмонов Файзали Нозимович", "login": "cargo.azs" },
+        { "rma": "9924030105", "type": 5, "name": "Сафарова Нозия Бахтиёровна", "login": "cargo.buh" }
+      ],
+      "drivers": [
+        { "rma": "9924030201", "fullName": "Бобоҷонов Хуршед Ғайратович", "cats": "B,C,CE", "login": "cargo.drv1", "birthDate": "1982-06-06", "experienceYears": 20, "degree": 1, "adr": true, "phone": "+992 93 530-02-01" },
+        { "rma": "9924030202", "fullName": "Ҳайдаров Меҳрубон Абдуллоевич", "cats": "B,C", "login": "cargo.drv2", "birthDate": "1989-04-18", "experienceYears": 11, "degree": 2, "phone": "+992 93 530-02-02" },
+        { "rma": "9924030203", "fullName": "Шарифов Акмал Нуруллоевич", "cats": "B,C", "birthDate": "1991-12-01", "experienceYears": 8, "degree": 2 },
+        { "rma": "9924030204", "fullName": "Қодиров Зафар Тоирович", "cats": "B,C", "birthDate": "1985-08-22", "experienceYears": 15, "degree": 1 },
+        { "rma": "9924030205", "fullName": "Мусоев Идибек Сангинович", "cats": "B,C,CE", "birthDate": "1993-03-13", "experienceYears": 6, "degree": 3 }
+      ],
+      "vehicles": [
+        { "reg": "3101DM01", "type": 5, "brand": "КамАЗ-65115 (цистерна)", "fuelType": 2, "carrying": 15, "odometer": 356200, "year": 2017, "adr": true, "trailer1Number": "0101DP05", "trailer1Brand": "Нефаз-8560", "trailer1Carrying": 10 },
+        { "reg": "3102DM01", "type": 5, "brand": "MAN TGS 26.400", "fuelType": 2, "carrying": 20, "odometer": 212800, "year": 2019 },
+        { "reg": "3103DM01", "type": 5, "brand": "Shacman X3000", "fuelType": 2, "carrying": 25, "odometer": 98300, "year": 2022 },
+        { "reg": "3104DM01", "type": 5, "brand": "Экскаватор-погрузчик JCB 3CX", "fuelType": 2, "carrying": 1, "odometer": 12400, "year": 2020 },
+        { "reg": "3105DM01", "type": 5, "brand": "КамАЗ-6520 (самосвал)", "fuelType": 2, "carrying": 20, "odometer": 145600, "year": 2020 }
+      ],
+      "clients": [
+        { "number": "C01", "name": "ООО «Цемент Душанбе» (демо)", "address": "г. Душанбе, ул. Фирдавси, 2", "phone": "+992 37 234-11-11", "type": 3 },
+        { "number": "C02", "name": "ООО «Бохтарсохтмон» (демо)", "address": "г. Бохтар, ул. Айни, 70", "phone": "+992 32 222-44-55", "type": 2 }
+      ],
+      "waybills": [
+        { "key": "TR-DONE", "type": "WB_TRUCK", "vehicle": "3101DM01", "driver": "9924030201", "comm": "INTERCITY", "route": "Душанбе — Бохтар", "typeData": { "shipmentKind": "PIECEWORK", "workRegions": [1, 5], "trailers": [ { "registrationNumber": "0101DP05", "brand": "Нефаз-8560" } ], "cargo": { "name": "Цемент М400", "unit": "т", "weight": 20, "packages": 400 } }, "consignment": { "senderClient": "C01", "receiverClient": "C02", "senderAddress": "г. Душанбе, ул. Фирдавси, 2", "receiverAddress": "г. Бохтар, ул. Айни, 70", "cargoName": "Цемент М400 в мешках по 50 кг", "cargoVolume": 20, "submittedDocuments": "Товарно-транспортная накладная №ДЕМО-0417" }, "target": "COMPLETED", "km": 195, "fuel": { "fuelType": 2, "given": 52, "before": 40, "entry": 38 }, "ret": { "transportWork": 3900, "trips": 1 } },
+        { "key": "TR-LINE", "type": "WB_TRUCK", "vehicle": "3101DM01", "driver": "9924030201", "comm": "INTERCITY", "route": "Бохтар — Кӯлоб (опасный груз)", "typeData": { "shipmentKind": "PIECEWORK", "workRegions": [5, 6], "dangerous": true, "adrClass": "3", "unNumber": "1202", "cargo": { "name": "Дизельное топливо", "unit": "т", "weight": 14, "class": "3" } }, "consignment": { "senderClient": "C02", "receiverClient": "C01", "cargoName": "Дизельное топливо (ООН 1202, класс 3)", "cargoVolume": 16.5 }, "target": "ACTIVE", "fuel": { "fuelType": 2, "given": 110, "before": 35 }, "gps": { "lat": 37.8370, "lon": 68.9280, "speed": 61 } },
+        { "key": "TR-ISSUED", "type": "WB_TRUCK", "vehicle": "3102DM01", "driver": "9924030202", "comm": "URBAN", "route": "Бохтар, почасовые работы на объекте", "typeData": { "shipmentKind": "HOURLY", "workRegions": [5] }, "target": "ISSUED", "fuel": { "fuelType": 2, "given": 80, "before": 25 } },
+        { "key": "TR-TECHREJ", "type": "WB_TRUCK", "vehicle": "3103DM01", "driver": "9924030203", "comm": "INTERCITY", "route": "Бохтар — Душанбе", "typeData": { "shipmentKind": "PIECEWORK", "workRegions": [5, 1] }, "target": "TECH_REJECTED", "techNote": "Износ тормозных колодок передней оси, ТС на линию не выпущено" },
+        { "key": "SP-DONE", "type": "WB_SPECIAL", "vehicle": "3104DM01", "driver": "9924030204", "comm": "URBAN", "route": "Объект: реконструкция дороги Бохтар — Данғара, км 12", "typeData": { "workType": "Земляные работы (выемка грунта)", "motorHoursExit": 1240.5, "workObject": "Дорога Бохтар — Данғара, км 12" }, "target": "COMPLETED", "km": 14, "ret": { "motorHoursEntry": 1248.0 }, "fuel": { "fuelType": 2, "given": 60, "before": 20, "entry": 18 } },
+        { "key": "SP-READY", "type": "WB_SPECIAL", "vehicle": "3104DM01", "driver": "9924030204", "comm": "URBAN", "route": "Объект: реконструкция дороги Бохтар — Данғара, км 12", "typeData": { "workType": "Планировка откосов", "motorHoursExit": 1248.0, "workObject": "Дорога Бохтар — Данғара, км 12" }, "target": "READY" }
+      ]
+    },
+    {
+      "code": "intercity",
+      "kind": "Междугородний и международный пассажирский перевозчик (Т(1-АД) междугородний, 1-А, 4М-БМ)",
+      "org": {
+        "rma": "9924040000", "name": "ООО «Роҳи Шимол» (демо)", "typeCompany": 1, "regionId": 3,
+        "cityName": "Худжанд", "address": "г. Худжанд, ул. Ленина, 150", "phone": "+992 34 226-50-50",
+        "email": "intercity-demo@rohkhat.tj", "nameHead": "Ашуров Абдураҳмон Валиевич", "carrierLicenseNumber": "ДЕМО-ЛП-0004",
+        "percentIncome": 35, "cat1": 10, "cat2": 5, "cat3": 0, "allowedWaybillTypes": "WB_BUS,WB_MINIBUS,WB_PAX_INTL", "ownership": 2
+      },
+      "admin": { "login": "intercity.admin", "firstName": "Абдураҳмон", "lastName": "Ашуров" },
+      "employees": [
+        { "rma": "9924040101", "type": 1, "name": "Юлдошева Мунира Раҳимовна", "login": "intercity.doctor", "certNumber": "МС-ДЕМО-0401" },
+        { "rma": "9924040102", "type": 2, "name": "Ҳакимов Бахтиёр Зокирович", "login": "intercity.mech" },
+        { "rma": "9924040103", "type": 3, "name": "Нарзуллоев Фарҳод Шарипович", "login": "intercity.disp" },
+        { "rma": "9924040104", "type": 4, "name": "Зокиров Анвар Ҳамроевич", "login": "intercity.azs" },
+        { "rma": "9924040105", "type": 5, "name": "Каримова Сурайё Ғафуровна", "login": "intercity.buh" }
+      ],
+      "drivers": [
+        { "rma": "9924040201", "fullName": "Ҷалолов Рустам Абдуҷаборович", "cats": "B,C,D", "login": "intercity.drv1", "birthDate": "1980-10-05", "experienceYears": 22, "degree": 1, "phone": "+992 92 540-02-01" },
+        { "rma": "9924040202", "fullName": "Маҳмудов Ҳусейн Ғуломович", "cats": "B,D", "login": "intercity.drv2", "birthDate": "1984-01-29", "experienceYears": 17, "degree": 1, "phone": "+992 92 540-02-02" },
+        { "rma": "9924040203", "fullName": "Файзуллоев Шуҳрат Ашурович", "cats": "B,D", "birthDate": "1987-07-07", "experienceYears": 13, "degree": 2 },
+        { "rma": "9924040204", "fullName": "Раҳимҷонов Олимҷон Каримович", "cats": "B,D", "birthDate": "1990-03-16", "experienceYears": 10, "degree": 2 },
+        { "rma": "9924040205", "fullName": "Усмонов Бахром Абдусаломович", "cats": "B,C,D", "birthDate": "1978-12-24", "experienceYears": 25, "degree": 1 },
+        { "rma": "9924040206", "fullName": "Тошматов Азамат Холматович", "cats": "B,D", "birthDate": "1992-05-11", "experienceYears": 8, "degree": 2 }
+      ],
+      "vehicles": [
+        { "reg": "4101DM01", "type": 1, "brand": "Yutong ZK6122H9", "fuelType": 2, "capacity": 51, "odometer": 412300, "year": 2019, "airConditioner": 100 },
+        { "reg": "4102DM01", "type": 1, "brand": "King Long XMQ6129Y", "fuelType": 2, "capacity": 49, "odometer": 298700, "year": 2020, "airConditioner": 100, "intl": true },
+        { "reg": "4103DM01", "type": 1, "brand": "Higer KLQ6128LQ", "fuelType": 2, "capacity": 49, "odometer": 356100, "year": 2018, "airConditioner": 100, "intl": true },
+        { "reg": "4104DM01", "type": 3, "brand": "Mercedes-Benz Sprinter", "fuelType": 2, "capacity": 18, "odometer": 387400, "year": 2016 },
+        { "reg": "4105DM01", "type": 1, "brand": "Yutong ZK6122H9", "fuelType": 2, "capacity": 51, "odometer": 120500, "year": 2023, "airConditioner": 100 }
+      ],
+      "routes": [
+        { "number": "501", "name": "Худжанд — Душанбе", "transportType": 1, "regionId": 3, "routeTypeCode": 3, "nameA": "Худжанд (автовокзал)", "nameB": "Душанбе (Северный автовокзал)", "distanceA": 341, "distanceB": 341, "plannedLap": 1, "cityName": "Худжанд" },
+        { "number": "901", "name": "Худжанд — Ташкент", "transportType": 1, "regionId": 3, "routeTypeCode": 4, "nameA": "Худжанд (автовокзал)", "nameB": "Ташкент (автовокзал «Ташкент»)", "distanceA": 178, "distanceB": 178, "plannedLap": 1, "cityName": "Худжанд" },
+        { "number": "112", "name": "Худжанд — Бӯстон", "transportType": 3, "regionId": 3, "routeTypeCode": 2, "nameA": "Худжанд", "nameB": "Бӯстон", "distanceA": 28, "distanceB": 28, "plannedLap": 4, "cityName": "Худжанд" }
+      ],
+      "waybills": [
+        { "key": "IC-DONE", "type": "WB_BUS", "vehicle": "4101DM01", "driver": "9924040201", "comm": "INTERCITY", "route": "№501 Худжанд — Душанбе", "schedule": "Отправление 06:30", "typeData": { "routeTypeCode": 3 }, "target": "COMPLETED", "km": 341, "fuel": { "fuelType": 2, "given": 112, "before": 40, "entry": 42 }, "ret": { "conditionerHours": 5 } },
+        { "key": "IC-LINE", "type": "WB_BUS", "vehicle": "4101DM01", "driver": "9924040201", "comm": "INTERCITY", "route": "№501 Душанбе — Худжанд", "schedule": "Отправление 15:00", "typeData": { "routeTypeCode": 3 }, "target": "ACTIVE", "fuel": { "fuelType": 2, "given": 140, "before": 45 }, "gps": { "lat": 39.1760, "lon": 68.6470, "speed": 64 } },
+        { "key": "PI-DONE", "type": "WB_PAX_INTL", "vehicle": "4103DM01", "driver": "9924040205", "comm": "INTERNATIONAL", "route": "№901 Худжанд — Ташкент", "typeData": { "visaCountry": "Узбекистан", "loadCountry": "Таджикистан", "unloadCountry": "Узбекистан", "loadCity": "Худжанд", "unloadCity": "Ташкент", "permitType": "двусторонний" }, "permitCountry": "Узбекистан", "target": "COMPLETED", "km": 178, "ret": { "passengersCount": 41, "arrivalHoursAgo": 3 }, "fuel": { "fuelType": 2, "given": 58, "before": 35, "entry": 34 } },
+        { "key": "IC-BLOCK", "type": "WB_BUS", "vehicle": "4103DM01", "driver": "9924040205", "comm": "INTERCITY", "route": "№501 Худжанд — Душанбе", "typeData": { "routeTypeCode": 3 }, "target": "BLOCKED", "block": { "reasonCode": "REGIME", "description": "Водитель за рулём более 9 часов без отдыха (данные тахографа)", "place": "Трасса Душанбе — Худжанд, пост «Анзоб»", "protocolNumber": "ДЕМО-АКТ-0002", "lat": 39.0290, "lon": 68.8670 } },
+        { "key": "PI-READY", "type": "WB_PAX_INTL", "vehicle": "4102DM01", "driver": "9924040202", "secondDriver": "9924040203", "comm": "INTERNATIONAL", "route": "№901 Худжанд — Ташкент", "schedule": "Отправление 08:00", "typeData": { "visaCountry": "Узбекистан", "loadCountry": "Таджикистан", "unloadCountry": "Узбекистан", "loadCity": "Худжанд", "unloadCity": "Ташкент", "permitType": "двусторонний" }, "permitCountry": "Узбекистан", "target": "READY" },
+        { "key": "MB-PAY", "type": "WB_MINIBUS", "vehicle": "4104DM01", "driver": "9924040204", "comm": "SUBURBAN", "route": "№112 Худжанд — Бӯстон", "typeData": { "routeTypeCode": 2 }, "target": "AWAITING_PAYMENT" }
+      ]
+    },
+    {
+      "code": "intl",
+      "kind": "Международный грузовой перевозчик (5Б-БМ + CMR)",
+      "org": {
+        "rma": "9924050000", "name": "ООО «Тоҷиктранс Интернешнл» (демо)", "typeCompany": 1, "regionId": 1,
+        "cityName": "Душанбе", "address": "г. Душанбе, ул. Карамова, 180", "phone": "+992 37 236-80-80",
+        "email": "intl-demo@rohkhat.tj", "nameHead": "Сангинов Далер Ҷамшедович", "carrierLicenseNumber": "ДЕМО-ЛП-0005",
+        "percentIncome": 35, "cat1": 10, "cat2": 5, "cat3": 0, "allowedWaybillTypes": "WB_TRUCK_INTL,WB_TRUCK", "ownership": 2
+      },
+      "admin": { "login": "intl.admin", "firstName": "Далер", "lastName": "Сангинов" },
+      "employees": [
+        { "rma": "9924050101", "type": 1, "name": "Бобоева Сабрина Ҳусейновна", "login": "intl.doctor", "certNumber": "МС-ДЕМО-0501" },
+        { "rma": "9924050102", "type": 2, "name": "Муродов Хуршед Абдуллоевич", "login": "intl.mech" },
+        { "rma": "9924050103", "type": 3, "name": "Иноятов Рустам Шукурович", "login": "intl.disp" },
+        { "rma": "9924050104", "type": 4, "name": "Қаландаров Ҷамол Саидович", "login": "intl.azs" },
+        { "rma": "9924050105", "type": 5, "name": "Ниёзова Манижа Азизовна", "login": "intl.buh" }
+      ],
+      "drivers": [
+        { "rma": "9924050201", "fullName": "Шоев Меҳроб Қурбоналиевич", "cats": "B,C,CE", "login": "intl.drv1", "birthDate": "1981-09-15", "experienceYears": 20, "degree": 1, "visa": true, "phone": "+992 93 550-02-01" },
+        { "rma": "9924050202", "fullName": "Абдуллозода Сомон Ризоевич", "cats": "B,C,CE", "login": "intl.drv2", "birthDate": "1986-02-26", "experienceYears": 14, "degree": 1, "visa": true, "phone": "+992 93 550-02-02" },
+        { "rma": "9924050203", "fullName": "Ҳусейнов Навруз Зиёевич", "cats": "B,C,CE", "birthDate": "1988-06-12", "experienceYears": 12, "degree": 2, "visa": true },
+        { "rma": "9924050204", "fullName": "Латипов Фозил Хоҷаевич", "cats": "B,C,CE", "birthDate": "1983-11-03", "experienceYears": 17, "degree": 1, "visa": true },
+        { "rma": "9924050205", "fullName": "Азимов Бахтиёр Ҳамроевич", "cats": "B,C,CE", "birthDate": "1990-08-20", "experienceYears": 9, "degree": 2, "visa": true }
+      ],
+      "vehicles": [
+        { "reg": "5101DM01", "type": 6, "brand": "Volvo FH 460", "fuelType": 2, "carrying": 22, "odometer": 612400, "year": 2018, "intl": true, "trailer1Number": "0201DP01", "trailer1Brand": "Schmitz SKO 24 (рефрижератор)", "trailer1Carrying": 22 },
+        { "reg": "5102DM01", "type": 6, "brand": "DAF XF 480", "fuelType": 2, "carrying": 24, "odometer": 488100, "year": 2019, "intl": true, "trailer1Number": "0202DP01", "trailer1Brand": "Krone SD (тент)", "trailer1Carrying": 24 },
+        { "reg": "5103DM01", "type": 6, "brand": "Scania R450", "fuelType": 2, "carrying": 24, "odometer": 402900, "year": 2020, "intl": true },
+        { "reg": "5104DM01", "type": 6, "brand": "MAN TGX 18.480", "fuelType": 2, "carrying": 24, "odometer": 356700, "year": 2021, "intl": true }
+      ],
+      "clients": [
+        { "number": "I01", "name": "ООО «Пахтаи Тоҷик» (демо)", "address": "г. Душанбе, ул. Шоҳмансур, 5", "phone": "+992 37 233-55-66", "type": 3 },
+        { "number": "I02", "name": "ТОО «Алматы Текстиль» (демо)", "address": "Казахстан, г. Алматы, ул. Райымбека, 212", "phone": "+7 727 355-10-10", "type": 2 }
+      ],
+      "clientLogins": [
+        { "login": "intl.sender", "role": "CLIENT_SENDER", "client": "I01", "firstName": "Отправитель", "lastName": "Пахтаи Тоҷик" }
+      ],
+      "waybills": [
+        { "key": "TI-DONE", "type": "WB_TRUCK_INTL", "vehicle": "5101DM01", "driver": "9924050201", "comm": "INTERNATIONAL", "route": "Душанбе — Алматы", "typeData": { "visaCountry": "Казахстан", "loadCountry": "Таджикистан", "unloadCountry": "Казахстан", "loadCity": "Душанбе", "unloadCity": "Алматы", "transitCountries": ["Кыргызстан"], "cargoName": "Хлопок-волокно", "bbaNumber": "ББА-24-0917", "permitType": "двусторонний", "cargo": { "name": "Хлопок-волокно", "unit": "т", "weight": 21, "packages": 96 } }, "permitCountry": "Казахстан", "consignment": { "senderClient": "I01", "receiverClient": "I02", "senderAddress": "г. Душанбе, ул. Шоҳмансур, 5", "receiverAddress": "Казахстан, г. Алматы, ул. Райымбека, 212", "cargoName": "Хлопок-волокно в кипах", "cargoVolume": 21, "cargoStatCode": "5201", "submittedDocuments": "Инвойс №ДЕМО-INV-311, сертификат происхождения СТ-1" }, "target": "COMPLETED", "km": 1210, "fuel": { "fuelType": 2, "given": 345, "before": 150, "entry": 148 }, "ret": { "transportWork": 25410, "trips": 1, "arrivalHoursAgo": 20 } },
+        { "key": "TI-LINE", "type": "WB_TRUCK_INTL", "vehicle": "5101DM01", "driver": "9924050201", "comm": "INTERNATIONAL", "route": "Душанбе — Алматы", "typeData": { "visaCountry": "Казахстан", "loadCountry": "Таджикистан", "unloadCountry": "Казахстан", "loadCity": "Душанбе", "unloadCity": "Алматы", "transitCountries": ["Кыргызстан"], "cargoName": "Сухофрукты (курага, изюм)", "bbaNumber": "ББА-24-0932", "permitType": "двусторонний", "cargo": { "name": "Сухофрукты", "unit": "т", "weight": 19, "packages": 760 } }, "permitCountry": "Казахстан", "consignment": { "senderClient": "I01", "receiverClient": "I02", "senderAddress": "г. Душанбе, ул. Шоҳмансур, 5", "receiverAddress": "Казахстан, г. Алматы, ул. Райымбека, 212", "cargoName": "Сухофрукты в коробах по 25 кг", "cargoVolume": 19, "cargoStatCode": "0813" }, "target": "ACTIVE", "fuel": { "fuelType": 2, "given": 400, "before": 120 }, "gps": { "lat": 38.7810, "lon": 68.8190, "speed": 58 } },
+        { "key": "TI-MED", "type": "WB_TRUCK_INTL", "vehicle": "5102DM01", "driver": "9924050202", "comm": "INTERNATIONAL", "route": "Душанбе — Ташкент", "typeData": { "visaCountry": "Узбекистан", "loadCountry": "Таджикистан", "unloadCountry": "Узбекистан", "loadCity": "Душанбе", "unloadCity": "Ташкент", "cargoName": "Алюминиевый профиль", "bbaNumber": "ББА-24-0940", "permitType": "двусторонний" }, "permitCountry": "Узбекистан", "target": "WAIT_MED" },
+        { "key": "TI-RET", "type": "WB_TRUCK_INTL", "vehicle": "5103DM01", "driver": "9924050203", "comm": "INTERNATIONAL", "route": "Душанбе — Кашгар", "typeData": { "visaCountry": "Китай", "loadCountry": "Таджикистан", "unloadCountry": "Китай", "loadCity": "Душанбе", "unloadCity": "Кашгар", "transitCountries": ["Кыргызстан"], "cargoName": "Руда цинковая (концентрат)", "bbaNumber": "ББА-24-0901", "permitType": "транзитный" }, "permitCountry": "Китай", "target": "RETURNED", "km": 980, "fuel": { "fuelType": 2, "given": 320, "before": 110, "entry": 64 }, "ret": { "transportWork": 21560, "trips": 1, "arrivalHoursAgo": 30 } },
+        { "key": "TI-DRAFT", "type": "WB_TRUCK_INTL", "vehicle": "5104DM01", "driver": "9924050204", "comm": "INTERNATIONAL", "route": "Душанбе — Мешхед", "typeData": { "visaCountry": "Иран", "loadCountry": "Таджикистан", "unloadCountry": "Иран", "loadCity": "Душанбе", "unloadCity": "Мешхед", "transitCountries": ["Узбекистан", "Туркменистан"], "cargoName": "Хлопковая пряжа", "bbaNumber": "ББА-24-0955", "permitType": "двусторонний" }, "permitCountry": "Иран", "target": "DRAFT" }
+      ]
+    }
+  ]
+}
