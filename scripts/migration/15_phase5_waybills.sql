@@ -13,8 +13,11 @@
 --     (нац. формат RR-YY-... присваивается только в READY — историч. ПЛ его не имеют);
 --     оригинальный legacy-номер сохраняется в type_data.legacyNumber;
 --   * med_passed/tech_passed = true (историч. закрытые ПЛ уже прошли контроль);
---   * work_day/fuel_record НЕ переносятся (legacy хранит как сериализованный TEXT;
---     для упрощённого архива достаточно шапки).
+--   * work_day/fuel_record (рейсы, выручка/касса, дни, топливо — в legacy JSON-текст work_days/fuels)
+--     переносит отдельная ФАЗА 5b: run_phase5b.ps1 (файлы 16/17), только INSERT, после этой фазы;
+--   * снимки несут и поля расчёта отчёта (с 23.09): вместимость ТС, доля дохода/надбавки за класс/
+--     регион организации, класс водителя — иначе пассажирооборот и заработок архивного листа = 0.
+--     ВНИМАНИЕ: ON CONFLICT DO NOTHING не дополняет уже вставленные листы — для них нужен перезалив.
 --
 -- ЗАЩИТНЫЕ КАСТЫ (в staging всё text): даты — строгий шаблон YYYY-MM-DD (в legacy
 -- встречается '0000-00-00'); числа — регэксп перед ::cast.
@@ -43,18 +46,29 @@ SELECT
   left(btrim(s.veh_reg), 20),
   left(btrim(s.driver_rma), 10),
   left(NULLIF(btrim(s.second_driver_rma), ''), 10),
-  jsonb_build_object(
+  -- Ф5b (23.09): + поля, которые читает расчёт отчёта (WaybillCalcAssembler): доля дохода и надбавки
+  -- за класс (заработок водителя), регион (пробег автобуса Душанбе по спидометру), вместимость
+  -- (пассажирооборот), класс водителя. jsonb_strip_nulls — пустые legacy-значения не пишутся.
+  jsonb_strip_nulls(jsonb_build_object(
     'rma', btrim(s.org_rma),
     'name', NULLIF(btrim(s.org_name), ''),
-    'migrated', true),
-  jsonb_build_object(
+    'percentIncome', CASE WHEN btrim(s.org_percent_income) ~ '^-?[0-9]{1,12}(\.[0-9]+)?([eE][-+]?[0-9]+)?$'
+                          THEN btrim(s.org_percent_income)::double precision END,
+    'cat1', CASE WHEN btrim(s.org_cat1) ~ '^-?[0-9]{1,4}$' THEN btrim(s.org_cat1)::int END,
+    'cat2', CASE WHEN btrim(s.org_cat2) ~ '^-?[0-9]{1,4}$' THEN btrim(s.org_cat2)::int END,
+    'cat3', CASE WHEN btrim(s.org_cat3) ~ '^-?[0-9]{1,4}$' THEN btrim(s.org_cat3)::int END,
+    'regionId', CASE WHEN btrim(s.org_region_id) ~ '^[0-9]{1,3}$' THEN btrim(s.org_region_id)::int END,
+    'migrated', true)),
+  jsonb_strip_nulls(jsonb_build_object(
     'registrationNumber', btrim(s.veh_reg),
     'brand', NULLIF(btrim(s.veh_brand), ''),
-    'migrated', true),
-  jsonb_build_object(
+    'capacity', CASE WHEN btrim(s.veh_capacity) ~ '^0*[1-9][0-9]{0,3}$' THEN btrim(s.veh_capacity)::int END,
+    'migrated', true)),
+  jsonb_strip_nulls(jsonb_build_object(
     'rma', btrim(s.driver_rma),
     'fullName', NULLIF(btrim(s.driver_name), ''),
-    'migrated', true),
+    'degree', CASE WHEN btrim(s.driver_degree) ~ '^[1-3]$' THEN btrim(s.driver_degree)::int END,
+    'migrated', true)),
   jsonb_strip_nulls(jsonb_build_object(
     'migrated', true,
     'legacyTable', s.src_code,

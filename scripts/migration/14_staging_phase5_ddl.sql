@@ -33,5 +33,15 @@ CREATE TABLE stg_wb5 (
   schedule            text,   -- 19 график
   special_mark        text,   -- 20 особые отметки
   created_at          text,   -- 21 legacy created_at -> created_at
-  type_service        text    -- 22 3cs: 1=такси/2=маршрут/3=почасовой (в type_data)
+  type_service        text,   -- 22 3cs: 1=такси/2=маршрут/3=почасовой (в type_data)
+  -- 23..29 (Ф5b, 23.09.2026): поля, которые расчёт отчёта берёт из снимков ПЛ. Legacy берёт их
+  -- «вживую» у связанных записей; архивный снимок должен их нести, иначе пассажирооборот и
+  -- заработок водителя архивного листа = 0 (находка 11 AUDIT.md).
+  veh_capacity        text,   -- 23 вместимость: brands.capacity (такси «по счётчику» — parkings.capacity)
+  org_percent_income  text,   -- 24 companies.percent_income — доля дохода (заработок водителя)
+  org_cat1            text,   -- 25 companies.cat_1 — надбавка за класс 1
+  org_cat2            text,   -- 26 companies.cat_2
+  org_cat3            text,   -- 27 companies.cat_3
+  org_region_id       text,   -- 28 companies.region_id (1 = Душанбе: пробег автобуса по спидометру)
+  driver_degree       text    -- 29 drivers.degree — класс водителя
 );

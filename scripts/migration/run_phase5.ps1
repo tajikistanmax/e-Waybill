@@ -45,12 +45,17 @@ function Load-Table([string]$name, [string]$query) {
 
 # --- Экспортные запросы legacy (натуральные ключи резолвятся здесь же, в MySQL) ---
 # Общий «хвост» резолва водителя через pivot parking_driver (~1.01 водителя на ТС):
-$PD = "LEFT JOIN (SELECT parking_id, MAX(driver_id) driver_id FROM parking_driver GROUP BY parking_id) pdx ON pdx.parking_id=w.parking_id JOIN drivers d ON d.id=pdx.driver_id AND TRIM(COALESCE(d.rma,''))<>'' AND CHAR_LENGTH(TRIM(d.rma))<=10"
+# 23.09 (phase 5b reconciliation): the waybill's own driver is w.timesheet_id (legacy Waybill*::timesheet(),
+# report SQL 'JOIN drivers d ON way.timesheet_id = d.id'); parking_driver is only a fallback. Before, the
+# parking's last driver was taken for every waybill: for 1-AD in 07.2026 it matched timesheet_id in 668 of 10047.
+# 'NULL' as a literal RMA string (legacy garbage) is treated as empty.
+$PD = "LEFT JOIN drivers dt ON dt.id=w.timesheet_id AND TRIM(COALESCE(dt.rma,'')) NOT IN ('','NULL') AND CHAR_LENGTH(TRIM(dt.rma))<=10 LEFT JOIN (SELECT parking_id, MAX(driver_id) driver_id FROM parking_driver GROUP BY parking_id) pdx ON pdx.parking_id=w.parking_id JOIN drivers d ON d.id=COALESCE(dt.id, pdx.driver_id) AND TRIM(COALESCE(d.rma,'')) NOT IN ('','NULL') AND CHAR_LENGTH(TRIM(d.rma))<=10"
 
 # 22-колоночная шапка (порядок = stg_wb5):
 # id, src_code, waybill_type, communication, org_rma, org_name, veh_reg, veh_brand,
 # driver_rma, driver_name, 2nd_driver_rma, 2nd_driver_name, route_text, number,
-# exit_date, entry_date, odo_exit, odo_entry, schedule, special_mark, created_at, type_service
+# exit_date, entry_date, odo_exit, odo_entry, schedule, special_mark, created_at, type_service,
+# + (phase 5b, 23.09) veh_capacity, org_percent_income, org_cat1..3, org_region_id, driver_degree
 
 # waybill3cs -> WB_TAXI (type_service=1) / WB_CAR (2,3).
 $q_3cs = @"
@@ -59,7 +64,8 @@ SELECT w.id, '3C', CASE WHEN w.type_service=1 THEN 'WB_TAXI' ELSE 'WB_CAR' END, 
   d.rma, d.full_name, NULL, NULL,
   NULLIF(TRIM(CONCAT_WS(' - ', NULLIF(TRIM(r.name_a),''), NULLIF(TRIM(r.name_b),''))),''),
   w.number, w.exit_date, w.entry_date, w.indication_counter_exit, w.indication_counter_entry,
-  w.schedule, w.special_mark, w.created_at, w.type_service
+  w.schedule, w.special_mark, w.created_at, w.type_service,
+  CASE WHEN w.type_service=1 THEN COALESCE(NULLIF(p.capacity,0), b.capacity) ELSE COALESCE(NULLIF(b.capacity,0), p.capacity) END, c.percent_income, c.cat_1, c.cat_2, c.cat_3, c.region_id, d.degree
 FROM waybill3cs w
 JOIN companies c ON c.id=w.company_id AND TRIM(COALESCE(c.rma,''))<>''
 JOIN parkings p ON p.id=w.parking_id AND TRIM(COALESCE(p.registration_number,''))<>''
@@ -76,7 +82,8 @@ SELECT w.id, '1A', 'WB_MINIBUS', NULL,
   d.rma, d.full_name, NULL, NULL,
   NULLIF(TRIM(CONCAT_WS(' - ', NULLIF(TRIM(r.name_a),''), NULLIF(TRIM(r.name_b),''))),''),
   w.number, w.exit_date, w.entry_date, w.indication_counter_exit, w.indication_counter_entry,
-  w.schedule, w.special_mark, w.created_at, NULL
+  w.schedule, w.special_mark, w.created_at, NULL,
+  COALESCE(NULLIF(b.capacity,0), p.capacity), c.percent_income, c.cat_1, c.cat_2, c.cat_3, c.region_id, d.degree
 FROM waybill1as w
 JOIN companies c ON c.id=w.company_id AND TRIM(COALESCE(c.rma,''))<>''
 JOIN parkings p ON p.id=w.parking_id AND TRIM(COALESCE(p.registration_number,''))<>''
@@ -93,7 +100,8 @@ SELECT w.id, '1D', CASE WHEN w.type='ebus' THEN 'WB_TROLLEYBUS' ELSE 'WB_BUS' EN
   d.rma, d.full_name, NULL, NULL,
   NULLIF(TRIM(CONCAT_WS(' - ', NULLIF(TRIM(r.name_a),''), NULLIF(TRIM(r.name_b),''))),''),
   w.number, w.exit_date, w.entry_date, w.indication_counter_exit, w.indication_counter_entry,
-  w.schedule, w.special_mark, w.created_at, NULL
+  w.schedule, w.special_mark, w.created_at, NULL,
+  COALESCE(NULLIF(b.capacity,0), p.capacity), c.percent_income, c.cat_1, c.cat_2, c.cat_3, c.region_id, d.degree
 FROM waybill1ads w
 JOIN companies c ON c.id=w.company_id AND TRIM(COALESCE(c.rma,''))<>''
 JOIN parkings p ON p.id=w.parking_id AND TRIM(COALESCE(p.registration_number,''))<>''
@@ -110,7 +118,8 @@ SELECT w.id, '2B', 'WB_TRUCK', NULL,
   d.rma, d.full_name, NULL, NULL,
   NULLIF(TRIM(dir.title),''),
   w.number, w.exit_date, w.entry_date, w.indication_counter_exit, w.indication_counter_entry,
-  NULL, w.special_mark, w.created_at, NULL
+  NULL, w.special_mark, w.created_at, NULL,
+  COALESCE(NULLIF(b.capacity,0), p.capacity), c.percent_income, c.cat_1, c.cat_2, c.cat_3, c.region_id, d.degree
 FROM waybill2bs w
 JOIN companies c ON c.id=w.company_id AND TRIM(COALESCE(c.rma,''))<>''
 JOIN parkings p ON p.id=w.parking_id AND TRIM(COALESCE(p.registration_number,''))<>''
@@ -127,7 +136,8 @@ SELECT w.id, '5F', 'WB_TRUCK_INTL', NULL,
   d1.rma, d1.full_name, d2.rma, d2.full_name,
   NULL,
   w.bba_number, w.exit_date, w.entry_date, w.indication_counter_exit, w.indication_counter_entry,
-  NULL, w.special_mark, w.created_at, NULL
+  NULL, w.special_mark, w.created_at, NULL,
+  COALESCE(NULLIF(b.capacity,0), p.capacity), c.percent_income, c.cat_1, c.cat_2, c.cat_3, c.region_id, d1.degree
 FROM waybill5bbms w
 JOIN companies c ON c.id=w.company_id AND TRIM(COALESCE(c.rma,''))<>''
 JOIN parkings p ON p.id=w.parking_id AND TRIM(COALESCE(p.registration_number,''))<>''
