@@ -9,8 +9,7 @@ $wb = 'http://localhost:8082'
 $md = 'http://localhost:8081'
 
 function GetToken($user) {
-    $body = "client_id=epd-web&grant_type=password&username=$user&password=$(Get-DemoPassword $user)"
-    (Invoke-RestMethod -Method Post -Uri "$kc/realms/epd/protocol/openid-connect/token" -Body $body -ContentType 'application/x-www-form-urlencoded').access_token
+    Get-PlatformToken $user
 }
 function PostJson($url, $obj, $headers) {
     $json = $obj | ConvertTo-Json -Depth 8

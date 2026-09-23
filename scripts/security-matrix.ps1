@@ -18,8 +18,7 @@ function Chk($name, $cond) {
 $tokens = @{}
 function Hdr($user) {
     if (-not $tokens.ContainsKey($user)) {
-        $body = "client_id=epd-web&grant_type=password&username=$user&password=$(Get-DemoPassword $user)"
-        $tokens[$user] = (Invoke-RestMethod -Method Post -Uri "$kc/realms/epd/protocol/openid-connect/token" -Body $body -ContentType 'application/x-www-form-urlencoded').access_token
+        $tokens[$user] = Get-PlatformToken $user
     }
     return @{ Authorization = "Bearer $($tokens[$user])" }
 }

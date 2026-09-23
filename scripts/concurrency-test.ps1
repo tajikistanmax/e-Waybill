@@ -21,7 +21,7 @@ function Chk($name, $cond) {
     if ($cond) { $script:pass++; Write-Output "  [PASS] $name" }
     else { $script:fail++; Write-Output "  [FAIL] $name" }
 }
-$hd = @{ Authorization = "Bearer $((Invoke-RestMethod -Method Post -Uri "$kc/realms/epd/protocol/openid-connect/token" -Body "client_id=epd-web&grant_type=password&username=dispatcher&password=$(Get-DemoPassword 'dispatcher')" -ContentType 'application/x-www-form-urlencoded').access_token)" }
+$hd = @{ Authorization = "Bearer $(Get-PlatformToken 'dispatcher')" }
 function Cancel($obj) { Invoke-RestMethod -Method Post -Uri "$wb/api/v1/waybills/$($obj.id)/cancel" -Headers $hd -Body ([Text.Encoding]::UTF8.GetBytes((@{ reason = 'test'; actor = 'test' } | ConvertTo-Json))) -ContentType 'application/json; charset=utf-8' | Out-Null }
 function DbCount($sql) {
     $out = docker exec $pg psql -U epd -d waybill -t -A -c $sql
@@ -47,7 +47,7 @@ foreach ($o in $open) { if ($o.vehicleRegNumber -eq '0114TJ01' -and $openLocal -
 # API_INTEGRATOR). Токен безвреден и в открытом режиме (лишний валидный Authorization не мешает
 # permitAll), поэтому просто всегда берём его — без пробного запроса с побочным эффектом.
 $exit = (Get-Date -Format 'yyyy-MM-dd HH:mm')
-$aggToken = (Invoke-RestMethod -Method Post -Uri "$kc/realms/epd/protocol/openid-connect/token" -Body 'client_id=epd-aggregator&client_secret=epd_aggregator_dev_secret&grant_type=client_credentials' -ContentType 'application/x-www-form-urlencoded').access_token
+$aggToken = Get-AggregatorToken
 
 $jobs = 1..8 | ForEach-Object {
     Start-Job -ScriptBlock {
@@ -80,7 +80,7 @@ foreach ($o in $open2) { if ($o.vehicleRegNumber -eq '0114TJ01' -and $openLocal 
 # --- прод-стек по умолчанию — см. docker-compose.prod.yml); оба варианта корректны.
 Write-Output ''
 Write-Output '=== ГОНКА Т2 || Т3: параллельные медосмотр и техконтроль одного ПЛ ==='
-function TokenOf($user) { (Invoke-RestMethod -Method Post -Uri "$kc/realms/epd/protocol/openid-connect/token" -Body "client_id=epd-web&grant_type=password&username=$user&password=$(Get-DemoPassword $user)" -ContentType 'application/x-www-form-urlencoded').access_token }
+function TokenOf($user) { Get-PlatformToken $user }
 function PostJ($url, $obj, $h) { Invoke-RestMethod -Method Post -Uri $url -Headers $h -Body ([Text.Encoding]::UTF8.GetBytes(($obj | ConvertTo-Json -Depth 8))) -ContentType 'application/json; charset=utf-8' }
 $w = PostJ "$wb/api/v1/waybills" @{ waybillType = 'WB_BUS'; organizationRma = '025680800'; vehicleRegNumber = '0114TJ01'; driverRma = '461930031'; route = 'concurrency-race' } $hd
 $w = PostJ "$wb/api/v1/waybills/$($w.id)/titles/t1" @{ dispatcherRma = '333333333'; validityDays = 1 } $hd

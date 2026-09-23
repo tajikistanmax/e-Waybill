@@ -17,7 +17,7 @@ function Chk($name, $cond) {
     if ($cond) { $script:pass++; Write-Output "  [PASS] $name" }
     else { $script:fail++; Write-Output "  [FAIL] $name" }
 }
-function Tok($u) { (Invoke-RestMethod -Method Post -Uri "$kc/realms/epd/protocol/openid-connect/token" -Body "client_id=epd-web&grant_type=password&username=$u&password=$(Get-DemoPassword $u)" -ContentType 'application/x-www-form-urlencoded').access_token }
+function Tok($u) { Get-PlatformToken $u }
 $hd = @{ Authorization = "Bearer $(Tok 'dispatcher')" }
 $hdoc = @{ Authorization = "Bearer $(Tok 'doctor')" }
 $hm = @{ Authorization = "Bearer $(Tok 'mechanic')" }

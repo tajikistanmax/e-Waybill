@@ -2,13 +2,12 @@
 # Приёмочный smoke-тест платформы ЭПД РТ (раздел 15 ТЗ)
 # Прогоняет ключевые сценарии против запущенного стека.
 # Запуск: powershell -File scripts\smoke-test.ps1
-# Требует: master-data :8081, waybill :8082, Keycloak :8180 (realm epd)
+# Требует: master-data :8081 (он же выдаёт токены, /api/v1/auth/token), waybill :8082
 # =====================================================================
 $ErrorActionPreference = 'Stop'
 . "$PSScriptRoot\demo-credentials.ps1"
 $md = "http://localhost:8081"
 $wb = "http://localhost:8082"
-$kc = "http://localhost:8180"
 $pass = 0; $fail = 0
 
 function Check($name, $ok) {
@@ -16,10 +15,7 @@ function Check($name, $ok) {
     else { $script:fail++; Write-Output "  [FAIL] $name" }
 }
 
-function GetToken($user) {
-    $body = "client_id=epd-web&grant_type=password&username=$user&password=$(Get-DemoPassword $user)"
-    (Invoke-RestMethod -Method Post -Uri "$kc/realms/epd/protocol/openid-connect/token" -Body $body -ContentType "application/x-www-form-urlencoded").access_token
-}
+function GetToken($user) { Get-PlatformToken $user }
 
 function PostJson($url, $obj, $headers) {
     $json = $obj | ConvertTo-Json -Depth 8
@@ -133,20 +129,16 @@ try {
 
 # --- 8. API агрегаторов (legacy-контракт) ---
 # AGGREGATOR_OPEN управляет режимом: true (dev) - без токена; false (по умолчанию в
-# docker-compose.prod.yml) - обязателен client-credentials токен epd-aggregator
-# (роль API_INTEGRATOR, см. infra/keycloak/epd-realm.json). Пробуем открытый режим,
-# при 401 переключаемся на client-credentials - так скрипт работает в обоих контурах.
-function GetClientCredentialsToken($clientId, $secret) {
-    $body = "client_id=$clientId&client_secret=$secret&grant_type=client_credentials"
-    (Invoke-RestMethod -Method Post -Uri "$kc/realms/epd/protocol/openid-connect/token" -Body $body -ContentType "application/x-www-form-urlencoded").access_token
-}
+# docker-compose.prod.yml) - обязателен токен учётной записи агрегатора epd-aggregator
+# (роль API_INTEGRATOR, пароль AGGREGATOR_PASSWORD в infra/.env). Пробуем открытый режим,
+# при 401 входим учётной записью агрегатора - так скрипт работает в обоих контурах.
 $aggPayload = @{ organization_rma = "025680800"; transport_registration_number = "0114TJ01"; driver_rma = "461930031"; employee_rma = "333333333"; exit_date = (Get-Date -Format "yyyy-MM-dd HH:mm"); distance = 50 }
 $hagg = @{}
 try {
     $agg = PostJson "$wb/api/v1/aggregator/waybills" $aggPayload $hagg
 } catch {
     if ($_.Exception.Response.StatusCode.value__ -eq 401) {
-        $hagg = @{ Authorization = "Bearer $(GetClientCredentialsToken 'epd-aggregator' 'epd_aggregator_dev_secret')" }
+        $hagg = @{ Authorization = "Bearer $(Get-AggregatorToken)" }
         $agg = PostJson "$wb/api/v1/aggregator/waybills" $aggPayload $hagg
     } else { throw }
 }

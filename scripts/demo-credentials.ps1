@@ -31,3 +31,25 @@ function Get-DemoPassword($username) {
     if ($DemoPasswords.ContainsKey($username)) { return $DemoPasswords[$username] }
     return $username
 }
+
+# Platform sign-in (since 2026-09-23 the platform issues tokens itself, Keycloak is not used):
+# POST master-data /api/v1/auth/token {username, password} -> access_token.
+function Get-PlatformToken($username, $password = $null, $md = 'http://localhost:8081') {
+    if (-not $password) { $password = Get-DemoPassword $username }
+    $body = @{ username = $username; password = $password } | ConvertTo-Json
+    (Invoke-RestMethod -Method Post -Uri "$md/api/v1/auth/token" -Body $body -ContentType 'application/json').access_token
+}
+
+# External aggregator account (replaces the Keycloak client-credentials client epd-aggregator).
+# Password comes from $env:AGGREGATOR_PASSWORD or infra/.env (never from git).
+function Get-AggregatorToken($md = 'http://localhost:8081') {
+    $user = if ($env:AGGREGATOR_USERNAME) { $env:AGGREGATOR_USERNAME } else { 'epd-aggregator' }
+    $pw = $env:AGGREGATOR_PASSWORD
+    $envFile = Join-Path $PSScriptRoot '..\infra\.env'
+    if (-not $pw -and (Test-Path $envFile)) {
+        $line = Select-String -Path $envFile -Pattern '^AGGREGATOR_PASSWORD=' | Select-Object -First 1
+        if ($line) { $pw = $line.Line.Split('=', 2)[1].Trim() }
+    }
+    if (-not $pw) { throw 'AGGREGATOR_PASSWORD is not set (env or infra/.env)' }
+    Get-PlatformToken $user $pw $md
+}

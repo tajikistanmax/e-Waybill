@@ -8,7 +8,7 @@
 $ErrorActionPreference = 'Stop'
 . "$PSScriptRoot\demo-credentials.ps1"
 $md = 'http://localhost:8081'; $kc = 'http://localhost:8180'
-$tok = (Invoke-RestMethod -Method Post -Uri "$kc/realms/epd/protocol/openid-connect/token" -Body "client_id=epd-web&grant_type=password&username=admin-automation&password=$(Get-DemoPassword 'admin-automation')" -ContentType 'application/x-www-form-urlencoded').access_token
+$tok = Get-PlatformToken 'admin-automation'
 $hd = @{ Authorization = "Bearer $tok" }
 $ok = 0; $fail = 0
 function Sync($path, $body) {
