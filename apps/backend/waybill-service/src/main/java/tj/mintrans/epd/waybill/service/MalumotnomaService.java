@@ -96,7 +96,9 @@ public class MalumotnomaService {
         m.setAge(age);
         m.setOrganizationRma(currentUser.organizationRma().orElse(null));
         m.setIssuerRma(currentUser.rma().orElse(null));
-        m.setIssuerName(currentUser.username().orElse(null));
+        // «Выдал» на справке и «Кассир» в отчёте — Ф.И.О. кассира, а не логин (было «accountant»).
+        m.setIssuerName(currentUser.fullName().filter(s -> !s.isBlank())
+                .or(currentUser::username).orElse(null));
 
         BigDecimal sum = BigDecimal.ZERO;
         List<String> summary = new ArrayList<>();
