@@ -86,8 +86,10 @@ public class GpsController {
     }
 
     /** Журнал GPS-событий (legacy admin/gpsevent, MIGRATION.md 8.9): фильтр по организации/ТС/состоянию/периоду. */
+    // BRANCH_ADMIN: «GPS-мониторинг» есть в его меню (матрица role_access), а сервер отвечал 403 —
+    // страница администратора филиала была пустой. Область сужает tenantScope (только свой филиал).
     @GetMapping("/events")
-    @PreAuthorize("hasAnyRole('DISPATCHER','COMPANY_ADMIN','SYSTEM_ADMIN','INSPECTOR','MINTRANS_ANALYST')")
+    @PreAuthorize("hasAnyRole('DISPATCHER','COMPANY_ADMIN','BRANCH_ADMIN','SYSTEM_ADMIN','INSPECTOR','MINTRANS_ANALYST')")
     public GpsEventService.PageResult events(@RequestParam(required = false) String organizationRma,
                                              @RequestParam(required = false) String vehicleRegNumber,
                                              @RequestParam(required = false) String state,
@@ -146,7 +148,7 @@ public class GpsController {
      * Позиция может быть null, если от трекера ТС ещё не поступало пингов.
      */
     @GetMapping("/live")
-    @PreAuthorize("hasAnyRole('DISPATCHER','COMPANY_ADMIN','SYSTEM_ADMIN','INSPECTOR','MINTRANS_ANALYST')")
+    @PreAuthorize("hasAnyRole('DISPATCHER','COMPANY_ADMIN','BRANCH_ADMIN','SYSTEM_ADMIN','INSPECTOR','MINTRANS_ANALYST')")
     public List<LivePosition> live() {
         var onLine = EnumSet.of(WaybillStatus.ISSUED, WaybillStatus.ACTIVE);
         List<Waybill> active;

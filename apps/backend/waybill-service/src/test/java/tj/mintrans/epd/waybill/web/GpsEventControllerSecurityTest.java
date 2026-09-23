@@ -75,10 +75,25 @@ class GpsEventControllerSecurityTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"DISPATCHER", "COMPANY_ADMIN", "SYSTEM_ADMIN", "INSPECTOR", "MINTRANS_ANALYST"})
+    @ValueSource(strings = {"DISPATCHER", "COMPANY_ADMIN", "BRANCH_ADMIN", "SYSTEM_ADMIN", "INSPECTOR", "MINTRANS_ANALYST"})
     void journalAllowed(String role) throws Exception {
         when(gpsEvents.list(any(), anyInt(), anyInt())).thenReturn(new GpsEventService.PageResult(List.of(), 0, 50, 0, 0));
         mvc.perform(get("/api/v1/gps/events?state=enter_into_route").with(as(role))).andExpect(status().isOk());
+    }
+
+    /** Монитор «на линии»: у администратора филиала пункт есть в меню — сервер обязан пускать (23.09.2026). */
+    @ParameterizedTest
+    @ValueSource(strings = {"DISPATCHER", "COMPANY_ADMIN", "BRANCH_ADMIN", "SYSTEM_ADMIN", "INSPECTOR", "MINTRANS_ANALYST"})
+    void liveAllowed(String role) throws Exception {
+        when(tenantScope.isBounded()).thenReturn(false);
+        when(waybills.findByStatusInOrderByCreatedAtDesc(any())).thenReturn(List.of());
+        mvc.perform(get("/api/v1/gps/live").with(as(role))).andExpect(status().isOk());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"DRIVER", "ACCOUNTANT", "DOCTOR", "CLIENT_SENDER"})
+    void liveForbidden(String role) throws Exception {
+        mvc.perform(get("/api/v1/gps/live").with(as(role))).andExpect(status().isForbidden());
     }
 
     @ParameterizedTest

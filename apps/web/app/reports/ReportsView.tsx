@@ -234,9 +234,12 @@ export default function ReportsView({ tab }: { tab: ReportTab }) {
 
   useEffect(() => { load(); }, [load]);
 
+  // Каталог разрезов нужен только вкладке «Типовые». Раньше он запрашивался на каждой вкладке —
+  // и у инспектора (которому типовые разрезы закрыты) каждая страница отчётов давала 403.
   useEffect(() => {
+    if (tab !== 'typed') return;
     getJson<ReportTypeMeta[]>('/wb-api/api/v1/reports/types').then(setTypedTypes).catch(() => { /* каталог не критичен */ });
-  }, []);
+  }, [tab]);
 
   /** Скачать XLSX по URL (токен в заголовке → fetch + Blob). */
   // Постраничный вывод длинных таблиц отчётов (замечание владельца 22.09). Итоговые строки

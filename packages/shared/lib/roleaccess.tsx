@@ -31,11 +31,17 @@ export const useRoleAccess = () => useContext(Ctx);
 export function RoleAccessProvider({ children }: { children: React.ReactNode }) {
   const { ready, authenticated } = useAuth();
   const [config, setConfig] = useState<Record<string, RoleAccess> | null>(null);
+  // Попытка загрузки завершилась (успехом или ошибкой). До этого гвард разделов в shell.tsx не
+  // уводит пользователя: иначе при прямом заходе/обновлении страницы решение принималось по
+  // запасному списку из кода, и разрешённый матрицей раздел (напр. «Компания» у администратора
+  // компании) мгновенно перебрасывал на главную.
+  const [settled, setSettled] = useState(false);
 
   const reload = useCallback(() => {
     md.roleAccess()
       .then(list => setConfig(Object.fromEntries(list.map(r => [r.role, r]))))
-      .catch(() => { /* нет связи — остаётся фолбэк на зашитый lib/roles */ });
+      .catch(() => { /* нет связи — остаётся фолбэк на зашитый lib/roles */ })
+      .finally(() => setSettled(true));
   }, []);
 
   useEffect(() => { if (ready && authenticated) reload(); }, [ready, authenticated, reload]);
@@ -62,7 +68,7 @@ export function RoleAccessProvider({ children }: { children: React.ReactNode }) 
   }, [config]);
 
   return (
-    <Ctx.Provider value={{ config, loaded: config != null, navFor, homeFor, reload }}>
+    <Ctx.Provider value={{ config, loaded: settled || config != null, navFor, homeFor, reload }}>
       {children}
     </Ctx.Provider>
   );

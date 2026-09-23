@@ -7,6 +7,7 @@ import { useT, WAYBILL_TYPE_CODES } from '@/lib/i18n';
 import { Icon, P } from '../icons';
 import { ExpiryAlert } from '../ExpiryAlert';
 import OrgDocuments from './OrgDocuments';
+import MyCompany from './MyCompany';
 import SubjectDocuments from '../fleet/SubjectDocuments';
 
 type Row = Record<string, unknown>;
@@ -235,8 +236,11 @@ function OrgFields({ f, t }: { f: (k: string) => Field; t: (k: string) => string
  */
 export default function CompanyPage() {
   const { roles } = useAuth();
-  if (!roles.includes('SYSTEM_ADMIN')) return null;
-  return <OrgRegistry />;
+  if (roles.includes('SYSTEM_ADMIN')) return <OrgRegistry />;
+  // Администратор компании / филиала: пункт «Компания» даёт ему матрица ролей (V20/V41) как
+  // профиль своей организации. Раньше здесь был return null — пункт меню вёл на пустой экран.
+  if (roles.includes('COMPANY_ADMIN') || roles.includes('BRANCH_ADMIN')) return <MyCompany />;
+  return null;
 }
 
 /**

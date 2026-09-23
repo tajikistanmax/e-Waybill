@@ -48,9 +48,11 @@ export function Shell({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!ready || isPublic(pathname)) return;
     if (!authenticated) { router.replace('/login'); return; }
-    // Доступ к разделу не разрешён роли — уводим в её кабинет.
-    if (!allowed) router.replace(homeFor(roles));
-  }, [ready, authenticated, roles, pathname, allowed, router, homeFor]);
+    // Доступ к разделу не разрешён роли — уводим в её кабинет. Решение — только после загрузки
+    // матрицы ролей (loaded): до неё действует запасной список из кода, и при обновлении страницы
+    // разрешённый матрицей раздел ошибочно перебрасывал на главную.
+    if (!allowed && loaded) router.replace(homeFor(roles));
+  }, [ready, authenticated, roles, pathname, allowed, router, homeFor, loaded]);
 
   if (isPublic(pathname)) return <><MaintenanceBanner />{children}</>;
   if (!ready) return <div className="boot">Загрузка системы…</div>;

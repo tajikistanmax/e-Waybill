@@ -66,6 +66,10 @@ export default function RolesSettingsPage() {
     setBusy(role); setMsg(m => ({ ...m, [role]: undefined! }));
     try {
       await md.saveRoleAccess(role, cur.homeKey, [...cur.nav]);
+      // Сохранённое становится новой точкой отсчёта «есть изменения». Раньше сравнение шло с
+      // состоянием на момент открытия страницы: вернуть только что сделанную правку было нельзя —
+      // кнопка «Сохранить» оставалась неактивной до перезагрузки страницы.
+      setList(l => l?.map(x => (x.role === role ? { ...x, homeKey: cur.homeKey, navKeys: [...cur.nav] } : x)) ?? l);
       reload(); // обновить меню/навигацию во всём приложении
       setMsg(m => ({ ...m, [role]: { ok: true, text: t('common.saved') } }));
     } catch (err) {
