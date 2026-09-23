@@ -65,6 +65,7 @@ class WaybillCalcAssemblerArchiveTest {
         route.put("coeUseCapacity", 0.5);
         route.put("averageLengthPassSeat", 5);
         lenient().when(masterData.findRoute(eq("Автовокзал - Зарафшон"))).thenReturn(Optional.of(route));
+        lenient().when(masterData.findRoute(eq("Автовокзал - Зарафшон"), any())).thenReturn(Optional.of(route));
         lenient().when(masterData.findBrandByName(eq("ЛиАЗ-5256"))).thenReturn(
                 Optional.of(Map.of("name", "ЛиАЗ-5256", "capacity", 80)));
 

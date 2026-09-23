@@ -144,7 +144,7 @@ public class WaybillCalcAssembler {
         List<CalcFuelLine> fuels = toCalcFuelLines(records);
         LocalDate calcDate = s.calcDate() != null ? s.calcDate() : calcDate(wb);
 
-        Map<String, Object> route = masterData.findRoute(wb.getRoute()).orElse(null);
+        Map<String, Object> route = masterData.findRoute(wb.getRoute(), wb.getOrganizationRma()).orElse(null);
         if (route == null && wb.getRoute() != null && !wb.getRoute().isBlank()) {
             notes.add("Маршрут «" + wb.getRoute() + "» не найден в справочнике — коэффициенты и путевые показатели не применены");
         }

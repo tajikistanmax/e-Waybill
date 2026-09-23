@@ -397,14 +397,52 @@ public class MasterDataClient {
 
     /** Маршрут по номеру или названию (регистронезависимо); из маршрутов организации токена. */
     public Optional<Map<String, Object>> findRoute(String numberOrName) {
+        return findRoute(numberOrName, null);
+    }
+
+    /**
+     * Маршрут для листа организации {@code organizationRma}: см. {@link #matchRoute}.
+     * Маршрут в листе — свободный текст, диспетчер пишет «№8 Автовокзал — ТЦ «Садбарг»», а в
+     * справочнике номер «8» и название отдельно; точное сравнение такой текст не узнавало, и в
+     * отчётах у листа не было ни протяжённости, ни плановых рейсов (находка 23.09.2026).
+     */
+    public Optional<Map<String, Object>> findRoute(String numberOrName, String organizationRma) {
         if (numberOrName == null || numberOrName.isBlank()) {
             return Optional.empty();
         }
-        String q = numberOrName.trim();
-        List<Map<String, Object>> routes = listRoutes();
-        return routes.stream()
-                .filter(r -> q.equalsIgnoreCase(str(r.get("number"))) || q.equalsIgnoreCase(str(r.get("name"))))
+        return matchRoute(listRoutes(), numberOrName, organizationRma);
+    }
+
+    /**
+     * Порядок: (1) точное совпадение номера или названия — маршруты своей организации впереди;
+     * (2) текст начинается с номера («№8 …», «8 - …», «8/…») — только своя организация;
+     * (3) текст содержит название маршрута (не короче 6 знаков, самое длинное) — только своя.
+     * Без организации (2) и (3) не применяются — номер «8» есть у многих перевозчиков.
+     */
+    static Optional<Map<String, Object>> matchRoute(List<Map<String, Object>> routes, String text, String organizationRma) {
+        String q = text.trim();
+        List<Map<String, Object>> own = organizationRma == null ? List.of()
+                : routes.stream().filter(r -> organizationRma.equals(str(r.get("organizationRma")))).toList();
+        var exact = java.util.stream.Stream.concat(own.stream(), routes.stream())
+                .filter(r -> q.equalsIgnoreCase(str(r.get("number")).trim()) || q.equalsIgnoreCase(str(r.get("name")).trim()))
                 .findFirst();
+        if (exact.isPresent() || own.isEmpty()) {
+            return exact;
+        }
+        var m = java.util.regex.Pattern.compile("^\\s*(?:№|N|#|No\\.?)?\\s*([0-9A-Za-zА-Яа-я]{1,10}?)(?=$|[\\s\\-–—/,.:])")
+                .matcher(q);
+        if (m.find()) {
+            String token = m.group(1);
+            var byNumber = own.stream().filter(r -> token.equalsIgnoreCase(str(r.get("number")).trim())).findFirst();
+            if (byNumber.isPresent()) {
+                return byNumber;
+            }
+        }
+        String lower = q.toLowerCase();
+        return own.stream()
+                .filter(r -> str(r.get("name")).trim().length() >= 6
+                        && lower.contains(str(r.get("name")).trim().toLowerCase()))
+                .max(java.util.Comparator.comparingInt(r -> str(r.get("name")).trim().length()));
     }
 
     private static String str(Object o) {
@@ -420,10 +458,33 @@ public class MasterDataClient {
         // Поштучный «?name=» в отчёте за месяц давал обращение на каждую встреченную марку:
         // кэш по имени не спасал — холодный кэш заполнялся быстрее, чем позволял ограничитель
         // частоты master-data, и отчёт падал в 503 (приёмка 22.09.2026).
+        return matchBrand(listBrands(), name);
+    }
+
+    /**
+     * Марка по тексту карточки ТС: точное название, иначе «название + модель» без учёта пробелов и
+     * дефисов («ЛиАЗ-5292» = марка «ЛиАЗ», модель «5292»). В карточке ТС марка — свободный текст,
+     * в справочнике — название и модель раздельно; без второго шага у такого ТС не находилась норма
+     * расхода, и в отчётах норма была 0 (находка 23.09.2026). Префикс без модели не сопоставляется:
+     * «МАЗ-203» с «МАЗ 103» дал бы чужую норму.
+     */
+    static Optional<Map<String, Object>> matchBrand(List<Map<String, Object>> brands, String name) {
         String needle = name.trim().toLowerCase();
-        return listBrands().stream()
+        var exact = brands.stream()
                 .filter(b -> needle.equals(str(b.get("name")).trim().toLowerCase()))
                 .findFirst();
+        if (exact.isPresent()) {
+            return exact;
+        }
+        String compact = compactBrand(name);
+        return brands.stream()
+                .filter(b -> !str(b.get("model")).isBlank()
+                        && compact.equals(compactBrand(str(b.get("name")) + str(b.get("model")))))
+                .findFirst();
+    }
+
+    private static String compactBrand(String s) {
+        return s == null ? "" : s.toLowerCase().replaceAll("[\\s\\-_./]+", "");
     }
 
     /** Активные определения доп.полей (конструктор полей) для типа ПЛ — для серверной валидации обязательных. */
