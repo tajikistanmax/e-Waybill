@@ -4,6 +4,7 @@ import jakarta.persistence.EntityManager;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
+import tj.mintrans.epd.waybill.calc.CalcLogSummary;
 import tj.mintrans.epd.waybill.domain.Waybill;
 import tj.mintrans.epd.waybill.domain.WaybillStatus;
 import tj.mintrans.epd.waybill.repository.WaybillRepository;
@@ -132,10 +133,15 @@ public class WaybillPeriodScan {
         }
         OffsetDateTime lo = lower(from);
         OffsetDateTime hi = upper(to);
-        try (Stream<Waybill> stream = open(scope, statuses, lo, hi)) {
+        // Предупреждения расчёта о незаполненных данных (тариф, доля дохода, год выпуска…) за проход
+        // сводятся в одну строку лога вместо строки на каждый лист (CalcLogSummary).
+        String what = from + " — " + to + (scope == null ? " (все организации)" : " (организаций: " + scope.size() + ")");
+        try (CalcLogSummary.Scope summary = CalcLogSummary.open(what);
+             Stream<Waybill> stream = open(scope, statuses, lo, hi)) {
             int[] seen = {0};
             stream.forEach(wb -> {
                 consumer.accept(wb);
+                summary.item();
                 if (++seen[0] % CLEAR_EVERY == 0) {
                     entityManager.clear();
                 }

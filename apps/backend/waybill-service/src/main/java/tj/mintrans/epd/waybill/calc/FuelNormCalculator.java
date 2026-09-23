@@ -161,12 +161,35 @@ public class FuelNormCalculator {
             return List.of();
         }
         String json = excludingCoef ? brand.fuel100Dushanbe() : brand.fuel100();
-        List<FuelNorm> norms = parseNorms(json);
+        List<FuelNorm> norms = lastWinsByFuelId(parseNorms(json));
         if (norms.isEmpty()) {
             log.warn("Нормативы расхода: у марки id={} пустая таблица нормативов (excludingCoef={})",
                     brand.brandId(), excludingCoef);
         }
         return norms;
+    }
+
+    /**
+     * Схлопывание дублей вида топлива в таблице нормативов марки — семантика оригинала
+     * {@code array_column($fuels, 'consumption', 'fuel_id')}: на месте первого вхождения
+     * {@code fuel_id} остаётся значение ПОСЛЕДНЕГО.
+     *
+     * <p>В справочнике legacy у 118 марок из 309 {@code fuel_100} содержит одну и ту же
+     * строку вида топлива дважды (у 6 — с разными нормами). Без схлопывания пассажирский
+     * расчёт проходил по каждой строке и удваивал норматив листа.</p>
+     *
+     * @param norms разобранные нормативы (порядок как в JSON)
+     * @return по одному нормативу на вид топлива
+     */
+    static List<FuelNorm> lastWinsByFuelId(List<FuelNorm> norms) {
+        if (norms.size() < 2) {
+            return norms;
+        }
+        Map<Long, FuelNorm> byFuel = new LinkedHashMap<>();
+        for (FuelNorm n : norms) {
+            byFuel.put(n.fuelId(), n);   // повторный put не меняет позицию ключа — как в PHP
+        }
+        return byFuel.size() == norms.size() ? norms : new ArrayList<>(byFuel.values());
     }
 
     /**

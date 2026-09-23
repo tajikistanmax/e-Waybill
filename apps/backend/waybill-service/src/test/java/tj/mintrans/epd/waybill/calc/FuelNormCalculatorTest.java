@@ -172,6 +172,21 @@ class FuelNormCalculatorTest {
             assertThat(service.findNorm(norms, 1L)).isEmpty();
             assertThat(service.findNorm(null, 2L)).isEmpty();
         }
+
+        @Test
+        @DisplayName("дубль fuel_id (как у 118 марок legacy) -> одна строка: позиция первой, норма последней (array_column)")
+        void duplicateFuelIdLastWins() {
+            // Реальная марка legacy «Кинг Лонг - 6900»: дизель дважды — 45 и 40 л/100 км; и бензин.
+            BrandNorms dup = new BrandNorms(25L,
+                    "[{\"fuel_id\":\"2\",\"consumption\":\"45\"},{\"fuel_id\":\"1\",\"consumption\":\"11\"},"
+                            + "{\"fuel_id\":\"2\",\"consumption\":\"40\"}]",
+                    null, null, 0d);
+
+            List<FuelNorm> norms = service.resolveNorms(dup, false);
+
+            assertThat(norms).extracting(FuelNorm::fuelId).containsExactly(2L, 1L);
+            assertThat(norms.getFirst().consumption()).isCloseTo(40d, within(EPS));
+        }
     }
 
     // ------------------------------------------------ нормативный расход (пасс.)
