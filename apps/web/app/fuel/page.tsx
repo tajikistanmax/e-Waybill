@@ -113,7 +113,9 @@ export default function FuelStationCabinet() {
         ))}
       </div>
 
-      <div className="grid-2">
+      {/* Список листов шире панели выдачи: при равных колонках столбец «Выдано, л» уезжал за край
+          карточки (горизонтальная прокрутка) и заправщик не видел, сколько уже выдано. */}
+      <div className="grid-2" style={{ gridTemplateColumns: 'minmax(0, 1.4fr) minmax(0, 1fr)' }}>
         <div className="card" style={{ overflowX: 'auto' }}>
           <h2>{t('fuel.h.sheets')}</h2>
           <table>

@@ -373,6 +373,8 @@ export default function DispatcherCabinet() {
               <h2>{t('disp.attention.h')}</h2>
               <Link className="link" href="/waybills">{t('disp.allregistry')}</Link>
             </div>
+            {/* Прокрутка вместо обрезки: при узкой колонке статус («Ожидает осмотров») срезался краем карточки. */}
+            <div style={{ overflowX: 'auto' }}>
             <table>
               <thead>
                 <tr><th>{t('col.number')}</th><th>{t('col.type')}</th><th>{t('col.transport')}</th><th>{t('col.driver')}</th><th>{t('col.todo')}</th><th>{t('col.status')}</th></tr>
@@ -387,7 +389,7 @@ export default function DispatcherCabinet() {
                       <td>{w.vehicleRegNumber || '—'}</td>
                       <td>{String(w.driverSnapshot?.fullName ?? w.driverRma ?? '—')}</td>
                       <td style={{ color: 'var(--ink-soft)' }}>{t(ACTION_HINT[w.status])}</td>
-                      <td><span className={`badge ${s.color}`}>{tStatus(w.status)}</span></td>
+                      <td style={{ whiteSpace: 'nowrap' }}><span className={`badge ${s.color}`}>{tStatus(w.status)}</span></td>
                     </tr>
                   );
                 })}
@@ -400,6 +402,7 @@ export default function DispatcherCabinet() {
                 )}
               </tbody>
             </table>
+            </div>
             {/* Пагинация */}
             <div style={{ display: 'flex', alignItems: 'center', marginTop: 14, fontSize: 12.5, color: 'var(--muted)' }}>
               <span>{t('dict.totalrecords')}: <b style={{ color: 'var(--ink)' }}>{attention.length}</b></span>
