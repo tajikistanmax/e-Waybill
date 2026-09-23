@@ -3,7 +3,7 @@
 import { useEffect, useState, type CSSProperties } from 'react';
 import { useRouter } from 'next/navigation';
 import { Icon, P } from '../icons';
-import { useAuth } from '@/lib/auth';
+import { useAuth, PasswordChangeRequired } from '@/lib/auth';
 import { useT } from '@/lib/i18n';
 import { md, type PlatformSetting } from '@/lib/api';
 import { useBrand, BrandLogo } from '@/lib/brand';
@@ -87,6 +87,13 @@ export default function LoginPage() {
     try {
       await login(username.trim(), password, remember);
     } catch (err) {
+      // Временный пароль: ведём на страницу смены пароля ВНУТРИ платформы. До 23.09.2026
+      // здесь был переход на страницу Keycloak по адресу 10.10.29.70:8180 — с другой машины
+      // она была недоступна, и первый вход нового пользователя упирался в пустой экран.
+      if (err instanceof PasswordChangeRequired) {
+        router.replace('/auth/password');
+        return;
+      }
       // Показываем настоящую причину: auth.login бросает разные сообщения — «Сервер
       // аутентификации недоступен…» (нет связи с Keycloak) vs «Неверный логин или пароль»
       // (401). Раньше здесь всегда выводился login.err, из-за чего недоступность KC

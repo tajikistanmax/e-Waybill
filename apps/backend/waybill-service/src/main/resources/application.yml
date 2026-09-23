@@ -42,12 +42,13 @@ epd:
   master-data:
     base-url: ${MASTER_DATA_URL:http://localhost:8081}
   service-account:
-    # Сервисный client-credentials токен для межсервисных вызовов master-data без
-    # пользовательского токена (агрегатор ЧУРА/НЕРУ, планировщик). Клиент epd-aggregator
-    # (роль API_INTEGRATOR). Секрет в проде заменить/вынести в Vault!
-    token-uri: ${SERVICE_TOKEN_URI:http://localhost:8180/realms/epd/protocol/openid-connect/token}
-    client-id: ${SERVICE_CLIENT_ID:epd-aggregator}
-    client-secret: ${SERVICE_CLIENT_SECRET:epd_aggregator_dev_secret}
+    # Служебная учётная запись для межсервисных вызовов master-data без пользовательского
+    # токена (агрегатор ЧУРА/НЕРУ, планировщик, перенос одометра при закрытии листа).
+    # Роль API_INTEGRATOR. До 23.09.2026 здесь был client-credentials клиент Keycloak.
+    # Пароль в проде задать своим и хранить в секретах, а не в файле!
+    token-uri: ${SERVICE_TOKEN_URI:http://localhost:8081/api/v1/auth/token}
+    username: ${SERVICE_ACCOUNT_USERNAME:epd-service}
+    password: ${SERVICE_ACCOUNT_PASSWORD:}
   payment:
     # Оплата ПЛ (AWAITING_PAYMENT → PAID). Выключена в dev; агрегаторские ПЛ
     # (source=AGGREGATOR) покрыты абонементом и не тарифицируются в любом случае.
@@ -59,10 +60,10 @@ epd:
     # Kafka-topic статусных событий ПЛ — читают единый кабинет, аналитика, антифрод
     topic: ${EVENTS_TOPIC:epd.waybill.status}
   security:
-    # Проверка JWT (split-horizon Keycloak): ключи тянутся по ВНУТРЕННЕМУ адресу
-    # (docker-сеть), claim iss сверяется с ВНЕШНИМ issuer'ом (realm frontendUrl).
-    jwk-set-uri: ${KEYCLOAK_JWK_SET_URI:http://keycloak:8180/realms/epd/protocol/openid-connect/certs}
-    expected-issuer: ${KEYCLOAK_EXPECTED_ISSUER:http://localhost:8180/realms/epd}
+    # Проверка JWT. Токены выпускает платформа (master-data, /api/v1/auth) — до 23.09.2026
+    # это делал Keycloak. Ключи и издатель берутся по внутреннему адресу docker-сети.
+    jwk-set-uri: ${AUTH_JWK_SET_URI:http://master-data:8081/api/v1/auth/jwks}
+    expected-issuer: ${AUTH_ISSUER:http://master-data:8081/api/v1/auth}
     # Legacy-агрегаторы (ЧУРА/НЕРУ): по умолчанию ЗАКРЫТ (fail-closed) — нужен
     # client-credentials токен клиента epd-aggregator (роль API_INTEGRATOR). Для локального
     # запуска без Keycloak/compose явно задайте AGGREGATOR_OPEN=true.

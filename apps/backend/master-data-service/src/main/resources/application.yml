@@ -43,24 +43,44 @@ epd:
     mode: ${UNIFIED_PLATFORM_MODE:stub}
     base-url: ${UNIFIED_PLATFORM_URL:http://localhost:8090}
   security:
-    # Проверка JWT (split-horizon Keycloak): ключи тянутся по ВНУТРЕННЕМУ адресу
-    # (docker-сеть), claim iss сверяется с ВНЕШНИМ issuer'ом (realm frontendUrl).
-    jwk-set-uri: ${KEYCLOAK_JWK_SET_URI:http://keycloak:8180/realms/epd/protocol/openid-connect/certs}
-    expected-issuer: ${KEYCLOAK_EXPECTED_ISSUER:http://localhost:8180/realms/epd}
     # OpenAPI/Swagger UI: dev открыт, прод (DOCS_OPEN=false) — под аутентификацией.
     docs-open: ${DOCS_OPEN:true}
-    # Проверка audience JWT: пусто (dev) — только issuer+exp; задан (напр. epd-master-data) —
-    # токен обязан нести этот aud (нужен audience-mapper в Keycloak).
-    required-audience: ${REQUIRED_AUDIENCE:}
+  auth:
+    # Аутентификация платформы (с 23.09.2026, вместо Keycloak): служба сама выпускает и
+    # проверяет токены, учётные записи лежат в таблице app_user.
+    #
+    # issuer — значение claim `iss`; служба путевых листов сверяет его с AUTH_ISSUER и
+    # берёт ключи подписи с /api/v1/auth/jwks. Значения обязаны совпадать.
+    issuer: ${AUTH_ISSUER:http://master-data:8081/api/v1/auth}
+    # Срок жизни токена доступа и сессии (токена обновления), секунды.
+    access-ttl-seconds: ${AUTH_ACCESS_TTL:1800}
+    refresh-ttl-seconds: ${AUTH_REFRESH_TTL:43200}
+    # Защита от подбора пароля: после N неудач вход блокируется на M минут.
+    max-failed-attempts: ${AUTH_MAX_FAILED:10}
+    lock-minutes: ${AUTH_LOCK_MINUTES:15}
+    bootstrap:
+      # Разовый перенос учётных записей из экспорта Keycloak при первом запуске с пустой
+      # таблицей. Путь пуст — перенос не выполняется (чистая установка).
+      enabled: ${AUTH_BOOTSTRAP_ENABLED:true}
+      realm-file: ${AUTH_BOOTSTRAP_REALM_FILE:}
+      # Начальный администратор платформы для установки с нуля. Пароль — только из
+      # окружения, в репозитории не хранится; меняется при первом входе.
+      admin-username: ${EPD_AUTH_ADMIN_USERNAME:}
+      admin-password: ${EPD_AUTH_ADMIN_PASSWORD:}
+      # Служебная учётная запись межсервисных вызовов (роль API_INTEGRATOR): ею входит
+      # служба путевых листов, когда пользовательского токена нет.
+      service-username: ${SERVICE_ACCOUNT_USERNAME:}
+      service-password: ${SERVICE_ACCOUNT_PASSWORD:}
   keycloak:
-    # Admin API для провижининга логинов сотрудников перевозчика (OrgUserController).
-    # base-url — ВНУТРЕННИЙ адрес Keycloak (docker-сеть); realm — epd; client — service account
-    # epd-provisioner (realm-management: manage-users). enabled=false → провижининг отдаёт 503.
-    enabled: ${KEYCLOAK_ADMIN_ENABLED:true}
+    # ОТКЛЮЧЕНО с 23.09.2026: аутентификация перенесена в платформу (epd.auth выше).
+    # Блок оставлен, чтобы классы прежней интеграции собирались и не мешали запуску;
+    # при enabled=false к Keycloak не делается ни одного обращения. Сами классы
+    # (KeycloakAdminClient, KeycloakEventAuditSync) удаляются отдельным шагом.
+    enabled: ${KEYCLOAK_ADMIN_ENABLED:false}
     base-url: ${KEYCLOAK_BASE_URL:http://keycloak:8180}
     realm: ${KEYCLOAK_REALM:epd}
     client-id: ${KEYCLOAK_PROVISIONER_CLIENT_ID:epd-provisioner}
-    client-secret: ${KEYCLOAK_PROVISIONER_CLIENT_SECRET:epd_provisioner_dev_secret}
+    client-secret: ${KEYCLOAK_PROVISIONER_CLIENT_SECRET:}
 
 springdoc:
   swagger-ui:

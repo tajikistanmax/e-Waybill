@@ -144,7 +144,21 @@ services:
       DB_URL: jdbc:postgresql://postgres:5432/masterdata
       DB_USER: ${DB_USER:-epd}
       DB_PASSWORD: ${DB_PASSWORD:-epd_dev_password}
-      KEYCLOAK_ISSUER_URI: ${KEYCLOAK_ISSUER_URI:-http://10.10.29.70:8180/realms/epd}
+      # Аутентификация платформы (с 23.09.2026, вместо Keycloak). Издатель токена — эта
+      # служба; служба путевых листов сверяет с ним claim iss и берёт ключи подписи.
+      AUTH_ISSUER: ${AUTH_ISSUER:-http://master-data:8081/api/v1/auth}
+      # Разовый перенос учётных записей из экспорта realm при первом запуске с пустой
+      # таблицей. Файл монтируется только для чтения; после перехода его можно убрать.
+      AUTH_BOOTSTRAP_REALM_FILE: ${AUTH_BOOTSTRAP_REALM_FILE:-/opt/epd/auth-import/epd-realm.json}
+      # Начальный администратор платформы для установки с нуля (когда переносить неоткуда).
+      EPD_AUTH_ADMIN_USERNAME: ${EPD_AUTH_ADMIN_USERNAME:-}
+      EPD_AUTH_ADMIN_PASSWORD: ${EPD_AUTH_ADMIN_PASSWORD:-}
+      # Служебная учётная запись межсервисных вызовов (роль API_INTEGRATOR): ею входит
+      # служба путевых листов, когда пользовательского токена нет.
+      # Пароль задаётся ТОЛЬКО в infra/.env (в git не попадает). Значения по умолчанию здесь
+      # намеренно нет: пароль в репозитории — это выданный секрет.
+      SERVICE_ACCOUNT_USERNAME: ${SERVICE_ACCOUNT_USERNAME:-epd-service}
+      SERVICE_ACCOUNT_PASSWORD: ${SERVICE_ACCOUNT_PASSWORD}
       # Единая платформа Минтранса (субъекты из налоговой, ТС из ГАИ).
       # stub — имитация; при подключении реальной платформы: http + UNIFIED_PLATFORM_URL
       UNIFIED_PLATFORM_MODE: ${UNIFIED_PLATFORM_MODE:-stub}
@@ -157,10 +171,11 @@ services:
       # Ограничение кучи JVM: на небольших узлах (≤6 ГБ RAM) не даём сервису забрать
       # слишком много и уронить соседей/себя в OOM. При переносе на крупный узел — убрать.
       JAVA_TOOL_OPTIONS: ${MD_JAVA_OPTS:--Xmx384m}
+    volumes:
+      # Источник разового переноса учётных записей (экспорт realm). Только чтение.
+      - ./keycloak:/opt/epd/auth-import:ro
     depends_on:
       postgres:
-        condition: service_healthy
-      keycloak:
         condition: service_healthy
       redis:
         condition: service_started
@@ -178,11 +193,14 @@ services:
       DB_URL: jdbc:postgresql://postgres:5432/waybill
       DB_USER: ${DB_USER:-epd}
       DB_PASSWORD: ${DB_PASSWORD:-epd_dev_password}
-      KEYCLOAK_ISSUER_URI: ${KEYCLOAK_ISSUER_URI:-http://10.10.29.70:8180/realms/epd}
-      # Межсервисный (client-credentials) токен для вызовов master-data/агрегатора без
-      # пользовательского токена (закрытие ПЛ, NERU/ЧУРА, планировщик). ВНУТРИ сети compose
-      # Keycloak доступен как keycloak:8180 — дефолт application.yml (localhost:8180) там нерабочий.
-      SERVICE_TOKEN_URI: ${SERVICE_TOKEN_URI:-http://keycloak:8180/realms/epd/protocol/openid-connect/token}
+      # Проверка токенов платформы: издатель и ключи подписи — master-data.
+      AUTH_ISSUER: ${AUTH_ISSUER:-http://master-data:8081/api/v1/auth}
+      AUTH_JWK_SET_URI: ${AUTH_JWK_SET_URI:-http://master-data:8081/api/v1/auth/jwks}
+      # Служебная учётная запись для вызовов master-data без пользовательского токена
+      # (закрытие ПЛ, НЕРУ/ЧУРА, планировщик). Пароль — только из infra/.env.
+      SERVICE_TOKEN_URI: ${SERVICE_TOKEN_URI:-http://master-data:8081/api/v1/auth/token}
+      SERVICE_ACCOUNT_USERNAME: ${SERVICE_ACCOUNT_USERNAME:-epd-service}
+      SERVICE_ACCOUNT_PASSWORD: ${SERVICE_ACCOUNT_PASSWORD}
       MASTER_DATA_URL: http://master-data:8081
       # Оплата ПЛ включена (AWAITING_PAYMENT → PAID; агрегаторские ПЛ покрыты абонементом)
       PAYMENT_ENABLED: ${PAYMENT_ENABLED:-true}
@@ -205,8 +223,6 @@ services:
       JAVA_TOOL_OPTIONS: ${WB_JAVA_OPTS:--Xmx384m}
     depends_on:
       postgres:
-        condition: service_healthy
-      keycloak:
         condition: service_healthy
       master-data:
         condition: service_started

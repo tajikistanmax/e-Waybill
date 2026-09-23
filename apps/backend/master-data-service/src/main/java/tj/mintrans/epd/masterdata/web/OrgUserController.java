@@ -17,7 +17,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
-import tj.mintrans.epd.masterdata.client.KeycloakAdminClient;
+import tj.mintrans.epd.masterdata.auth.UserDirectory;
 import tj.mintrans.epd.masterdata.config.CurrentUser;
 import tj.mintrans.epd.masterdata.config.TenantScope;
 import tj.mintrans.epd.masterdata.service.AuditService;
@@ -69,12 +69,13 @@ public class OrgUserController {
     private static final SecureRandom RANDOM = new SecureRandom();
     private static final char[] PWD_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789".toCharArray();
 
-    private final KeycloakAdminClient keycloak;
+    /** Справочник учётных записей платформы (таблица app_user). До 23.09.2026 — Keycloak. */
+    private final tj.mintrans.epd.masterdata.auth.UserDirectory keycloak;
     private final CurrentUser currentUser;
     private final TenantScope tenantScope;
     private final AuditService audit;
 
-    public OrgUserController(KeycloakAdminClient keycloak, CurrentUser currentUser,
+    public OrgUserController(tj.mintrans.epd.masterdata.auth.UserDirectory keycloak, CurrentUser currentUser,
                              TenantScope tenantScope, AuditService audit) {
         this.keycloak = keycloak;
         this.currentUser = currentUser;
@@ -103,7 +104,7 @@ public class OrgUserController {
     public record OrgUserView(String id, String username, String firstName, String lastName,
                               boolean enabled, String rma, String organizationRma,
                               List<String> roles, String temporaryPassword) {
-        static OrgUserView of(KeycloakAdminClient.OrgUser u, String tempPassword) {
+        static OrgUserView of(UserDirectory.OrgUser u, String tempPassword) {
             return new OrgUserView(u.id(), u.username(), u.firstName(), u.lastName(), u.enabled(),
                     u.rma(), u.organizationRma(), u.roles(), tempPassword);
         }
@@ -111,7 +112,7 @@ public class OrgUserController {
 
     @GetMapping("/enabled")
     public boolean provisioningEnabled() {
-        return keycloak.isEnabled();
+        return keycloak.isAvailable();
     }
 
     @GetMapping
@@ -131,25 +132,15 @@ public class OrgUserController {
         String password = (req.password() == null || req.password().isBlank())
                 ? randomPassword() : req.password().trim();
         List<String> clientIds = normalizeClientIds(role, req.clientIds());
-        try {
-            String id = keycloak.createUser(req.username().trim(), req.firstName(), req.lastName(),
-                    req.email(), blankToNull(req.personRma()), req.organizationRma(), password, clientIds);
-            keycloak.setSingleRealmRole(id, role, ALL_REVOCABLE);
-            audit.record(AuditService.CREATE, "ORG_USER", req.username().trim(), null,
-                    role + " @ " + req.organizationRma());
-            var created = keycloak.getUser(id);
-            return ResponseEntity.status(HttpStatus.CREATED).body(OrgUserView.of(created, password));
-        } catch (org.springframework.web.client.HttpClientErrorException.Conflict e) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    "Логин «%s» уже занят".formatted(req.username().trim()));
-        } catch (org.springframework.web.client.HttpClientErrorException.BadRequest e) {
-            // Keycloak отверг пароль по парольной политике реалма (length/notUsername/...,
-            // epd-realm.json) — сюда попадает и явно переданный клиентом пароль, и (если
-            // политику снова ужесточат) randomPassword(). Понятная 422 вместо голого 500
-            // (найдено приёмочным тестированием 2026-09-04).
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
-                    "Пароль не соответствует парольной политике (минимум 12 символов, не совпадает с логином/email)");
-        }
+        // Занятый логин (409) и нарушение парольной политики (422) справочник отдаёт сам,
+        // с понятным текстом — отдельные перехваты ошибок внешней службы больше не нужны.
+        String id = keycloak.createUser(req.username().trim(), req.firstName(), req.lastName(),
+                req.email(), blankToNull(req.personRma()), req.organizationRma(), password, clientIds);
+        keycloak.setSingleRealmRole(id, role, ALL_REVOCABLE);
+        audit.record(AuditService.CREATE, "ORG_USER", req.username().trim(), null,
+                role + " @ " + req.organizationRma());
+        UserDirectory.OrgUser created = keycloak.getUser(id);
+        return ResponseEntity.status(HttpStatus.CREATED).body(OrgUserView.of(created, password));
     }
 
     @PatchMapping("/{id}/enabled")
@@ -165,14 +156,11 @@ public class OrgUserController {
     @PostMapping("/{id}/reset-password")
     @PreAuthorize("hasAnyRole('SYSTEM_ADMIN','COMPANY_ADMIN','BRANCH_ADMIN')")
     public OrgUserView resetPassword(@PathVariable String id) {
-        var user = requireInScope(id);
+        UserDirectory.OrgUser user = requireInScope(id);
         String password = randomPassword();
-        try {
-            keycloak.resetPassword(id, password);
-        } catch (org.springframework.web.client.HttpClientErrorException.BadRequest e) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
-                    "Пароль не соответствует парольной политике (минимум 12 символов, не совпадает с логином/email)");
-        }
+        // Политику пароля проверяет сам справочник и отвечает понятной 422 — отдельный перехват
+        // ошибки внешней службы больше не нужен (учётные записи в нашей базе).
+        keycloak.resetPassword(id, password);
         audit.record(AuditService.UPDATE, "ORG_USER", user.username(), null, "reset-password");
         return OrgUserView.of(user, password);
     }
@@ -273,7 +261,7 @@ public class OrgUserController {
         }
     }
 
-    private KeycloakAdminClient.OrgUser requireInScope(String userId) {
+    private UserDirectory.OrgUser requireInScope(String userId) {
         var user = keycloak.getUser(userId);
         if (tenantScope.isBounded()
                 && (user.organizationRma() == null || !tenantScope.contains(user.organizationRma()))) {

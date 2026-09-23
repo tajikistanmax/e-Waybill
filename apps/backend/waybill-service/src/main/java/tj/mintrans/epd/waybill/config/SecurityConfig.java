@@ -114,8 +114,10 @@ public class SecurityConfig {
      */
     @Bean
     public JwtDecoder jwtDecoder(
-            @org.springframework.beans.factory.annotation.Value("${epd.security.jwk-set-uri:http://keycloak:8180/realms/epd/protocol/openid-connect/certs}") String jwkSetUri,
-            @org.springframework.beans.factory.annotation.Value("${epd.security.expected-issuer:http://localhost:8180/realms/epd}") String expectedIssuer,
+            // Токены выпускает платформа (master-data, /api/v1/auth) — до 23.09.2026 это делал
+            // Keycloak. Набор ключей для проверки подписи берётся оттуда же по внутреннему адресу.
+            @org.springframework.beans.factory.annotation.Value("${epd.security.jwk-set-uri:http://master-data:8081/api/v1/auth/jwks}") String jwkSetUri,
+            @org.springframework.beans.factory.annotation.Value("${epd.security.expected-issuer:http://master-data:8081/api/v1/auth}") String expectedIssuer,
             @org.springframework.beans.factory.annotation.Value("${epd.security.required-audience:}") String requiredAudience) {
         NimbusJwtDecoder decoder = NimbusJwtDecoder.withJwkSetUri(jwkSetUri).build();
         var validators = new ArrayList<OAuth2TokenValidator<Jwt>>();

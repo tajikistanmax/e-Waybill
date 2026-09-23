@@ -2,28 +2,21 @@
 
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { setAuthToken, md } from './api';
-import { randomToken, pkceChallenge } from './pkce';
 
-// 127.0.0.1 (не localhost): на Windows браузер/Node резолвят localhost в IPv6 ::1 через
-// happy-eyeballs, а Keycloak (docker) слушает IPv4 → запрос к localhost:8180 из браузера
-// ВИСНЕТ и boot-экран «Загрузка системы…» держится вечно. Та же причина, что в next.config.
-const KC = process.env.NEXT_PUBLIC_KEYCLOAK_URL || 'http://127.0.0.1:8180';
-const TOKEN_URL = `${KC}/realms/epd/protocol/openid-connect/token`;
-const LOGOUT_URL = `${KC}/realms/epd/protocol/openid-connect/logout`;
-const AUTH_URL = `${KC}/realms/epd/protocol/openid-connect/auth`;
-// Keycloak-клиент приложения. По умолчанию epd-web (монолит / профиль 'all'). Профильные
-// сборки задают свой: epd-waybill (кабинет перевозчика) / epd-oversight (платформа надзора)
-// через build-arg NEXT_PUBLIC_KC_CLIENT_ID.
-const CLIENT_ID = process.env.NEXT_PUBLIC_KC_CLIENT_ID || 'epd-web';
+// Аутентификация платформы (с 23.09.2026, вместо Keycloak): вход, обновление сессии, выход
+// и смена пароля — свои точки в master-data. Внешнего сервера входа больше нет, поэтому
+// браузер никуда не уходит с адреса платформы.
+const AUTH_BASE = '/md-api/api/v1/auth';
+const TOKEN_URL = `${AUTH_BASE}/token`;
+const REFRESH_URL = `${AUTH_BASE}/refresh`;
+const LOGOUT_URL = `${AUTH_BASE}/logout`;
+const PASSWORD_URL = `${AUTH_BASE}/password`;
 const RT_KEY = 'dts_rt';
-// Authorization Code + PKCE — резервный путь входа для ролей с обязательной 2FA
-// (SYSTEM_ADMIN/MINTRANS_ANALYST/INSPECTOR, ИБ-13.2.2): grant_type=password не может
-// провести пользователя через экран настройки/ввода OTP, а редирект на Keycloak — может.
-const PKCE_VERIFIER_KEY = 'dts_pkce_verifier';
-const PKCE_STATE_KEY = 'dts_pkce_state';
-const PKCE_REMEMBER_KEY = 'dts_pkce_remember';
-const PKCE_RETURN_KEY = 'dts_pkce_return';
-function callbackUrl() { return `${window.location.origin}/auth/callback`; }
+/** Одноразовый ключ смены временного пароля — живёт только до перехода на страницу смены. */
+const CHANGE_KEY = 'dts_pwd_change';
+
+/** Текущий токен доступа — нужен, чтобы вошедший пользователь мог сменить свой пароль. */
+let currentAccessToken = '';
 
 // «Запомнить меня»: при отметке refresh-token живёт в localStorage (переживает закрытие
 // браузера), иначе — в sessionStorage (стирается при закрытии вкладки). Чтение — из обоих.
@@ -54,13 +47,21 @@ type AuthState = {
   roles: string[];
   login: (username: string, password: string, remember?: boolean) => Promise<void>;
   logout: () => void;
-  completeLoginRedirect: (code: string, state: string) => Promise<string>;
+  /** Смена пароля: по одноразовому ключу (первый вход) либо своего, уже войдя в систему. */
+  changePassword: (newPassword: string, currentPassword?: string) => Promise<void>;
 };
+
+/** Временный пароль: вход не даётся, интерфейс ведёт на страницу смены пароля. */
+export class PasswordChangeRequired extends Error {
+  constructor(public readonly changeToken: string) {
+    super('Требуется смена пароля');
+    this.name = 'PasswordChangeRequired';
+  }
+}
 
 const AuthContext = createContext<AuthState>({
   ready: false, authenticated: false, username: '', roles: [],
-  login: async () => {}, logout: () => {},
-  completeLoginRedirect: async () => '/',
+  login: async () => {}, logout: () => {}, changePassword: async () => {},
 });
 
 export const useAuth = () => useContext(AuthContext);
@@ -74,17 +75,19 @@ function decode(token: string): Record<string, unknown> {
 }
 
 /**
- * Прямая аутентификация в Keycloak (grant_type=password, клиент epd-web) —
- * позволяет использовать собственную страницу входа /login вместо экрана Keycloak.
+ * Аутентификация платформы: логин и пароль проверяет master-data, он же выпускает токен.
+ * Браузер всё время остаётся на адресе платформы — отдельной страницы входа на чужом
+ * сервере больше нет (отказ от Keycloak, 23.09.2026).
  */
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [state, setState] = useState<Omit<AuthState, 'login' | 'logout' | 'completeLoginRedirect'>>({
+  const [state, setState] = useState<Omit<AuthState, 'login' | 'logout' | 'changePassword'>>({
     ready: false, authenticated: false, username: '', roles: [],
   });
   const timer = useRef<number | undefined>(undefined);
 
   const applyToken = useCallback((data: { access_token: string; refresh_token: string; expires_in: number }) => {
     setAuthToken(data.access_token);
+    currentAccessToken = data.access_token;
     persistRt(data.refresh_token);
     const claims = decode(data.access_token);
     setState({
@@ -101,10 +104,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const rt = readRt();
     if (!rt) { setState(s => ({ ...s, ready: true, authenticated: false })); return; }
     try {
-      const res = await fetch(TOKEN_URL, {
-        method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams({ client_id: CLIENT_ID, grant_type: 'refresh_token', refresh_token: rt }),
-        // Не зависать на недоступном Keycloak: иначе ready не станет true и boot-экран держится вечно.
+      const res = await fetch(REFRESH_URL, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refreshToken: rt }),
+        // Не зависать на недоступной службе: иначе ready не станет true и boot-экран держится вечно.
         signal: AbortSignal.timeout(8000),
       });
       if (!res.ok) throw new Error('expired');
@@ -116,83 +119,53 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [applyToken]);
 
-  // Резервный путь для ролей с обязательной 2FA: полный редирект на Keycloak
-  // (Authorization Code + PKCE) — там (и только там) Keycloak покажет экран
-  // настройки/ввода OTP. Возврата из этого вызова не происходит (страница уходит).
-  const loginRedirect = useCallback(async (usernameHint: string, remember: boolean) => {
-    const verifier = randomToken();
-    const challenge = await pkceChallenge(verifier);
-    const state = randomToken();
-    sessionStorage.setItem(PKCE_VERIFIER_KEY, verifier);
-    sessionStorage.setItem(PKCE_STATE_KEY, state);
-    sessionStorage.setItem(PKCE_REMEMBER_KEY, remember ? '1' : '0');
-    sessionStorage.setItem(PKCE_RETURN_KEY, window.location.pathname);
-    const params = new URLSearchParams({
-      client_id: CLIENT_ID, response_type: 'code', scope: 'openid',
-      redirect_uri: callbackUrl(), code_challenge: challenge, code_challenge_method: 'S256', state,
-    });
-    if (usernameHint) params.set('login_hint', usernameHint);
-    window.location.href = `${AUTH_URL}?${params.toString()}`;
-  }, []);
-
-  // Завершение Authorization Code + PKCE после возврата с /auth/callback?code=...&state=...
-  // Возвращает путь, на который вызвавшая страница должна сделать редирект.
-  const completeLoginRedirect = useCallback(async (code: string, state: string) => {
-    const expectedState = sessionStorage.getItem(PKCE_STATE_KEY);
-    const verifier = sessionStorage.getItem(PKCE_VERIFIER_KEY);
-    const remember = sessionStorage.getItem(PKCE_REMEMBER_KEY) === '1';
-    const returnTo = sessionStorage.getItem(PKCE_RETURN_KEY) || '/';
-    sessionStorage.removeItem(PKCE_STATE_KEY);
-    sessionStorage.removeItem(PKCE_VERIFIER_KEY);
-    sessionStorage.removeItem(PKCE_REMEMBER_KEY);
-    sessionStorage.removeItem(PKCE_RETURN_KEY);
-    if (!verifier || !state || state !== expectedState) {
-      throw new Error('Сессия входа истекла или недействительна. Повторите попытку.');
-    }
-    const res = await fetch(TOKEN_URL, {
-      method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({
-        client_id: CLIENT_ID, grant_type: 'authorization_code', code,
-        redirect_uri: callbackUrl(), code_verifier: verifier,
-      }),
-      signal: AbortSignal.timeout(12000),
-    });
-    if (!res.ok) throw new Error('Не удалось завершить вход.');
-    const data = await res.json();
-    chooseRt(data.refresh_token, remember);
-    applyToken(data);
-    return returnTo;
-  }, [applyToken]);
-
   const login = useCallback(async (username: string, password: string, remember = true) => {
     let res: Response;
     try {
       res = await fetch(TOKEN_URL, {
-        method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams({ client_id: CLIENT_ID, grant_type: 'password', scope: 'openid', username, password }),
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password }),
         signal: AbortSignal.timeout(12000),
       });
     } catch {
       throw new Error('Сервер аутентификации недоступен. Повторите попытку.');
     }
+    // Временный пароль: вход не даётся, но выдан одноразовый ключ — страница входа
+    // отправляет на смену пароля. Раньше здесь был переход на страницу Keycloak.
+    if (res.status === 428) {
+      const body = await res.json().catch(() => ({} as { changeToken?: string }));
+      const token = String(body.changeToken ?? '');
+      try { sessionStorage.setItem(CHANGE_KEY, token); } catch { /* приватный режим */ }
+      throw new PasswordChangeRequired(token);
+    }
     if (!res.ok) {
-      // "Account is not fully set up" — у учётки есть незавершённое требуемое действие
-      // (в первую очередь CONFIGURE_TOTP, обязательная 2FA привилегированных ролей,
-      // ИБ-13.2.2). grant_type=password провести через это не может — переходим на
-      // Authorization Code + PKCE, где Keycloak сам покажет нужный экран.
-      let errBody: { error?: string; error_description?: string } = {};
-      try { errBody = await res.json(); } catch { /* ignore */ }
-      if (res.status === 400 && errBody.error === 'invalid_grant'
-          && /not fully set up/i.test(errBody.error_description ?? '')) {
-        await loginRedirect(username, remember);
-        return; // страница уходит на Keycloak — сюда управление не вернётся
-      }
-      throw new Error('Неверный логин или пароль');
+      const body = await res.json().catch(() => ({} as { detail?: string }));
+      throw new Error(String(body.detail ?? 'Неверный логин или пароль'));
     }
     const data = await res.json();
     chooseRt(data.refresh_token, remember); // разместить RT по выбору «Запомнить меня»
     applyToken(data);
-  }, [applyToken, loginRedirect]);
+  }, [applyToken]);
+
+  /**
+   * Смена пароля. При первом входе с временным паролем используется одноразовый ключ,
+   * полученный при попытке входа; уже вошедший пользователь подтверждает текущий пароль.
+   */
+  const changePassword = useCallback(async (newPassword: string, currentPassword?: string) => {
+    let changeToken: string | null = null;
+    try { changeToken = sessionStorage.getItem(CHANGE_KEY); } catch { /* приватный режим */ }
+    const res = await fetch(PASSWORD_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...(authHeaderIfAny()) },
+      body: JSON.stringify({ changeToken, currentPassword, newPassword }),
+      signal: AbortSignal.timeout(12000),
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({} as { detail?: string }));
+      throw new Error(String(body.detail ?? 'Не удалось сменить пароль'));
+    }
+    try { sessionStorage.removeItem(CHANGE_KEY); } catch { /* приватный режим */ }
+  }, []);
 
   const logout = useCallback(() => {
     window.clearTimeout(timer.current);
@@ -202,13 +175,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (rt) {
       try {
         fetch(LOGOUT_URL, {
-          method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-          body: new URLSearchParams({ client_id: CLIENT_ID, refresh_token: rt }), keepalive: true,
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ refreshToken: rt }), keepalive: true,
         }).catch(() => { /* ignore */ });
       } catch { /* ignore */ }
     }
     clearRt();
     setAuthToken('');
+    currentAccessToken = '';
     setState({ ready: true, authenticated: false, username: '', roles: [] });
     window.location.href = '/login';
   }, []);
@@ -237,5 +211,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => { window.clearTimeout(idleTimer); events.forEach(e => window.removeEventListener(e, reset)); };
   }, [state.authenticated, logout]);
 
-  return <AuthContext.Provider value={{ ...state, login, logout, completeLoginRedirect }}>{children}</AuthContext.Provider>;
+  return <AuthContext.Provider value={{ ...state, login, logout, changePassword }}>{children}</AuthContext.Provider>;
+}
+
+/** Заголовок с токеном, если пользователь уже вошёл (для смены своего пароля). */
+function authHeaderIfAny(): Record<string, string> {
+  return currentAccessToken ? { Authorization: `Bearer ${currentAccessToken}` } : {};
 }

@@ -12,7 +12,6 @@ import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.oauth2.core.DelegatingOAuth2TokenValidator;
 import org.springframework.security.oauth2.core.OAuth2TokenValidator;
 import org.springframework.security.oauth2.jwt.Jwt;
-import org.springframework.security.oauth2.jwt.JwtClaimValidator;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.jwt.JwtValidators;
 import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
@@ -53,6 +52,11 @@ public class SecurityConfig {
                         auth.requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").authenticated();
                     }
                     auth
+                        // Вход в платформу: выдача и обновление токена, смена пароля, открытые
+                        // ключи подписи. Это единственная дверь без токена — ею же пользуется
+                        // служба путевых листов, чтобы проверять подпись (набор ключей).
+                        .requestMatchers("/api/v1/auth/token", "/api/v1/auth/refresh",
+                                "/api/v1/auth/logout", "/api/v1/auth/password", "/api/v1/auth/jwks").permitAll()
                         // Публичная проверка QR (инспектор без логина)
                         .requestMatchers("/api/v1/verify/**").permitAll()
                         // Публичные контакты поддержки для страницы входа (пре-аутентификация)
@@ -80,29 +84,39 @@ public class SecurityConfig {
     }
 
     /**
-     * JWT-декодер: подпись по JWK Set + проверка claim iss + exp; audience — опционально.
+     * Проверка токена. Токены выпускает сама эта служба ({@code /api/v1/auth/token}), поэтому
+     * подпись сверяется по ключу из базы напрямую — без обращения к себе же по сети.
      *
-     * <p>Split-horizon Keycloak: браузер обращается к Keycloak по внешнему адресу
-     * ({@code http://localhost:8180}), а сервисы внутри docker-сети — по {@code http://keycloak:8180}.
-     * Ключи (JWK Set) тянутся по ВНУТРЕННЕМУ адресу (всегда доступен), а claim {@code iss}
-     * сверяется с ВНЕШНИМ issuer'ом — именно он попадает в токен (realm frontendUrl).</p>
-     *
-     * <p>{@code epd.security.required-audience} задан (прод) → токен обязан нести этот aud.</p>
+     * <p>До 23.09.2026 токены выпускал Keycloak и ключи тянулись по HTTP; после отказа от
+     * Keycloak (решение владельца) издатель — платформа, набор ключей живёт в
+     * {@code auth_signing_key} и переживает перезапуск.</p>
      */
     @Bean
     public JwtDecoder jwtDecoder(
-            @org.springframework.beans.factory.annotation.Value("${epd.security.jwk-set-uri:http://keycloak:8180/realms/epd/protocol/openid-connect/certs}") String jwkSetUri,
-            @org.springframework.beans.factory.annotation.Value("${epd.security.expected-issuer:http://localhost:8180/realms/epd}") String expectedIssuer,
-            @org.springframework.beans.factory.annotation.Value("${epd.security.required-audience:}") String requiredAudience) {
-        NimbusJwtDecoder decoder = NimbusJwtDecoder.withJwkSetUri(jwkSetUri).build();
+            tj.mintrans.epd.masterdata.auth.SigningKeys keys,
+            tj.mintrans.epd.masterdata.auth.TokenIssuer tokenIssuer) {
+        var jwkSource = new com.nimbusds.jose.jwk.source.ImmutableJWKSet<com.nimbusds.jose.proc.SecurityContext>(
+                keys.publicSet());
+        var processor = new com.nimbusds.jwt.proc.DefaultJWTProcessor<com.nimbusds.jose.proc.SecurityContext>();
+        processor.setJWSKeySelector(new com.nimbusds.jose.proc.JWSVerificationKeySelector<>(
+                com.nimbusds.jose.JWSAlgorithm.RS256, jwkSource));
+        // Проверку самих claim'ов делает Spring ниже — здесь отключаем встроенную, иначе она
+        // сработает раньше и вернёт менее внятную ошибку.
+        processor.setJWTClaimsSetVerifier((claims, context) -> { });
+        NimbusJwtDecoder decoder = new NimbusJwtDecoder(processor);
         var validators = new ArrayList<OAuth2TokenValidator<Jwt>>();
-        validators.add(JwtValidators.createDefaultWithIssuer(expectedIssuer));
-        if (requiredAudience != null && !requiredAudience.isBlank()) {
-            validators.add(new JwtClaimValidator<List<String>>("aud",
-                    aud -> aud != null && aud.contains(requiredAudience)));
-        }
+        validators.add(JwtValidators.createDefaultWithIssuer(tokenIssuer.issuer()));
         decoder.setJwtValidator(new DelegatingOAuth2TokenValidator<>(validators));
         return decoder;
+    }
+
+    /**
+     * Хеширование паролей — BCrypt. Пароли платформы хранятся только хешем
+     * ({@code app_user.password_hash}); восстановить исходный пароль по базе нельзя.
+     */
+    @Bean
+    public org.springframework.security.crypto.password.PasswordEncoder passwordEncoder() {
+        return new org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder();
     }
 
     private JwtAuthenticationConverter jwtAuthenticationConverter() {

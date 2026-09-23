@@ -13,7 +13,7 @@ import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
-import tj.mintrans.epd.masterdata.client.KeycloakAdminClient;
+import tj.mintrans.epd.masterdata.auth.UserDirectory;
 import tj.mintrans.epd.masterdata.config.CurrentUser;
 import tj.mintrans.epd.masterdata.config.SecurityConfig;
 import tj.mintrans.epd.masterdata.config.TenantScope;
@@ -38,7 +38,7 @@ class OrgUserControllerSecurityTest {
 
     @Autowired MockMvc mvc;
 
-    @MockitoBean KeycloakAdminClient keycloak;
+    @MockitoBean UserDirectory keycloak;
     @MockitoBean CurrentUser currentUser;
     @MockitoBean TenantScope tenantScope;
     @MockitoBean AuditService audit;
@@ -52,18 +52,18 @@ class OrgUserControllerSecurityTest {
             {"username":"+992900000000","organizationRma":"025680800","role":"DRIVER"}""";
 
     /**
-     * Разрешённый путь не должен падать в NPE на замоканном Keycloak — иначе тест
-     * проверял бы обработку ошибки, а не право доступа. Задаём валидные ответы клиента.
+     * Разрешённый путь не должен падать в NPE на замоканном справочнике учётных записей —
+     * иначе тест проверял бы обработку ошибки, а не право доступа. Задаём валидные ответы.
      */
     @BeforeEach
     void stubKeycloak() {
-        var sample = new KeycloakAdminClient.OrgUser("uid", "+992900000000", "Иван", "Иванов",
+        var sample = new UserDirectory.OrgUser("uid", "+992900000000", "Иван", "Иванов",
                 true, "111111111", "025680800", java.util.List.of("DRIVER"));
         org.mockito.Mockito.lenient()
                 .when(keycloak.createUser(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(),
                         org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(),
                         org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(),
-                        org.mockito.ArgumentMatchers.any()))
+                        org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any()))
                 .thenReturn("uid");
         org.mockito.Mockito.lenient()
                 .when(keycloak.getUser(org.mockito.ArgumentMatchers.any())).thenReturn(sample);
