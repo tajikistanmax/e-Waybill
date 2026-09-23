@@ -1,4 +1,4 @@
-# 2026-09-23 — Образ MinIO берётся с quay.io, версия зафиксирована
+﻿# 2026-09-23 — Образ MinIO берётся с quay.io, версия зафиксирована
 
 ## Что изменилось
 В `infra/docker-compose.prod.yml` и `infra/docker-compose.yml` образ хранилища файлов MinIO
@@ -32,8 +32,8 @@ MinIO прекратил публикацию образов на Docker Hub. Т
 `epd-prod-minio` пересоздан на новом образе (`up -d --no-deps minio`), стартовал, API отвечает.
 
 ## Коммит
-- `<hash>` — chore(infra): образ MinIO с quay.io вместо Docker Hub
+- `9d3db9f` — chore(infra): образ MinIO с quay.io вместо Docker Hub
 
 ## Как откатить
-`git revert <hash>` (вернёт `minio/minio:latest`, который сейчас не скачивается — откат имеет
+`git revert 9d3db9f` (вернёт `minio/minio:latest`, который сейчас не скачивается — откат имеет
 смысл только если Docker Hub снова начнёт раздавать образ).
