@@ -100,13 +100,18 @@ public class OrgUserController {
     public record EnabledRequest(boolean enabled) {
     }
 
-    /** Учётка + (только при создании/сбросе) временный пароль. */
+    /**
+     * Учётка + (только при создании/сбросе) временный пароль.
+     *
+     * <p>{@code manageable} — вправе ли вызывающий блокировать, сбрасывать пароль, менять роль и
+     * удалять эту учётную запись (см. {@link #canManage}); интерфейс по нему прячет кнопки.</p>
+     */
     public record OrgUserView(String id, String username, String firstName, String lastName,
                               boolean enabled, String rma, String organizationRma,
-                              List<String> roles, String temporaryPassword) {
-        static OrgUserView of(UserDirectory.OrgUser u, String tempPassword) {
+                              List<String> roles, String temporaryPassword, boolean manageable) {
+        static OrgUserView of(UserDirectory.OrgUser u, String tempPassword, boolean manageable) {
             return new OrgUserView(u.id(), u.username(), u.firstName(), u.lastName(), u.enabled(),
-                    u.rma(), u.organizationRma(), u.roles(), tempPassword);
+                    u.rma(), u.organizationRma(), u.roles(), tempPassword, manageable);
         }
     }
 
@@ -120,7 +125,7 @@ public class OrgUserController {
     public List<OrgUserView> list(@RequestParam(required = false) String organizationRma) {
         Iterable<String> scope = scopeFor(organizationRma);
         return keycloak.listByOrganizations(scope).stream()
-                .map(u -> OrgUserView.of(u, null))
+                .map(u -> OrgUserView.of(u, null, canManage(u)))
                 .toList();
     }
 
@@ -140,45 +145,45 @@ public class OrgUserController {
         audit.record(AuditService.CREATE, "ORG_USER", req.username().trim(), null,
                 role + " @ " + req.organizationRma());
         UserDirectory.OrgUser created = keycloak.getUser(id);
-        return ResponseEntity.status(HttpStatus.CREATED).body(OrgUserView.of(created, password));
+        return ResponseEntity.status(HttpStatus.CREATED).body(OrgUserView.of(created, password, true));
     }
 
     @PatchMapping("/{id}/enabled")
     @PreAuthorize("hasAnyRole('SYSTEM_ADMIN','COMPANY_ADMIN','BRANCH_ADMIN')")
     public OrgUserView setEnabled(@PathVariable String id, @RequestBody EnabledRequest req) {
-        var user = requireInScope(id);
+        var user = requireManageable(id);
         keycloak.setEnabled(id, req.enabled());
         audit.record(AuditService.UPDATE, "ORG_USER", user.username(),
                 String.valueOf(user.enabled()), String.valueOf(req.enabled()));
-        return OrgUserView.of(keycloak.getUser(id), null);
+        return OrgUserView.of(keycloak.getUser(id), null, true);
     }
 
     @PostMapping("/{id}/reset-password")
     @PreAuthorize("hasAnyRole('SYSTEM_ADMIN','COMPANY_ADMIN','BRANCH_ADMIN')")
     public OrgUserView resetPassword(@PathVariable String id) {
-        UserDirectory.OrgUser user = requireInScope(id);
+        UserDirectory.OrgUser user = requireManageable(id);
         String password = randomPassword();
         // Политику пароля проверяет сам справочник и отвечает понятной 422 — отдельный перехват
         // ошибки внешней службы больше не нужен (учётные записи в нашей базе).
         keycloak.resetPassword(id, password);
         audit.record(AuditService.UPDATE, "ORG_USER", user.username(), null, "reset-password");
-        return OrgUserView.of(user, password);
+        return OrgUserView.of(user, password, true);
     }
 
     @PatchMapping("/{id}/role")
     @PreAuthorize("hasAnyRole('SYSTEM_ADMIN','COMPANY_ADMIN','BRANCH_ADMIN')")
     public OrgUserView setRole(@PathVariable String id, @RequestBody CreateRequest req) {
-        var user = requireInScope(id);
+        var user = requireManageable(id);
         String role = normalizeRole(req.role());
         keycloak.setSingleRealmRole(id, role, ALL_REVOCABLE);
         audit.record(AuditService.UPDATE, "ORG_USER", user.username(), null, "role → " + role);
-        return OrgUserView.of(keycloak.getUser(id), null);
+        return OrgUserView.of(keycloak.getUser(id), null, true);
     }
 
     @DeleteMapping("/{id}")
     @PreAuthorize("hasAnyRole('SYSTEM_ADMIN','COMPANY_ADMIN','BRANCH_ADMIN')")
     public ResponseEntity<Void> delete(@PathVariable String id) {
-        var user = requireInScope(id);
+        var user = requireManageable(id);
         keycloak.deleteUser(id);
         audit.record(AuditService.DELETE, "ORG_USER", user.username(), null, null);
         return ResponseEntity.noContent().build();
@@ -268,6 +273,49 @@ public class OrgUserController {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Пользователь не найден");
         }
         return user;
+    }
+
+    /**
+     * Учётная запись в области вызывающего И по его уровню. Раньше хватало совпадения
+     * организации: администратор компании мог сбросить пароль любой учётке с тем же
+     * organization_rma — в том числе государственной (инспектор, заведённый в организацию)
+     * или равному себе администратору компании — и войти под ней временным паролем.
+     */
+    private UserDirectory.OrgUser requireManageable(String userId) {
+        var user = requireInScope(userId);
+        if (isSelf(user)) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                    "Свою учётную запись здесь менять нельзя: пароль меняется на странице «Сменить пароль», "
+                            + "блокировку, роль и удаление выполняет вышестоящий администратор");
+        }
+        if (!canManage(user)) {
+            throw new AccessDeniedException("Эта учётная запись вне ваших полномочий");
+        }
+        return user;
+    }
+
+    /**
+     * Вправе ли вызывающий управлять учёткой: администратор платформы — любой (кроме своей);
+     * администратор компании — только ролями, которые сам выдаёт (операционные, кабинеты
+     * контрагентов, администратор филиала); администратор филиала — только операционными.
+     */
+    boolean canManage(UserDirectory.OrgUser user) {
+        if (isSelf(user)) {
+            return false;
+        }
+        if (!tenantScope.isBounded()) {
+            return true;
+        }
+        Set<String> allowed = new java.util.HashSet<>(GRANTABLE);
+        if (currentUser.hasRole("COMPANY_ADMIN")) {
+            allowed.addAll(CLIENT_ROLES);
+            allowed.add(BRANCH_ADMIN);
+        }
+        return user.roles() == null || allowed.containsAll(user.roles());
+    }
+
+    private boolean isSelf(UserDirectory.OrgUser user) {
+        return currentUser.subject().map(s -> s.equals(user.id())).orElse(false);
     }
 
     private static String blankToNull(String s) {

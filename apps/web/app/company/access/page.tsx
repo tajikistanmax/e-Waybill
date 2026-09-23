@@ -59,6 +59,28 @@ export default function AccessPage() {
   // выбирает из списка. Без выбора список пользователей на бэкенде пуст: выгружать учётки всех
   // 604 организаций разом нельзя (см. OrgUserController.scopeFor).
   const [org, setOrg] = useState('');
+  const [orgQuery, setOrgQuery] = useState('');
+  // Отбор организаций по названию/РМА; выбранная остаётся в списке, даже если не подходит.
+  const shownOrgs = useMemo(() => {
+    const q = orgQuery.trim().toLowerCase();
+    if (!q) return orgs;
+    const hit = orgs.filter(o => String(o.name ?? '').toLowerCase().includes(q) || String(o.rma ?? '').includes(q));
+    const cur = orgs.find(o => String(o.rma) === org);
+    return cur && !hit.includes(cur) ? [cur, ...hit] : hit;
+  }, [orgs, orgQuery, org]);
+  // Куда выдавать доступ: выбранная организация и её филиалы (у администратора платформы —
+  // не все сотни организаций в одном списке; у перевозчика список и так = компания + филиалы).
+  const formOrgs = useMemo(() => {
+    const own = orgs.filter(o => String(o.rma) === org || String(o.parentRma ?? '') === org);
+    return own.length > 0 ? own : orgs;
+  }, [orgs, org]);
+  // Найдена ровно одна организация — выбираем её сразу (типичный путь: ввёл РМА → работаешь).
+  useEffect(() => {
+    const q = orgQuery.trim().toLowerCase();
+    if (!q) return;
+    const hit = orgs.filter(o => String(o.name ?? '').toLowerCase().includes(q) || String(o.rma ?? '').includes(q));
+    if (hit.length === 1) { const r = String(hit[0].rma); setOrg(r); setFOrg(r); setFPerson(''); }
+  }, [orgQuery, orgs]);
 
   // Список организаций — один раз при открытии страницы.
   useEffect(() => {
@@ -151,6 +173,16 @@ export default function AccessPage() {
     } catch (e) { setErr(e instanceof Error ? e.message : String(e)); }
   }
 
+  // Смена роли учётной записи (одна роль модуля; API /org-users/{id}/role). Раньше в интерфейсе
+  // этого действия не было — только через API.
+  async function changeRole(u: OrgUser, role: string) {
+    if (!role || role === roleOf(u)) return;
+    if (!confirm(`${t('access.role.confirm')} «${u.username}» → ${t('role.' + role)}?`)) return;
+    setErr('');
+    try { await md.orgUsers.setRole(u.id, role, u.organizationRma ?? '', u.username); await load(); }
+    catch (e) { setErr(e instanceof Error ? e.message : String(e)); }
+  }
+
   async function remove(u: OrgUser) {
     if (!confirm(`${t('access.remove.confirm')} «${u.username}»${t('access.remove.confirm.suffix')}`)) return;
     setErr('');
@@ -158,7 +190,7 @@ export default function AccessPage() {
     catch (e) { setErr(e instanceof Error ? e.message : String(e)); }
   }
 
-  const KNOWN_ROLES = new Set([...BASE_ROLES, 'BRANCH_ADMIN', 'COMPANY_ADMIN']);
+  const KNOWN_ROLES = new Set([...BASE_ROLES, 'BRANCH_ADMIN', 'COMPANY_ADMIN', ...CLIENT_CABINET_ROLES, 'CUSTOMS_OFFICER']);
   const roleOf = (u: OrgUser) => u.roles.find(r => KNOWN_ROLES.has(r)) ?? (u.roles[0] ?? '—');
   const sortedUsers = useMemo(() => [...users].sort((a, b) => a.username.localeCompare(b.username)), [users]);
 
@@ -188,14 +220,20 @@ export default function AccessPage() {
           Перевозчику список сужен токеном, и переключать нечего. */}
       {orgs.length > 1 && (
         <div className="card">
-          <div className="card-h">
+          <div className="card-h" style={{ flexWrap: 'wrap', gap: 8 }}>
             <h2>{t('access.org.h')}</h2>
+            {/* У администратора платформы в списке сотни организаций — нужен поиск по названию/РМА. */}
+            {orgs.length > 15 && (
+              <input value={orgQuery} onChange={e => setOrgQuery(e.target.value)} placeholder={t('access.org.search')}
+                aria-label={t('access.org.search')} style={{ marginLeft: 'auto', minWidth: 220 }} />
+            )}
             <select
+              aria-label={t('access.org.h')}
               value={org}
               onChange={e => { setOrg(e.target.value); setFOrg(e.target.value); setFPerson(''); }}
-              style={{ marginLeft: 'auto', minWidth: 320 }}
+              style={{ marginLeft: orgs.length > 15 ? 0 : 'auto', minWidth: 320 }}
             >
-              {orgs.map(o => <option key={String(o.rma)} value={String(o.rma)}>{String(o.name ?? o.rma)} · {String(o.rma)}</option>)}
+              {shownOrgs.map(o => <option key={String(o.rma)} value={String(o.rma)}>{String(o.name ?? o.rma)} · {String(o.rma)}{o.parentRma ? t('access.f.branch.suffix') : ''}</option>)}
             </select>
           </div>
           <p style={{ ...dim, margin: 0 }}>{t('access.org.hint')}</p>
@@ -217,24 +255,24 @@ export default function AccessPage() {
         <h2>{t('access.grant.h')}</h2>
         <form className="grid" onSubmit={grant}>
           <div>
-            <label>{t('access.f.person')}</label>
-            <select value={fPerson} onChange={e => pickPerson(e.target.value)}>
+            <label htmlFor="acc-person">{t('access.f.person')}</label>
+            <select id="acc-person" value={fPerson} onChange={e => pickPerson(e.target.value)}>
               <option value="">{t('access.f.person.ph')}</option>
               {people.map(p => <option key={p.rma} value={p.rma}>{p.name} · {t(p.kind === 'DRIVER' ? 'access.kind.driver' : 'access.kind.employee')} · {p.rma}</option>)}
             </select>
           </div>
           <div>
-            <label>{t('access.f.username')}</label>
-            <input required value={fUsername} onChange={e => setFUsername(e.target.value)} placeholder="+992900000000" />
+            <label htmlFor="acc-username">{t('access.f.username')}</label>
+            <input id="acc-username" required value={fUsername} onChange={e => setFUsername(e.target.value)} placeholder="+992900000000" />
           </div>
           <div>
-            <label>{t('access.f.fullname')}</label>
-            <input value={fName} onChange={e => setFName(e.target.value)} placeholder="Каримов Алишер" />
+            <label htmlFor="acc-fullname">{t('access.f.fullname')}</label>
+            <input id="acc-fullname" value={fName} onChange={e => setFName(e.target.value)} placeholder="Каримов Алишер" />
           </div>
           <div>
-            <label>{t('access.f.org')}</label>
-            <select value={fOrg} onChange={e => setFOrg(e.target.value)} required>
-              {orgs.map(o => (
+            <label htmlFor="acc-org">{t('access.f.org')}</label>
+            <select id="acc-org" value={fOrg} onChange={e => setFOrg(e.target.value)} required>
+              {formOrgs.map(o => (
                 <option key={String(o.rma)} value={String(o.rma)}>
                   {String(o.name)}{o.parentRma ? t('access.f.branch.suffix') : ''}
                 </option>
@@ -242,8 +280,8 @@ export default function AccessPage() {
             </select>
           </div>
           <div>
-            <label>{t('access.f.role')}</label>
-            <select value={fRole} onChange={e => setFRole(e.target.value)} required>
+            <label htmlFor="acc-role">{t('access.f.role')}</label>
+            <select id="acc-role" value={fRole} onChange={e => setFRole(e.target.value)} required>
               {grantableRoles.map(r => <option key={r} value={r}>{t('role.' + r)}</option>)}
             </select>
           </div>
@@ -281,12 +319,27 @@ export default function AccessPage() {
                 <td><span className="number">{u.username}</span></td>
                 <td>{[u.lastName, u.firstName].filter(Boolean).join(' ') || '—'}</td>
                 <td>{orgName(u.organizationRma)}</td>
-                <td>{t('role.' + roleOf(u))}</td>
+                <td>
+                  {/* Роль меняется прямо в строке — в пределах ролей, которые вызывающий вправе выдавать
+                      (CLIENT_* требуют списка контрагентов и выдаются только при создании). */}
+                  {u.manageable !== false && grantableRoles.includes(roleOf(u)) && !CLIENT_CABINET_ROLES.includes(roleOf(u)) ? (
+                    <select aria-label={t('access.col.role')} value={roleOf(u)} onChange={e => changeRole(u, e.target.value)}
+                      style={{ padding: '3px 6px', fontSize: 12.5 }}>
+                      {grantableRoles.filter(r => !CLIENT_CABINET_ROLES.includes(r)).map(r => <option key={r} value={r}>{t('role.' + r)}</option>)}
+                    </select>
+                  ) : t('role.' + roleOf(u))}
+                </td>
                 <td>{u.enabled ? <span className="badge green">{t('access.status.enabled')}</span> : <span className="badge">{t('access.status.disabled')}</span>}</td>
                 <td style={{ whiteSpace: 'nowrap', textAlign: 'right' }}>
-                  <button className="btn secondary" style={smallBtn} onClick={() => toggle(u)}>{u.enabled ? t('access.btn.disable') : t('access.btn.enable')}</button>{' '}
-                  <button className="btn secondary" style={smallBtn} onClick={() => reset(u)}>{t('access.btn.resetpwd')}</button>{' '}
-                  <button className="btn danger" style={smallBtn} onClick={() => remove(u)}>{t('access.btn.remove')}</button>
+                  {u.manageable === false ? (
+                    <span style={{ ...dim, fontSize: 12 }}>{t('access.notmanageable')}</span>
+                  ) : (
+                    <>
+                      <button className="btn secondary" style={smallBtn} onClick={() => toggle(u)}>{u.enabled ? t('access.btn.disable') : t('access.btn.enable')}</button>{' '}
+                      <button className="btn secondary" style={smallBtn} onClick={() => reset(u)}>{t('access.btn.resetpwd')}</button>{' '}
+                      <button className="btn danger" style={smallBtn} onClick={() => remove(u)}>{t('access.btn.remove')}</button>
+                    </>
+                  )}
                 </td>
               </tr>
             ))}

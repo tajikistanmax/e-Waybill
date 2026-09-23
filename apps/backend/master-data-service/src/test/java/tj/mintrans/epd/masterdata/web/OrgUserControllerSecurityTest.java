@@ -108,4 +108,42 @@ class OrgUserControllerSecurityTest {
     void anonymousUnauthorized() throws Exception {
         mvc.perform(get("/api/v1/org-users")).andExpect(status().isUnauthorized());
     }
+
+    // --- Управление чужой учёткой: только в пределах своего уровня (живая находка 23.09.2026:
+    // администратор компании мог сбросить пароль инспектору, заведённому в его организацию).
+
+    private void asCompanyAdminOver(String targetRole) {
+        org.mockito.Mockito.when(tenantScope.isBounded()).thenReturn(true);
+        org.mockito.Mockito.when(tenantScope.contains("025680800")).thenReturn(true);
+        org.mockito.Mockito.when(currentUser.hasRole("COMPANY_ADMIN")).thenReturn(true);
+        org.mockito.Mockito.when(currentUser.subject()).thenReturn(java.util.Optional.of("company-admin-id"));
+        org.mockito.Mockito.when(keycloak.getUser("target")).thenReturn(new UserDirectory.OrgUser(
+                "target", "992900000009", "Т", "Т", true, null, "025680800", java.util.List.of(targetRole)));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"INSPECTOR", "COMPANY_ADMIN", "SYSTEM_ADMIN", "CUSTOMS_OFFICER"})
+    void companyAdminCannotTakeOverHigherAccounts(String targetRole) throws Exception {
+        asCompanyAdminOver(targetRole);
+        mvc.perform(post("/api/v1/org-users/target/reset-password").with(as("COMPANY_ADMIN")))
+                .andExpect(status().isForbidden());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"DISPATCHER", "DRIVER", "BRANCH_ADMIN", "CLIENT_SENDER"})
+    void companyAdminManagesOwnStaff(String targetRole) throws Exception {
+        asCompanyAdminOver(targetRole);
+        mvc.perform(post("/api/v1/org-users/target/reset-password").with(as("COMPANY_ADMIN")))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void cannotDisableOwnAccount() throws Exception {
+        asCompanyAdminOver("DISPATCHER");
+        org.mockito.Mockito.when(currentUser.subject()).thenReturn(java.util.Optional.of("target"));
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                        .patch("/api/v1/org-users/target/enabled").with(as("COMPANY_ADMIN"))
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"enabled\":false}"))
+                .andExpect(status().isUnprocessableEntity());
+    }
 }

@@ -34,7 +34,10 @@ export function Shell({ children }: { children: React.ReactNode }) {
 
   // Раздел, к которому относится путь, разрешён ролям пользователя? Неизвестные пути — разрешены.
   const seg = pathname.split('/')[1] ?? '';
-  const routeKey = ROUTE_NAV[seg];
+  // «Доступы» живут по адресу /company/access, но это отдельный пункт матрицы ролей ('access'):
+  // если на странице «Роли» снять у роли «Компанию», её «Доступы» не должны пропадать вместе с ней.
+  const routeKey: NavKey | undefined = seg === 'company' && pathname.split('/')[2] === 'access'
+    ? 'access' : ROUTE_NAV[seg];
   // Карточка ПЛ (/waybills/{id}, /{id}/print, /journal) достижима deep-link'ом из кабинетов
   // водителя/инспектора/аналитика, у которых нет пункта «waybills» в меню. Доступ к самой
   // карточке ограничен ролями ВНУТРИ страницы + tenant/IDOR на бэкенде, поэтому гейтим по

@@ -71,6 +71,14 @@ public class CurrentUser {
         return Optional.empty();
     }
 
+    /** Идентификатор учётной записи (claim sub = app_user.id), если запрос пришёл с JWT. */
+    public Optional<String> subject() {
+        if (authentication() instanceof JwtAuthenticationToken jwt) {
+            return Optional.ofNullable(jwt.getToken().getSubject());
+        }
+        return Optional.empty();
+    }
+
     /** true, если к запросу нужно применять фильтр по организации пользователя. */
     public boolean isTenantScoped() {
         return isJwtAuthenticated() && !isPlatformAdmin();

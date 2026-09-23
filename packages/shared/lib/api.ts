@@ -631,6 +631,8 @@ export type OrgUser = {
   id: string; username: string; firstName: string | null; lastName: string | null;
   enabled: boolean; rma: string | null; organizationRma: string | null;
   roles: string[]; temporaryPassword: string | null;
+  /** Вправе ли текущий пользователь блокировать/сбрасывать/менять роль/удалять эту учётку. */
+  manageable?: boolean;
 };
 
 export type PlatformSetting = {
