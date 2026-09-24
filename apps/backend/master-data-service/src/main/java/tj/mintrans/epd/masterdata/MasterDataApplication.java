@@ -5,7 +5,7 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.scheduling.annotation.EnableScheduling;
 
 @SpringBootApplication
-@EnableScheduling // приём событий входа Keycloak в аудит (KeycloakEventAuditSync)
+@EnableScheduling // ночная уборка просроченных ключей входа (auth.AuthTokenCleanup)
 public class MasterDataApplication {
 
     public static void main(String[] args) {
