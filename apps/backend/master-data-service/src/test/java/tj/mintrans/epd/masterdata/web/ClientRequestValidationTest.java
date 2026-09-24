@@ -40,13 +40,13 @@ class ClientRequestValidationTest {
     }
 
     @Test
-    @DisplayName("12.15: адрес и телефон обязательны (legacy ClientRequest: address, phone — required)")
-    void addressAndPhoneRequired() {
+    @DisplayName("12.15: адрес обязателен (печатается в накладной); телефон — нет с 24.09.2026 (анализ базы 9.3 п. 2)")
+    void addressRequiredPhoneOptional() {
         DictionaryController.ClientRequest r = new DictionaryController.ClientRequest(null, "000124", "ООО Лютик", " ", null, null,
                 (short) 1, null, null, null, null, null, null);
         Set<ConstraintViolation<DictionaryController.ClientRequest>> v = validator.validate(r);
 
-        assertThat(v).extracting(c -> c.getPropertyPath().toString()).containsExactlyInAnyOrder("address", "phone");
-        assertThat(v).extracting(ConstraintViolation::getMessage).containsExactlyInAnyOrder("Укажите адрес клиента", "Укажите телефон клиента");
+        assertThat(v).extracting(c -> c.getPropertyPath().toString()).containsExactly("address");
+        assertThat(v).extracting(ConstraintViolation::getMessage).containsExactly("Укажите адрес клиента");
     }
 }

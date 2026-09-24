@@ -12,8 +12,8 @@ import java.util.Set;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * MIGRATION.md §12.15 — обязательные поля груза как в legacy {@code CargoRequest}: name, type, unit, price — required
- * (number — автономер, 2.25; class — необязателен).
+ * MIGRATION.md §12.15 — обязательные поля груза как в legacy {@code CargoRequest}: name, type, unit — required
+ * (number — автономер, 2.25; class и с 24.09.2026 price — необязательны).
  */
 class CargoRequestValidationTest {
 
@@ -26,13 +26,13 @@ class CargoRequestValidationTest {
     }
 
     @Test
-    @DisplayName("пустые тип/единица и отсутствующая цена — три нарушения с понятными текстами")
+    @DisplayName("пустые тип/единица — два нарушения; цена с 24.09.2026 необязательна (анализ базы 9.3 п. 2)")
     void missingRequired() {
         Set<ConstraintViolation<DictionaryController.CargoRequest>> v =
                 validator.validate(new DictionaryController.CargoRequest(null, "Песок", " ", "", null, (short) 1));
 
-        assertThat(v).extracting(c -> c.getPropertyPath().toString()).containsExactlyInAnyOrder("type", "unit", "price");
+        assertThat(v).extracting(c -> c.getPropertyPath().toString()).containsExactlyInAnyOrder("type", "unit");
         assertThat(v).extracting(ConstraintViolation::getMessage)
-                .containsExactlyInAnyOrder("Укажите тип груза", "Укажите единицу измерения груза", "Укажите цену груза");
+                .containsExactlyInAnyOrder("Укажите тип груза", "Укажите единицу измерения груза");
     }
 }

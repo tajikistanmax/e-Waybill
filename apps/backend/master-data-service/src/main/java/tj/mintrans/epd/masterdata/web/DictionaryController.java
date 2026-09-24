@@ -200,9 +200,11 @@ public class DictionaryController {
             UUID id,
             @NotBlank @Size(max = 10) String number,
             @NotBlank String name,
-            // Адрес и телефон обязательны, как в legacy ClientRequest (MIGRATION.md 12.15).
+            // Адрес обязателен, как в legacy ClientRequest (MIGRATION.md 12.15): он печатается в
+            // накладной. Телефон — нет (с 24.09.2026): при обязательном поле в старой платформе у
+            // 29 % клиентов вписано «1» (анализ базы, раздел 9.3 п. 2).
             @NotBlank(message = "Укажите адрес клиента") String address,
-            @NotBlank(message = "Укажите телефон клиента") String phone,
+            String phone,
             String organizationRma,
             // Вид клиента (legacy clients.type): 1 заказчик, 2 грузополучатель, 3 грузоотправитель,
             // 4 экспедитор; не передан → 1. Банковские реквизиты — свободный текст (MIGRATION.md 2.24).
@@ -371,10 +373,12 @@ public class DictionaryController {
     public record CargoRequest(
             UUID id,
             @NotBlank String name,
-            // Тип, единица и цена обязательны, как в legacy CargoRequest (MIGRATION.md 12.15).
+            // Тип и единица обязательны, как в legacy CargoRequest (MIGRATION.md 12.15). Цена — нет
+            // (с 24.09.2026): в расчётах не участвует, а при обязательном поле в старой платформе
+            // у 53 % грузов вписано «1» (анализ базы, раздел 9.3 п. 2).
             @NotBlank(message = "Укажите тип груза") String type,
             @NotBlank(message = "Укажите единицу измерения груза") String unit,
-            @NotNull(message = "Укажите цену груза") BigDecimal price,
+            BigDecimal price,
             Short cargoClass) {
     }
 

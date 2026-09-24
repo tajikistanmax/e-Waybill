@@ -313,10 +313,8 @@ export default function DictionariesView({ tab }: { tab: DictTab }) {
           <datalist id="route-cities">{cities.map(c => <option key={String(c.id)} value={String(c.name)} />)}</datalist>
         </div>
         <div><label>{t('route.f.validcert')}</label><input type="date" {...f('validCert')} /></div>
-        {/* План выручки по дням недели (legacy week_days_earnings) — справочное поле, V72. */}
-        <div className="full"><label>{t('route.f.weekdays')}</label>
-          <input {...f('weekDaysEarnings')} placeholder='[{"week_day":1,"earning":1200}]' />
-        </div>
+        {/* «План выручки по дням недели» убран из формы 24.09.2026 (анализ базы, раздел 9.2 п. 11):
+            в старой платформе 5,7 %, нигде не используется. Значение сохраняется как было. */}
         <div><label>{t('route.f.timelapa')}</label><input type="time" {...f('timeOneLapA')} /></div>
         <div><label>{t('route.f.timelapb')}</label><input type="time" {...f('timeOneLapB')} /></div>
         {/* Широта/долгота маршрута убраны из формы 24.09.2026: в старой платформе 0,5 %, никто не читает.
@@ -348,13 +346,21 @@ export default function DictionariesView({ tab }: { tab: DictTab }) {
         </div>
         <div><label>{t('col.name')}</label><input required {...f('name')} /></div>
         <div><label>{t('col.address')}</label><input required {...f('address')} /></div>
-        <div><label>{t('col.phone')}</label><input required {...f('phone')} /></div>
-        <div><label>{t('dict.f.riam')}</label><input {...f('riam')} /></div>
-        <div><label>{t('dict.f.rma')}</label><input {...f('rma')} /></div>
-        <div><label>{t('dict.f.account')}</label><input {...f('account')} /></div>
-        <div><label>{t('dict.f.corraccount')}</label><input {...f('correspondenceAccount')} /></div>
-        <div><label>{t('dict.f.mfo')}</label><input {...f('mfo')} /></div>
-        <div><label>{t('dict.f.bank')}</label><input {...f('bankName')} /></div>
+        {/* Телефон не обязателен (анализ базы, раздел 9.3 п. 2): при обязательном поле в старой
+            платформе у 29 % клиентов вписано «1». */}
+        <div><label>{t('col.phone')}</label><input {...f('phone')} /></div>
+        {/* Реквизиты заполнены у 9–29 % клиентов, нигде не печатаются — свёрнуты (раздел 9.2 п. 14). */}
+        <details className="full">
+          <summary style={{ cursor: 'pointer', fontWeight: 600, margin: '4px 0' }}>{t('dict.f.clientextra')}</summary>
+          <div className="grid" style={{ marginTop: 8 }}>
+            <div><label>{t('dict.f.riam')}</label><input {...f('riam')} /></div>
+            <div><label>{t('dict.f.rma')}</label><input {...f('rma')} /></div>
+            <div><label>{t('dict.f.account')}</label><input {...f('account')} /></div>
+            <div><label>{t('dict.f.corraccount')}</label><input {...f('correspondenceAccount')} /></div>
+            <div><label>{t('dict.f.mfo')}</label><input {...f('mfo')} /></div>
+            <div><label>{t('dict.f.bank')}</label><input {...f('bankName')} /></div>
+          </div>
+        </details>
       </>}
       {tab === 'fuel-norms' && <>
         <div><label>{t('f.vehtype')}</label>{ttSelect('transportType')}</div>
@@ -383,7 +389,9 @@ export default function DictionariesView({ tab }: { tab: DictTab }) {
         <div><label>{t('col.name')}</label><input required {...f('name')} placeholder="Цемент навалом" /></div>
         <div><label>{t('col.type')}</label><input required {...f('type')} /></div>
         <div><label>{t('col.unit')}</label><input required {...f('unit')} placeholder="т" /></div>
-        <div><label>{t('col.price')}</label><input required type="number" step="0.01" {...f('price')} /></div>
+        {/* Цена не обязательна (раздел 9.3 п. 2): в старой платформе у 53 % грузов вписано «1»;
+            в расчётах цена груза не участвует. */}
+        <div><label>{t('col.price')}</label><input type="number" step="0.01" {...f('price')} /></div>
         <div><label>{t('col.class')}</label><input type="number" min={1} max={4} {...f('cargoClass')} /></div>
       </>}
       {tab === 'brands' && <>
@@ -394,7 +402,7 @@ export default function DictionariesView({ tab }: { tab: DictTab }) {
             (код марки — поле «Номер» выше — остаётся, от него зависит норма). */}
         <div><label>{t('col.capacity')}</label><input type="number" {...f('capacity')} /></div>
         <div><label>{t('col.carrying')}</label><input type="number" step="0.1" {...f('carrying')} /></div>
-        <div><label>{t('dict.f.tariff')}</label><input type="number" step="0.01" {...f('tariffRate')} /></div>
+        {/* «Тариф марки» убран 24.09.2026 (раздел 9.2 п. 13): реально 2,4 %, нигде не используется. */}
         <div className="full"><label>{t('dict.f.fuel100')}</label><textarea rows={2} {...f('fuel100')} placeholder='[{"fuel_id":2,"consumption":25}]' /></div>
         <div className="full"><label>{t('dict.f.fuel100dushanbe')}</label><textarea rows={2} {...f('fuel100Dushanbe')} /></div>
         <div className="full"><label>{t('dict.f.fuelhour')}</label><textarea rows={2} {...f('fuelHour')} /></div>
@@ -451,7 +459,8 @@ export default function DictionariesView({ tab }: { tab: DictTab }) {
         <div><label>{t('col.transport')}</label><input {...f('typeAuto')} /></div>
         <div><label>{t('dict.f.pricepermkm')}</label><input required type="number" step="0.01" {...f('pricePer1Mkm')} /></div>
         <div><label>{t('dict.f.priceonetime')}</label><input required type="number" step="0.01" {...f('priceOneTime')} /></div>
-        <div><label>{t('dict.f.advcoe')}</label><input type="number" step="0.0001" {...f('advCoe')} /></div>
+        {/* «Коэффициент доп.» (advCoe) убран 24.09.2026 (раздел 9.2 п. 16): 5 записей за всё время,
+            в расчёте не применяется (MIGRATION 2.26). */}
       </>}
       <div className="full" style={{ display: 'flex', gap: 10 }}>
         <button className="btn" type="submit" disabled={busy}>{busy ? '…' : t('btn.save')}</button>
