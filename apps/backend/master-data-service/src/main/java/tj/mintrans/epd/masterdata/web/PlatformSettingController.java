@@ -15,6 +15,7 @@ import tj.mintrans.epd.masterdata.config.CurrentUser;
 import tj.mintrans.epd.masterdata.domain.PlatformSetting;
 import tj.mintrans.epd.masterdata.repository.PlatformSettingRepository;
 import tj.mintrans.epd.masterdata.service.AuditService;
+import tj.mintrans.epd.masterdata.service.FormFieldPolicy;
 import tj.mintrans.epd.masterdata.web.error.NotFoundException;
 
 import java.time.OffsetDateTime;
@@ -35,12 +36,14 @@ public class PlatformSettingController {
     private final PlatformSettingRepository repository;
     private final AuditService audit;
     private final CurrentUser currentUser;
+    private final FormFieldPolicy formFields;
 
     public PlatformSettingController(PlatformSettingRepository repository, AuditService audit,
-                                     CurrentUser currentUser) {
+                                     CurrentUser currentUser, FormFieldPolicy formFields) {
         this.repository = repository;
         this.audit = audit;
         this.currentUser = currentUser;
+        this.formFields = formFields;
     }
 
     public record SettingUpdate(@NotBlank String category, @NotBlank String settingKey, String value) {
@@ -71,6 +74,10 @@ public class PlatformSettingController {
                         "Настройка %s/%s не найдена".formatted(req.category(), req.settingKey())));
         String value = req.value() == null ? "" : req.value().trim();
         validate(setting, value);
+        if (FormFieldPolicy.CATEGORY.equals(setting.getCategory())) {
+            // Поля форм: известные поля, допустимые режимы, закреплённые поля не ослабляются.
+            formFields.validateSetting(setting.getSettingKey(), value);
+        }
         String oldValue = setting.getSettingValue();
         setting.setSettingValue(value);
         setting.setUpdatedBy(currentUser.username().orElse(null));

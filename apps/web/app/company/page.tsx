@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { authHeaders, md, type SubjectKind, type SubjectRef } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
+import { useFormFieldModes } from '@/lib/formFields';
 import { useT, WAYBILL_TYPE_CODES } from '@/lib/i18n';
 import { Icon, P } from '../icons';
 import { ExpiryAlert } from '../ExpiryAlert';
@@ -130,7 +131,7 @@ type Field = { value: string; onChange: (e: React.ChangeEvent<HTMLInputElement |
  * что читает backend (WaybillService.assertTypeAllowed, split по [,;\s]+). Заменяет прежний
  * свободный ввод кодов через запятую на понятные переключатели с названиями типов.
  */
-function WaybillTypesPicker({ field }: { field: Field }) {
+function WaybillTypesPicker({ field, required }: { field: Field; required?: boolean }) {
   const { t, tType } = useT();
   const selected = new Set(field.value.split(/[,;\s]+/).map(s => s.trim()).filter(Boolean));
   const toggle = (code: string) => {
@@ -142,7 +143,13 @@ function WaybillTypesPicker({ field }: { field: Field }) {
   };
   return (
     <div className="full">
-      <label>{t('cf.allowedtypes')}</label>
+      <label>{t('cf.allowedtypes')}{required ? ' *' : ''}</label>
+      {/* Кнопки выбора — не поле ввода, поэтому для обязательности держим скрытый input:
+          браузер не даст отправить форму, пока не выбран хотя бы один вид (сервер проверит тоже). */}
+      {required && (
+        <input tabIndex={-1} aria-hidden required value={field.value} onChange={() => { /* только для проверки формы */ }}
+          style={{ opacity: 0, height: 1, width: 1, padding: 0, border: 0, position: 'absolute' }} />
+      )}
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 4 }}>
         {WAYBILL_TYPE_CODES.map(code => {
           const on = selected.has(code);
@@ -177,53 +184,60 @@ function OrgFields({ f, t }: { f: (k: string) => Field; t: (k: string) => string
   useEffect(() => { md.cities().then(setCities).catch(() => setCities([])); }, []);
   const region = String(f('regionId').value ?? '');
   const cityOpts = (region ? cities.filter(c => String(c.regionId) === region) : cities);
+  // Какие поля показывать и какие обязательны — из Настройки → Поля форм (без изменения кода).
+  // Скрытое поле не рисуется, но его значение в карточке сохраняется (оно остаётся в состоянии формы).
+  const { show, req } = useFormFieldModes('organization');
+  const lbl = (labelKey: string, k: string) => {
+    const s = t(labelKey);
+    return req(k) && !s.trim().endsWith('*') ? `${s} *` : s;
+  };
   return (
     <>
       <div><label>{t('comp.f.rmainn')}</label><input required pattern="\d{9,10}" placeholder="025680800" {...f('rma')} /></div>
       <div><label>{t('comp.f.name_req')}</label><input required placeholder="ООО «ТрансЛогистик»" {...f('name')} /></div>
-      <div><label>{t('comp.f.kpp')}</label><input {...f('kpp')} /></div>
+      {show('kpp') && <div><label>{lbl('comp.f.kpp', 'kpp')}</label><input required={req('kpp')} {...f('kpp')} /></div>}
       {/* «Рамзи корхона» — внутренний код предприятия из карточки старой платформы (V71). */}
-      <div><label>{t('org.f.internalnumber')}</label><input maxLength={20} {...f('internalNumber')} /></div>
-      <div><label>{t('comp.f.typecompany')}</label><input type="number" placeholder="1" {...f('typeCompany')} /></div>
-      <div><label>{t('f.region')}</label><input type="number" min={1} max={7} {...f('regionId')} /></div>
-      <div><label>{t('comp.f.city')}</label>
-        <input list="org-city-list" placeholder="Душанбе" {...f('cityName')} />
+      {show('internalNumber') && <div><label>{lbl('org.f.internalnumber', 'internalNumber')}</label><input required={req('internalNumber')} maxLength={20} {...f('internalNumber')} /></div>}
+      {show('typeCompany') && <div><label>{lbl('comp.f.typecompany', 'typeCompany')}</label><input required={req('typeCompany')} type="number" placeholder="1" {...f('typeCompany')} /></div>}
+      {show('regionId') && <div><label>{lbl('f.region', 'regionId')}</label><input required={req('regionId')} type="number" min={1} max={7} {...f('regionId')} /></div>}
+      {show('cityName') && <div><label>{lbl('comp.f.city', 'cityName')}</label>
+        <input required={req('cityName')} list="org-city-list" placeholder="Душанбе" {...f('cityName')} />
         <datalist id="org-city-list">{cityOpts.map(c => <option key={String(c.id)} value={String(c.name)} />)}</datalist>
-      </div>
-      <div><label>{t('col.address')}</label><input {...f('address')} /></div>
-      <div><label>{t('col.phone')}</label><input {...f('phone')} /></div>
-      <div><label>{t('comp.f.email')}</label><input type="email" {...f('email')} /></div>
-      <div><label>{t('comp.f.head')}</label><input {...f('nameHead')} /></div>
-      <div><label>{t('comp.f.bank')}</label><input {...f('bank')} /></div>
-      <div><label>{t('comp.f.licfrom')}</label><input type="date" {...f('licenseFrom')} /></div>
-      <div><label>{t('comp.f.licto')}</label><input type="date" {...f('licenseTo')} /></div>
-      <div><label>{t('dt.carrierlicnum')}</label><input placeholder="ЛР-0001234" {...f('carrierLicenseNumber')} /></div>
-      <div><label>{t('cf.incomeshare')}</label><input type="number" step="0.01" min={0} max={1} placeholder="0.5" {...f('percentIncome')} /></div>
-      <div><label>{t('cf.cat1')}</label><input type="number" min={0} placeholder="200" {...f('cat1')} /></div>
-      <div><label>{t('cf.cat2')}</label><input type="number" min={0} placeholder="120" {...f('cat2')} /></div>
-      <div><label>{t('cf.cat3')}</label><input type="number" min={0} placeholder="0" {...f('cat3')} /></div>
-      <div><label>{t('org.f.ownership')}</label>
-        <select {...f('ownership')}>
+      </div>}
+      {show('address') && <div><label>{lbl('col.address', 'address')}</label><input required={req('address')} {...f('address')} /></div>}
+      {show('phone') && <div><label>{lbl('col.phone', 'phone')}</label><input required={req('phone')} {...f('phone')} /></div>}
+      {show('email') && <div><label>{lbl('comp.f.email', 'email')}</label><input required={req('email')} type="email" {...f('email')} /></div>}
+      {show('nameHead') && <div><label>{lbl('comp.f.head', 'nameHead')}</label><input required={req('nameHead')} {...f('nameHead')} /></div>}
+      {show('bank') && <div><label>{lbl('comp.f.bank', 'bank')}</label><input required={req('bank')} {...f('bank')} /></div>}
+      {show('licenseFrom') && <div><label>{lbl('comp.f.licfrom', 'licenseFrom')}</label><input required={req('licenseFrom')} type="date" {...f('licenseFrom')} /></div>}
+      {show('licenseTo') && <div><label>{lbl('comp.f.licto', 'licenseTo')}</label><input required={req('licenseTo')} type="date" {...f('licenseTo')} /></div>}
+      {show('carrierLicenseNumber') && <div><label>{lbl('dt.carrierlicnum', 'carrierLicenseNumber')}</label><input required={req('carrierLicenseNumber')} placeholder="ЛР-0001234" {...f('carrierLicenseNumber')} /></div>}
+      {show('percentIncome') && <div><label>{lbl('cf.incomeshare', 'percentIncome')}</label><input required={req('percentIncome')} type="number" step="0.01" min={0} max={1} placeholder="0.5" {...f('percentIncome')} /></div>}
+      {show('cat1') && <div><label>{lbl('cf.cat1', 'cat1')}</label><input required={req('cat1')} type="number" min={0} placeholder="200" {...f('cat1')} /></div>}
+      {show('cat2') && <div><label>{lbl('cf.cat2', 'cat2')}</label><input required={req('cat2')} type="number" min={0} placeholder="120" {...f('cat2')} /></div>}
+      {show('cat3') && <div><label>{lbl('cf.cat3', 'cat3')}</label><input required={req('cat3')} type="number" min={0} placeholder="0" {...f('cat3')} /></div>}
+      {show('ownership') && <div><label>{lbl('org.f.ownership', 'ownership')}</label>
+        <select required={req('ownership')} {...f('ownership')}>
           <option value="">—</option>
           <option value="1">{t('org.f.ownership.1')}</option>
           <option value="2">{t('org.f.ownership.2')}</option>
         </select>
-      </div>
-      <div><label>{t('org.f.regcert')}</label><input {...f('registrationCertNumber')} /></div>
-      <div><label>{t('org.f.extract')}</label><input {...f('extractNumber')} /></div>
-      <div><label>{t('org.f.vatcert')}</label><input {...f('vatCertNumber')} /></div>
-      <div><label>{t('org.f.planvolume')}</label><input type="number" step="0.01" min={0} {...f('planPassVolume')} /></div>
-      <div><label>{t('org.f.plantraffic')}</label><input type="number" step="0.01" min={0} {...f('planPassTraffic')} /></div>
-      <div><label>{t('org.f.latitude')}</label><input type="number" step="0.0000001" placeholder="38.5598" {...f('latitude')} /></div>
-      <div><label>{t('org.f.longitude')}</label><input type="number" step="0.0000001" placeholder="68.7870" {...f('longitude')} /></div>
+      </div>}
+      {show('registrationCertNumber') && <div><label>{lbl('org.f.regcert', 'registrationCertNumber')}</label><input required={req('registrationCertNumber')} {...f('registrationCertNumber')} /></div>}
+      {show('extractNumber') && <div><label>{lbl('org.f.extract', 'extractNumber')}</label><input required={req('extractNumber')} {...f('extractNumber')} /></div>}
+      {show('vatCertNumber') && <div><label>{lbl('org.f.vatcert', 'vatCertNumber')}</label><input required={req('vatCertNumber')} {...f('vatCertNumber')} /></div>}
+      {show('planPassVolume') && <div><label>{lbl('org.f.planvolume', 'planPassVolume')}</label><input required={req('planPassVolume')} type="number" step="0.01" min={0} {...f('planPassVolume')} /></div>}
+      {show('planPassTraffic') && <div><label>{lbl('org.f.plantraffic', 'planPassTraffic')}</label><input required={req('planPassTraffic')} type="number" step="0.01" min={0} {...f('planPassTraffic')} /></div>}
+      {show('latitude') && <div><label>{lbl('org.f.latitude', 'latitude')}</label><input required={req('latitude')} type="number" step="0.0000001" placeholder="38.5598" {...f('latitude')} /></div>}
+      {show('longitude') && <div><label>{lbl('org.f.longitude', 'longitude')}</label><input required={req('longitude')} type="number" step="0.0000001" placeholder="68.7870" {...f('longitude')} /></div>}
       {/* «Харита» и «Сӯзишворӣ» — поля карточки старой платформы (V71). */}
-      <div className="full"><label>{t('org.f.mappoints')}</label><input maxLength={500} {...f('mapPoints')} /></div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+      {show('mapPoints') && <div className="full"><label>{lbl('org.f.mappoints', 'mapPoints')}</label><input required={req('mapPoints')} maxLength={500} {...f('mapPoints')} /></div>}
+      {show('giveFuel') && <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         <input id="org-give-fuel" type="checkbox" checked={f('giveFuel').value === 'true'}
           onChange={e => f('giveFuel').onChange({ target: { value: e.target.checked ? 'true' : 'false' } } as React.ChangeEvent<HTMLInputElement>)} />
         <label htmlFor="org-give-fuel" style={{ margin: 0 }}>{t('org.f.givefuel')}</label>
-      </div>
-      <WaybillTypesPicker field={f('allowedWaybillTypes')} />
+      </div>}
+      {show('allowedWaybillTypes') && <WaybillTypesPicker field={f('allowedWaybillTypes')} required={req('allowedWaybillTypes')} />}
     </>
   );
 }

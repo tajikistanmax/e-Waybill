@@ -16,6 +16,7 @@ const MODULES: { key: string; icon: string; cls: string; st: St; href?: string; 
   { key: 'branding', icon: P.building, cls: 'ic-purple', st: 'done', href: '/settings/branding', admin: true },
   { key: 'wbtypes', icon: P.doc, cls: 'ic-cyan', st: 'done', href: '/settings/types' },
   { key: 'fields', icon: P.book, cls: 'ic-cyan', st: 'done', href: '/settings/fields' },
+  { key: 'forms', icon: P.doc, cls: 'ic-cyan', st: 'done', href: '/settings/forms' },
   { key: 'routes', icon: P.route, cls: 'ic-cyan', st: 'partial', href: '/dictionaries' },
   { key: 'payment', icon: P.chart, cls: 'ic-green', st: 'partial', href: '/dictionaries' },
   { key: 'numbering', icon: P.docActive, cls: 'ic-cyan', st: 'done', href: '/settings/numbering' },

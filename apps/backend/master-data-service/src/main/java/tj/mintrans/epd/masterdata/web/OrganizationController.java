@@ -18,10 +18,12 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import tj.mintrans.epd.masterdata.config.CurrentUser;
 import tj.mintrans.epd.masterdata.config.TenantScope;
 import tj.mintrans.epd.masterdata.domain.Organization;
 import tj.mintrans.epd.masterdata.repository.OrganizationRepository;
 import tj.mintrans.epd.masterdata.service.AuditService;
+import tj.mintrans.epd.masterdata.service.FormFieldPolicy;
 import tj.mintrans.epd.masterdata.web.error.NotFoundException;
 
 import java.time.LocalDate;
@@ -49,13 +51,18 @@ public class OrganizationController {
     private final TenantScope tenantScope;
     private final AuditService audit;
     private final EntityManager em;
+    private final FormFieldPolicy formFields;
+    private final CurrentUser currentUser;
 
     public OrganizationController(OrganizationRepository repository,
-                                  TenantScope tenantScope, AuditService audit, EntityManager em) {
+                                  TenantScope tenantScope, AuditService audit, EntityManager em,
+                                  FormFieldPolicy formFields, CurrentUser currentUser) {
         this.repository = repository;
         this.tenantScope = tenantScope;
         this.audit = audit;
         this.em = em;
+        this.formFields = formFields;
+        this.currentUser = currentUser;
     }
 
     public record OrganizationRequest(
@@ -115,6 +122,13 @@ public class OrganizationController {
             return ResponseEntity.ok(saved);
         }
 
+        // Обязательные по настройке поля (Настройки → Поля форм) — для ручного ввода администратором.
+        // Push-канал единой платформы (API_INTEGRATOR) не проверяется: его набор полей задаёт
+        // e-Transport, и настройка формы нашего интерфейса не должна обрывать синхронизацию.
+        if (!currentUser.hasRole("API_INTEGRATOR")) {
+            formFields.requireFilled(FormFieldPolicy.ORGANIZATION, formValues(req));
+        }
+
         // Платформенная роль / push-канал: полный upsert реквизитов и иерархии.
         String oldName = existing.map(Organization::getName).orElse(null); // до мутации (existing и org — один объект)
         var org = existing.orElseGet(Organization::new);
@@ -163,6 +177,42 @@ public class OrganizationController {
         if (req.allowedWaybillTypes() != null) {
             org.setAllowedWaybillTypes(req.allowedWaybillTypes().isBlank() ? null : req.allowedWaybillTypes().trim());
         }
+    }
+
+    /** Значения полей формы организации по ключам {@link FormFieldPolicy} (для проверки обязательности). */
+    static Map<String, Object> formValues(OrganizationRequest req) {
+        Map<String, Object> v = new HashMap<>();
+        v.put("rma", req.rma());
+        v.put("name", req.name());
+        v.put("kpp", req.kpp());
+        v.put("internalNumber", req.internalNumber());
+        v.put("typeCompany", req.typeCompany());
+        v.put("regionId", req.regionId());
+        v.put("cityName", req.cityName());
+        v.put("address", req.address());
+        v.put("phone", req.phone());
+        v.put("email", req.email());
+        v.put("nameHead", req.nameHead());
+        v.put("bank", req.bank());
+        v.put("licenseFrom", req.licenseFrom());
+        v.put("licenseTo", req.licenseTo());
+        v.put("carrierLicenseNumber", req.carrierLicenseNumber());
+        v.put("percentIncome", req.percentIncome());
+        v.put("cat1", req.cat1());
+        v.put("cat2", req.cat2());
+        v.put("cat3", req.cat3());
+        v.put("ownership", req.ownership());
+        v.put("registrationCertNumber", req.registrationCertNumber());
+        v.put("extractNumber", req.extractNumber());
+        v.put("vatCertNumber", req.vatCertNumber());
+        v.put("planPassVolume", req.planPassVolume());
+        v.put("planPassTraffic", req.planPassTraffic());
+        v.put("latitude", req.latitude());
+        v.put("longitude", req.longitude());
+        v.put("mapPoints", req.mapPoints());
+        v.put("giveFuel", req.giveFuel());
+        v.put("allowedWaybillTypes", req.allowedWaybillTypes());
+        return v;
     }
 
     /** Обрезка пробелов; пустая/только пробелы строка → NULL. */
