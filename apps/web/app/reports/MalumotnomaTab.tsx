@@ -35,7 +35,8 @@ export default function MalumotnomaTab() {
 
   // Форма выдачи.
   const [fio, setFio] = useState('');
-  const [type, setType] = useState(1);
+  // По умолчанию — легковой: в старой платформе 99,99 % справок выдавались на легковой (анализ 24.09.2026).
+  const [type, setType] = useState(4);
   const [privileged, setPrivileged] = useState(false);
   const [lines, setLines] = useState<Line[]>([{ routeId: '', roundTrip: false }]);
 

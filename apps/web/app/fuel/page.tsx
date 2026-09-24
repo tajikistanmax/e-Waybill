@@ -38,7 +38,6 @@ export default function FuelStationCabinet() {
       setForm(f => ({
         ...f,
         remainBeforeExit: p.remainBeforeExit != null ? String(p.remainBeforeExit) : '',
-        beGiven: p.beGiven != null ? String(p.beGiven) : '',
       }));
       setHint(p.found ? `${t('wbd.fuelprefill.from')}${p.sourceWaybillNumber ? ` (${p.sourceWaybillNumber})` : ''}` : t('wbd.fuelprefill.none'));
     }).catch(() => { if (!cancelled) setHint(''); });
@@ -68,7 +67,6 @@ export default function FuelStationCabinet() {
         additionalGiven: form.additionalGiven ? Number(form.additionalGiven) : null,
         returned: form.returned ? Number(form.returned) : null,
         coefBelow0: form.coefBelow0 ? Number(form.coefBelow0) : null,
-        beGiven: form.beGiven ? Number(form.beGiven) : null,
       });
       setOk(t('fuel.recorded'));
       setForm(f => ({ ...f, fuelGiven: '', remainBeforeExit: '', remainEntry: '', additionalGiven: '', returned: '', coefBelow0: '', beGiven: '' }));
@@ -151,7 +149,7 @@ export default function FuelStationCabinet() {
           {sel && (
             <>
               <table>
-                <thead><tr><th>{t('fuel.col.kind')}</th><th>{t('fuel.col.given')}</th><th>{t('fuel.col.remainbefore')}</th><th>{t('fuel.col.remainentry')}</th><th>{t('fuel.col.additional')}</th><th>{t('fuel.col.returned')}</th><th>{t('wbd.fuelcoef0')}</th><th>{t('wbd.fuelbegiven')}</th><th>{t('fuel.col.time')}</th></tr></thead>
+                <thead><tr><th>{t('fuel.col.kind')}</th><th>{t('fuel.col.given')}</th><th>{t('fuel.col.remainbefore')}</th><th>{t('fuel.col.remainentry')}</th><th>{t('fuel.col.additional')}</th><th>{t('fuel.col.returned')}</th><th>{t('wbd.fuelcoef0')}</th><th>{t('fuel.col.time')}</th></tr></thead>
                 <tbody>
                   {lines.map(l => (
                     <tr key={l.id}>
@@ -162,11 +160,10 @@ export default function FuelStationCabinet() {
                       <td>{l.additionalGiven ?? '—'}</td>
                       <td>{l.returned ?? '—'}</td>
                       <td>{l.coefBelow0 ?? '—'}</td>
-                      <td>{l.beGiven ?? '—'}</td>
                       <td>{l.at ? new Date(l.at).toLocaleString('ru-RU') : '—'}</td>
                     </tr>
                   ))}
-                  {lines.length === 0 && <tr><td colSpan={9} style={{ textAlign: 'center', color: 'var(--muted)', padding: 14 }}>{t('fuel.empty.records')}</td></tr>}
+                  {lines.length === 0 && <tr><td colSpan={8} style={{ textAlign: 'center', color: 'var(--muted)', padding: 14 }}>{t('fuel.empty.records')}</td></tr>}
                 </tbody>
               </table>
 
@@ -189,8 +186,8 @@ export default function FuelStationCabinet() {
                   <input type="number" step="0.1" style={{ width: 120 }} value={form.returned} onChange={e => setForm(f => ({ ...f, returned: e.target.value }))} /></div>
                 <div><label style={{ display: 'block', fontSize: 12, color: 'var(--muted)', marginBottom: 4 }}>{t('wbd.fuelcoef0')}</label>
                   <input type="number" step="0.1" min="0" style={{ width: 120 }} value={form.coefBelow0} onChange={e => setForm(f => ({ ...f, coefBelow0: e.target.value }))} /></div>
-                <div><label style={{ display: 'block', fontSize: 12, color: 'var(--muted)', marginBottom: 4 }}>{t('wbd.fuelbegiven')}</label>
-                  <input type="number" step="0.1" min="0" style={{ width: 120 }} value={form.beGiven} onChange={e => setForm(f => ({ ...f, beGiven: e.target.value }))} /></div>
+                {/* «Норма к выдаче» (Дода шавад) убрана (24.09.2026): в старой платформе 0 из 118 536
+                    строк топлива; не печатается и в расчёт не идёт. */}
                 <button className="btn" onClick={record} disabled={busy || !form.fuelGiven}>{busy ? '…' : t('fuel.btn.record')}</button>
               </div>
               {hint && <div style={{ marginTop: 8, fontSize: 12, color: 'var(--muted)' }}>{hint}</div>}

@@ -319,8 +319,8 @@ export default function DictionariesView({ tab }: { tab: DictTab }) {
         </div>
         <div><label>{t('route.f.timelapa')}</label><input type="time" {...f('timeOneLapA')} /></div>
         <div><label>{t('route.f.timelapb')}</label><input type="time" {...f('timeOneLapB')} /></div>
-        <div><label>{t('route.f.latitude')}</label><input type="number" step="0.000001" min={-90} max={90} {...f('latitude')} /></div>
-        <div><label>{t('route.f.longitude')}</label><input type="number" step="0.000001" min={-180} max={180} {...f('longitude')} /></div>
+        {/* Широта/долгота маршрута убраны из формы 24.09.2026: в старой платформе 0,5 %, никто не читает.
+            Значение, если было, сохраняется (остаётся в состоянии формы и отправляется как было). */}
         <div><label>{t('route.f.distancea')}</label><input type="number" step="0.1" {...f('distanceA')} /></div>
         <div><label>{t('route.f.distanceb')}</label><input type="number" step="0.1" {...f('distanceB')} /></div>
         <div><label>{t('route.f.beginpatha')}</label><input type="number" step="0.1" {...f('beginPathA')} /></div>
@@ -390,7 +390,8 @@ export default function DictionariesView({ tab }: { tab: DictTab }) {
         <div><label>{t('col.name')}</label><input required {...f('name')} placeholder="КамАЗ" /></div>
         <div><label>{t('col.number')}</label><input {...f('number')} /></div>
         <div><label>{t('col.model')}</label><input {...f('model')} /></div>
-        <div><label>{t('dict.f.typeid')}</label><input type="number" {...f('typeId')} /></div>
+        {/* «Тип марки» убран из формы 24.09.2026: в старой платформе 0 %, в расчётах не участвует
+            (код марки — поле «Номер» выше — остаётся, от него зависит норма). */}
         <div><label>{t('col.capacity')}</label><input type="number" {...f('capacity')} /></div>
         <div><label>{t('col.carrying')}</label><input type="number" step="0.1" {...f('carrying')} /></div>
         <div><label>{t('dict.f.tariff')}</label><input type="number" step="0.01" {...f('tariffRate')} /></div>

@@ -3,7 +3,7 @@
 import { Fragment, useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { md, wb, TYPE_LABELS, type FieldDefinition, type Eligibility, type TypeAvailability, type Client, type Direction, type RouteType } from '@/lib/api';
+import { md, wb, TYPE_LABELS, type FieldDefinition, type Eligibility, type TypeAvailability, type Client, type Direction } from '@/lib/api';
 import { Icon, P } from '../../icons';
 import { SearchSelect, type SSOption } from '../../SearchSelect';
 import { useT } from '@/lib/i18n';
@@ -14,8 +14,6 @@ type Option = { value: string; label: string };
 type Trailer = { registrationNumber: string; brand: string };
 
 const INTL_TYPES = ['WB_TRUCK_INTL', 'WB_PAX_INTL'];
-// Пассажирские типы (для необязательного поля «Тип маршрута»): автобус/троллейбус/маршрутка + легковой/такси.
-const PAX_TYPES = ['WB_BUS', 'WB_TROLLEYBUS', 'WB_MINIBUS', 'WB_CAR', 'WB_TAXI'];
 
 // Ходуди фаъолият (2-Б/3-С) — 7 именованных зон legacy-справочника (spec/data/dictionaries.yaml:
 // regions). Отдельного справочника в проекте намеренно нет — лёгкий числовой код 1..7.
@@ -46,7 +44,6 @@ type DraftState = {
   serviceKind: string; shipmentKind: string; trailers: Trailer[];
   cargo: { name: string; unit: string; weight: string; packages: string; cls: string };
   intl: { secondDriverRma: string; visaValidTo: string; visaCountry: string; loadCountry: string; unloadCountry: string; loadCity: string; unloadCity: string; transitCountries: string; cargoName: string; permitNumber: string; permitType: string; bbaNumber: string };
-  routeTypeCode: string;
   dangerous: { on: boolean; adrClass: string; unNumber: string };
   special: { workType: string; workObject: string; motorHoursExit: string };
   bus: { columnNumber: string; brigadeNumber: string };
@@ -120,7 +117,6 @@ export default function NewWaybillPage() {
   const [selSecondDriver, setSelSecondDriver] = useState<SSOption | null>(null);
   const [countries, setCountries] = useState<Option[]>([]);
   const [adrClasses, setAdrClasses] = useState<Option[]>([]);
-  const [permitTypes, setPermitTypes] = useState<Option[]>([]);
   const [workTypes, setWorkTypes] = useState<Option[]>([]);
   // Опасный груз — режим грузового ПЛ (2-Б): галочка on + класс ADR.
   const [dangerous, setDangerous] = useState({ on: false, adrClass: '', unNumber: '' });
@@ -154,8 +150,6 @@ export default function NewWaybillPage() {
   const [loadCities, setLoadCities] = useState<string[]>([]);
   const [unloadCities, setUnloadCities] = useState<string[]>([]);
   // Типы маршрутов (справочник, ключ = числовой code) — необязательное поле пассажирских ПЛ.
-  const [routeTypes, setRouteTypes] = useState<RouteType[]>([]);
-  const [routeTypeCode, setRouteTypeCode] = useState('');
   // Колонна/бригада — Т(1-АД), реальные диспетчерские графы бланка автобуса/троллейбуса.
   const [bus, setBus] = useState({ columnNumber: '', brigadeNumber: '' });
   // Самт (направление, справочник Direction) и Заказчик (справочник Client) — 2-Б.
@@ -222,7 +216,6 @@ export default function NewWaybillPage() {
         transitCountries: Array.isArray(td.transitCountries) ? (td.transitCountries as string[]).join(', ') : '',
         permitType: String(td.permitType ?? ''), cargoName: String(td.cargoName ?? ''),
       }));
-      if (td.routeTypeCode != null) setRouteTypeCode(String(td.routeTypeCode));
       setCopiedFromNumber(src.number ?? src.id.slice(0, 8));
       setStep(2);
     }).catch(() => { /* исходный ПЛ недоступен — остаёмся с чистой формой */ });
@@ -253,7 +246,6 @@ export default function NewWaybillPage() {
         setTrailers(d.trailers ?? []);
         setCargo(c => ({ ...c, ...d.cargo }));
         setIntl(v => ({ ...v, ...d.intl }));
-        setRouteTypeCode(d.routeTypeCode ?? '');
         setDangerous(v => ({ ...v, ...d.dangerous }));
         setSpecial(v => ({ ...v, ...d.special }));
         setBus(v => ({ ...v, ...d.bus }));
@@ -276,7 +268,7 @@ export default function NewWaybillPage() {
   useEffect(() => {
     if (!draftLoaded) return;
     const d: DraftState = {
-      step, orgRma, form, serviceKind, shipmentKind, trailers, cargo, intl, routeTypeCode, dangerous, special,
+      step, orgRma, form, serviceKind, shipmentKind, trailers, cargo, intl, dangerous, special,
       bus, directionId, client, workRegions,
       customValues, selVehicle, selDriver, selSecondDriver,
       savedAt: Date.now(),
@@ -287,7 +279,7 @@ export default function NewWaybillPage() {
       if (draftHasContent(d)) window.localStorage.setItem(DRAFT_KEY, JSON.stringify(d));
       else window.localStorage.removeItem(DRAFT_KEY);
     } catch { /* квота/приватный режим — не критично */ }
-  }, [draftLoaded, step, orgRma, form, serviceKind, shipmentKind, trailers, cargo, intl, routeTypeCode, dangerous, special,
+  }, [draftLoaded, step, orgRma, form, serviceKind, shipmentKind, trailers, cargo, intl, dangerous, special,
       bus, directionId, client, workRegions, customValues, selVehicle, selDriver, selSecondDriver]);
 
   function discardDraft() {
@@ -322,9 +314,6 @@ export default function NewWaybillPage() {
     md.classifiers('ADR_CLASS')
       .then(list => setAdrClasses(list.map(c => ({ value: c.code, label: `${c.code} — ${c.nameRu}` }))))
       .catch(() => setError('Не удалось загрузить справочник классов ADR — обратитесь к администратору'));
-    md.classifiers('PERMIT_TYPE')
-      .then(list => setPermitTypes(list.map(c => ({ value: c.nameRu, label: c.nameRu }))))
-      .catch(() => {});
     md.classifiers('WORK_TYPE')
       .then(list => setWorkTypes(list.map(c => ({ value: c.nameRu, label: c.nameRu }))))
       .catch(() => setError('Не удалось загрузить справочник видов работ — обратитесь к администратору'));
@@ -335,8 +324,6 @@ export default function NewWaybillPage() {
       .catch(() => setError('Не удалось загрузить справочник направлений (Самт) — обратитесь к администратору'));
     md.clients().then(setClients)
       .catch(() => setError('Не удалось загрузить справочник заказчиков — обратитесь к администратору'));
-    // Типы маршрутов (пассажирские ПЛ) — необязательный выбор на шаге маршрута.
-    md.routeTypes().then(setRouteTypes).catch(() => { /* справочник недоступен — список останется пустым */ });
     // Отключённые администратором типы ПЛ убираются из шага выбора (при сбое — показываем все,
     // бэкенд всё равно заблокирует создание отключённого типа).
     md.waybillTypes()
@@ -424,7 +411,6 @@ export default function NewWaybillPage() {
   const isIntl = INTL_TYPES.includes(t);
   const isSpecial = t === 'WB_SPECIAL';
   const isBus = t === 'WB_BUS' || t === 'WB_TROLLEYBUS';
-  const isPassenger = PAX_TYPES.includes(t);
 
   // Заказчик (2-Б): поиск по уже загруженному справочнику Client — без отдельного серверного эндпоинта.
   const searchClients = useCallback(async (q: string): Promise<SSOption[]> => {
@@ -497,7 +483,6 @@ export default function NewWaybillPage() {
       ...(cargoCard() ? { cargo: cargoCard() } : {}),
       ...(directionId ? { directionId: Number(directionId) } : {}),
       ...(client ? { clientId: client.id, clientName: client.name } : {}),
-      ...(workRegions.length ? { workRegions } : {}),
     };
     if (isBus) return {
       ...(bus.columnNumber.trim() ? { columnNumber: bus.columnNumber.trim() } : {}),
@@ -519,9 +504,9 @@ export default function NewWaybillPage() {
         ...(intl.transitCountries ? { transitCountries: intl.transitCountries.split(',').map(s => s.trim()).filter(Boolean) } : {}),
         ...(t === 'WB_TRUCK_INTL' ? { cargoName: intl.cargoName } : {}),
         permitNumber: intl.permitNumber,
-        ...(intl.permitType ? { permitType: intl.permitType } : {}),
         ...(intl.bbaNumber ? { bbaNumber: intl.bbaNumber } : {}),
-        ...(cargoCard() ? { cargo: cargoCard() } : {}),
+        // У международных из карточки груза — только масса (см. форму).
+        ...(cargo.weight.trim() && Number.isFinite(Number(cargo.weight)) ? { cargo: { weight: Number(cargo.weight) } } : {}),
       };
     }
     return undefined;
@@ -532,8 +517,6 @@ export default function NewWaybillPage() {
     setBusy(true);
     try {
       const td = buildTypeData() ?? {};
-      // Тип маршрута (необязательный) — только для пассажирских ПЛ; кладём числовой code.
-      if (isPassenger && routeTypeCode) (td as Record<string, unknown>).routeTypeCode = Number(routeTypeCode);
       const custom = Object.fromEntries(
         Object.entries(customValues).filter(([, v]) => v !== '' && v != null));
       if (Object.keys(custom).length) (td as Record<string, unknown>).custom = custom;
@@ -773,28 +756,25 @@ export default function NewWaybillPage() {
                 </>
               )}
 
-              <div>
-                <label>{tt('wb.f.route')}{isCar && serviceKind === 'ROUTE' ? tt('wb.required.suffix') : ''}</label>
-                <input required={isCar && serviceKind === 'ROUTE'} value={form.route}
-                  onChange={e => setForm({ ...form, route: e.target.value })} placeholder={tt('wb.ph.route')} />
-              </div>
-
-              {/* --- Тип маршрута (пассажирские ПЛ, справочник route-types) — необязательное поле --- */}
-              {isPassenger && (
+              {/* Маршрут — не у 2-Б: у грузового листа направление задаёт «Самт»
+                  (анализ боевой базы 24.09.2026: столбца маршрута у 2-Б в старой платформе нет). */}
+              {!isTruck && (
                 <div>
-                  <label>{tt('wb.f.routetype')}</label>
-                  <select value={routeTypeCode} onChange={e => setRouteTypeCode(e.target.value)}>
-                    <option value="">{tt('wb.opt.none')}</option>
-                    {routeTypes.map(rt => (
-                      <option key={rt.id} value={rt.code}>{(lang === 'tj' && rt.nameTj) ? rt.nameTj : rt.nameRu}</option>
-                    ))}
-                  </select>
+                  <label>{tt('wb.f.route')}{isCar && serviceKind === 'ROUTE' ? tt('wb.required.suffix') : ''}</label>
+                  <input required={isCar && serviceKind === 'ROUTE'} value={form.route}
+                    onChange={e => setForm({ ...form, route: e.target.value })} placeholder={tt('wb.ph.route')} />
                 </div>
               )}
-              <div>
-                <label>{tt('wb.f.schedule')}</label>
-                <input value={form.schedule} onChange={e => setForm({ ...form, schedule: e.target.value })} placeholder={tt('wb.ph.schedule')} />
-              </div>
+              {/* «Тип маршрута» убран из мастера (24.09.2026): в старой платформе на листе такого поля не
+                  было — тип задаётся маршрутом в справочнике; в расчёты, проверки и отчёты не шёл. */}
+              {/* График — не у 2-Б, 5Б-БМ и 3-С «такси» / «почасовой»: в старой платформе у них графика
+                  нет или он пуст у всех (0 %); печатается только в бланках 1-АД, 1-А, 3-С «маршрут» и 4М-БМ. */}
+              {!(isTruck || t === 'WB_TRUCK_INTL' || (isCar && serviceKind !== 'ROUTE')) && (
+                <div>
+                  <label>{tt('wb.f.schedule')}</label>
+                  <input value={form.schedule} onChange={e => setForm({ ...form, schedule: e.target.value })} placeholder={tt('wb.ph.schedule')} />
+                </div>
+              )}
 
               {/* --- 2-Б: прицепы --- */}
               {isTruck && (
@@ -843,19 +823,22 @@ export default function NewWaybillPage() {
                 </div>
               )}
 
-              {/* --- Карточка груза (2-Б / 5Б-БМ) — для печатного бланка «Номгӯи бор» --- */}
+              {/* --- Карточка груза — для печатного бланка «Номгӯи бор». У 2-Б — полная; у международных
+                  только масса: наименование задаётся обязательным полем «Груз» ниже, единица, места и
+                  класс у них нигде не печатаются (в старой платформе 0 %, анализ 24.09.2026). --- */}
               {(isTruck || isIntl) && (
                 <div style={{ gridColumn: '1 / -1', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 8 }}>
-                  <div><label>{tt('wbf.cargoname')}</label><input value={cargo.name} onChange={e => setCargo({ ...cargo, name: e.target.value })} placeholder="напр. хлопок-волокно" /></div>
-                  <div><label>{tt('wbf.unit')}</label><input value={cargo.unit} onChange={e => setCargo({ ...cargo, unit: e.target.value })} placeholder="т / м³ / шт" /></div>
+                  {isTruck && <div><label>{tt('wbf.cargoname')}</label><input value={cargo.name} onChange={e => setCargo({ ...cargo, name: e.target.value })} placeholder="напр. хлопок-волокно" /></div>}
+                  {isTruck && <div><label>{tt('wbf.unit')}</label><input value={cargo.unit} onChange={e => setCargo({ ...cargo, unit: e.target.value })} placeholder="т / м³ / шт" /></div>}
                   <div><label>{tt('wbf.grossmass')}</label><input type="number" step="0.001" min={0} value={cargo.weight} onChange={e => setCargo({ ...cargo, weight: e.target.value })} /></div>
-                  <div><label>{tt('wbf.places')}</label><input type="number" min={0} value={cargo.packages} onChange={e => setCargo({ ...cargo, packages: e.target.value })} /></div>
-                  <div><label>{tt('wbf.cargoclass')}</label><input value={cargo.cls} onChange={e => setCargo({ ...cargo, cls: e.target.value })} placeholder="1–4" /></div>
+                  {isTruck && <div><label>{tt('wbf.places')}</label><input type="number" min={0} value={cargo.packages} onChange={e => setCargo({ ...cargo, packages: e.target.value })} /></div>}
+                  {isTruck && <div><label>{tt('wbf.cargoclass')}</label><input value={cargo.cls} onChange={e => setCargo({ ...cargo, cls: e.target.value })} placeholder="1–4" /></div>}
                 </div>
               )}
 
-              {/* --- 2-Б / 3-С: Ходуди фаъолият (зоны 1–7) --- */}
-              {(isTruck || isCar) && (
+              {/* --- 3-С: Ходуди фаъолият (зоны 1–7). У 2-Б убрано: в старой платформе у грузовых листов
+                  не заполнялось ни разу (0 из 198 375 за год), бланк 2-Б печатает «—». --- */}
+              {isCar && (
                 <div style={{ gridColumn: '1 / -1' }}>
                   <label>{tt('wbf.workzones')}</label>
                   <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
@@ -917,13 +900,8 @@ export default function NewWaybillPage() {
                     <label>{tt('wb.f.permit')}</label>
                     <input required placeholder="EP-2026-..." value={intl.permitNumber} onChange={e => setIntl({ ...intl, permitNumber: e.target.value })} />
                   </div>
-                  <div>
-                    <label>{tt('wb.f.permittype')}</label>
-                    <select value={intl.permitType} onChange={e => setIntl({ ...intl, permitType: e.target.value })}>
-                      <option value="">{tt('wb.opt.none')}</option>
-                      {permitTypes.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
-                    </select>
-                  </div>
+                  {/* «Вид дозвола» убран (24.09.2026): в старой платформе поля не было, дозвол проверяется
+                      по номеру в E-PERMIT; вид дозвола никто не читал. */}
                   <div>
                     <label>{tt('wb.f.visato')}</label>
                     <input type="date" required value={intl.visaValidTo} onChange={e => setIntl({ ...intl, visaValidTo: e.target.value })} />
@@ -1066,7 +1044,7 @@ export default function NewWaybillPage() {
                 {isCar && (<><dt>{tt('wb.svc.label')}</dt><dd>{tt(({ TAXI: 'wb.svc.taxi', ROUTE: 'wb.svc.route', HOURLY: 'wb.svc.hourly' } as Record<string, string>)[serviceKind])}</dd></>)}
                 {isTruck && (<><dt>{tt('wb.ship.label')}</dt><dd>{shipmentKind === 'HOURLY' ? tt('wb.ship.hourly') : tt('wb.ship.piecework')}{trailers.length ? ` · ${tt('wb.trailerscount')}: ${trailers.length}` : ''}</dd></>)}
                 {isTruck && (directionId || client) && (<><dt>{tt('wbf.samt')} / {tt('wbf.client')}</dt><dd>{directions.find(d => String(d.id) === directionId)?.title || '—'} · {client?.name || '—'}</dd></>)}
-                {(isTruck || isCar) && workRegions.length > 0 && (<><dt>{tt('wbf.workzones')}</dt><dd>{workRegions.join(', ')}</dd></>)}
+                {isCar && workRegions.length > 0 && (<><dt>{tt('wbf.workzones')}</dt><dd>{workRegions.join(', ')}</dd></>)}
                 {isBus && (bus.columnNumber || bus.brigadeNumber) && (<><dt>{tt('wbf.column')} / {tt('wbf.brigade')}</dt><dd>{bus.columnNumber || '—'} / {bus.brigadeNumber || '—'}</dd></>)}
                 {isIntl && (<><dt>{tt('wb.intl.trip')}</dt><dd>{intl.loadCountry || '—'} → {intl.unloadCountry || '—'} · {tt('wb.permit.short')} {intl.permitNumber || '—'}{intl.secondDriverRma ? tt('wb.withsecond') : ''}</dd></>)}
                 {isSpecial && (<><dt>{tt('wb.spec.label')}</dt><dd>{special.workType || '—'}{special.motorHoursExit ? ` · ${tt('wb.f.motorhours')}: ${special.motorHoursExit}` : ''}{special.workObject ? ` · ${special.workObject}` : ''}</dd></>)}

@@ -6,20 +6,17 @@ import { useAuth } from '@/lib/auth';
 import { useT } from '@/lib/i18n';
 import { SearchSelect, type SSOption } from '../../SearchSelect';
 
-type CargoOp = {
-  operation: string; executorName: string; method: string;
-  arrival: string; departure: string; downtimeMinutes: string; additionalOps: string; signature: string;
-};
-
-const EMPTY_OPS: CargoOp[] = [
-  { operation: 'боркунӣ', executorName: '', method: '', arrival: '', departure: '', downtimeMinutes: '', additionalOps: '', signature: '' },
-  { operation: 'борфарорӣ', executorName: '', method: '', arrival: '', departure: '', downtimeMinutes: '', additionalOps: '', signature: '' },
-];
-
 function str(v: unknown): string { return v == null ? '' : String(v); }
 
 /**
- * Накладная (приложение к 2-Б / CMR к 5Б-БМ): стороны, груз, операции погрузки-разгрузки.
+ * Накладная (приложение к 2-Б / CMR к 5Б-БМ): стороны и груз.
+ *
+ * Убраны 24.09.2026 по анализу боевой базы старой платформы (spec/АНАЛИЗ-полной-базы-…):
+ * таблица операций погрузки-разгрузки (в старом бланке эти графы заполняли от руки — печать
+ * выводит две строки «боркунӣ/борфарорӣ» по умолчанию), число рейсов CMR (дубль «Ездок Z» при
+ * возврате), таможенник и дата подтверждения (их ставит таможня в своём кабинете — ручной ввод
+ * позволял диспетчеру «подтвердить за таможню»). Сервер пустые значения не записывает, поэтому
+ * сохранение накладной ранее внесённые данные этих граф не стирает.
  * Печатные формы — /print-attachment.pdf (2-Б) и /print-cmr.pdf (5Б-БМ), см.
  * spec/notes/04-gap-анализ-эталон-vs-платформа.md §7.4.
  *
@@ -42,14 +39,6 @@ export function Consignment({
   const isCmr = waybillType === 'WB_TRUCK_INTL';
   const isHourly = String(typeData.shipmentKind) === 'HOURLY'; // 2-Б, приложение 2 — с экспедитором
 
-  const initialOps = Array.isArray(typeData.cargoOperations) && (typeData.cargoOperations as unknown[]).length
-    ? (typeData.cargoOperations as Record<string, unknown>[]).map(o => ({
-        operation: str(o.operation), executorName: str(o.executorName), method: str(o.method),
-        arrival: str(o.arrival), departure: str(o.departure), downtimeMinutes: str(o.downtimeMinutes),
-        additionalOps: str(o.additionalOps), signature: str(o.signature),
-      }))
-    : EMPTY_OPS;
-
   const [form, setForm] = useState({
     senderName: str(typeData.senderName ?? typeData.consignorName),
     senderAddress: str(typeData.senderAddress),
@@ -60,10 +49,6 @@ export function Consignment({
     cargoVolume: str(typeData.cargoVolume),
     cargoStatCode: str(typeData.cargoStatCode),
     submittedDocuments: str(typeData.submittedDocuments),
-    customsOfficerName: str(typeData.customsOfficerName),
-    customsConfirmedAt: str(typeData.customsConfirmedAt),
-    // «Шумораи рейс» СМР (legacy reis_amount, MIGRATION.md 3.15) — то же typeData.trips, что вводится при возврате.
-    tripsCount: typeData.trips == null || typeData.trips === '' ? '' : String(Math.trunc(Number(typeData.trips))),
   });
   // id сторон/груза из справочников Client/Cargo — только для прослеживаемости (не живой джойн).
   const [senderId, setSenderId] = useState(str(typeData.senderId));
@@ -72,7 +57,6 @@ export function Consignment({
   const [cargoId, setCargoId] = useState(str(typeData.cargoId));
   const [clients, setClients] = useState<Client[]>([]);
   const [cargos, setCargos] = useState<Cargo[]>([]);
-  const [ops, setOps] = useState<CargoOp[]>(initialOps);
   const [busy, setBusy] = useState(false);
   const [printing, setPrinting] = useState(false);
   const [error, setError] = useState('');
@@ -96,10 +80,6 @@ export function Consignment({
       .slice(0, 25).map(c => ({ value: c.id, label: c.name, sub: c.number != null ? `${t('col.cargonumber')} ${c.number}` : '' }));
   }, [cargos, t]);
 
-  function setOp(i: number, key: keyof CargoOp, value: string) {
-    setOps(prev => prev.map((o, idx) => (idx === i ? { ...o, [key]: value } : o)));
-  }
-
   async function save() {
     setBusy(true); setError(''); setOk('');
     try {
@@ -113,10 +93,6 @@ export function Consignment({
         cargoVolume: form.cargoVolume ? Number(form.cargoVolume) : null,
         cargoStatCode: form.cargoStatCode || null,
         submittedDocuments: form.submittedDocuments || null,
-        customsOfficerName: form.customsOfficerName || null,
-        customsConfirmedAt: form.customsConfirmedAt || null,
-        tripsCount: isCmr && form.tripsCount.trim() !== '' ? Math.trunc(Number(form.tripsCount)) : null,
-        cargoOperations: ops,
         senderId: senderId || null,
         receiverId: receiverId || null,
         forwarderId: forwarderId || null,
@@ -209,34 +185,14 @@ export function Consignment({
         {isCmr && field(t('cn.f.volume'), 'cargoVolume', { type: 'number' })}
         {isCmr && field(t('cn.f.statcode'), 'cargoStatCode')}
         {isCmr && field(t('cn.f.docs'), 'submittedDocuments')}
-        {isCmr && field(t('cn.f.trips'), 'tripsCount', { type: 'number' })}
-        {isCmr && field(t('cn.f.customs'), 'customsOfficerName')}
-        {isCmr && field(t('cn.f.customsdate'), 'customsConfirmedAt', { type: 'datetime-local' })}
+        {/* Таможенное подтверждение — только для просмотра: его ставит таможня в своём кабинете. */}
+        {isCmr && typeData.customsOfficerName != null && String(typeData.customsOfficerName) !== '' && (
+          <div>
+            <label style={{ display: 'block', fontSize: 12, color: 'var(--muted)', marginBottom: 4 }}>{t('cn.f.customs')}</label>
+            <input value={`${str(typeData.customsOfficerName)}${typeData.customsConfirmedAt ? ' · ' + str(typeData.customsConfirmedAt) : ''}`} disabled style={{ width: '100%' }} />
+          </div>
+        )}
       </div>
-
-      <h3 style={{ marginTop: 20, marginBottom: 8, fontSize: 14 }}>{t('cn.h.ops')}</h3>
-      <table>
-        <thead>
-          <tr>
-            <th>{t('cn.col.op')}</th><th>{t('cn.col.executor')}</th><th>{t('cn.col.method')}</th>
-            <th>{t('cn.col.arrival')}</th><th>{t('cn.col.departure')}</th><th>{t('cn.col.downtime')}</th><th>{t('cn.col.addops')}</th><th>{t('cn.col.signature')}</th>
-          </tr>
-        </thead>
-        <tbody>
-          {ops.map((o, i) => (
-            <tr key={i}>
-              <td>{o.operation}</td>
-              <td><input value={o.executorName} disabled={!canEdit} onChange={e => setOp(i, 'executorName', e.target.value)} style={{ width: 140 }} /></td>
-              <td><input value={o.method} disabled={!canEdit} onChange={e => setOp(i, 'method', e.target.value)} style={{ width: 100 }} /></td>
-              <td><input value={o.arrival} disabled={!canEdit} onChange={e => setOp(i, 'arrival', e.target.value)} style={{ width: 90 }} placeholder={t('cn.timeph')} /></td>
-              <td><input value={o.departure} disabled={!canEdit} onChange={e => setOp(i, 'departure', e.target.value)} style={{ width: 90 }} placeholder={t('cn.timeph')} /></td>
-              <td><input type="number" value={o.downtimeMinutes} disabled={!canEdit} onChange={e => setOp(i, 'downtimeMinutes', e.target.value)} style={{ width: 80 }} /></td>
-              <td><input value={o.additionalOps} disabled={!canEdit} onChange={e => setOp(i, 'additionalOps', e.target.value)} style={{ width: 120 }} /></td>
-              <td><input value={o.signature} disabled={!canEdit} onChange={e => setOp(i, 'signature', e.target.value)} style={{ width: 100 }} /></td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
 
       <div style={{ display: 'flex', gap: 8, marginTop: 16, flexWrap: 'wrap' }}>
         {canEdit && <button className="btn" onClick={save} disabled={busy}>{busy ? t('cn.btn.saving') : t('btn.save')}</button>}

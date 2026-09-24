@@ -101,7 +101,6 @@ export default function WaybillCard({ params }: { params: Promise<{ id: string }
       setFuelForm(f => ({
         ...f,
         remainBeforeExit: p.remainBeforeExit != null ? String(p.remainBeforeExit) : '',
-        beGiven: p.beGiven != null ? String(p.beGiven) : '',
       }));
       setFuelHint(p.found ? `${t('wbd.fuelprefill.from')}${p.sourceWaybillNumber ? ` (${p.sourceWaybillNumber})` : ''}` : t('wbd.fuelprefill.none'));
     }).catch(() => { if (!cancelled) setFuelHint(''); });
@@ -735,7 +734,6 @@ export default function WaybillCard({ params }: { params: Promise<{ id: string }
                       additionalGiven: fuelForm.additionalGiven ? Number(fuelForm.additionalGiven) : null,
                       returned: fuelForm.returned ? Number(fuelForm.returned) : null,
                       coefBelow0: fuelForm.coefBelow0 ? Number(fuelForm.coefBelow0) : null,
-                      beGiven: fuelForm.beGiven ? Number(fuelForm.beGiven) : null,
                       workDayId: fuelForm.workDayId || null,
                     }));
                   }}>
@@ -758,7 +756,7 @@ export default function WaybillCard({ params }: { params: Promise<{ id: string }
                     <div><label>{t('wbd.fueladd')}</label><input type="number" step="0.1" value={fuelForm.additionalGiven} onChange={e => setFuelForm({ ...fuelForm, additionalGiven: e.target.value })} /></div>
                     <div><label>{t('wbd.fuelreturn')}</label><input type="number" step="0.1" value={fuelForm.returned} onChange={e => setFuelForm({ ...fuelForm, returned: e.target.value })} /></div>
                     <div><label>{t('wbd.fuelcoef0')}</label><input type="number" step="0.1" min="0" value={fuelForm.coefBelow0} onChange={e => setFuelForm({ ...fuelForm, coefBelow0: e.target.value })} /></div>
-                    <div><label>{t('wbd.fuelbegiven')}</label><input type="number" step="0.1" min="0" value={fuelForm.beGiven} onChange={e => setFuelForm({ ...fuelForm, beGiven: e.target.value })} /></div>
+                    {/* «Норма к выдаче» (Дода шавад) убрана 24.09.2026: 0 из 118 536 строк в старой платформе. */}
                     {fuelHint && <div className="full" style={{ fontSize: 12, color: 'var(--muted)' }}>{fuelHint}</div>}
                     <div className="full"><button className="btn secondary" type="submit">{t('wb.btn.recordfuel')}</button></div>
                   </form>
