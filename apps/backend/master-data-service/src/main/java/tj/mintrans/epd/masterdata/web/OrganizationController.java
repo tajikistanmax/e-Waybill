@@ -4,7 +4,6 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.Pattern;
 import jakarta.persistence.EntityManager;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -68,9 +67,15 @@ public class OrganizationController {
         this.currentUser = currentUser;
     }
 
+    /**
+     * Формат ИНН (РМА) проверяется в {@link #upsert} (а не аннотацией): у 191 организации из
+     * старой платформы ИНН некорректный (`123`, `0101`, находка 12), и аннотация не давала
+     * сохранить их карточку вообще — даже телефон или адрес. Новую организацию и смену
+     * головной по-прежнему нельзя завести без 9–10 цифр.
+     */
     public record OrganizationRequest(
-            @NotBlank @Pattern(regexp = "\\d{9,10}", message = "РМА должен содержать 9–10 цифр") String rma,
-            @Pattern(regexp = "\\d{9,10}", message = "РМА головной компании: 9–10 цифр") String parentRma,
+            @NotBlank String rma,
+            String parentRma,
             String kpp,
             @NotBlank String name,
             Short typeCompany,
@@ -111,6 +116,16 @@ public class OrganizationController {
     @PreAuthorize("hasAnyRole('API_INTEGRATOR','SYSTEM_ADMIN','COMPANY_ADMIN')")
     public ResponseEntity<Organization> upsert(@Valid @RequestBody OrganizationRequest req) {
         var existing = repository.findByRma(req.rma());
+        // ИНН в запросе — ключ записи. Уже заведённую организацию с ИНН из старой платформы
+        // сохранять можно (это её текущий ключ, а не введённое значение); новую — только с
+        // корректным ИНН. Головная: корректный ИНН, если меняется.
+        if (existing.isEmpty()) {
+            requireRmaFormat(req.rma(), "РМА должен содержать 9–10 цифр");
+        }
+        String currentParent = existing.map(Organization::getParentRma).orElse(null);
+        if (req.parentRma() != null && !req.parentRma().isBlank() && !req.parentRma().equals(currentParent)) {
+            requireRmaFormat(req.parentRma(), "РМА головной компании: 9–10 цифр");
+        }
 
         // Администратор компании: только расчётные параметры СВОЕЙ компании, без создания.
         if (tenantScope.isBounded()) {
@@ -188,6 +203,13 @@ public class OrganizationController {
         if (req.cat3() != null) org.setCat3(req.cat3());
         if (req.allowedWaybillTypes() != null) {
             org.setAllowedWaybillTypes(req.allowedWaybillTypes().isBlank() ? null : req.allowedWaybillTypes().trim());
+        }
+    }
+
+    /** ИНН (РМА) — 9–10 цифр; иначе 422 с тем же текстом, что давала прежняя аннотация. */
+    private static void requireRmaFormat(String rma, String message) {
+        if (rma == null || !rma.matches("\\d{9,10}")) {
+            throw new org.springframework.web.server.ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, message);
         }
     }
 

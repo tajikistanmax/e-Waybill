@@ -181,7 +181,10 @@ function WaybillTypesPicker({ field, required }: { field: Field; required?: bool
  * Вынесены отдельно, чтобы правка и добавление не расходились в списке полей;
  * кнопку сохранения (текст и обработчик у них разные) каждая форма ставит сама.
  */
-function OrgFields({ f, t }: { f: (k: string) => Field; t: (k: string) => string }) {
+/** ИНН (РМА) организации — 9–10 цифр. У части организаций из старой платформы он некорректный (находка 12). */
+const RMA_OK = /^\d{9,10}$/;
+
+function OrgFields({ f, t, editing = false }: { f: (k: string) => Field; t: (k: string) => string; editing?: boolean }) {
   // Справочник городов (V54) — подсказки для поля «Город», отфильтрованные по выбранному региону.
   const [cities, setCities] = useState<Row[]>([]);
   useEffect(() => { md.cities().then(setCities).catch(() => setCities([])); }, []);
@@ -196,7 +199,15 @@ function OrgFields({ f, t }: { f: (k: string) => Field; t: (k: string) => string
   };
   return (
     <>
-      <div><label>{t('comp.f.rmainn')}</label><input required pattern="\d{9,10}" placeholder="025680800" {...f('rma')} /></div>
+      {/* ИНН — ключ организации: в окне правки не меняется (иначе сохранение завело бы вторую
+          организацию). Некорректный ИНН из старой платформы не мешает сохранить карточку. */}
+      {editing ? (
+        <div><label>{t('comp.f.rmainn')}</label><input {...f('rma')} disabled />
+          {!RMA_OK.test(String(f('rma').value ?? '')) && <div className="hint" style={{ color: '#a9700a', marginTop: 4 }}>{t('org.rma.legacy')}</div>}
+        </div>
+      ) : (
+        <div><label>{t('comp.f.rmainn')}</label><input required pattern="\d{9,10}" placeholder="025680800" {...f('rma')} /></div>
+      )}
       <div><label>{t('comp.f.name_req')}</label><input required placeholder="ООО «ТрансЛогистик»" {...f('name')} /></div>
       {show('kpp') && <div><label>{lbl('comp.f.kpp', 'kpp')}</label><input required={req('kpp')} {...f('kpp')} /></div>}
       {/* «Рамзи корхона» — внутренний код предприятия из карточки старой платформы (V71). */}
@@ -722,7 +733,9 @@ function OrgRegistry() {
                   style={sel ? { background: 'var(--blue-050)' } : undefined}
                 >
                   <td style={{ fontWeight: 600, color: 'var(--ink)' }}>{String(o.name ?? '—')}</td>
-                  <td><span className="number">{rma}</span></td>
+                  <td><span className="number">{rma}</span>
+                    {!RMA_OK.test(rma) && <span className="badge amber" title={t('org.rma.legacy')} style={{ marginLeft: 6 }}>{t('org.rma.badge')}</span>}
+                  </td>
                   <td>{subjType(o.subjectType, t)}</td>
                   <td>{c ? c.vehicles : '—'}</td>
                   <td>{c ? c.drivers : '—'}</td>
@@ -1021,7 +1034,7 @@ function OrgRegistry() {
             </div>
             {orgLocked && <p className="hint" style={{ borderColor: 'var(--blue-600)' }}>{t('ds.locked.hint')}</p>}
             <form className="grid" onSubmit={saveOrgEdit}>
-              <OrgFields f={oe} t={t} />
+              <OrgFields f={oe} t={t} editing />
               <div className="full" style={{ display: 'flex', gap: 8 }}>
                 <button className="btn" type="submit">{t('comp.btn.saveorg')}</button>
                 <button type="button" className="btn secondary" onClick={() => setOrgEdit(null)}>{t('btn.cancel')}</button>
