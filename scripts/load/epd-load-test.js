@@ -4,14 +4,17 @@
 // Запуск (из корня репозитория, k6 в Docker, backend уже поднят на хосте):
 //   docker run --rm -i --add-host=host.docker.internal:host-gateway \
 //     -v <abs-path-to-repo>\scripts\load:/scripts grafana/k6 run /scripts/epd-load-test.js
+// Через HTTPS-прокси (путь настоящего пользователя: nginx → web → службы):
+//   ... grafana/k6 run -e VIA_PROXY=1 /scripts/epd-load-test.js
+// (порты служб 8081/8082 опубликованы только локально — docker-compose.local.yml)
 //
 // Два сценария выполняются ОДНОВРЕМЕННО (реалистичная смесь чтение+запись):
 //   read_heavy  - GET /waybills (список) + GET /reports/summary, рампа до ~20 VU
 //   write_chain - create -> T1 -> T2 -> T3 (create/dispatcher, med/doctor, tech/mechanic),
 //                 рампа до ~5 VU
 //
-// Токены Keycloak живут ~300с - НЕ кэшируются на весь прогон общей переменной;
-// каждый VU держит свой кэш токенов (модульная область видимости = per-VU в k6)
+// Токены платформы (master-data POST /api/v1/auth/token; до 23.09.2026 — Keycloak) живут
+// 30 мин; каждый VU держит свой кэш токенов (модульная область видимости = per-VU в k6)
 // и обновляет их, если токену больше ~200с.
 //
 // Инвариант "один действующий ПЛ на ТС/водителя": write_chain использует пул из
@@ -30,25 +33,43 @@ import { Trend, Rate, Counter } from 'k6/metrics';
 
 // ------------------------------------------------------------- конфигурация
 
-const KC = 'http://host.docker.internal:8180';
-const MD = 'http://host.docker.internal:8081';
-const WB = 'http://host.docker.internal:8082';
+// VIA_PROXY=1 — как ходит браузер: https://<стенд>/md-api/… и /wb-api/… через nginx и web.
+const VIA_PROXY = __ENV.VIA_PROXY === '1';
+const PROXY = __ENV.PROXY_URL || 'https://host.docker.internal';
+const MD = VIA_PROXY ? `${PROXY}/md-api` : 'http://host.docker.internal:8081';
+const WB = VIA_PROXY ? `${PROXY}/wb-api` : 'http://host.docker.internal:8082';
 const ORG_RMA = '025680800'; // существующая демо-организация (реиспользуем, не создаём мусор)
 const WRITE_POOL_SIZE = 20;  // запас против пересечения __VU-слотов при ramp-up/down
 const TOKEN_TTL_MS = 200000; // обновлять токен, если старше 200с (токен живёт ~300с)
 
-// Пароли демо-учёток реалма epd. Пароль = логину больше не проходит (парольная
-// политика реалма, см. infra/keycloak/epd-realm.json) — синхронизировано с
-// scripts/demo-credentials.ps1.
+// Пароли демо-учёток — синхронизировано с scripts/demo-credentials.ps1.
 const DEMO_PASSWORDS = {
   dispatcher: 'Epd-Qa-Tanzim-2026',
   doctor: 'Epd-Qa-Duxtur-2026',
   mechanic: 'Epd-Qa-Mexanik-2026',
   accountant: 'Epd-Qa-Buxgalter-2026',
-  // admin требует CONFIGURE_TOTP (2FA, ИБ-13.2.2) — grant_type=password для него
-  // больше не проходит. Нагрузочный тест использует admin-automation той же роли.
+  // У admin обязателен второй фактор (код из телефона) — нагрузочный тест входит
+  // admin-automation той же роли.
   'admin-automation': 'Epd-Qa-Automation-Admin-2026',
+  company: 'Epd-Qa-CompanyAdm-2026',
+  branch: 'Epd-Qa-BranchAdm-2026',
+  'analyst-automation': 'Epd-Qa-Automation-Analyst-2026',
+  'inspector-automation': 'Epd-Qa-Automation-Inspector-2026',
 };
+
+// Реалистичная раскладка по учёткам (с 24.09.2026). У каждого пользователя свой предел
+// частоты запросов (300 в минуту, RateLimitFilter): прежде 20 читающих потоков делили две
+// учётки — около 350 запросов в минуту на каждую, половина ответов была 429 «слишком часто»,
+// и замер показывал работу лимитера, а не ёмкость платформы. Живой пользователь столько не
+// делает, поэтому читатели разнесены по шести ролям, а для записи setup() заводит по
+// временному диспетчеру, врачу и механику на поток (teardown() их удаляет).
+const READERS = ['accountant', 'company', 'branch', 'admin-automation', 'analyst-automation', 'inspector-automation'];
+const WRITE_ACCOUNTS = 5; // = пик VU сценария write_chain
+const LOAD_TEMP_PW = 'Load-Temp-Pass-2026';
+const LOAD_PW = 'Load-Final-Pass-2026';
+function loadUser(role, slot) {
+  return `load-${role.toLowerCase()}-${(slot % WRITE_ACCOUNTS) + 1}`;
+}
 function pw(username) {
   return DEMO_PASSWORDS[username] || username;
 }
@@ -74,6 +95,8 @@ const writeErrorRate = new Rate('write_error_rate');
 // ------------------------------------------------------------- опции / сценарии
 
 export const options = {
+  // Самоподписанный сертификат пилотного прокси.
+  insecureSkipTLSVerify: true,
   scenarios: {
     read_heavy: {
       executor: 'ramping-vus',
@@ -141,9 +164,9 @@ function jsonHeaders(token) {
 const tokenCache = {};
 
 function fetchToken(username, password) {
-  const body = `client_id=epd-web&grant_type=password&username=${username}&password=${password}`;
-  const res = http.post(`${KC}/realms/epd/protocol/openid-connect/token`, body, {
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+  // Вход платформы (с 23.09.2026 вместо Keycloak): JSON {username, password} → access_token.
+  const res = http.post(`${MD}/api/v1/auth/token`, JSON.stringify({ username, password }), {
+    headers: { 'Content-Type': 'application/json' },
     tags: { name: 'token' },
   });
   if (res.status !== 200) {
@@ -165,6 +188,36 @@ function getToken(username, password) {
 
 function postJson(url, headers, obj, tagName) {
   return http.post(url, JSON.stringify(obj), { headers, tags: { name: tagName } });
+}
+
+// Временная учётка нагрузочного теста: создать (с временным паролем), сменить пароль при
+// первом входе (как настоящий новый сотрудник) — вернуть id для удаления в teardown().
+function provisionUser(adminHeaders, username, role) {
+  const existing = http.get(`${MD}/api/v1/org-users?organizationRma=${ORG_RMA}`, {
+    headers: adminHeaders, tags: { name: 'setup-users-list' },
+  });
+  if (existing.status === 200) {
+    existing.json().filter((u) => u.username === username).forEach((u) => {
+      http.del(`${MD}/api/v1/org-users/${u.id}`, null, { headers: adminHeaders, tags: { name: 'setup-user-delete' } });
+    });
+  }
+  const created = postJson(`${MD}/api/v1/org-users`, adminHeaders, {
+    username, lastName: 'LOAD-TEST', firstName: role, organizationRma: ORG_RMA, role, password: LOAD_TEMP_PW,
+  }, 'setup-user-create');
+  if (created.status !== 201) {
+    throw new Error(`setup: учётка ${username} — HTTP ${created.status} ${created.body}`);
+  }
+  const first = http.post(`${MD}/api/v1/auth/token`, JSON.stringify({ username, password: LOAD_TEMP_PW }), {
+    headers: { 'Content-Type': 'application/json' }, tags: { name: 'setup-first-login' },
+  });
+  const changed = http.post(`${MD}/api/v1/auth/password`,
+    JSON.stringify({ changeToken: first.json('changeToken'), newPassword: LOAD_PW }), {
+      headers: { 'Content-Type': 'application/json' }, tags: { name: 'setup-password' },
+    });
+  if (changed.status !== 204) {
+    throw new Error(`setup: смена пароля ${username} — HTTP ${changed.status} ${changed.body}`);
+  }
+  return created.json('id');
 }
 
 // ------------------------------------------------------------- setup (один раз)
@@ -251,17 +304,24 @@ export function setup() {
   } else {
     console.error(`setup: не удалось получить список ПЛ для очистки - HTTP ${listRes.status}`);
   }
-  console.log(`setup: пул готов (${vehiclePool.length} ТС/водителей), очищено зависших ПЛ: ${cleaned}`);
+  // 5) Временные учётки записи: по диспетчеру, врачу и механику на поток.
+  const loadUserIds = [];
+  for (let i = 0; i < WRITE_ACCOUNTS; i++) {
+    ['DISPATCHER', 'DOCTOR', 'MECHANIC'].forEach((role) => {
+      loadUserIds.push(provisionUser(adminHeaders, loadUser(role, i), role));
+    });
+  }
+  console.log(`setup: пул готов (${vehiclePool.length} ТС/водителей), очищено зависших ПЛ: ${cleaned}, `
+    + `временных учёток: ${loadUserIds.length}`);
 
-  return { vehiclePool, driverPool };
+  return { vehiclePool, driverPool, loadUserIds };
 }
 
 // ------------------------------------------------------------- сценарий 1: чтение
 
 export function readHeavy() {
-  // Половина итераций - диспетчер, половина - бухгалтер (обе роли читают отчёты/списки).
-  const asDispatcher = __ITER % 2 === 0;
-  const user = asDispatcher ? 'dispatcher' : 'accountant';
+  // Поток закреплён за одной из шести читающих ролей (список и сводный отчёт доступны всем им).
+  const user = READERS[(__VU - 1) % READERS.length];
   const token = getToken(user, pw(user));
   const headers = { Authorization: `Bearer ${token}` };
 
@@ -294,9 +354,9 @@ export function writeChain(data) {
   const vehicle = data.vehiclePool[slot];
   const driver = data.driverPool[slot];
 
-  const dispatcherHeaders = jsonHeaders(getToken('dispatcher', pw('dispatcher')));
-  const doctorHeaders = jsonHeaders(getToken('doctor', pw('doctor')));
-  const mechanicHeaders = jsonHeaders(getToken('mechanic', pw('mechanic')));
+  const dispatcherHeaders = jsonHeaders(getToken(loadUser('DISPATCHER', slot), LOAD_PW));
+  const doctorHeaders = jsonHeaders(getToken(loadUser('DOCTOR', slot), LOAD_PW));
+  const mechanicHeaders = jsonHeaders(getToken(loadUser('MECHANIC', slot), LOAD_PW));
 
   const chainStart = Date.now();
   let waybillId = null;
@@ -370,7 +430,12 @@ export function writeChain(data) {
     check(cancelRes, { 'cancel -> 200': (r) => r.status === 200 });
   }
 
-  sleep(Math.random() * 1 + 0.5); // 0.5-1.5с между итерациями одного VU
+  // 3.5-4.5с между листами одного диспетчера (~13 листов в минуту на учётку — в разы быстрее
+  // живого диспетчера). Потолок одной учётки-человека — около 18 листов в минуту: создание листа
+  // делает ~16 справочных запросов в master-data тем же токеном, предел человека — 300 в минуту,
+  // дальше master-data отвечает 429, а waybill — 503 «повторите через N с» (замер 24.09.2026).
+  // У служебных учёток (агрегатор, API_INTEGRATOR) предел отдельный — 3000 в минуту.
+  sleep(Math.random() * 1 + 3.5);
 }
 
 // ------------------------------------------------------------- teardown (финальная очистка)
@@ -429,6 +494,15 @@ export function teardown(data) {
     }
   });
 
+  let deletedUsers = 0;
+  (data.loadUserIds || []).forEach((id) => {
+    const del = http.del(`${MD}/api/v1/org-users/${id}`, null, {
+      headers: adminHeaders, tags: { name: 'teardown-delete-user' },
+    });
+    if (del.status === 204) deletedUsers++;
+  });
+
   console.log(`teardown: отменено зависших ПЛ на LOAD-пуле: ${cleanedWaybills}; `
-    + `удалено ТС: ${deletedVehicles}/${data.vehiclePool.length}, водителей: ${deletedDrivers}/${data.driverPool.length}`);
+    + `удалено ТС: ${deletedVehicles}/${data.vehiclePool.length}, водителей: ${deletedDrivers}/${data.driverPool.length}, `
+    + `временных учёток: ${deletedUsers}/${(data.loadUserIds || []).length}`);
 }
