@@ -26,6 +26,19 @@ async function setSetting(category: string, key: string, value: string) {
 const setForm = (form: string, value: string) => setSetting('forms', form, value);
 const setOrganizationForm = (value: string) => setForm('organization', value);
 
+/** Текущие значения настроек категории — чтобы после теста вернуть стенд как был (например, V80). */
+async function readSettings(category: string): Promise<Record<string, string>> {
+  const ctx = await request.newContext();
+  const tok = await ctx.post(`${MD}/api/v1/auth/token`, { data: { username: ADMIN, password: ADMIN_PASSWORD } });
+  const { access_token } = await tok.json();
+  const r = await ctx.get(`${MD}/api/v1/settings?category=${category}`, { headers: { Authorization: `Bearer ${access_token}` } });
+  const list = (await r.json()) as { settingKey: string; settingValue: string | null }[];
+  await ctx.dispose();
+  return Object.fromEntries(list.map(s => [s.settingKey, s.settingValue ?? '']));
+}
+let savedForms: Record<string, string> = {};
+let savedSources: Record<string, string> = {};
+
 async function uiLogin(page: Page) {
   await page.goto('/login');
   await page.getByPlaceholder('Введите логин').fill(ADMIN);
@@ -35,10 +48,15 @@ async function uiLogin(page: Page) {
 }
 
 test.describe('Поля форм из настроек', () => {
+  test.beforeAll(async () => {
+    savedForms = await readSettings('forms');
+    savedSources = await readSettings('datasource');
+  });
+  // Тест меняет настройки стенда — после него возвращаем их к значениям до запуска.
   test.afterAll(async () => {
     for (const f of ['organization', 'driver', 'vehicle', 'employee']) {
-      await setForm(f, '');
-      await setSetting('datasource', f, 'MANUAL');
+      await setForm(f, savedForms[f] ?? '');
+      await setSetting('datasource', f, savedSources[f] || 'MANUAL');
     }
   });
 
