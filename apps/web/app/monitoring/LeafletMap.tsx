@@ -3,6 +3,7 @@
 import { useEffect, useRef } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
+import { leafletLayer } from 'protomaps-leaflet';
 import type { LivePosition } from '@/lib/api';
 import tjBorder from './tajikistan-border.geo.json';
 
@@ -14,13 +15,20 @@ import tjBorder from './tajikistan-border.geo.json';
  *   NEXT_PUBLIC_MAP_ATTRIBUTION — подпись источника тайлов (если он задан).
  * По умолчанию (переменная НЕ задана) внешние тайлы НЕ запрашиваются — платформа работает в
  * закрытом гос-контуре без интернета (см. changelog/2026-09-23-локальные-шрифты-и-карты.md).
- * Вместо растровых тайлов — офлайн-подложка: однотонный фон + контур границы Таджикистана
- * (GeoJSON, вшит в сборку из tajikistan-border.geo.json, упрощённые координаты) — точки ТС и их
- * взаимное расположение видны и без интернет-карты. Если NEXT_PUBLIC_MAP_TILES_URL задан —
- * используются обычные растровые тайлы с указанного (в т.ч. локального) сервера.
+ * Вместо внешних тайлов — ОФЛАЙН-КАРТА Таджикистана (с 24.09.2026): векторные тайлы
+ * OpenStreetMap в одном файле public/map/tajikistan.pmtiles (выгрузка Protomaps Basemap по
+ * границам РТ, данные до уровня 12 — улицы, дороги, реки, города с подписями; при приближении
+ * данные дорисовываются крупнее). Файл отдаётся самой платформой запросами по диапазону байтов,
+ * интернет не нужен. Если файла нет — прежняя подложка: однотонный фон + контур границы РТ
+ * (tajikistan-border.geo.json). Если NEXT_PUBLIC_MAP_TILES_URL задан — растровые тайлы с
+ * указанного (в т.ч. локального) сервера.
  */
 const TILES = process.env.NEXT_PUBLIC_MAP_TILES_URL || '';
 const ATTR = process.env.NEXT_PUBLIC_MAP_ATTRIBUTION || '';
+/** Офлайн-карта РТ (PMTiles). Пустое значение отключает её. */
+const OFFLINE_MAP = process.env.NEXT_PUBLIC_MAP_PMTILES ?? '/map/tajikistan.pmtiles';
+/** До какого уровня в файле есть данные (выгрузка z0–12); крупнее — дорисовка. */
+const OFFLINE_MAX_DATA_ZOOM = 12;
 const DUSHANBE: [number, number] = [38.5598, 68.7870];
 // Грубые границы Таджикистана с запасом — чтобы без тайловой подложки нельзя было ускакать в
 // пустой океан карты (офлайн-режим).
@@ -56,16 +64,38 @@ export default function LeafletMap({ rows, t, tStatus, height = 560 }: Props) {
       // Настроенный тайл-сервер (свой/локальный) — обычные растровые тайлы.
       L.tileLayer(TILES, { attribution: ATTR, maxZoom: 19 }).addTo(map);
     } else {
-      // Офлайн: без внешних тайлов. Однотонный фон (см. .leaflet-offline в globals.css) + контур
-      // границы Таджикистана, чтобы точки ТС были видны на местности без интернета.
-      boxRef.current.classList.add('leaflet-offline');
-      L.geoJSON(tjBorder as GeoJSON.GeoJsonObject, {
-        style: { color: '#2563eb', weight: 1.5, fillColor: '#dbe7fe', fillOpacity: 0.5 },
-      }).addTo(map);
+      // Офлайн: без внешних тайлов. Карта ограничена районом РТ — без внешней подложки за её
+      // пределами пусто.
+      const box = boxRef.current;
       map.attributionControl.setPrefix(false);
-      map.attributionControl.addAttribution('Контур границы РТ — упрощённая офлайн-подложка');
       map.setMaxBounds(TJ_BOUNDS.pad(0.15));
       map.setMinZoom(6);
+      map.setMaxZoom(17);
+      const outline = () => {
+        // Запасная подложка: однотонный фон (.leaflet-offline в globals.css) + контур границы РТ.
+        box.classList.add('leaflet-offline');
+        L.geoJSON(tjBorder as GeoJSON.GeoJsonObject, {
+          style: { color: '#2563eb', weight: 1.5, fillColor: '#dbe7fe', fillOpacity: 0.5 },
+        }).addTo(map);
+        map.attributionControl.addAttribution('Контур границы РТ — упрощённая офлайн-подложка');
+      };
+      if (OFFLINE_MAP) {
+        // Файл карты есть — векторная подложка; нет (не выложен) — контур, а не пустой экран.
+        fetch(OFFLINE_MAP, { method: 'HEAD' })
+          .then(res => {
+            if (!mapRef.current) return;
+            if (!res.ok) { outline(); return; }
+            const base = leafletLayer({
+              url: OFFLINE_MAP, flavor: 'light', lang: 'ru', maxDataZoom: OFFLINE_MAX_DATA_ZOOM,
+              attribution: '© OpenStreetMap (офлайн-карта РТ)',
+            }) as unknown as L.Layer;
+            // Подложка — в слое тайлов, метки ТС (слой маркеров) остаются поверх.
+            base.addTo(map);
+          })
+          .catch(() => { if (mapRef.current) outline(); });
+      } else {
+        outline();
+      }
     }
     layerRef.current = L.layerGroup().addTo(map);
     mapRef.current = map;
