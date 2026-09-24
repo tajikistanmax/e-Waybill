@@ -326,6 +326,8 @@ h2 { font-size: 15px; font-weight: 700; color: var(--ink); margin: 0 0 14px; let
    ============================================================ */
 table { width: 100%; border-collapse: collapse; font-size: 13px; }
 th, td { text-align: left; padding: 11px 14px; }
+/* Плотная таблица — много колонок на ноутбуке (например, «Пользователи»). */
+table.dense th, table.dense td { padding: 9px 8px; }
 thead th { color: var(--muted); font-weight: 600; font-size: 10.5px; text-transform: uppercase; letter-spacing: .05em; border-bottom: 1px solid var(--line); }
 tbody td { border-bottom: 1px solid var(--line-soft); color: var(--ink-soft); font-variant-numeric: tabular-nums; }
 tbody tr:last-child td { border-bottom: none; }

@@ -113,7 +113,9 @@ export function Sidebar() {
 
         {showManagement && <div className="group-label">{t('nav.group.management')}</div>}
         {nav.has('company') && <Link href="/company" className={`snav ${active('/company') && !active('/company/access') ? 'active' : ''}`}><Icon d={P.building} /> {t('nav.company')}</Link>}
-        {nav.has('access') && <Link href="/company/access" className={`snav ${active('/company/access') ? 'active' : ''}`}><Icon d={P.users} /> {t('nav.access')}</Link>}
+        {nav.has('access') && <Link href="/company/access" className={`snav ${pathname === '/company/access' ? 'active' : ''}`}><Icon d={P.users} /> {t('nav.access')}</Link>}
+        {/* Все учётные записи платформы (legacy /admin/user) — только администратору платформы. */}
+        {nav.has('access') && roles.includes('SYSTEM_ADMIN') && <Link href="/company/access/users" className={`snav ${active('/company/access/users') ? 'active' : ''}`}><Icon d={P.user} /> {t('nav.users')}</Link>}
         {nav.has('registry') && <Link href="/registry/vehicles" className={`snav ${active('/registry') ? 'active' : ''}`}><Icon d={P.users} /> {t('nav.registry')}</Link>}
         {nav.has('violations') && <Link href="/violations" className={`snav ${active('/violations') ? 'active' : ''}`}><Icon d={P.shield} /> {t('nav.violations')}</Link>}
         {nav.has('reports') && <Link href="/reports/summary" className={`snav ${active('/reports') ? 'active' : ''}`}><Icon d={P.chart} /> {t('nav.reports')}</Link>}

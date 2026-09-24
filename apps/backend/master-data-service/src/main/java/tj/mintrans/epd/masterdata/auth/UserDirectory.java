@@ -158,6 +158,14 @@ public class UserDirectory {
         refreshTokens.revokeAllForUser(user.getId());
     }
 
+    /** Перевод учётной записи в другую организацию (или «без организации» — null). */
+    @Transactional
+    public void setOrganization(String userId, String organizationRma) {
+        var user = entity(userId);
+        user.setOrganizationRma(trimToNull(organizationRma));
+        users.save(user);
+    }
+
     /** Обязателен ли второй фактор для учётной записи. */
     @Transactional
     public void setSecondFactorRequired(String userId, boolean required) {

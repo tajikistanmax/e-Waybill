@@ -332,6 +332,12 @@ public class OrgUserController {
         if (isSelf(user)) {
             return false;
         }
+        // Служебные учётки (межсервисные вызовы epd-service, агрегатор): их блокировка, сброс
+        // пароля или удаление из интерфейса остановили бы закрытие путевых листов и обмен с
+        // агрегаторами — пароль и роль задаются только настройками стенда.
+        if (user.roles() != null && user.roles().contains("API_INTEGRATOR")) {
+            return false;
+        }
         if (!tenantScope.isBounded()) {
             return true;
         }

@@ -574,6 +574,21 @@ export const md = {
     }).then(r => handle<OrgUser>(r)),
     remove: (id: string) => mdDelete(`org-users/${id}`),
   },
+  // Все учётные записи платформы — страница «Пользователи» администратора платформы (замена
+  // legacy /admin/user). Блокировка, сброс пароля/2FA и удаление — через orgUsers (те же точки).
+  platformUsers: {
+    list: (p: { q?: string; role?: string; organizationRma?: string; withoutOrganization?: boolean; status?: string; page?: number; size?: number }) => {
+      const qs = new URLSearchParams();
+      Object.entries(p).forEach(([k, v]) => { if (v !== undefined && v !== '' && v !== false) qs.set(k, String(v)); });
+      return fetch(`/md-api/api/v1/platform-users?${qs}`, { headers: authHeaders() }).then(r => handle<PlatformUserPage>(r));
+    },
+    create: (body: { username: string; firstName?: string; lastName?: string; organizationRma?: string; role: string }) =>
+      mdPost('platform-users', body) as Promise<PlatformUser>,
+    setRole: (id: string, role: string, organizationRma?: string) => fetch(`/md-api/api/v1/platform-users/${id}/role`, {
+      method: 'PATCH', headers: authHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ role, organizationRma: organizationRma || null }),
+    }).then(r => handle<PlatformUser>(r)),
+  },
   // Учредительные/разрешительные документы организации (скан-копии).
   orgDocuments: {
     list: (rma: string) => fetch(`/md-api/api/v1/organizations/${rma}/documents`, { headers: authHeaders() })
@@ -647,6 +662,20 @@ export type OrgUser = {
   secondFactorRequired?: boolean;
   secondFactorEnrolled?: boolean;
 };
+
+/** Учётная запись на странице «Пользователи» администратора платформы. */
+export type PlatformUser = {
+  id: string; username: string; firstName: string | null; lastName: string | null;
+  organizationRma: string | null; roles: string[]; enabled: boolean;
+  /** Временно заблокирована после неудачных попыток входа. */
+  locked: boolean;
+  lastLoginAt: string | null; createdAt: string | null; mustChangePassword: boolean;
+  secondFactorRequired: boolean; secondFactorEnrolled: boolean;
+  /** Своя учётка / служебная (API_INTEGRATOR) — без действий. */
+  self: boolean; service: boolean;
+  temporaryPassword: string | null;
+};
+export type PlatformUserPage = { content: PlatformUser[]; total: number; page: number; size: number };
 
 export type PlatformSetting = {
   id: string;
