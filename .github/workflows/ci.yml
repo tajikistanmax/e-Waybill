@@ -87,9 +87,6 @@ jobs:
           severity: CRITICAL
           exit-code: "1"
           ignore-unfixed: true
-          # Легаси-дамп прототипа (docs/Путевой лист/...) — не прод-кодовая база,
-          # свои node_modules там не поддерживаются и не обновляются целенаправленно.
-          skip-dirs: docs/Путевой лист
 
       - name: SAST (Semgrep, отчёт — пока не блокирует релиз)
         continue-on-error: true

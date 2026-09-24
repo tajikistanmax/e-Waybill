@@ -1,4 +1,0 @@
-Дашборд: http://localhost:3001/dashboard
-Создание листа: http://localhost:3001/dashboard/new
-Медосмотр: http://localhost:3001/dashboard/checkpoints/medical
-Вид водителя: http://localhost:3001/dashboard/driver/1

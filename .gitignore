@@ -5,8 +5,8 @@ apps/backend/.gradle/
 # Выход компиляции IDE (Eclipse/VS Code Java) — не исходники
 apps/backend/**/bin/
 
-# TypeScript incremental build state
-apps/web/tsconfig.tsbuildinfo
+# TypeScript incremental build state (любое приложение монорепо)
+*.tsbuildinfo
 
 # Node / Next.js
 node_modules/
