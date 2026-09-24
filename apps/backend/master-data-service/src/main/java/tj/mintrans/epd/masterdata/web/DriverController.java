@@ -49,15 +49,18 @@ public class DriverController {
     private final tj.mintrans.epd.masterdata.service.DriverTabNumbers tabNumbers;
     private final tj.mintrans.epd.masterdata.service.RegistryQuery registryQuery;
     private final tj.mintrans.epd.masterdata.service.FormFieldPolicy formFields;
+    private final tj.mintrans.epd.masterdata.service.MasterDataSourcePolicy sourcePolicy;
 
     public DriverController(DriverRepository drivers, OrganizationRepository organizations,
                             tj.mintrans.epd.masterdata.repository.VehicleRepository vehicles,
                             CurrentUser currentUser, TenantScope tenantScope, AuditService audit,
                             tj.mintrans.epd.masterdata.service.DriverTabNumbers tabNumbers,
                             tj.mintrans.epd.masterdata.service.RegistryQuery registryQuery,
-                            tj.mintrans.epd.masterdata.service.FormFieldPolicy formFields) {
+                            tj.mintrans.epd.masterdata.service.FormFieldPolicy formFields,
+                            tj.mintrans.epd.masterdata.service.MasterDataSourcePolicy sourcePolicy) {
         this.registryQuery = registryQuery;
         this.formFields = formFields;
+        this.sourcePolicy = sourcePolicy;
         this.drivers = drivers;
         this.organizations = organizations;
         this.vehicles = vehicles;
@@ -109,15 +112,22 @@ public class DriverController {
     @PreAuthorize("hasAnyRole('API_INTEGRATOR','SYSTEM_ADMIN','COMPANY_ADMIN','BRANCH_ADMIN','DISPATCHER')")
     public ResponseEntity<Driver> upsert(@Valid @RequestBody DriverRequest req) {
         requireWritable(req.organizationRma());
-        // Обязательные по настройке поля (Настройки → Поля водителя) — для ручного ввода;
-        // push-канал единой платформы (API_INTEGRATOR) не проверяется, как и у организации.
-        if (!currentUser.hasRole("API_INTEGRATOR")) {
-            formFields.requireFilled(tj.mintrans.epd.masterdata.service.FormFieldPolicy.DRIVER, req);
-        }
         var org = organizations.findByRma(req.organizationRma())
                 .orElseThrow(() -> new NotFoundException("Организация не найдена"));
         var existing = drivers.findByRma(req.rma());
         assertNotForeign(existing.map(Driver::getOrganizationId).orElse(null), org.getId(), "Водитель");
+        boolean integrator = currentUser.hasRole("API_INTEGRATOR");
+        if (!integrator) {
+            // Кто ведёт справочник (Настройки → Интеграции): при UNIFIED новую запись вручную не
+            // завести, у записи из единой платформы меняются только поля модуля.
+            var ex = existing.orElse(null);
+            String src = ex == null ? null : ex.getSource();
+            req = sourcePolicy.guardManualWrite(tj.mintrans.epd.masterdata.service.FormFieldPolicy.DRIVER, req, ex, src);
+            // Обязательные по настройке поля (Настройки → Поля водителя) — для ручного ввода;
+            // push-канал единой платформы (API_INTEGRATOR) не проверяется.
+            formFields.requireFilled(tj.mintrans.epd.masterdata.service.FormFieldPolicy.DRIVER, req,
+                    sourcePolicy.skipRequired(tj.mintrans.epd.masterdata.service.FormFieldPolicy.DRIVER, ex, src));
+        }
         String oldName = existing.map(Driver::getFullName).orElse(null); // до мутации (existing и driver — один объект)
         var driver = existing.orElseGet(Driver::new);
         driver.setRma(req.rma());
@@ -165,6 +175,9 @@ public class DriverController {
         // (Минтранс) — тот же принцип, что и у Vehicle.blocked; перевозчик не может
         // разблокировать своего же водителя в обход регулятора.
         if (currentUser.isPlatformAdmin() && req.suspended() != null) driver.setSuspended(req.suspended());
+        // Запись, присланная единой платформой, помечается её источником — по нему в режиме
+        // UNIFIED поля e-Transport закрываются от ручной правки.
+        if (integrator) driver.setSource("UNIFIED");
         var saved = drivers.save(driver);
         audit.record(existing.isPresent() ? AuditService.UPDATE : AuditService.CREATE,
                 "DRIVER", req.rma(), oldName, saved.getFullName());

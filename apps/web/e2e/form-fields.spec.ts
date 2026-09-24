@@ -11,18 +11,19 @@ const MD = process.env.E2E_MD_URL || 'http://localhost:8081';
 const ADMIN = process.env.E2E_ADMIN_USER || 'admin';
 const ADMIN_PASSWORD = process.env.E2E_ADMIN_PASSWORD || 'Epd-Qa-AdminRoot-2026';
 
-async function setForm(form: string, value: string) {
+async function setSetting(category: string, key: string, value: string) {
   const ctx = await request.newContext();
   const tok = await ctx.post(`${MD}/api/v1/auth/token`, { data: { username: ADMIN, password: ADMIN_PASSWORD } });
   expect(tok.ok()).toBeTruthy();
   const { access_token } = await tok.json();
   const r = await ctx.post(`${MD}/api/v1/settings`, {
     headers: { Authorization: `Bearer ${access_token}` },
-    data: { category: 'forms', settingKey: form, value },
+    data: { category, settingKey: key, value },
   });
   expect(r.status()).toBe(200);
   await ctx.dispose();
 }
+const setForm = (form: string, value: string) => setSetting('forms', form, value);
 const setOrganizationForm = (value: string) => setForm('organization', value);
 
 async function uiLogin(page: Page) {
@@ -35,7 +36,26 @@ async function uiLogin(page: Page) {
 
 test.describe('Поля форм из настроек', () => {
   test.afterAll(async () => {
-    for (const f of ['organization', 'driver', 'vehicle', 'employee']) await setForm(f, '');
+    for (const f of ['organization', 'driver', 'vehicle', 'employee']) {
+      await setForm(f, '');
+      await setSetting('datasource', f, 'MANUAL');
+    }
+  });
+
+  test('справочник ведёт единая платформа: кнопки «Добавить» нет, есть пометка', async ({ page }) => {
+    await setSetting('datasource', 'driver', 'UNIFIED');
+    await uiLogin(page);
+    await page.goto('/fleet/drivers');
+    await expect(page.getByText('Добавление — в единой платформе')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Добавить водителя' })).toHaveCount(0);
+    // Транспорт остаётся «вручную» — там кнопка на месте.
+    await page.goto('/fleet/vehicles');
+    await expect(page.getByRole('button', { name: 'Добавить ТС' })).toBeVisible();
+    // Блок переключателя на странице интеграций.
+    await page.goto('/settings/integrations');
+    await expect(page.getByText('Кто ведёт справочники')).toBeVisible();
+    await expect(page.getByLabel('Водители')).toHaveValue('UNIFIED');
+    await setSetting('datasource', 'driver', 'MANUAL');
   });
 
   test('водитель в «Парке»: скрытое поле пропадает, обязательное помечено', async ({ page }) => {

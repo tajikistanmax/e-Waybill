@@ -50,12 +50,15 @@ public class VehicleController {
     private final tj.mintrans.epd.masterdata.service.VehicleCardRules cardRules;
     private final tj.mintrans.epd.masterdata.service.RegistryQuery registryQuery;
     private final FormFieldPolicy formFields;
+    private final tj.mintrans.epd.masterdata.service.MasterDataSourcePolicy sourcePolicy;
 
     public VehicleController(VehicleRepository vehicles, OrganizationRepository organizations,
                              CurrentUser currentUser, TenantScope tenantScope, AuditService audit,
                              tj.mintrans.epd.masterdata.service.VehicleCardRules cardRules,
                              tj.mintrans.epd.masterdata.service.RegistryQuery registryQuery,
-                             FormFieldPolicy formFields) {
+                             FormFieldPolicy formFields,
+                             tj.mintrans.epd.masterdata.service.MasterDataSourcePolicy sourcePolicy) {
+        this.sourcePolicy = sourcePolicy;
         this.vehicles = vehicles;
         this.organizations = organizations;
         this.currentUser = currentUser;
@@ -115,11 +118,6 @@ public class VehicleController {
     @PreAuthorize("hasAnyRole('API_INTEGRATOR','SYSTEM_ADMIN','COMPANY_ADMIN','BRANCH_ADMIN','DISPATCHER')")
     public ResponseEntity<Vehicle> upsert(@Valid @RequestBody VehicleRequest req) {
         requireWritable(req.organizationRma());
-        // Обязательные по настройке поля (Настройки → Поля транспорта) — для ручного ввода;
-        // push-канал единой платформы (API_INTEGRATOR) не проверяется, как и у организации.
-        if (!currentUser.hasRole("API_INTEGRATOR")) {
-            formFields.requireFilled(FormFieldPolicy.VEHICLE, req);
-        }
         var org = organizations.findByRma(req.organizationRma())
                 .orElseThrow(() -> new NotFoundException("Организация не найдена"));
         // Госномер канонизируется (обрезка пробелов + верхний регистр), иначе "0114TJ01"
@@ -129,6 +127,17 @@ public class VehicleController {
         tj.mintrans.epd.masterdata.service.VehicleCardRules.assertPlateFormat(req.transportType(), canonicalNumber);
         var existing = vehicles.findByRegistrationNumber(canonicalNumber);
         assertNotForeign(existing.map(Vehicle::getOrganizationId).orElse(null), org.getId(), "ТС");
+        boolean integrator = currentUser.hasRole("API_INTEGRATOR");
+        if (!integrator) {
+            // Кто ведёт справочник (Настройки → Интеграции): при UNIFIED новую запись вручную не
+            // завести, у записи из единой платформы меняются только поля модуля.
+            var ex = existing.orElse(null);
+            String src = ex == null ? null : ex.getSource();
+            req = sourcePolicy.guardManualWrite(FormFieldPolicy.VEHICLE, req, ex, src);
+            // Обязательные по настройке поля (Настройки → Поля транспорта) — для ручного ввода;
+            // push-канал единой платформы (API_INTEGRATOR) не проверяется.
+            formFields.requireFilled(FormFieldPolicy.VEHICLE, req, sourcePolicy.skipRequired(FormFieldPolicy.VEHICLE, ex, src));
+        }
         String oldBrand = existing.map(Vehicle::getBrand).orElse(null); // до мутации (existing и vehicle — один объект)
         var vehicle = existing.orElseGet(Vehicle::new);
         vehicle.setRegistrationNumber(canonicalNumber);
@@ -179,6 +188,8 @@ public class VehicleController {
         vehicle.setTrailer2Weight(req.trailer2Weight());
         // Блокировку ТС ставит/снимает только платформенный админ (Минтранс); перевозчик — нет.
         if (currentUser.isPlatformAdmin() && req.blocked() != null) vehicle.setBlocked(req.blocked());
+        // Запись, присланная единой платформой, помечается её источником (см. MasterDataSourcePolicy).
+        if (integrator) vehicle.setSource("UNIFIED");
         var saved = vehicles.save(vehicle);
         audit.record(existing.isPresent() ? AuditService.UPDATE : AuditService.CREATE,
                 "VEHICLE", canonicalNumber, oldBrand, saved.getBrand());

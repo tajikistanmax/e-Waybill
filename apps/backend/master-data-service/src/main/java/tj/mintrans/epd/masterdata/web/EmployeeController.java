@@ -44,12 +44,15 @@ public class EmployeeController {
     private final tj.mintrans.epd.masterdata.service.RegistryQuery registryQuery;
     private final tj.mintrans.epd.masterdata.service.FormFieldPolicy formFields;
     private final tj.mintrans.epd.masterdata.config.CurrentUser currentUser;
+    private final tj.mintrans.epd.masterdata.service.MasterDataSourcePolicy sourcePolicy;
 
     public EmployeeController(EmployeeRepository employees, OrganizationRepository organizations,
                               TenantScope tenantScope, AuditService audit,
                               tj.mintrans.epd.masterdata.service.RegistryQuery registryQuery,
                               tj.mintrans.epd.masterdata.service.FormFieldPolicy formFields,
-                              tj.mintrans.epd.masterdata.config.CurrentUser currentUser) {
+                              tj.mintrans.epd.masterdata.config.CurrentUser currentUser,
+                              tj.mintrans.epd.masterdata.service.MasterDataSourcePolicy sourcePolicy) {
+        this.sourcePolicy = sourcePolicy;
         this.employees = employees;
         this.organizations = organizations;
         this.tenantScope = tenantScope;
@@ -84,15 +87,22 @@ public class EmployeeController {
     @PreAuthorize("hasAnyRole('API_INTEGRATOR','SYSTEM_ADMIN','COMPANY_ADMIN','BRANCH_ADMIN','DISPATCHER')")
     public ResponseEntity<Employee> upsert(@Valid @RequestBody EmployeeRequest req) {
         requireWritable(req.organizationRma());
-        // Обязательные по настройке поля (Настройки → Поля сотрудника) — для ручного ввода;
-        // push-канал единой платформы (API_INTEGRATOR) не проверяется, как и у организации.
-        if (!currentUser.hasRole("API_INTEGRATOR")) {
-            formFields.requireFilled(tj.mintrans.epd.masterdata.service.FormFieldPolicy.EMPLOYEE, req);
-        }
         var org = organizations.findByRma(req.organizationRma())
                 .orElseThrow(() -> new NotFoundException("Организация не найдена"));
         var existing = employees.findByRma(req.rma());
         assertNotForeign(existing.map(Employee::getOrganizationId).orElse(null), org.getId(), "Сотрудник");
+        boolean integrator = currentUser.hasRole("API_INTEGRATOR");
+        if (!integrator) {
+            // Кто ведёт справочник (Настройки → Интеграции): при UNIFIED новую запись вручную не
+            // завести, у записи из единой платформы меняются только поля модуля.
+            var ex = existing.orElse(null);
+            String src = ex == null ? null : ex.getSource();
+            req = sourcePolicy.guardManualWrite(tj.mintrans.epd.masterdata.service.FormFieldPolicy.EMPLOYEE, req, ex, src);
+            // Обязательные по настройке поля (Настройки → Поля сотрудника) — для ручного ввода;
+            // push-канал единой платформы (API_INTEGRATOR) не проверяется.
+            formFields.requireFilled(tj.mintrans.epd.masterdata.service.FormFieldPolicy.EMPLOYEE, req,
+                    sourcePolicy.skipRequired(tj.mintrans.epd.masterdata.service.FormFieldPolicy.EMPLOYEE, ex, src));
+        }
         String oldName = existing.map(Employee::getName).orElse(null); // до мутации (existing и employee — один объект)
         var employee = existing.orElseGet(Employee::new);
         employee.setRma(req.rma());
@@ -104,6 +114,8 @@ public class EmployeeController {
         employee.setAddress(req.address());
         employee.setCertNumber(req.certNumber());
         employee.setCertValidTo(req.certValidTo());
+        // Запись, присланная единой платформой, помечается её источником (см. MasterDataSourcePolicy).
+        if (integrator) employee.setSource("UNIFIED");
         var saved = employees.save(employee);
         audit.record(existing.isPresent() ? AuditService.UPDATE : AuditService.CREATE,
                 "EMPLOYEE", req.rma(), oldName, saved.getName());

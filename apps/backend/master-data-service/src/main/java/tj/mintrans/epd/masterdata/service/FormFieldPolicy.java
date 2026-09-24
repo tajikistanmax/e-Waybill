@@ -280,6 +280,17 @@ public class FormFieldPolicy {
         requireFilled(form, valuesOf(request));
     }
 
+    /** То же, но поля из {@code skip} не проверяются (поля единой платформы у её записей). */
+    public void requireFilled(String form, Record request, java.util.Set<String> skip) {
+        Map<String, Object> values = valuesOf(request);
+        if (!skip.isEmpty()) {
+            for (String k : skip) {
+                values.put(k, "-"); // считаем заполненным: пользователь его не меняет
+            }
+        }
+        requireFilled(form, values);
+    }
+
     static Map<String, Object> valuesOf(Record rec) {
         Map<String, Object> out = new java.util.HashMap<>();
         for (var c : rec.getClass().getRecordComponents()) {

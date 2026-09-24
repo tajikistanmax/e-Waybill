@@ -6,6 +6,7 @@ import { md, wb, type MdOps, type WbOps } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 import { useAuth } from '@/lib/auth';
 import { Icon, P } from '../../icons';
+import { DataSourceCard } from './DataSourceCard';
 
 type Status = 'live' | 'partial' | 'via' | 'planned';
 
@@ -100,6 +101,9 @@ export default function IntegrationsSettingsPage() {
       </div>
 
       <div className="hint" style={{ marginBottom: 18 }}>{t('setint.note')}</div>
+
+      {/* Кто ведёт справочники: платформа или единая платформа транспорта (переключатель дня подключения). */}
+      <DataSourceCard />
 
       {isAdmin && (
         <div className="card" style={{ padding: 16, marginBottom: 16 }}>

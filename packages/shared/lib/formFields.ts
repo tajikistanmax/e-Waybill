@@ -133,6 +133,44 @@ export const FORM_FIELDS: Record<string, FormFieldDef[]> = {
   ],
 };
 
+/**
+ * Кто ведёт справочники (Настройки → Интеграции, категория `datasource`): платформа (MANUAL) или
+ * единая платформа транспорта e-Transport (UNIFIED). При UNIFIED кнопки «Добавить» скрываются,
+ * а у записей из единой платформы (source = UNIFIED) правятся только поля модуля путевых листов.
+ * Зеркало серверного MasterDataSourcePolicy.MODULE_FIELDS — сервер проверяет то же самое.
+ */
+export const DATASOURCE_CATEGORY = 'datasource';
+export const MODULE_FIELDS: Record<string, string[]> = {
+  organization: ['percentIncome', 'cat1', 'cat2', 'cat3', 'allowedWaybillTypes', 'giveFuel', 'internalNumber', 'mapPoints', 'planPassVolume', 'planPassTraffic'],
+  driver: ['tabNumber', 'degree', 'assignedVehicleId'],
+  vehicle: ['parkingNumber', 'airConditioner', 'odometer'],
+  employee: ['tabNumber'],
+};
+export const isModuleField = (form: string, key: string) => (MODULE_FIELDS[form] ?? []).includes(key);
+
+export type DataSource = Record<'organization' | 'driver' | 'vehicle' | 'employee', boolean>;
+
+/** Какие справочники ведёт единая платформа (true = UNIFIED). Пока не загрузилось — всё «вручную». */
+export function useDataSource(): DataSource & { locked: (form: string, source: unknown) => (key: string) => boolean } {
+  const [ds, setDs] = useState<DataSource>({ organization: false, driver: false, vehicle: false, employee: false });
+  useEffect(() => {
+    let alive = true;
+    md.settings(DATASOURCE_CATEGORY)
+      .then(list => {
+        const u = (k: string) => (list.find(s => s.settingKey === k)?.settingValue ?? '').toUpperCase() === 'UNIFIED';
+        if (alive) setDs({ organization: u('organization'), driver: u('driver'), vehicle: u('vehicle'), employee: u('employee') });
+      })
+      .catch(() => { /* по умолчанию — вручную */ });
+    return () => { alive = false; };
+  }, []);
+  return {
+    ...ds,
+    /** Поле записи закрыто от правки: справочник ведёт e-Transport, запись пришла оттуда, поле не модуля. */
+    locked: (form: string, source: unknown) => (key: string) =>
+      !!ds[form as keyof DataSource] && String(source ?? '').toUpperCase() === 'UNIFIED' && !isModuleField(form, key),
+  };
+}
+
 /** Ключи всех полей формы — для предзаполнения при изменении записи и отправки целиком. */
 export const formKeys = (form: string) => (FORM_FIELDS[form] ?? []).map(f => f.key);
 /** Ключи полей, значения которых отправляются числом. */

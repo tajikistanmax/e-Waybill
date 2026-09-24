@@ -53,10 +53,13 @@ public class OrganizationController {
     private final EntityManager em;
     private final FormFieldPolicy formFields;
     private final CurrentUser currentUser;
+    private final tj.mintrans.epd.masterdata.service.MasterDataSourcePolicy sourcePolicy;
 
     public OrganizationController(OrganizationRepository repository,
                                   TenantScope tenantScope, AuditService audit, EntityManager em,
-                                  FormFieldPolicy formFields, CurrentUser currentUser) {
+                                  FormFieldPolicy formFields, CurrentUser currentUser,
+                                  tj.mintrans.epd.masterdata.service.MasterDataSourcePolicy sourcePolicy) {
+        this.sourcePolicy = sourcePolicy;
         this.repository = repository;
         this.tenantScope = tenantScope;
         this.audit = audit;
@@ -122,11 +125,18 @@ public class OrganizationController {
             return ResponseEntity.ok(saved);
         }
 
-        // Обязательные по настройке поля (Настройки → Поля форм) — для ручного ввода администратором.
-        // Push-канал единой платформы (API_INTEGRATOR) не проверяется: его набор полей задаёт
-        // e-Transport, и настройка формы нашего интерфейса не должна обрывать синхронизацию.
-        if (!currentUser.hasRole("API_INTEGRATOR")) {
-            formFields.requireFilled(FormFieldPolicy.ORGANIZATION, formValues(req));
+        boolean integrator = currentUser.hasRole("API_INTEGRATOR");
+        if (!integrator) {
+            // Кто ведёт справочник (Настройки → Интеграции): при UNIFIED новую компанию вручную не
+            // завести, у компании из единой платформы меняются только поля модуля.
+            var ex = existing.orElse(null);
+            String src = ex == null ? null : ex.getSource();
+            req = sourcePolicy.guardManualWrite(FormFieldPolicy.ORGANIZATION, req, ex, src);
+            // Обязательные по настройке поля (Настройки → Поля компании) — для ручного ввода.
+            // Push-канал единой платформы (API_INTEGRATOR) не проверяется: его набор полей задаёт
+            // e-Transport, и настройка формы нашего интерфейса не должна обрывать синхронизацию.
+            formFields.requireFilled(FormFieldPolicy.ORGANIZATION, req,
+                    sourcePolicy.skipRequired(FormFieldPolicy.ORGANIZATION, ex, src));
         }
 
         // Платформенная роль / push-канал: полный upsert реквизитов и иерархии.
@@ -162,6 +172,8 @@ public class OrganizationController {
         org.setMapPoints(orgTrimToNull(req.mapPoints()));
         org.setGiveFuel(Boolean.TRUE.equals(req.giveFuel()));
         applyPayroll(org, req);
+        // Компания, присланная единой платформой, помечается её источником (см. MasterDataSourcePolicy).
+        if (integrator) org.setSource("UNIFIED");
         var saved = repository.save(org);
         audit.record(existing.isPresent() ? AuditService.UPDATE : AuditService.CREATE,
                 "ORGANIZATION", req.rma(), oldName, saved.getName());
@@ -177,42 +189,6 @@ public class OrganizationController {
         if (req.allowedWaybillTypes() != null) {
             org.setAllowedWaybillTypes(req.allowedWaybillTypes().isBlank() ? null : req.allowedWaybillTypes().trim());
         }
-    }
-
-    /** Значения полей формы организации по ключам {@link FormFieldPolicy} (для проверки обязательности). */
-    static Map<String, Object> formValues(OrganizationRequest req) {
-        Map<String, Object> v = new HashMap<>();
-        v.put("rma", req.rma());
-        v.put("name", req.name());
-        v.put("kpp", req.kpp());
-        v.put("internalNumber", req.internalNumber());
-        v.put("typeCompany", req.typeCompany());
-        v.put("regionId", req.regionId());
-        v.put("cityName", req.cityName());
-        v.put("address", req.address());
-        v.put("phone", req.phone());
-        v.put("email", req.email());
-        v.put("nameHead", req.nameHead());
-        v.put("bank", req.bank());
-        v.put("licenseFrom", req.licenseFrom());
-        v.put("licenseTo", req.licenseTo());
-        v.put("carrierLicenseNumber", req.carrierLicenseNumber());
-        v.put("percentIncome", req.percentIncome());
-        v.put("cat1", req.cat1());
-        v.put("cat2", req.cat2());
-        v.put("cat3", req.cat3());
-        v.put("ownership", req.ownership());
-        v.put("registrationCertNumber", req.registrationCertNumber());
-        v.put("extractNumber", req.extractNumber());
-        v.put("vatCertNumber", req.vatCertNumber());
-        v.put("planPassVolume", req.planPassVolume());
-        v.put("planPassTraffic", req.planPassTraffic());
-        v.put("latitude", req.latitude());
-        v.put("longitude", req.longitude());
-        v.put("mapPoints", req.mapPoints());
-        v.put("giveFuel", req.giveFuel());
-        v.put("allowedWaybillTypes", req.allowedWaybillTypes());
-        return v;
     }
 
     /** Обрезка пробелов; пустая/только пробелы строка → NULL. */

@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { md, wb } from '@/lib/api';
 import { downloadCsv } from '@/lib/csv';
 import { useAuth } from '@/lib/auth';
-import { FORM_FIELDS, fieldLabel, useFormFieldModes } from '@/lib/formFields';
+import { FORM_FIELDS, fieldLabel, useDataSource, useFormFieldModes } from '@/lib/formFields';
 import { useT } from '@/lib/i18n';
 import { Icon, P } from '../icons';
 import SubjectDocuments from './SubjectDocuments';
@@ -130,6 +130,12 @@ export default function FleetView({ kind }: { kind: FleetKind }) {
   // при изменении водителя паспорт, адрес, договор и закреплённое ТС уходили пустыми и затирались.
   const formName = kind === 'vehicles' ? 'vehicle' : kind === 'drivers' ? 'driver' : 'employee';
   const { modes } = useFormFieldModes(formName);
+  // Кто ведёт справочник (Настройки → Интеграции): при UNIFIED ручного добавления нет, у записи
+  // из единой платформы правятся только поля модуля (источник записи — editingSource).
+  const ds = useDataSource();
+  const [editingSource, setEditingSource] = useState<string | null>(null);
+  const unifiedHere = ds[formName];
+  const lockedField = ds.locked(formName, editingSource);
   const fields: Field[] = FORM_FIELDS[formName].map(f => ({
     key: f.key,
     label: fieldLabel(t, f, false),
@@ -168,10 +174,12 @@ export default function FleetView({ kind }: { kind: FleetKind }) {
   function openNew() {
     setForm(Object.fromEntries(fields.map(f => [f.key, ''])));
     setOrgRma(headRma);
+    setEditingSource(null);
     setEditing(false); setMsg(''); setErr('');
   }
   function openEdit(row: Row) {
     setForm(Object.fromEntries(fields.map(f => [f.key, row[f.key] != null ? String(row[f.key]) : ''])));
+    setEditingSource(row.source == null ? null : String(row.source));
     // Правка — в той организации, где запись уже числится (иначе сохранение перенесло бы её).
     const own = orgs.find(o => String(o.id) === String(row.organizationId));
     setOrgRma(own ? String(own.rma) : headRma);
@@ -276,7 +284,10 @@ export default function FleetView({ kind }: { kind: FleetKind }) {
         <button className="btn secondary" onClick={exportCsv} disabled={visible.length === 0} title={t('rep.export.hint')}>
           <Icon d={P.chart} cls="" style={{ width: 15, height: 15 }} /> CSV
         </button>
-        {canManage && (
+        {canManage && unifiedHere && (
+          <span className="badge blue" style={{ alignSelf: 'center' }} title={t('ds.addoff.hint')}>{t('ds.addoff')}</span>
+        )}
+        {canManage && !unifiedHere && (
           <button className="btn" onClick={() => (form ? setForm(null) : openNew())}>
             <Icon d={P.plus} cls="" style={{ width: 15, height: 15 }} />{' '}
             {kind === 'vehicles' ? t('fleet.add.vehicle') : kind === 'drivers' ? t('fleet.add.driver') : t('fleet.add.employee')}
@@ -299,25 +310,29 @@ export default function FleetView({ kind }: { kind: FleetKind }) {
               </select>
             </div>
           )}
+          {editing && lockedField('') && (
+            <div className="hint" style={{ marginBottom: 12, borderColor: 'var(--blue-600)' }}>{t('ds.locked.hint')}</div>
+          )}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 12 }}>
             {shown.map(f => (
               <div key={f.key}>
                 <label htmlFor={`fleet-${f.key}`} style={{ fontSize: 12.5, color: 'var(--muted)' }}>{f.label}{f.req ? ' *' : ''}</label>
                 {f.type === 'select' ? (
-                  <select id={`fleet-${f.key}`} value={form[f.key] ?? ''} onChange={e => setForm(s => ({ ...s!, [f.key]: e.target.value }))} style={{ width: '100%', marginTop: 4 }}>
+                  <select id={`fleet-${f.key}`} value={form[f.key] ?? ''} disabled={editing && lockedField(f.key)}
+                    onChange={e => setForm(s => ({ ...s!, [f.key]: e.target.value }))} style={{ width: '100%', marginTop: 4 }}>
                     <option value="">—</option>
                     {f.opts!.map(o => <option key={o.v} value={o.v}>{o.l}</option>)}
                   </select>
                 ) : (
                   <input id={`fleet-${f.key}`} type={f.type === 'number' ? 'number' : f.type === 'date' ? 'date' : 'text'}
-                    value={form[f.key] ?? ''} disabled={editing && f.keyField}
+                    value={form[f.key] ?? ''} disabled={editing && (f.keyField || lockedField(f.key))}
                     onChange={e => setForm(s => ({ ...s!, [f.key]: e.target.value }))} style={{ width: '100%', marginTop: 4 }} />
                 )}
               </div>
             ))}
           </div>
           <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
-            <button className="btn primary" disabled={busy || fields.some(f => f.req && !(form[f.key] ?? '').trim())} onClick={save}>
+            <button className="btn primary" disabled={busy || fields.some(f => f.req && !(editing && lockedField(f.key)) && !(form[f.key] ?? '').trim())} onClick={save}>
               {busy ? '…' : t('fleet.save')}
             </button>
             <button className="btn secondary" onClick={() => setForm(null)}>{t('fleet.cancel')}</button>

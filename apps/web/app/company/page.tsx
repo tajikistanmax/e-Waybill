@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { authHeaders, md, type SubjectKind, type SubjectRef } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
-import { formKeys, numericKeys, useFormFieldModes } from '@/lib/formFields';
+import { formKeys, numericKeys, useDataSource, useFormFieldModes } from '@/lib/formFields';
 import { ConfigurableFields } from '../ConfigurableFields';
 import { useT, WAYBILL_TYPE_CODES } from '@/lib/i18n';
 import { Icon, P } from '../icons';
@@ -126,7 +126,7 @@ function rowToForm(row: Record<string, unknown>, keys: string[]): Record<string,
 }
 
 /** value + onChange одного поля ручной формы (результат хелпера mkField). */
-type Field = { value: string; onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => void };
+type Field = { value: string; onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => void; disabled?: boolean };
 
 /**
  * Мультивыбор типов ПЛ, которые организация вправе выдавать (аналог per-user permissions).
@@ -303,6 +303,10 @@ function OrgRegistry() {
   const [busy, setBusy] = useState(false);
   // Ключ редактируемой записи (РМА водителя/сотрудника или госномер ТС) — для панели вложений.
   const [editingKey, setEditingKey] = useState<string | null>(null);
+  // Источник редактируемой записи (MANUAL / UNIFIED) — поля e-Transport закрываются в режиме UNIFIED.
+  const [entitySource, setEntitySource] = useState<string | null>(null);
+  const [orgEditSource, setOrgEditSource] = useState<string | null>(null);
+  const ds = useDataSource();
   const [driverForm, setDriverForm] = useState({ inn: '', tabNumber: '' });
   const [vehicleForm, setVehicleForm] = useState({ registrationNumber: '', parkingNumber: '' });
   const [employeeForm, setEmployeeForm] = useState({ inn: '', type: '1', tabNumber: '' });
@@ -450,24 +454,36 @@ function OrgRegistry() {
     }
   }
 
-  // Хелпер полей ручных форм: {...om('name')} даёт value + onChange для input/select.
-  const mkField = (state: Record<string, string>, set: (v: Record<string, string>) => void) =>
+  // Хелпер полей ручных форм: {...om('name')} даёт value + onChange для input/select;
+  // readOnly(k) — поле закрыто (запись из единой платформы, Настройки → Интеграции).
+  const mkField = (state: Record<string, string>, set: (v: Record<string, string>) => void, readOnly?: (k: string) => boolean) =>
     (k: string) => ({
       value: state[k] ?? '',
       onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => set({ ...state, [k]: e.target.value }),
+      disabled: readOnly?.(k) || undefined,
     });
+  const driverRo = ds.locked('driver', entitySource);
+  const vehicleRo = ds.locked('vehicle', entitySource);
+  const employeeRo = ds.locked('employee', entitySource);
+  const orgRo = ds.locked('organization', orgEditSource);
   const om = mkField(orgManual, setOrgManual);
-  const dm = mkField(driverManual, setDriverManual);
-  const vm = mkField(vehicleManual, setVehicleManual);
-  const em = mkField(employeeManual, setEmployeeManual);
+  const dm = mkField(driverManual, setDriverManual, driverRo);
+  const vm = mkField(vehicleManual, setVehicleManual, vehicleRo);
+  const em = mkField(employeeManual, setEmployeeManual, employeeRo);
   // Поля окна правки организации привязаны к своему состоянию orgEdit,
   // чтобы не смешиваться с формой «Добавить организацию» внизу.
-  const oe = mkField(orgEdit ?? {}, setOrgEdit);
+  const oe = mkField(orgEdit ?? {}, setOrgEdit, orgRo);
+  // Справочник текущей вкладки ведёт единая платформа — ручное добавление скрыто.
+  const tabForm = tab === 'drivers' ? 'driver' : tab === 'vehicles' ? 'vehicle' : 'employee';
+  const tabUnified = ds[tabForm];
+  const entityLocked = tabUnified && String(entitySource ?? '').toUpperCase() === 'UNIFIED';
+  const orgLocked = ds.organization && String(orgEditSource ?? '').toUpperCase() === 'UNIFIED';
 
   // Редактирование организации: открываем отдельное окно, предзаполнив его значениями строки.
   // Сохранение — тот же upsert по РМА (обновляет существующую запись), см. saveOrgEdit.
   function editOrg(row: Row) {
     setError(''); setOk('');
+    setOrgEditSource(row.source == null ? null : String(row.source));
     setOrgEdit(rowToForm(row, ORG_KEYS));
   }
 
@@ -561,6 +577,7 @@ function OrgRegistry() {
     setShowForm(true);
     // Ключ записи нужен для панели вложений (документы привязаны к РМА / госномеру).
     setEditingKey(String(tab === 'vehicles' ? row.registrationNumber : row.rma));
+    setEntitySource(row.source == null ? null : String(row.source));
     if (tab === 'drivers') setDriverManual(rowToForm(row, DRIVER_KEYS));
     else if (tab === 'vehicles') setVehicleManual(rowToForm(row, VEHICLE_KEYS));
     else setEmployeeManual(rowToForm(row, EMPLOYEE_KEYS));
@@ -670,9 +687,13 @@ function OrgRegistry() {
               placeholder={t('comp.search.org')}
               style={{ width: 240 }}
             />
-            <button type="button" className="btn" onClick={() => setShowAddOrg(v => !v)}>
-              {showAddOrg ? t('comp.btn.hideform') : t('btn.add')}
-            </button>
+            {ds.organization
+              ? <span className="badge blue" title={t('ds.addoff.hint')}>{t('ds.addoff')}</span>
+              : (
+                <button type="button" className="btn" onClick={() => setShowAddOrg(v => !v)}>
+                  {showAddOrg ? t('comp.btn.hideform') : t('btn.add')}
+                </button>
+              )}
           </div>
         </div>
         <table>
@@ -755,7 +776,9 @@ function OrgRegistry() {
         <button className="btn secondary" disabled={!orgRma} onClick={() => { setAttachOpen(true); setAttachKey(''); setAttachFound(null); setAttachList([]); setAttachError(''); }}>
           {t('comp.attach.btn')}
         </button>
-        <button className="btn" disabled={!orgRma} onClick={() => { setShowForm(true); setEntityMode('manual'); setEditingKey(null); }}>{t('btn.add')}</button>
+        {tabUnified
+          ? <span className="badge blue" title={t('ds.addoff.hint')}>{t('ds.addoff')}</span>
+          : <button className="btn" disabled={!orgRma} onClick={() => { setShowForm(true); setEntityMode('manual'); setEditingKey(null); setEntitySource(null); }}>{t('btn.add')}</button>}
       </div>
 
       {showForm && (
@@ -767,12 +790,13 @@ function OrgRegistry() {
           {(
             <>
               <p className="hint">{t('comp.hint.manual.pre')} «{org ? String(org.name) : ''}»{t('comp.hint.manual.post')}</p>
+              {entityLocked && <p className="hint" style={{ borderColor: 'var(--blue-600)' }}>{t('ds.locked.hint')}</p>}
               {tab === 'drivers' && (
                 <form className="grid" onSubmit={submitManual}>
                   <div><label>{t('comp.f.rmainn')}</label><input required pattern="\d{9,10}" {...dm('rma')} /></div>
                   <div><label>{t('comp.f.fio_req')}</label><input required placeholder="Иванов Иван Иванович" {...dm('fullName')} /></div>
                   {/* Остальные поля — по Настройки → Поля водителя (скрыть / обязательное). */}
-                  <ConfigurableFields form="driver" modes={driverModes}
+                  <ConfigurableFields form="driver" modes={driverModes} readOnly={driverRo}
                     value={k => driverManual[k] ?? ''} onChange={(k, v) => setDriverManual({ ...driverManual, [k]: v })}
                     overrides={{
                       assignedVehicleId: ({ label }) => (<>
@@ -804,7 +828,7 @@ function OrgRegistry() {
                     </select>
                   </div>
                   {/* Остальные поля — по Настройки → Поля транспорта (скрыть / обязательное). */}
-                  <ConfigurableFields form="vehicle" modes={vehicleModes}
+                  <ConfigurableFields form="vehicle" modes={vehicleModes} readOnly={vehicleRo}
                     value={k => vehicleManual[k] ?? ''} onChange={(k, v) => setVehicleManual({ ...vehicleManual, [k]: v })} />
                   <div className="full" style={{ display: 'flex', gap: 8 }}>
                     <button className="btn" type="submit">{t('comp.btn.savevehicle')}</button>
@@ -822,7 +846,7 @@ function OrgRegistry() {
                     </select>
                   </div>
                   {/* Остальные поля — по Настройки → Поля сотрудника (скрыть / обязательное). */}
-                  <ConfigurableFields form="employee" modes={employeeModes}
+                  <ConfigurableFields form="employee" modes={employeeModes} readOnly={employeeRo}
                     value={k => employeeManual[k] ?? ''} onChange={(k, v) => setEmployeeManual({ ...employeeManual, [k]: v })} />
                   <div className="full" style={{ display: 'flex', gap: 8 }}>
                     <button className="btn" type="submit">{t('comp.btn.saveemployee')}</button>
@@ -984,6 +1008,7 @@ function OrgRegistry() {
               <h2>{t('btn.edit')}: {orgEdit.name || String(orgEdit.rma)}</h2>
               <button type="button" className="btn secondary" style={{ marginLeft: 'auto' }} onClick={() => setOrgEdit(null)}>✕</button>
             </div>
+            {orgLocked && <p className="hint" style={{ borderColor: 'var(--blue-600)' }}>{t('ds.locked.hint')}</p>}
             <form className="grid" onSubmit={saveOrgEdit}>
               <OrgFields f={oe} t={t} />
               <div className="full" style={{ display: 'flex', gap: 8 }}>
