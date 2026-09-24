@@ -39,6 +39,7 @@
             <div class="caption" style="text-align:left" th:unless="${shipmentKind == 'HOURLY'}">
                 Замима 1 — намуди боркашонӣ: корбайъ (сдельно)
             </div>
+            <th:block th:replace="~{print/blocks :: orgSeal}"/>
         </td>
         <td class="form-reference">
             Замима ба роҳхати 2-Б<br/>ба Қоидаи нақлиёти автомобилӣ<br/>
@@ -130,7 +131,7 @@
 <div class="section">
     <table>
         <tr>
-            <td style="width: 33%"><div class="line" th:text="${dispatcherName}"></div><div class="caption">Танзимгар (имзо)</div></td>
+            <td style="width: 33%"><div class="line"><span th:text="${dispatcherName}"></span> <img th:if="${dispatcherSignature != null}" th:src="${dispatcherSignature}" alt="" class="sig"/></div><div class="caption">Танзимгар (имзо)</div></td>
             <td style="width: 33%"><div class="line"><span th:text="${driverName}"></span> <img th:if="${driverSignature != null}" th:src="${driverSignature}" alt="" style="height: 22px"/></div><div class="caption">Ронанда (имзо)</div></td>
             <td style="width: 33%"><div class="line" th:text="${senderName}"></div><div class="caption">Отправитель (имзо, штамп)</div></td>
             <td style="width: 34%"><div class="line" th:text="${receiverName}"></div><div class="caption">Получатель (имзо, штамп)</div></td>

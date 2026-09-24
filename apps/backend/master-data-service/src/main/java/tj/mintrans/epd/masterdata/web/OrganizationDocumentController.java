@@ -154,6 +154,22 @@ public class OrganizationDocumentController {
                 .filter(m -> m.getId().equals(id)).findFirst().orElseThrow();
     }
 
+    /**
+     * Последний ОДОБРЕННЫЙ документ вида {@code docType}, только изображение — печать организации
+     * (SEAL, legacy {@code companies.seal_attach}) в графе «Ҷои муҳри корхона» бланка ПЛ. 404 — нет.
+     */
+    @GetMapping("/latest")
+    public ResponseEntity<byte[]> latest(@PathVariable String rma, @RequestParam("docType") String docType) {
+        requireVisible(rma);
+        var doc = documents.findFirstByOrganizationRmaAndDocTypeAndStatusOrderByUploadedAtDesc(rma, docType, "APPROVED")
+                .filter(d -> d.getContentType() != null && d.getContentType().startsWith("image/"))
+                .orElseThrow(() -> new NotFoundException("Одобренное изображение вида " + docType + " не найдено"));
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CACHE_CONTROL, "private, max-age=60")
+                .contentType(MediaType.parseMediaType(doc.getContentType()))
+                .body(doc.getData());
+    }
+
     @GetMapping("/{docId}")
     public ResponseEntity<byte[]> download(@PathVariable String rma, @PathVariable UUID docId) {
         requireVisible(rma);

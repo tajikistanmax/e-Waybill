@@ -47,6 +47,7 @@
             <td style="width: 40%">
                 <div class="line" th:text="${companyName}">Корхона</div>
                 <div class="caption">(ҷои мӯҳри корхона)</div>
+                <th:block th:replace="~{print/blocks :: orgSeal}"/>
                 <table>
                     <tr><td class="nowrap" style="width: 30%">Суроға</td><td class="line" th:text="${companyAddress}"></td></tr>
                     <tr><td class="nowrap">Шакли моликият</td><td class="line" th:text="${ownershipName}"></td></tr>
@@ -150,9 +151,9 @@
 <div class="section">
     <table>
         <tr>
-            <td style="width: 25%"><div class="line" th:text="${mechanicName}"></div><div class="caption">Механик (имзо)</div></td>
-            <td style="width: 25%"><div class="line" th:text="${doctorName}"></div><div class="caption">Духтур (имзо, сикка)</div></td>
-            <td style="width: 25%"><div class="line" th:text="${dispatcherName}"></div><div class="caption">Танзимгар (имзо)</div></td>
+            <td style="width: 25%"><div class="line"><span th:text="${mechanicName}"></span> <img th:if="${mechanicSignature != null}" th:src="${mechanicSignature}" alt="" class="sig"/></div><div class="caption">Механик (имзо)</div></td>
+            <td style="width: 25%"><div class="line"><span th:text="${doctorName}"></span> <img th:if="${doctorSignature != null}" th:src="${doctorSignature}" alt="" class="sig"/> <img th:if="${doctorSeal != null}" th:src="${doctorSeal}" alt="" class="sig"/></div><div class="caption">Духтур (имзо, сикка)</div></td>
+            <td style="width: 25%"><div class="line"><span th:text="${dispatcherName}"></span> <img th:if="${dispatcherSignature != null}" th:src="${dispatcherSignature}" alt="" class="sig"/></div><div class="caption">Танзимгар (имзо)</div></td>
             <td style="width: 25%"><div class="line"><span th:text="${driverName}"></span> <img th:if="${driverSignature != null}" th:src="${driverSignature}" alt="" style="height: 22px"/></div><div class="caption">Ронанда (имзо)</div></td>
         </tr>
     </table>

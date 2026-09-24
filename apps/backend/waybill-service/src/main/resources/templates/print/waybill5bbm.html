@@ -47,6 +47,7 @@
             <td style="width: 34%">
                 <div class="line" th:text="${companyName}">Корхона</div>
                 <div class="caption">(Ҷои муҳри корхона)</div>
+                <th:block th:replace="~{print/blocks :: orgSeal}"/>
                 <table>
                     <tr><td class="nowrap" style="width: 22%">Суроға</td><td class="line" th:text="${companyAddress}"></td></tr>
                 </table>

@@ -23,7 +23,9 @@
             </tr>
             <tr>
                 <td>
-                    <div class="line" th:text="${doctorMark.name}"></div>
+                    <div class="line"><span th:text="${doctorMark.name}"></span>
+                        <img th:if="${doctorSignature != null}" th:src="${doctorSignature}" alt="" class="sig"/>
+                        <img th:if="${doctorSeal != null}" th:src="${doctorSeal}" alt="" class="sig"/></div>
                     <div class="caption" style="text-align:left">
                         Духтур · <span th:text="${doctorMark.verdict}"></span>
                         <th:block th:if="${doctorMark.present}"><br/>ЭП <span th:text="${doctorMark.fingerprint}"></span>
@@ -31,7 +33,8 @@
                     </div>
                 </td>
                 <td>
-                    <div class="line" th:text="${mechanicMark.name}"></div>
+                    <div class="line"><span th:text="${mechanicMark.name}"></span>
+                        <img th:if="${mechanicSignature != null}" th:src="${mechanicSignature}" alt="" class="sig"/></div>
                     <div class="caption" style="text-align:left">
                         Назоратчии техникӣ · <span th:text="${mechanicMark.verdict}"></span>
                         <th:block th:if="${mechanicMark.present}"><br/>ЭП <span th:text="${mechanicMark.fingerprint}"></span>
@@ -45,7 +48,8 @@
                     <div class="caption" style="text-align:left">Ронанда (имзо)</div>
                 </td>
                 <td>
-                    <div class="line" th:text="${dispatcherMark.name}"></div>
+                    <div class="line"><span th:text="${dispatcherMark.name}"></span>
+                        <img th:if="${dispatcherSignature != null}" th:src="${dispatcherSignature}" alt="" class="sig"/></div>
                     <div class="caption" style="text-align:left">
                         Танзимгар · <span th:text="${dispatcherMark.verdict}"></span>
                         <th:block th:if="${dispatcherMark.present}"><br/>ЭП <span th:text="${dispatcherMark.fingerprint}"></span>
@@ -63,6 +67,16 @@
             </tr>
         </table>
     </div>
+</th:block>
+
+<!--
+  Печать организации (legacy companies.seal_attach) — под графой «Ҷои муҳри корхона».
+  Подключение: <th:block th:replace="~{print/blocks :: orgSeal}"/>
+  Только одобренное изображение документа SEAL организации (${orgSeal}); нет — графа пустая,
+  печать ставится от руки.
+-->
+<th:block th:fragment="orgSeal">
+    <div class="org-seal" th:if="${orgSeal != null}"><img th:src="${orgSeal}" alt=""/></div>
 </th:block>
 
 <!--

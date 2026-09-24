@@ -28,6 +28,9 @@
         .section { margin-top: 2.6mm; }
         .page-break { page-break-after: always; }
         .qr { width: 78px; height: 78px; }
+        /* Печать организации и подписи сотрудников — изображения из карточек (legacy seal/signature). */
+        .org-seal img { height: 18mm; }
+        img.sig { height: 22px; vertical-align: bottom; }
         .badge { display: inline-block; border: 0.5pt solid #0a6b3b; color: #0a6b3b; border-radius: 3px; padding: 0 4px; font-size: 6pt; }
         /* Отметка «Копия» (QA §17) — печать не первая. Обычный блок в потоке документа
            (не position:fixed/overlay) — гарантированно не перекрывает контент бланка,

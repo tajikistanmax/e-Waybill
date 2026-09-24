@@ -157,8 +157,18 @@ public class SubjectDocumentController {
      * и в карточке: печать берёт только одобренную подпись (строже legacy, где файл печатался сразу). 404 — нет.
      */
     @GetMapping("/latest")
+    // Изображения для бланка ПЛ (фото, подпись, печать) читает любой, кто вправе печатать лист —
+    // инспектор, аналитик, врач, механик…: иначе один и тот же ПЛ печатался бы с подписями у
+    // диспетчера и без них у инспектора. Остальные виды (паспорт, ВУ…) — только ведущим документы.
+    // Тенант по-прежнему видит лишь объекты своей организации (resolve → requireOwn).
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<byte[]> latest(@PathVariable String subject, @PathVariable String key,
                                          @RequestParam("docType") String docType) {
+        boolean keeper = currentUser.hasRole("SYSTEM_ADMIN") || currentUser.hasRole("COMPANY_ADMIN")
+                || currentUser.hasRole("DISPATCHER") || currentUser.hasRole("API_INTEGRATOR");
+        if (!keeper && !VISUAL_DOC_TYPES.contains(docType)) {
+            throw new AccessDeniedException("Документ вида " + docType + " доступен только ведущим документы");
+        }
         Subject s = resolve(subject, key);
         var doc = documents.findFirstBySubjectTypeAndSubjectKeyAndDocTypeAndStatusOrderByUploadedAtDesc(
                         s.type(), s.key(), docType, "APPROVED")

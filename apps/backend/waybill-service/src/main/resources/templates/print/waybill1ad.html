@@ -48,6 +48,7 @@
             <td style="width: 34%">
                 <div class="line" th:text="${companyName}">Корхона</div>
                 <div class="caption">(Ҷои муҳри корхона)</div>
+                <th:block th:replace="~{print/blocks :: orgSeal}"/>
                 <table>
                     <tr><td class="nowrap" style="width: 22%">Суроға</td><td class="line" th:text="${companyAddress}"></td></tr>
                     <tr><td class="nowrap">Шакли моликият</td><td class="line" th:text="${ownershipName}"></td></tr>
@@ -246,7 +247,7 @@
 <div class="section">
     <table>
         <tr>
-            <td style="width: 50%"><div class="line" th:text="${dispatcherName}"></div><div class="caption">Танзимгар (имзо)</div></td>
+            <td style="width: 50%"><div class="line"><span th:text="${dispatcherName}"></span> <img th:if="${dispatcherSignature != null}" th:src="${dispatcherSignature}" alt="" class="sig"/></div><div class="caption">Танзимгар (имзо)</div></td>
             <td style="width: 50%"><div class="line" th:text="${conductorName}"></div><div class="caption">Кондуктор (имзо)</div></td>
         </tr>
     </table>

@@ -594,6 +594,16 @@ public class WaybillPrintService {
         // Подпись водителя (одобренный документ SIGNATURE в master-data) — графа «Ронанда (имзо)»,
         // перенос legacy signature_attach (MIGRATION.md 2.6); нет/недоступна → пустая линия для подписи от руки.
         m.put("driverSignature", masterData.findDriverSignatureDataUri(wb.getDriverRma()).orElse(null));
+        // Подписи врача (с личной печатью — «имзо, сикка»), механика, диспетчера и печать организации —
+        // как на legacy «E-варақаи роҳхат» (employees.signature/seal, companies.seal_attach): одобренные
+        // изображения из карточек сотрудников и документов организации; нет → графа остаётся для руки.
+        String doctorRma = signerRma(wb, "T2");
+        m.put("doctorSignature", masterData.findEmployeeImageDataUri(doctorRma, "SIGNATURE").orElse(null));
+        m.put("doctorSeal", masterData.findEmployeeImageDataUri(doctorRma, "SEAL").orElse(null));
+        m.put("mechanicSignature", masterData.findEmployeeImageDataUri(signerRma(wb, "T3"), "SIGNATURE").orElse(null));
+        m.put("dispatcherSignature", masterData.findEmployeeImageDataUri(signerRma(wb, "T1"), "SIGNATURE").orElse(null));
+        m.put("orgSeal", masterData.findOrganizationSealDataUri(
+                firstNonBlank(wb.getOrganizationRma(), str(org.get("rma")))).orElse(null));
         m.put("printedAt", PrintZone.now());
         m.put("generatedAt", PrintZone.now());
 
@@ -630,6 +640,15 @@ public class WaybillPrintService {
             }
         }
         return "";
+    }
+
+    /** РМА подписанта последнего титула вида {@code titleType} (или null — титул не подписан). */
+    private String signerRma(Waybill wb, String titleType) {
+        return titles.findByWaybillIdOrderBySignedAt(wb.getId()).stream()
+                .filter(t -> titleType.equals(t.getTitleType()))
+                .reduce((a, b) -> b)
+                .map(WaybillTitle::getSignerRma)
+                .orElse(null);
     }
 
     private String signerName(Waybill wb, String titleType) {

@@ -31,6 +31,7 @@ public class MasterDataClient {
     private final TtlCache<List<Map<String, Object>>> organizationsCache = new TtlCache<>(java.time.Duration.ofSeconds(60));
     private final TtlCache<Optional<Map<String, Object>>> directionsCache = new TtlCache<>(java.time.Duration.ofSeconds(60));
     /** Подпись водителя (data URI) для печати бланка — по РМА в контексте вызывающего; TTL 60 с. */
+    /** Изображения для бланка (подписи, печати) — 60 с на вызывающего и документ. */
     private final TtlCache<Optional<String>> driverSignatureCache = new TtlCache<>(java.time.Duration.ofSeconds(60));
     /**
      * Марка ТС по названию и тарифы маршрута — TTL 60 с. Расчёт зовёт их по КАЖДОМУ путевому
@@ -141,10 +142,34 @@ public class MasterDataClient {
         if (rma == null || rma.isBlank()) {
             return Optional.empty();
         }
-        return driverSignatureCache.get(callerKey() + ":" + rma, () -> {
+        return latestImage("/api/v1/drivers/{key}/documents/latest?docType=SIGNATURE", rma);
+    }
+
+    /**
+     * Одобренное изображение сотрудника (врач, механик, диспетчер): {@code SIGNATURE} — подпись,
+     * {@code SEAL} — личная печать врача («имзо, сикка»); legacy {@code employees.signature/seal}.
+     */
+    public Optional<String> findEmployeeImageDataUri(String rma, String docType) {
+        if (rma == null || rma.isBlank()) {
+            return Optional.empty();
+        }
+        return latestImage("/api/v1/employees/{key}/documents/latest?docType=" + docType, rma);
+    }
+
+    /** Одобренная печать организации (SEAL) — графа «Ҷои муҳри корхона»; legacy {@code companies.seal_attach}. */
+    public Optional<String> findOrganizationSealDataUri(String rma) {
+        if (rma == null || rma.isBlank()) {
+            return Optional.empty();
+        }
+        return latestImage("/api/v1/organizations/{key}/documents/latest?docType=SEAL", rma);
+    }
+
+    /** Файл по адресу → data URI изображения; кэш 60 с на вызывающего. Любая ошибка → empty. */
+    private Optional<String> latestImage(String uriTemplate, String key) {
+        return driverSignatureCache.get(callerKey() + ":" + uriTemplate + ":" + key, () -> {
             try {
                 var resp = client.get()
-                        .uri("/api/v1/drivers/{rma}/documents/latest?docType=SIGNATURE", rma)
+                        .uri(uriTemplate, key)
                         .retrieve()
                         .toEntity(byte[].class);
                 var ct = resp.getHeaders().getContentType();

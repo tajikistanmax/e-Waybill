@@ -14,6 +14,10 @@ public interface OrganizationDocumentRepository extends JpaRepository<Organizati
 
     long countByOrganizationRma(String organizationRma);
 
+    /** Последний документ вида и статуса — печать организации (SEAL, APPROVED) на бланке ПЛ. */
+    java.util.Optional<OrganizationDocument> findFirstByOrganizationRmaAndDocTypeAndStatusOrderByUploadedAtDesc(
+            String organizationRma, String docType, String status);
+
     /** Проекция без поля data — список не тянет BLOB'ы в память. */
     interface Meta {
         UUID getId();
