@@ -152,17 +152,22 @@ public class AuthService {
             // Пароль всё равно проверяем настоящим BCrypt-хешем, чтобы время ответа не выдавало,
             // существует ли логин (заглушка неверного формата отвечала мгновенно).
             passwords.matches(password == null ? "" : password, dummyHash);
+            // Введённый логин в журнал не пишем: в поле логина нередко по ошибке вводят пароль.
+            audit.recordAuth("anonymous", null, "LOGIN_ERROR", null, "user_not_found");
             throw invalidCredentials();
         }
         if (user.getLockedUntil() != null && user.getLockedUntil().isAfter(OffsetDateTime.now())) {
+            audit.recordAuth(user.getUsername(), user.getOrganizationRma(), "LOGIN_ERROR", user.getUsername(), "account_locked");
             throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS,
                     "Учётная запись временно заблокирована из-за неудачных попыток входа. Повторите позже.");
         }
         if (!passwords.matches(password == null ? "" : password, user.getPasswordHash())) {
             registerFailure(user);
+            audit.recordAuth(user.getUsername(), user.getOrganizationRma(), "LOGIN_ERROR", user.getUsername(), "invalid_password");
             throw invalidCredentials();
         }
         if (!user.isEnabled()) {
+            audit.recordAuth(user.getUsername(), user.getOrganizationRma(), "LOGIN_ERROR", user.getUsername(), "account_disabled");
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Учётная запись отключена");
         }
 
@@ -231,6 +236,8 @@ public class AuthService {
         long step = Totp.verify(secret, code, java.time.Instant.now(), user.getTotpLastStep());
         if (step < 0) {
             registerFailure(user);
+            audit.recordAuth(user.getUsername(), user.getOrganizationRma(), "LOGIN_ERROR", user.getUsername(),
+                    "invalid_second_factor");
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED,
                     "Неверный код. Введите 6 цифр, которые сейчас показывает приложение.");
         }
@@ -239,8 +246,7 @@ public class AuthService {
             user.setTotpSecret(secret);
             user.setTotpPendingSecret(null);
             user.setTotpEnrolledAt(OffsetDateTime.now());
-            audit.recordAs(user.getUsername(), user.getOrganizationRma(), "TOTP_ENROLL", "AUTH",
-                    user.getUsername(), null, null, null, null);
+            audit.recordAuth(user.getUsername(), user.getOrganizationRma(), "TOTP_ENROLL", user.getUsername(), null);
             log.info("Второй фактор подключён: {}", user.getUsername());
         }
         // Ключ второго шага одноразовый.
@@ -256,9 +262,8 @@ public class AuthService {
         user.setLastLoginAt(OffsetDateTime.now());
         users.save(user);
         // Вход в журнал аудита: раньше эти записи приходили из событий Keycloak отдельной
-        // выгрузкой, теперь их пишет сама платформа в момент входа.
-        audit.recordAs(user.getUsername(), user.getOrganizationRma(), "LOGIN", "AUTH",
-                user.getUsername(), null, null, null, null);
+        // выгрузкой, теперь их пишет сама платформа в момент входа (с IP и браузером).
+        audit.recordAuth(user.getUsername(), user.getOrganizationRma(), "LOGIN", user.getUsername(), null);
         return issueTokens(user);
     }
 
@@ -289,8 +294,13 @@ public class AuthService {
             return;
         }
         refreshTokens.findByTokenHash(hash(refreshToken)).ifPresent(t -> {
+            boolean wasActive = !t.isRevoked();
             t.setRevoked(true);
             refreshTokens.save(t);
+            if (wasActive) {
+                users.findById(t.getUserId()).ifPresent(u ->
+                        audit.recordAuth(u.getUsername(), u.getOrganizationRma(), "LOGOUT", u.getUsername(), null));
+            }
         });
     }
 

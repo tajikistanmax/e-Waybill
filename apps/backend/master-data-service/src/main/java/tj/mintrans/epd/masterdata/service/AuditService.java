@@ -58,6 +58,19 @@ public class AuditService {
     }
 
     /**
+     * Событие входа: актор — тот, кто входит (сессии у него ещё нет, поэтому не из токена),
+     * IP и браузер — из текущего запроса. До 24.09.2026 вход писался без IP и браузера, а
+     * неудачные попытки не писались вовсе (раньше их присылал Keycloak).
+     */
+    @Transactional
+    public void recordAuth(String actor, String actorOrg, String action, String entityKey, String detail) {
+        HttpServletRequest request = currentRequest();
+        String clientIp = request != null ? trim(clientIp(request), 64) : null;
+        String userAgent = request != null ? trim(request.getHeader("User-Agent"), 512) : null;
+        recordAs(trim(actor, 150), actorOrg, action, "AUTH", trim(entityKey, 150), null, detail, clientIp, userAgent);
+    }
+
+    /**
      * Вариант для вызовов без HTTP-контекста текущего пользователя (фоновые задачи —
      * например, приём событий входа из Keycloak {@code KeycloakEventAuditSync}, где
      * «актор» записи — не тот, кто вызвал этот метод, а субъект самого события).

@@ -2558,6 +2558,7 @@ const DICT: Record<string, { ru: string; tj: string; en?: string }> = {
   'aud.act.LOGIN_ERROR': { ru: 'Неудачный вход', tj: 'Воридшавии ноком' },
   'aud.act.LOGOUT': { ru: 'Выход из системы', tj: 'Баромадан' },
   'aud.act.LOGOUT_ERROR': { ru: 'Ошибка выхода', tj: 'Хатои баромадан' },
+  'aud.act.TOTP_ENROLL': { ru: 'Подключён второй фактор входа', tj: 'Омили дуюми воридшавӣ пайваст шуд' },
   'aud.empty': { ru: 'Записей нет', tj: 'Сабтҳо нест' },
   'aud.refresh': { ru: 'Обновить', tj: 'Навсозӣ' },
   'aud.ent.POLICY': { ru: 'Политика', tj: 'Сиёсат' },

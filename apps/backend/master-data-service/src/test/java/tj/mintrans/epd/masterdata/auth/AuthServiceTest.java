@@ -42,6 +42,7 @@ class AuthServiceTest {
     private AppUserRepository users;
     private AuthRefreshTokenRepository tokens;
     private TokenIssuer issuer;
+    private AuditService audit;
     private AuthService auth;
     private AppUser user;
 
@@ -52,7 +53,8 @@ class AuthServiceTest {
         issuer = mock(TokenIssuer.class);
         when(issuer.accessToken(any())).thenReturn("access");
         when(issuer.accessTtlSeconds()).thenReturn(1800L);
-        auth = new AuthService(users, tokens, encoder, issuer, mock(AuditService.class), 10, 15, 43200, "e-Rohkhat");
+        audit = mock(AuditService.class);
+        auth = new AuthService(users, tokens, encoder, issuer, audit, 10, 15, 43200, "e-Rohkhat");
 
         user = new AppUser();
         user.setId(UUID.randomUUID());
@@ -246,6 +248,31 @@ class AuthServiceTest {
         Transactional verify = AuthService.class.getMethod("verifySecondFactor", String.class, String.class)
                 .getAnnotation(Transactional.class);
         assertThat(Arrays.asList(verify.noRollbackFor())).contains(ResponseStatusException.class);
+    }
+
+    /** ИБ-13.6.1: отказы аутентификации — в журнал (раньше их присылал Keycloak), вход — тоже. */
+    @Test
+    void failedAndSuccessfulLoginsAreAudited() {
+        assertThatThrownBy(() -> auth.login("992900000001", "wrong")).isInstanceOf(ResponseStatusException.class);
+        verify(audit).recordAuth("992900000001", null, "LOGIN_ERROR", "992900000001", "invalid_password");
+
+        when(users.findByUsername("typo-or-password")).thenReturn(Optional.empty());
+        assertThatThrownBy(() -> auth.login("typo-or-password", "x")).isInstanceOf(ResponseStatusException.class);
+        // Введённый несуществующий логин в журнал не попадает (там бывает пароль).
+        verify(audit).recordAuth("anonymous", null, "LOGIN_ERROR", null, "user_not_found");
+
+        auth.login("992900000001", PASSWORD);
+        verify(audit).recordAuth("992900000001", null, "LOGIN", "992900000001", null);
+    }
+
+    @Test
+    void wrongSecondFactorCodeIsAudited() {
+        user.setTotpSecret(Totp.newSecret());
+        var e = catchSecondFactor();
+        stubToken(e.challengeToken(), AuthRefreshToken.SECOND_FACTOR);
+        assertThatThrownBy(() -> auth.verifySecondFactor(e.challengeToken(), "000000"))
+                .isInstanceOf(ResponseStatusException.class);
+        verify(audit).recordAuth("992900000001", null, "LOGIN_ERROR", "992900000001", "invalid_second_factor");
     }
 
     private AuthService.SecondFactorRequired catchSecondFactor() {
