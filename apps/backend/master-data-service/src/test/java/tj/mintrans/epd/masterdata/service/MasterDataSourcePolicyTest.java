@@ -79,6 +79,18 @@ class MasterDataSourcePolicyTest {
         assertThat(p.skipRequired("driver", existing, "UNIFIED")).contains("passport").doesNotContain("tabNumber");
     }
 
+    /** Прикрепить / открепить / удалить (24.09.2026): в режиме UNIFIED — в кабинетах единой платформы. */
+    @Test
+    void attachAndDetachFollowTheSameRule() {
+        var unified = policy("UNIFIED");
+        assertThatThrownBy(() -> unified.assertManualAttachAllowed("driver")).hasMessageContaining("прикрепление");
+        assertThatThrownBy(() -> unified.assertManualDetachAllowed("driver", "UNIFIED")).hasMessageContaining("открепляется");
+        unified.assertManualDetachAllowed("driver", "MANUAL");   // запись, заведённая у нас, — можно убрать
+        var manual = policy("MANUAL");
+        manual.assertManualAttachAllowed("driver");
+        manual.assertManualDetachAllowed("driver", "UNIFIED");
+    }
+
     @Test
     void recordsCreatedHereStayEditableInUnifiedMode() {
         var p = policy("UNIFIED");

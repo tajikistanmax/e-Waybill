@@ -450,7 +450,8 @@ export default function FleetView({ kind }: { kind: FleetKind }) {
         <button className="btn secondary" style={{ padding: '4px 9px' }} onClick={() => openEdit(row)} title={t('fleet.edit')}>
           <Icon d={P.doc} cls="" style={{ width: 14, height: 14 }} />
         </button>
-        {canDelete && (
+        {/* Запись из единой платформы в режиме «справочник ведёт e-Transport» открепляется там. */}
+        {canDelete && !(unifiedHere && String(row.source ?? '').toUpperCase() === 'UNIFIED') && (
           <button className="btn secondary" style={{ padding: '4px 9px', color: 'var(--red)' }} onClick={() => remove(row)} title={t('fleet.delete')}>
             <Icon d={P.trash ?? P.alert} cls="" style={{ width: 14, height: 14 }} />
           </button>

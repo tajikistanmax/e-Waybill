@@ -331,6 +331,8 @@ public class VehicleController {
     public ResponseEntity<Void> delete(@PathVariable UUID id) {
         var vehicle = vehicles.findById(id).orElseThrow(() -> new NotFoundException("Транспорт не найден"));
         requireOwnEntity(vehicle.getOrganizationId());
+        // Запись из единой платформы в режиме UNIFIED удаляется/открепляется только там (Настройки → Интеграции).
+        sourcePolicy.assertManualDetachAllowed(FormFieldPolicy.VEHICLE, vehicle.getSource());
         vehicles.delete(vehicle);
         audit.record(AuditService.DELETE, "VEHICLE", vehicle.getRegistrationNumber(), vehicle.getBrand(), null);
         return ResponseEntity.noContent().build();

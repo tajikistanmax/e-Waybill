@@ -192,6 +192,8 @@ public class EmployeeController {
     public ResponseEntity<Void> delete(@PathVariable UUID id) {
         var employee = employees.findById(id).orElseThrow(() -> new NotFoundException("Сотрудник не найден"));
         requireOwnEntity(employee.getOrganizationId());
+        // Запись из единой платформы в режиме UNIFIED удаляется/открепляется только там (Настройки → Интеграции).
+        sourcePolicy.assertManualDetachAllowed(tj.mintrans.epd.masterdata.service.FormFieldPolicy.EMPLOYEE, employee.getSource());
         employees.delete(employee);
         audit.record(AuditService.DELETE, "EMPLOYEE", employee.getRma(), employee.getName(), null);
         return ResponseEntity.noContent().build();

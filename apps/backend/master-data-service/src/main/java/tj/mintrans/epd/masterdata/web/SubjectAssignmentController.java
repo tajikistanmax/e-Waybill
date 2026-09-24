@@ -42,10 +42,16 @@ import java.util.UUID;
  *
  * <p>Открепление НЕ удаляет субъекта и не меняет уже выписанные путевые листы: в них хранятся
  * снимки данных на момент выдачи.</p>
+ *
+ * <p><b>Единая платформа транспорта</b> (учётная запись API_INTEGRATOR, 24.09.2026): кто в какой
+ * компании работает, решают её кабинеты. Она находит субъекта по ключу ({@code lookup}) и
+ * прикрепляет / открепляет его здесь; такая запись помечается источником UNIFIED. В режиме
+ * «справочник ведёт единая платформа» (Настройки → Интеграции) ручное прикрепление отключено,
+ * а открепить вручную можно только запись, заведённую у нас (MasterDataSourcePolicy).</p>
  */
 @RestController
 @RequestMapping("/api/v1/subjects")
-@PreAuthorize("hasAnyRole('SYSTEM_ADMIN','COMPANY_ADMIN','BRANCH_ADMIN','DISPATCHER')")
+@PreAuthorize("hasAnyRole('SYSTEM_ADMIN','COMPANY_ADMIN','BRANCH_ADMIN','DISPATCHER','API_INTEGRATOR')")
 public class SubjectAssignmentController {
 
     /** Вид субъекта в адресе: drivers | vehicles | employees. */
@@ -65,16 +71,22 @@ public class SubjectAssignmentController {
     private final OrganizationRepository organizations;
     private final TenantScope tenantScope;
     private final AuditService audit;
+    private final tj.mintrans.epd.masterdata.config.CurrentUser currentUser;
+    private final tj.mintrans.epd.masterdata.service.MasterDataSourcePolicy sourcePolicy;
 
     public SubjectAssignmentController(DriverRepository drivers, VehicleRepository vehicles,
                                        EmployeeRepository employees, OrganizationRepository organizations,
-                                       TenantScope tenantScope, AuditService audit) {
+                                       TenantScope tenantScope, AuditService audit,
+                                       tj.mintrans.epd.masterdata.config.CurrentUser currentUser,
+                                       tj.mintrans.epd.masterdata.service.MasterDataSourcePolicy sourcePolicy) {
         this.drivers = drivers;
         this.vehicles = vehicles;
         this.employees = employees;
         this.organizations = organizations;
         this.tenantScope = tenantScope;
         this.audit = audit;
+        this.currentUser = currentUser;
+        this.sourcePolicy = sourcePolicy;
     }
 
     /** Поиск существующего субъекта по ключу: {@code ?key=461930031} или госномер для транспорта. */
@@ -152,12 +164,16 @@ public class SubjectAssignmentController {
         if (tenantScope.isBounded() && !tenantScope.canWrite(target.getRma())) {
             throw new AccessDeniedException("Доступ только к своим организациям");
         }
+        boolean integrator = currentUser.hasRole("API_INTEGRATOR");
+        if (!integrator) {
+            sourcePolicy.assertManualAttachAllowed(form(kind));
+        }
         UUID current = currentOrganization(kind, id);
         if (tenantScope.isBounded() && current != null && !current.equals(target.getId())) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "Субъект закреплён за другой организацией — сначала его должна открепить она");
         }
-        SubjectRef out = setOrganization(kind, id, target.getId());
+        SubjectRef out = setOrganization(kind, id, target.getId(), integrator);
         audit.record(AuditService.UPDATE, auditType(kind), out.key(),
                 current == null ? null : organizationName(current), target.getName());
         return out;
@@ -173,7 +189,11 @@ public class SubjectAssignmentController {
         if (tenantScope.isBounded() && !tenantScope.organizationIds().contains(current)) {
             throw new AccessDeniedException("Доступ только к своим организациям");
         }
-        SubjectRef out = setOrganization(kind, id, null);
+        boolean integrator = currentUser.hasRole("API_INTEGRATOR");
+        if (!integrator) {
+            sourcePolicy.assertManualDetachAllowed(form(kind), currentSource(kind, id));
+        }
+        SubjectRef out = setOrganization(kind, id, null, integrator);
         audit.record(AuditService.UPDATE, auditType(kind), out.key(), organizationName(current), null);
         return out;
     }
@@ -188,25 +208,46 @@ public class SubjectAssignmentController {
         };
     }
 
-    private SubjectRef setOrganization(SubjectKind kind, UUID id, UUID organizationId) {
+    /** Имя формы для настроек (Настройки → Интеграции / Поля …). */
+    private static String form(SubjectKind kind) {
+        return switch (kind) {
+            case drivers -> tj.mintrans.epd.masterdata.service.FormFieldPolicy.DRIVER;
+            case vehicles -> tj.mintrans.epd.masterdata.service.FormFieldPolicy.VEHICLE;
+            case employees -> tj.mintrans.epd.masterdata.service.FormFieldPolicy.EMPLOYEE;
+        };
+    }
+
+    private String currentSource(SubjectKind kind, UUID id) {
+        return switch (kind) {
+            case drivers -> drivers.findById(id).orElseThrow(() -> new NotFoundException("Водитель не найден")).getSource();
+            case vehicles -> vehicles.findById(id).orElseThrow(() -> new NotFoundException("ТС не найдено")).getSource();
+            case employees -> employees.findById(id).orElseThrow(() -> new NotFoundException("Сотрудник не найден")).getSource();
+        };
+    }
+
+    /** {@code fromUnified} — действие пришло из единой платформы: запись помечается её источником. */
+    private SubjectRef setOrganization(SubjectKind kind, UUID id, UUID organizationId, boolean fromUnified) {
         switch (kind) {
             case drivers -> {
                 var d = drivers.findById(id).orElseThrow(() -> new NotFoundException("Водитель не найден"));
                 d.setOrganizationId(organizationId);
                 // Закрепление за ТС действует только внутри организации — при переводе снимаем.
                 d.setAssignedVehicleId(null);
+                if (fromUnified) d.setSource("UNIFIED");
                 var saved = drivers.save(d);
                 return ref(kind, saved.getId(), saved.getRma(), saved.getFullName(), saved.getOrganizationId());
             }
             case vehicles -> {
                 var v = vehicles.findById(id).orElseThrow(() -> new NotFoundException("ТС не найдено"));
                 v.setOrganizationId(organizationId);
+                if (fromUnified) v.setSource("UNIFIED");
                 var saved = vehicles.save(v);
                 return ref(kind, saved.getId(), saved.getRegistrationNumber(), saved.getBrand(), saved.getOrganizationId());
             }
             default -> {
                 var e = employees.findById(id).orElseThrow(() -> new NotFoundException("Сотрудник не найден"));
                 e.setOrganizationId(organizationId);
+                if (fromUnified) e.setSource("UNIFIED");
                 var saved = employees.save(e);
                 return ref(kind, saved.getId(), saved.getRma(), saved.getName(), saved.getOrganizationId());
             }

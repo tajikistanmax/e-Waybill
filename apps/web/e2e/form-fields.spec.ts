@@ -51,6 +51,10 @@ test.describe('Поля форм из настроек', () => {
     // Транспорт остаётся «вручную» — там кнопка на месте.
     await page.goto('/fleet/vehicles');
     await expect(page.getByRole('button', { name: 'Добавить ТС' })).toBeVisible();
+    // Раздел «Компания», вкладка водителей: «Прикрепить существующего» тоже скрыта.
+    await page.goto('/company');
+    await expect(page.getByRole('button', { name: 'Водители', exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Прикрепить существующего' })).toHaveCount(0);
     // Блок переключателя на странице интеграций.
     await page.goto('/settings/integrations');
     await expect(page.getByText('Кто ведёт справочники')).toBeVisible();

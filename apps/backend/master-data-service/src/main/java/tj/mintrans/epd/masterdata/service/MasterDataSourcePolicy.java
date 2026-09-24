@@ -96,6 +96,32 @@ public class MasterDataSourcePolicy {
     }
 
     /**
+     * Прикрепление к компании вручную (не API_INTEGRATOR). В режиме UNIFIED кто в какой компании
+     * работает, решают кабинеты единой платформы: закрепление присылает e-Transport — 409.
+     */
+    public void assertManualAttachAllowed(String form) {
+        if (unified(form)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "%s закрепляются за компаниями в единой платформе транспорта (e-Transport) — прикрепление "
+                            .formatted(NAMES.getOrDefault(form, "Записи"))
+                            + "вручную отключено (Настройки → Интеграции).");
+        }
+    }
+
+    /**
+     * Открепление или удаление вручную (не API_INTEGRATOR). В режиме UNIFIED запись из единой
+     * платформы открепляется и удаляется только там — 409. Записи, заведённые у нас (перенос из
+     * старой системы, ручной ввод), можно убрать, пока e-Transport их не пришлёт.
+     */
+    public void assertManualDetachAllowed(String form, String existingSource) {
+        if (unified(form) && UNIFIED.equalsIgnoreCase(String.valueOf(existingSource))) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Запись пришла из единой платформы транспорта (e-Transport): открепляется и удаляется "
+                            + "она там (Настройки → Интеграции).");
+        }
+    }
+
+    /**
      * Поля, которые не проверяются на обязательность при ручном сохранении: у записи из единой
      * платформы в режиме UNIFIED её поля пользователь изменить не может — требовать их
      * заполнения значило бы запретить и правку полей модуля.

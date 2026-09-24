@@ -277,6 +277,8 @@ public class DriverController {
     public ResponseEntity<Void> delete(@PathVariable UUID id) {
         var driver = drivers.findById(id).orElseThrow(() -> new NotFoundException("Водитель не найден"));
         requireOwnEntity(driver.getOrganizationId());
+        // Запись из единой платформы в режиме UNIFIED удаляется/открепляется только там (Настройки → Интеграции).
+        sourcePolicy.assertManualDetachAllowed(tj.mintrans.epd.masterdata.service.FormFieldPolicy.DRIVER, driver.getSource());
         drivers.delete(driver);
         audit.record(AuditService.DELETE, "DRIVER", driver.getRma(), driver.getFullName(), null);
         return ResponseEntity.noContent().build();

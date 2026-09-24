@@ -54,6 +54,8 @@ class SubjectAssignmentSecurityTest {
     @MockitoBean TenantScope tenantScope;
     @MockitoBean AuditService audit;
     @MockitoBean JwtDecoder jwtDecoder;
+    @MockitoBean tj.mintrans.epd.masterdata.config.CurrentUser currentUser;
+    @MockitoBean tj.mintrans.epd.masterdata.service.MasterDataSourcePolicy sourcePolicy;
 
     private static final UUID DRIVER_ID = UUID.randomUUID();
     private static final UUID OWN_ORG = UUID.randomUUID();
@@ -100,6 +102,33 @@ class SubjectAssignmentSecurityTest {
                         .contentType(MediaType.APPLICATION_JSON).content(BODY))
                 .andExpect(status().isForbidden());
         verify(drivers, never()).save(any());
+    }
+
+    /**
+     * Справочник ведёт единая платформа (Настройки → Интеграции, 24.09.2026): ручное прикрепление
+     * отклоняется (409), а сама единая платформа (API_INTEGRATOR) прикрепляет и помечает запись.
+     */
+    @Test
+    void unifiedModeBlocksManualAttachButLetsUnifiedPlatformAttach() throws Exception {
+        when(organizations.findByRma("025680800")).thenReturn(Optional.of(org(OWN_ORG, "025680800", "Своя")));
+        when(drivers.findById(DRIVER_ID)).thenReturn(Optional.of(driver(null)));
+        when(drivers.save(any())).thenAnswer(i -> i.getArgument(0));
+        org.mockito.Mockito.doThrow(new org.springframework.web.server.ResponseStatusException(
+                org.springframework.http.HttpStatus.CONFLICT, "единая платформа"))
+                .when(sourcePolicy).assertManualAttachAllowed("driver");
+
+        mvc.perform(post("/api/v1/subjects/drivers/" + DRIVER_ID + "/attach").with(as("SYSTEM_ADMIN"))
+                        .contentType(MediaType.APPLICATION_JSON).content(BODY))
+                .andExpect(status().isConflict());
+        verify(drivers, never()).save(any());
+
+        when(currentUser.hasRole("API_INTEGRATOR")).thenReturn(true);
+        mvc.perform(post("/api/v1/subjects/drivers/" + DRIVER_ID + "/attach").with(as("API_INTEGRATOR"))
+                        .contentType(MediaType.APPLICATION_JSON).content(BODY))
+                .andExpect(status().isOk());
+        var saved = org.mockito.ArgumentCaptor.forClass(Driver.class);
+        verify(drivers).save(saved.capture());
+        org.assertj.core.api.Assertions.assertThat(saved.getValue().getSource()).isEqualTo("UNIFIED");
     }
 
     @Test

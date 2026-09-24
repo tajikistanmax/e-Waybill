@@ -560,16 +560,24 @@ function OrgRegistry() {
     }
   }
 
-  /** Кнопки строки субъекта: изменить · открепить · удалить. */
-  const rowActions = (r: Row) => (
-    <td style={{ whiteSpace: 'nowrap' }}>
-      <button type="button" className="btn secondary" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => editEntity(r)}>{t('btn.edit')}</button>{' '}
-      <button type="button" className="btn secondary" style={{ padding: '4px 10px', fontSize: 12 }} title={t('comp.detach.hint')} onClick={() => setConfirmRow({ row: r, action: 'detach' })}>{t('comp.detach')}</button>{' '}
-      <button type="button" className="btn secondary" style={{ padding: '4px 9px', fontSize: 12, color: 'var(--red)' }} title={t('btn.delete')} onClick={() => setConfirmRow({ row: r, action: 'delete' })}>
-        <Icon d={P.trash} cls="" style={{ width: 14, height: 14 }} />
-      </button>
-    </td>
-  );
+  /** Кнопки строки субъекта: изменить · открепить · удалить. Запись из единой платформы в режиме
+   *  «справочник ведёт e-Transport» открепляется и удаляется там — кнопок нет (сервер тоже запрещает). */
+  const rowActions = (r: Row) => {
+    const fromUnified = tabUnified && String(r.source ?? '').toUpperCase() === 'UNIFIED';
+    return (
+      <td style={{ whiteSpace: 'nowrap' }}>
+        <button type="button" className="btn secondary" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => editEntity(r)}>{t('btn.edit')}</button>{' '}
+        {fromUnified ? (
+          <span className="badge blue" style={{ fontSize: 11 }} title={t('ds.row.hint')}>{t('ds.row')}</span>
+        ) : (<>
+          <button type="button" className="btn secondary" style={{ padding: '4px 10px', fontSize: 12 }} title={t('comp.detach.hint')} onClick={() => setConfirmRow({ row: r, action: 'detach' })}>{t('comp.detach')}</button>{' '}
+          <button type="button" className="btn secondary" style={{ padding: '4px 9px', fontSize: 12, color: 'var(--red)' }} title={t('btn.delete')} onClick={() => setConfirmRow({ row: r, action: 'delete' })}>
+            <Icon d={P.trash} cls="" style={{ width: 14, height: 14 }} />
+          </button>
+        </>)}
+      </td>
+    );
+  };
 
   function editEntity(row: Row) {
     setError(''); setOk('');
@@ -773,9 +781,12 @@ function OrgRegistry() {
         <span className="spacer" />
         {org && <span style={{ color: 'var(--muted)', fontSize: 12.5, marginRight: 4 }}>{String(org.name)}</span>}
         {/* Уже существующий в базе субъект не регистрируется заново — его прикрепляют по ИНН/госномеру. */}
-        <button className="btn secondary" disabled={!orgRma} onClick={() => { setAttachOpen(true); setAttachKey(''); setAttachFound(null); setAttachList([]); setAttachError(''); }}>
-          {t('comp.attach.btn')}
-        </button>
+        {/* Прикрепление к компании в режиме «справочник ведёт e-Transport» — в кабинетах единой платформы. */}
+        {!tabUnified && (
+          <button className="btn secondary" disabled={!orgRma} onClick={() => { setAttachOpen(true); setAttachKey(''); setAttachFound(null); setAttachList([]); setAttachError(''); }}>
+            {t('comp.attach.btn')}
+          </button>
+        )}
         {tabUnified
           ? <span className="badge blue" title={t('ds.addoff.hint')}>{t('ds.addoff')}</span>
           : <button className="btn" disabled={!orgRma} onClick={() => { setShowForm(true); setEntityMode('manual'); setEditingKey(null); setEntitySource(null); }}>{t('btn.add')}</button>}
