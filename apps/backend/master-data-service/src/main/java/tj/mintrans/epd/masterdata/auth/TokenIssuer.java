@@ -33,7 +33,7 @@ public class TokenIssuer {
 
     public TokenIssuer(SigningKeys keys,
                        @Value("${epd.auth.issuer:http://master-data:8081/api/v1/auth}") String issuer,
-                       @Value("${epd.auth.access-ttl-seconds:1800}") long accessTtlSeconds) {
+                       @Value("${epd.auth.access-ttl-seconds:900}") long accessTtlSeconds) {
         this.keys = keys;
         this.issuer = issuer;
         this.accessTtlSeconds = accessTtlSeconds;

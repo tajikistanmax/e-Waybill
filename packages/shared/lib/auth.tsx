@@ -348,6 +348,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // Авто-выход по бездействию (§29, настройка security/idle_logout_minutes). 0 — выключено.
   // Таймер сбрасывается активностью пользователя; по истечении — logout (защита оставленной сессии).
+  // Привилегированные роли (ИБ-13.2.5) — не дольше 30 минут бездействия, даже если настройка
+  // выключена или больше. Зависимость — флаг, а не массив ролей: массив пересоздаётся при каждом
+  // обновлении токена, и таймер бездействия сбрасывался бы без участия пользователя.
+  const privileged = state.roles.some(r => PRIVILEGED_ROLES.includes(r));
   useEffect(() => {
     if (!state.authenticated) return;
     let idleMs = 0;
@@ -361,14 +365,33 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     md.settings('security')
       .then(rows => {
         const m = Number(rows.find(r => r.settingKey === 'idle_logout_minutes')?.settingValue ?? '0');
-        idleMs = Number.isFinite(m) && m > 0 ? m * 60_000 : 0;
+        idleMs = effectiveIdleMs(m, privileged);
         if (idleMs) { events.forEach(e => window.addEventListener(e, reset, { passive: true })); reset(); }
       })
-      .catch(() => { /* нет доступа/связи — авто-выход просто не активируется */ });
+      .catch(() => {
+        // Нет доступа/связи к настройкам: у привилегированных ролей предел всё равно действует.
+        idleMs = effectiveIdleMs(0, privileged);
+        if (idleMs) { events.forEach(e => window.addEventListener(e, reset, { passive: true })); reset(); }
+      });
     return () => { window.clearTimeout(idleTimer); events.forEach(e => window.removeEventListener(e, reset)); };
-  }, [state.authenticated, logout]);
+  }, [state.authenticated, privileged, logout]);
 
   return <AuthContext.Provider value={{ ...state, login, logout, changePassword, verifySecondFactor }}>{children}</AuthContext.Provider>;
+}
+
+/** Роли с повышенными правами: второй фактор и обязательный автовыход (ИБ-13.2.2, 13.2.5). */
+const PRIVILEGED_ROLES = ['SYSTEM_ADMIN', 'INSPECTOR', 'MINTRANS_ANALYST'];
+/** Тайм-аут неактивности привилегированных ролей по ИБ-13.2.5, минут. */
+const PRIVILEGED_IDLE_MINUTES = 30;
+
+/**
+ * Время бездействия до автовыхода, мс (0 — не выходить): настройка платформы, а у
+ * привилегированных ролей — не больше 30 минут, даже если настройка выключена или больше.
+ */
+export function effectiveIdleMs(settingMinutes: number, privileged: boolean): number {
+  const m = Number.isFinite(settingMinutes) && settingMinutes > 0 ? settingMinutes : 0;
+  const minutes = privileged ? (m > 0 ? Math.min(m, PRIVILEGED_IDLE_MINUTES) : PRIVILEGED_IDLE_MINUTES) : m;
+  return minutes * 60_000;
 }
 
 /** Заголовок с токеном, если пользователь уже вошёл (для смены своего пароля). */

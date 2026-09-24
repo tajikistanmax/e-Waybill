@@ -53,7 +53,9 @@ epd:
     # берёт ключи подписи с /api/v1/auth/jwks. Значения обязаны совпадать.
     issuer: ${AUTH_ISSUER:http://master-data:8081/api/v1/auth}
     # Срок жизни токена доступа и сессии (токена обновления), секунды.
-    access-ttl-seconds: ${AUTH_ACCESS_TTL:1800}
+    # 15 минут — ИБ-13.2.5 («access-токен — не более 15 минут»); до 24.09.2026 было 30. Браузер
+    # и служебная учётка обновляют токен сами по expires_in, пользователь этого не замечает.
+    access-ttl-seconds: ${AUTH_ACCESS_TTL:900}
     refresh-ttl-seconds: ${AUTH_REFRESH_TTL:43200}
     # Защита от подбора пароля: после N неудач вход блокируется на M минут.
     max-failed-attempts: ${AUTH_MAX_FAILED:10}
