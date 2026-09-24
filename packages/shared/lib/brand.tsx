@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useContext, useEffect, useState, type CSSProperties } from 'react';
+import { createContext, useContext, useEffect, useRef, useState, type CSSProperties } from 'react';
 import { md, type PlatformSetting } from './api';
 import { Icon, P } from '@/app/icons';
 
@@ -43,10 +43,19 @@ export function BrandProvider({ children }: { children: React.ReactNode }) {
  */
 export function BrandLogo({ style, nonce }: { style?: CSSProperties; nonce?: number }) {
   const [failed, setFailed] = useState(false);
-  useEffect(() => { setFailed(false); }, [nonce]);
+  const img = useRef<HTMLImageElement>(null);
+  useEffect(() => {
+    setFailed(false);
+    // Страница пришла с сервера, и картинка (404 — логотип не задан) могла не загрузиться ещё до
+    // того, как React подключил onError: событие потеряно, в шапке — значок битого изображения.
+    // Поэтому после подключения проверяем сами: загрузка завершена, а размера нет — ошибка.
+    const el = img.current;
+    if (el && el.complete && el.naturalWidth === 0) setFailed(true);
+  }, [nonce]);
   if (failed) return <Icon d={P.docActive} cls="" />;
   return (
     <img
+      ref={img}
       src={md.branding.url('logo') + (nonce ? `?v=${nonce}` : '')}
       alt=""
       onError={() => setFailed(true)}
