@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { login } from './fixtures';
+import { loginAs, PASSWORDS } from './fixtures';
 
 /**
  * Golden path 1 (dispatcher): log in, land on the dispatcher cabinet, create a new
@@ -10,24 +10,26 @@ import { login } from './fixtures';
  *
  * Fixtures used (verified against the live master-data-service for org 025680800,
  * the dispatcher demo user's organization):
- *  - vehicle 5500TJ33 (Toyota Corolla, легковой) — eligible for WB_CAR
- *  - driver RMA 777100208 (license categories B, C, D) — passes the "B" requirement
- *    for a car waybill; the demo DRIVER account (RMA 555555555, category D only) does
+ *  - vehicle 9914QA01 (Hyundai, легковой) — eligible for WB_CAR
+ *  - driver RMA 990000008 (license categories B, C, D, E) — passes the "B" requirement
+ *    for a car waybill (24.09: the former 5500TJ33 / 777100208 are gone from the demo data;
+ *    the created waybill is cancelled at the end so the test can run again); the demo DRIVER account (RMA 555555555, category D only) does
  *    NOT and was rejected by preflight during investigation — a good reminder that
  *    preflight eligibility is real and must be respected by any test data picked here.
  */
 
 test.describe('Dispatcher: create waybill + print link regression', () => {
   test('logs in and lands on the dispatcher cabinet', async ({ page }) => {
-    await login(page, 'dispatcher', 'dispatcher');
+    await loginAs(page, 'dispatcher');
     await expect(page).toHaveURL(/\/dispatcher$/);
     await expect(page.getByRole('heading', { name: 'Кабинет диспетчера' })).toBeVisible();
   });
 
   test('creates a waybill via the UI wizard and it appears in /waybills', async ({ page }) => {
-    await login(page, 'dispatcher', 'dispatcher');
+    await loginAs(page, 'dispatcher');
 
-    await page.getByRole('link', { name: 'Создать путевой лист' }).click();
+    // На странице кабинета ссылка «Создать путевой лист» дважды (шапка и карточка) — любая ведёт в мастер.
+    await page.getByRole('link', { name: 'Создать путевой лист' }).first().click();
     await expect(page).toHaveURL(/\/waybills\/new$/);
 
     // Step 1 — type. Default selection is WB_BUS; switch to "Легковой" (WB_CAR).
@@ -36,11 +38,11 @@ test.describe('Dispatcher: create waybill + print link regression', () => {
 
     // Step 2 — organization is auto-selected (dispatcher belongs to exactly one org).
     // Pick vehicle and driver through the server-search autocomplete.
-    await page.getByPlaceholder(/Введите госномер ТС/).fill('5500TJ33');
-    await page.getByText('5500TJ33', { exact: true }).first().click();
+    await page.getByPlaceholder(/Введите госномер ТС/).fill('9914QA01');
+    await page.getByText('9914QA01', { exact: true }).first().click();
 
-    await page.getByPlaceholder(/Введите ИНН или Ф\.И\.О/).fill('777100208');
-    await page.getByText(/777100208/).first().click();
+    await page.getByPlaceholder(/Введите ИНН или Ф\.И\.О/).fill('990000008');
+    await page.getByText(/990000008/).first().click();
 
     await expect(page.getByRole('button', { name: 'Далее' })).toBeEnabled();
     await page.getByRole('button', { name: 'Далее' }).click();
@@ -66,12 +68,24 @@ test.describe('Dispatcher: create waybill + print link regression', () => {
 
     // Now confirm it appears in the registry list.
     await page.goto('/waybills');
-    await page.getByPlaceholder('№ ПЛ, водитель, транспорт или компания').fill('5500TJ33');
+    await page.getByPlaceholder('№ ПЛ, ИНН, название компании, водитель или транспорт').fill('9914QA01');
     await expect(page.locator(`a[href="/waybills/${waybillId}"]`)).toBeVisible({ timeout: 10_000 });
+
+    // Уборка: отменить созданный лист, иначе правило «один открытый ПЛ на водителя и ТС» не
+    // даст пройти этому тесту при следующем прогоне.
+    const auth = await page.request.post('/md-api/api/v1/auth/token', {
+      data: { username: 'dispatcher', password: PASSWORDS.dispatcher },
+    });
+    const token = (await auth.json()).access_token;
+    const r = await page.request.post(`/wb-api/api/v1/waybills/${waybillId}/cancel`, {
+      headers: { Authorization: `Bearer ${token}` },
+      data: { reason: 'e2e: уборка тестового листа', actor: 'e2e' },
+    });
+    expect(r.status(), 'отмена тестового ПЛ').toBe(200);
   });
 
   test('the print action on a waybill card targets the real print document, not window.print()', async ({ page }) => {
-    await login(page, 'dispatcher', 'dispatcher');
+    await loginAs(page, 'dispatcher');
     await page.goto('/waybills');
 
     // Filter to a status that is guaranteed to carry an assigned number (DRAFT waybills

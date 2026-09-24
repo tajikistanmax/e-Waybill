@@ -35,12 +35,17 @@ $grep = @()
 if ($Only -eq 'carrier') { $grep = @('-g', (-join @([char]0x043D, [char]0x043E, [char]0x0432, [char]0x044B, [char]0x0439))) }
 if ($Only -eq 'cabinets') { $grep = @('-g', (-join @([char]0x043A, [char]0x0430, [char]0x0431, [char]0x0438, [char]0x043D, [char]0x0435, [char]0x0442, [char]0x044B))) }
 Push-Location $web
+# Node warnings go to stderr (e.g. "NO_COLOR is ignored due to FORCE_COLOR"); with 'Stop' and a
+# redirected console PowerShell 5.1 turns them into a terminating NativeCommandError. The result
+# is judged by the exit code only.
+$ErrorActionPreference = 'Continue'
 try {
     # Playwright CLI directly through node: the npx .cmd/.ps1 shims mangle non-ASCII arguments.
     & node node_modules/@playwright/test/cli.js test e2e/roles-cabinets.spec.ts --retries=0 --reporter=line @grep
     $code = $LASTEXITCODE
 } finally {
     Pop-Location
+    $ErrorActionPreference = 'Stop'
 }
 $report = Join-Path $Shots 'roles-cabinets-report.json'
 if (Test-Path $report) {

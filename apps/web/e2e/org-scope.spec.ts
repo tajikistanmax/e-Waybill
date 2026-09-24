@@ -1,63 +1,55 @@
 import { test, expect } from '@playwright/test';
-import { login } from './fixtures';
+import { loginAs } from './fixtures';
 
 /**
  * Golden path 3 (company admin vs branch admin scoping).
  *
- * IMPORTANT finding from investigating the live data before writing this test: the task
- * brief assumed branch/branch (org RMA 100002091, "Филиал «Юг» (демо)") is a branch of
- * company/company's organization (025680800, "ООО Автобусы Душанбе"). That is NOT what
- * the seeded data says — org 100002091's parentRma is actually 100002000 ("ГУП «Троллейбус
- * Худжанд»"), a company with no demo COMPANY_ADMIN login at all. Confirmed directly against
- * master-data-service: GET /api/v1/organizations as `company` returns only 025680800 (no
- * branches); the same call as `branch` returns only 100002091. So in THIS environment,
- * `company` has zero branches and the header branch-switcher never renders for it (its
- * visibility is gated on `myOrganizations().length > 1`) — that is correct behavior given
- * the data, not a bug, but it means the "company sees own + branch in switcher" half of the
- * originally-described scenario cannot be exercised here without fixing the seed data.
+ * Demo hierarchy (seed-demo-data / seed-demo-showcase): company/company is COMPANY_ADMIN of
+ * 025680800 «Автобуси Душанбе»; its branches are 100002091 «Юг» (branch/branch is its
+ * BRANCH_ADMIN) and 100002092 «Север». 040000830 «Троллейбус» is an unrelated carrier.
+ * (Until 23.09 the seed hung «Юг» under a different parent and this spec asserted the company
+ * could NOT see it; the data now matches the intended scenario, so the spec does too.)
  *
- * What IS still fully testable, and is the real security-relevant intent behind this golden
- * path, is tenant isolation: neither admin should see the other's organization data, and the
- * scope switcher must never appear for a BRANCH_ADMIN regardless of data (only COMPANY_ADMIN/
- * SYSTEM_ADMIN can switch — see lib/orgscope.tsx `canSwitch`). That is what this spec locks in.
+ * Locked in: the company admin sees its own organization and its branches — never another
+ * carrier — and gets the scope switcher; the branch admin sees only its branch (not the parent,
+ * not the sibling) and never gets a switcher (lib/orgscope.tsx `canSwitch`).
  */
 
 test.describe('Company admin vs branch admin: scope isolation', () => {
-  test('company admin sees only its own organization, never the unrelated branch org', async ({ page }) => {
-    await login(page, 'company', 'company');
+  test('company admin sees its organization and branches, never another carrier', async ({ page }) => {
+    await loginAs(page, 'company');
     await expect(page).toHaveURL(/\/dashboard$/);
 
     await page.goto('/company');
-    await expect(page.getByText('025680800')).toBeVisible();
-    await expect(page.getByText('100002091')).toHaveCount(0);
+    await expect(page.getByText('025680800').first()).toBeVisible();
+    await expect(page.getByText('040000830')).toHaveCount(0);
 
-    // Branch switcher: gated on having >1 organization in scope. With no branches under
-    // 025680800 in this dataset, it must not render (see file-level note above).
-    await expect(page.locator('.branch-switch')).toHaveCount(0);
+    // More than one organization in scope → the header scope switcher is offered.
+    await expect(page.locator('.branch-switch')).toHaveCount(1);
 
-    // /company/access org picker (labelled "Организация / филиал") must likewise offer
-    // only the organizations md.organizations() scopes to this user — one, here.
+    // «Доступы»: the grant form offers the company and its two branches — nothing else.
     await page.goto('/company/access');
-    const orgSelect = page.locator('label:has-text("Организация / филиал") + select');
+    const orgSelect = page.locator('#acc-org');
     await expect(orgSelect).toBeVisible();
-    await expect(orgSelect.locator('option')).toHaveCount(1);
+    await expect(orgSelect.locator('option')).toHaveCount(3);
+    await expect(orgSelect.locator('option[value="040000830"]')).toHaveCount(0);
   });
 
   test('branch admin sees only its own branch, never the parent/other orgs, and gets no scope switcher', async ({ page }) => {
-    await login(page, 'branch', 'branch');
+    await loginAs(page, 'branch');
     await expect(page).toHaveURL(/\/dashboard$/);
 
     await page.goto('/company');
-    await expect(page.getByText('100002091')).toBeVisible();
+    await expect(page.getByText('100002091').first()).toBeVisible();
     await expect(page.getByText('025680800')).toHaveCount(0);
-    await expect(page.getByText('100002000')).toHaveCount(0);
+    await expect(page.getByText('100002092')).toHaveCount(0);
 
     // BRANCH_ADMIN is structurally excluded from the switcher (lib/orgscope.tsx `canSwitch`
     // only allows COMPANY_ADMIN/SYSTEM_ADMIN) — this must hold regardless of org hierarchy data.
     await expect(page.locator('.branch-switch')).toHaveCount(0);
 
     await page.goto('/company/access');
-    const orgSelect = page.locator('label:has-text("Организация / филиал") + select');
+    const orgSelect = page.locator('#acc-org');
     await expect(orgSelect).toBeVisible();
     await expect(orgSelect.locator('option')).toHaveCount(1);
   });

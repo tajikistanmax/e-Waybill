@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { login } from './fixtures';
+import { loginAs } from './fixtures';
 
 /**
  * Golden path 2 (accountant): log in, land on /reports/summary, walk every report tab
@@ -24,12 +24,12 @@ const EXPECTED_TABS: { name: string; href: string }[] = [
 
 test.describe('Accountant: reports access + waybill-creation gating', () => {
   test('logs in and lands on /reports/summary', async ({ page }) => {
-    await login(page, 'accountant', 'accountant');
+    await loginAs(page, 'accountant');
     await expect(page).toHaveURL(/\/reports\/summary$/);
   });
 
   test('every visible report tab loads without a 403', async ({ page }) => {
-    await login(page, 'accountant', 'accountant');
+    await loginAs(page, 'accountant');
 
     // The Mintrans-only "Сводный (Минтранс)" tab must not even be offered to an accountant.
     await expect(page.getByRole('link', { name: 'Сводный (Минтранс)' })).toHaveCount(0);
@@ -44,7 +44,7 @@ test.describe('Accountant: reports access + waybill-creation gating', () => {
   });
 
   test('cannot create waybills: no nav entry, and /waybills/new explains why instead of cascading 403s', async ({ page }) => {
-    await login(page, 'accountant', 'accountant');
+    await loginAs(page, 'accountant');
 
     // No "Создать путевой лист" entry anywhere in the sidebar for this role.
     await expect(page.getByRole('link', { name: 'Создать путевой лист' })).toHaveCount(0);

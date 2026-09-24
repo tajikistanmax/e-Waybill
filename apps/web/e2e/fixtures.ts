@@ -1,8 +1,10 @@
 import { expect, type Page } from '@playwright/test';
 
 /**
- * Demo accounts (Keycloak realm "epd", infra/keycloak/epd-realm.json).
- * Password equals username for every one of these, per project convention.
+ * Demo accounts of the platform sign-in (app_user, master-data). Passwords follow the password
+ * policy and match scripts/demo-credentials.ps1 — change both together. Roles with a mandatory
+ * second factor (SYSTEM_ADMIN, MINTRANS_ANALYST, INSPECTOR) are exercised through their
+ * `*-automation` twins of the same role without 2FA; the 2FA flow itself is second-factor.spec.ts.
  */
 export type Account = {
   username: string;
@@ -12,19 +14,41 @@ export type Account = {
   home: string;
 };
 
+export const PASSWORDS: Record<string, string> = {
+  dispatcher: 'Epd-Qa-Tanzim-2026',
+  doctor: 'Epd-Qa-Duxtur-2026',
+  mechanic: 'Epd-Qa-Mexanik-2026',
+  accountant: 'Epd-Qa-Buxgalter-2026',
+  company: 'Epd-Qa-CompanyAdm-2026',
+  branch: 'Epd-Qa-BranchAdm-2026',
+  driver: 'Epd-Qa-Ronanda-2026',
+  fuel: 'Epd-Qa-FuelStation-2026',
+  'admin-automation': 'Epd-Qa-Automation-Admin-2026',
+  'analyst-automation': 'Epd-Qa-Automation-Analyst-2026',
+  'inspector-automation': 'Epd-Qa-Automation-Inspector-2026',
+};
+
+const acct = (username: string, role: string, home: string): Account =>
+  ({ username, password: PASSWORDS[username], role, home });
+
 export const ACCOUNTS: Account[] = [
-  { username: 'dispatcher', password: 'dispatcher', role: 'DISPATCHER', home: '/dispatcher' },
-  { username: 'doctor', password: 'doctor', role: 'DOCTOR', home: '/med' },
-  { username: 'mechanic', password: 'mechanic', role: 'MECHANIC', home: '/tech' },
-  { username: 'accountant', password: 'accountant', role: 'ACCOUNTANT', home: '/reports/summary' },
-  { username: 'admin', password: 'admin', role: 'SYSTEM_ADMIN', home: '/dashboard' },
-  { username: 'company', password: 'company', role: 'COMPANY_ADMIN', home: '/dashboard' },
-  { username: 'branch', password: 'branch', role: 'BRANCH_ADMIN', home: '/dashboard' },
-  { username: 'analyst', password: 'analyst', role: 'MINTRANS_ANALYST', home: '/dashboard' },
-  { username: 'driver', password: 'driver', role: 'DRIVER', home: '/driver' },
-  { username: 'inspector', password: 'inspector', role: 'INSPECTOR', home: '/inspector' },
-  { username: 'fuel', password: 'fuel', role: 'FUEL_STATION', home: '/fuel' },
+  acct('dispatcher', 'DISPATCHER', '/dispatcher'),
+  acct('doctor', 'DOCTOR', '/med'),
+  acct('mechanic', 'MECHANIC', '/tech'),
+  acct('accountant', 'ACCOUNTANT', '/reports/summary'),
+  acct('admin-automation', 'SYSTEM_ADMIN', '/dashboard'),
+  acct('company', 'COMPANY_ADMIN', '/dashboard'),
+  acct('branch', 'BRANCH_ADMIN', '/dashboard'),
+  acct('analyst-automation', 'MINTRANS_ANALYST', '/dashboard'),
+  acct('driver', 'DRIVER', '/driver'),
+  acct('inspector-automation', 'INSPECTOR', '/inspector'),
+  acct('fuel', 'FUEL_STATION', '/fuel'),
 ];
+
+/** Sign in with the demo password of `username` (see PASSWORDS). */
+export async function loginAs(page: Page, username: string) {
+  await login(page, username, PASSWORDS[username]);
+}
 
 /** Logs in via the app's own /login form (not the Keycloak screen) and waits for the
  *  post-login redirect into the user's cabinet to complete. */

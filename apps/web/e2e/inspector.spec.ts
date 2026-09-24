@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { login } from './fixtures';
+import { loginAs } from './fixtures';
 
 /**
  * Golden path 4 (inspector): the "Neru" active-waybill-by-plate lookup is present and
@@ -11,13 +11,13 @@ import { login } from './fixtures';
 
 test.describe('Inspector: Neru plate lookup + carrier-economics gating', () => {
   test('logs in and lands on the inspector cabinet', async ({ page }) => {
-    await login(page, 'inspector', 'inspector');
+    await loginAs(page, 'inspector-automation');
     await expect(page).toHaveURL(/\/inspector$/);
     await expect(page.getByRole('heading', { name: 'Действующий лист по госномеру' })).toBeVisible();
   });
 
   test('Neru plate search runs without error, on both a miss and a real plate', async ({ page }) => {
-    await login(page, 'inspector', 'inspector');
+    await loginAs(page, 'inspector-automation');
 
     // Two "Проверить" buttons exist on this page (archive-search console + Neru
     // lookup) — scope to the Neru card specifically by its heading.
@@ -40,7 +40,7 @@ test.describe('Inspector: Neru plate lookup + carrier-economics gating', () => {
   });
 
   test('carrier-economics report tabs are hidden; summary and control journals remain', async ({ page }) => {
-    await login(page, 'inspector', 'inspector');
+    await loginAs(page, 'inspector-automation');
     await page.goto('/reports/summary');
 
     await expect(page.getByRole('link', { name: 'Сводка', exact: true })).toBeVisible();

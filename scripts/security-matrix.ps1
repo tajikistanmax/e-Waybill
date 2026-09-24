@@ -104,6 +104,20 @@ $permit = "$md/api/v1/sync/permit/TEST-000"
 Chk 'Permit: dispatcher — не 403 (sync-роль)' ((Status GET $permit (Hdr 'dispatcher') $null) -ne 403)
 Chk 'Permit: doctor — 403'                    (& $forbidden (Status GET $permit (Hdr 'doctor') $null))
 
+# --- «Пользователи» платформы: только SYSTEM_ADMIN (24.09) ---
+$pu = "$md/api/v1/platform-users?size=1"
+Chk 'Platform users: admin — доступ'         (& $allowed (Status GET $pu (Hdr 'admin-automation') $null))
+Chk 'Platform users: company admin — 403'   (& $forbidden (Status GET $pu (Hdr 'company') $null))
+Chk 'Platform users: analyst — 403'         (& $forbidden (Status GET $pu (Hdr 'analyst-automation') $null))
+Chk 'Platform users: dispatcher — 403'      (& $forbidden (Status GET $pu (Hdr 'dispatcher') $null))
+
+# --- Изображения для бланка: подпись — любой печатающий ПЛ; паспорт — только ведущим документы (24.09) ---
+$sig = "$md/api/v1/employees/111111111/documents/latest?docType=SIGNATURE"
+$pas = "$md/api/v1/employees/111111111/documents/latest?docType=PASSPORT"
+Chk 'Подпись сотрудника: inspector — не 403'  ((Status GET $sig (Hdr 'inspector-automation') $null) -ne 403)
+Chk 'Паспорт сотрудника: inspector — 403'     (& $forbidden (Status GET $pas (Hdr 'inspector-automation') $null))
+Chk 'Паспорт сотрудника: doctor — 403'        (& $forbidden (Status GET $pas (Hdr 'doctor') $null))
+
 # --- Мультиарендность ПЛ: чужой по id → 404, свой → доступ (нужен dispatcher2, org 990000001) ---
 try {
     $hdM = Hdr 'dispatcher'
