@@ -184,7 +184,7 @@ function OrgFields({ f, t }: { f: (k: string) => Field; t: (k: string) => string
   useEffect(() => { md.cities().then(setCities).catch(() => setCities([])); }, []);
   const region = String(f('regionId').value ?? '');
   const cityOpts = (region ? cities.filter(c => String(c.regionId) === region) : cities);
-  // Какие поля показывать и какие обязательны — из Настройки → Поля форм (без изменения кода).
+  // Какие поля показывать и какие обязательны — из Настройки → Поля компании (организации), без изменения кода.
   // Скрытое поле не рисуется, но его значение в карточке сохраняется (оно остаётся в состоянии формы).
   const { show, req } = useFormFieldModes('organization');
   const lbl = (labelKey: string, k: string) => {

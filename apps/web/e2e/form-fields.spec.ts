@@ -63,7 +63,7 @@ test.describe('Поля форм из настроек', () => {
   test('страница настроек показывает поля и закреплённые системные', async ({ page }) => {
     await uiLogin(page);
     await page.goto('/settings/forms');
-    await expect(page.getByRole('heading', { name: 'Поля форм' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Поля компании (организации)' })).toBeVisible();
     await expect(page.getByText('Системное — всегда обязательно')).toHaveCount(2);
     await expect(page.locator('tbody tr')).toHaveCount(30);
   });
