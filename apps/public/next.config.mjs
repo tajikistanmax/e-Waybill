@@ -25,7 +25,16 @@ const nextConfig = {
     // (security-аудит M1). VerifyView обращается единственно к /wb-api/api/v1/verify/{jws}.
     // 127.0.0.1 (не localhost): на Windows undici иначе резолвит в IPv6 ::1 и запрос зависает.
     const wbApi = process.env.WB_API_URL || 'http://127.0.0.1:8082';
-    return [{ source: '/wb-api/api/v1/verify/:path*', destination: `${wbApi}/api/v1/verify/:path*` }];
+    // master-data — тоже не целиком, а ровно три анонимных справочных GET (в master-data они и так
+    // permitAll): названия видов и статусов ПЛ и публичные контакты. Без них страница проверки
+    // получала 404 и показывала запасные подписи (находка 24.09.2026).
+    const mdApi = process.env.MD_API_URL || 'http://127.0.0.1:8081';
+    return [
+      { source: '/wb-api/api/v1/verify/:path*', destination: `${wbApi}/api/v1/verify/:path*` },
+      { source: '/md-api/api/v1/classifiers/waybill-types', destination: `${mdApi}/api/v1/classifiers/waybill-types` },
+      { source: '/md-api/api/v1/classifiers/waybill-statuses', destination: `${mdApi}/api/v1/classifiers/waybill-statuses` },
+      { source: '/md-api/api/v1/settings/public', destination: `${mdApi}/api/v1/settings/public` },
+    ];
   },
 };
 

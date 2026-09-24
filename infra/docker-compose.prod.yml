@@ -245,7 +245,8 @@ services:
     logging: *epd-logging
 
   # Публичный портал проверки ПЛ по QR (интернет, аноним). Единственная функция —
-  # /verify/{jws}; обращается только к публичному эндпоинту waybill (/wb-api/.../verify).
+  # /verify/{jws}; обращается к публичному эндпоинту waybill (/wb-api/.../verify) и к трём
+  # анонимным справочным точкам master-data (названия видов/статусов ПЛ, контакты).
   # Отдельное приложение = минимальная поверхность атаки в публичном контуре.
   public:
     build:
@@ -253,11 +254,13 @@ services:
       dockerfile: apps/public/Dockerfile
       args:
         WB_API_URL: http://waybill:8082
+        MD_API_URL: http://master-data:8081
     image: epd/public:0.1.0
     container_name: epd-prod-public
     # Наружу — только через proxy (HTTPS :8443).
     depends_on:
       - waybill
+      - master-data
     restart: unless-stopped
     logging: *epd-logging
 

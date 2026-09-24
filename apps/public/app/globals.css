@@ -447,6 +447,15 @@ input:focus, select:focus { outline: none; border-color: var(--blue-500); box-sh
   .side-nav { display: flex; flex-wrap: wrap; } .kpi-row, .qstat { grid-template-columns: 1fr 1fr; }
   .page { padding: 18px; } form.grid { grid-template-columns: 1fr; }
 }
+/* Телефон инспектора (страница проверки QR): подпись над значением — колонка подписей в 240 px
+   оставляла значениям меньше половины экрана, и номер листа вылезал за карточку. */
+@media (max-width: 560px) {
+  .kv { grid-template-columns: minmax(0, 1fr); gap: 2px 0; }
+  .kv dt { margin-top: 10px; font-size: 12px; }
+  .kv dd { min-width: 0; overflow-wrap: anywhere; }
+  .kv dd.number { white-space: normal; }
+  .kv dd .badge { white-space: normal; }
+}
 @media print { .sidebar, .topbar, .no-print { display: none !important; } .page { max-width: none; padding: 0; } body { background: #fff; } }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 :focus-visible { outline: 2px solid var(--blue-500); outline-offset: 2px; border-radius: 4px; }

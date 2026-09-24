@@ -22,9 +22,12 @@ RUN npm ci
 COPY packages/shared ./packages/shared
 COPY apps/public ./apps/public
 
-# Адрес waybill-сервиса для rewrite /wb-api (вычисляется на этапе сборки Next).
+# Адреса служб для rewrite (вычисляются на этапе сборки Next): waybill — проверка QR,
+# master-data — три публичных справочных точки (названия видов/статусов листа, контакты).
 ARG WB_API_URL=http://localhost:8082
+ARG MD_API_URL=http://localhost:8081
 ENV WB_API_URL=${WB_API_URL} \
+    MD_API_URL=${MD_API_URL} \
     NEXT_TELEMETRY_DISABLED=1
 
 WORKDIR /repo/apps/public
