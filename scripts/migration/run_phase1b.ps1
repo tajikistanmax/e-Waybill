@@ -1,6 +1,7 @@
 # =============================================================================
 # Migration legacy "Rohkhat" MySQL -> e-Waybill PostgreSQL (master-data).
-# PHASE 1b (brand fuel norms) + PHASE 3c (routes lost by phases 3/3b).
+# PHASE 1b (brand fuel norms) + PHASE 3c (routes lost by phases 3/3b)
+# + PHASE 3d (route coefficients lost by phases 3/3b, AUDIT.md finding 29).
 # Idempotent, repeatable. The file is pure ASCII on purpose (Windows PowerShell 5.1).
 #
 #   18_staging_phase1b_3c_ddl.sql  - staging tables (DROP + CREATE)
@@ -8,6 +9,8 @@
 #                                    fuel_hour / fuel_interior_heating / number (<= 500 rows)
 #   20_phase3c_routes.sql          - INSERT routes missing by name inside the organization
 #                                    (duplicate legacy numbers get "<number>/<legacy id>")
+#   21_phase3d_route_coefs.sql     - UPDATE route: ONLY empty winter / mountain / in-city
+#                                    coefficients, matched by organization + number + name
 #
 # Pipeline per table (same as run_phase1_2.ps1, protects UTF-8 from PowerShell 5.1):
 #   mysql batch (-N -B) inside the container -> TSV in /tmp -> docker cp to host ->
@@ -65,7 +68,7 @@ LEFT JOIN fuel_winter_coef w ON w.id = r.winter_coef_id;
 '@
 }
 
-$countSql = "SELECT (SELECT count(*) FROM brand) AS brands, (SELECT count(*) FROM brand WHERE COALESCE(btrim(fuel_100),'') NOT IN ('','[]','null')) AS brands_with_norm, (SELECT count(*) FROM route) AS routes;"
+$countSql = "SELECT (SELECT count(*) FROM brand) AS brands, (SELECT count(*) FROM brand WHERE COALESCE(btrim(fuel_100),'') NOT IN ('','[]','null')) AS brands_with_norm, (SELECT count(*) FROM route) AS routes, (SELECT count(winter_coef_id) FROM route) AS routes_with_winter, (SELECT count(mountain_coef_value) FROM route) AS routes_with_mountain;"
 
 Write-Host '== BEFORE ==' -ForegroundColor Cyan
 docker exec $PG psql -U epd -d $DB -c $countSql
@@ -84,6 +87,9 @@ Invoke-PgFile (Join-Path $SCRIPTDIR '19_phase1b_brand_norms.sql')
 
 Write-Host '== 4) PHASE 3c: missing routes (INSERT only) ==' -ForegroundColor Cyan
 Invoke-PgFile (Join-Path $SCRIPTDIR '20_phase3c_routes.sql')
+
+Write-Host '== 5) PHASE 3d: route coefficients (fill empty only) ==' -ForegroundColor Cyan
+Invoke-PgFile (Join-Path $SCRIPTDIR '21_phase3d_route_coefs.sql')
 
 Write-Host '== AFTER ==' -ForegroundColor Cyan
 docker exec $PG psql -U epd -d $DB -c $countSql
