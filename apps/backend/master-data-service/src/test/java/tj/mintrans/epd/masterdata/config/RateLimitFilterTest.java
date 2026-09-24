@@ -117,6 +117,32 @@ class RateLimitFilterTest {
     }
 
     @Test
+    @DisplayName("служебная учётка (API_INTEGRATOR) — свой, более высокий предел; человек — прежний")
+    void integratorHasOwnHigherLimit() throws Exception {
+        // человек 3, служебная учётка 6, адрес 100
+        var filter = new RateLimitFilter(true, 60, 3, 60, 100, 1000, 6);
+        FilterChain chain = mock(FilterChain.class);
+        String header = Base64.getUrlEncoder().withoutPadding()
+                .encodeToString("{\"alg\":\"RS256\"}".getBytes(StandardCharsets.UTF_8));
+        String payload = Base64.getUrlEncoder().withoutPadding().encodeToString(
+                "{\"sub\":\"aggregator\",\"realm_access\":{\"roles\":[\"API_INTEGRATOR\"]}}".getBytes(StandardCharsets.UTF_8));
+        HttpServletRequest agg = mock(HttpServletRequest.class);
+        when(agg.getRequestURI()).thenReturn("/api/v1/vehicles");
+        when(agg.getRemoteAddr()).thenReturn("10.0.0.7");
+        when(agg.getHeader("Authorization")).thenReturn("Bearer " + header + "." + payload + ".sig");
+
+        assertThat(RateLimitFilter.isIntegrator(agg)).isTrue();
+        assertThat(RateLimitFilter.isIntegrator(request("10.0.0.7", "dispatcher"))).isFalse();
+        for (int i = 0; i < 6; i++) {
+            filter.doFilterInternal(agg, response(), chain);
+        }
+        verify(chain, times(6)).doFilter(any(), any());
+        HttpServletResponse denied = response();
+        filter.doFilterInternal(agg, denied, chain);
+        verify(denied).setStatus(429);
+    }
+
+    @Test
     @DisplayName("выключенный ограничитель пропускает всё")
     void disabledPassesEverything() throws Exception {
         var filter = new RateLimitFilter(false, 60, 1, 1, 1, 10);

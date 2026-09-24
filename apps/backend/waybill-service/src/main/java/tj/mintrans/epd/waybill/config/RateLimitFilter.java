@@ -60,23 +60,36 @@ public class RateLimitFilter extends OncePerRequestFilter {
     private final int publicCapacity;
     private final int ipCapacity;
     private final int maxUserKeys;
+    private final int integratorCapacity;
     private final ConcurrentHashMap<String, Window> ipCounters = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, Window> userCounters = new ConcurrentHashMap<>();
     private final AtomicLong requestCounter = new AtomicLong();
 
+    /** Для тестов: предел служебных учёток равен пределу пользователя. */
+    public RateLimitFilter(boolean enabled, long windowSeconds, int generalCapacity, int publicCapacity,
+                           int ipCapacity, int maxUserKeys) {
+        this(enabled, windowSeconds, generalCapacity, publicCapacity, ipCapacity, maxUserKeys, generalCapacity);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
     public RateLimitFilter(
             @Value("${epd.ratelimit.enabled:true}") boolean enabled,
             @Value("${epd.ratelimit.window-seconds:60}") long windowSeconds,
             @Value("${epd.ratelimit.general-capacity:300}") int generalCapacity,
             @Value("${epd.ratelimit.public-capacity:60}") int publicCapacity,
             @Value("${epd.ratelimit.ip-capacity:3000}") int ipCapacity,
-            @Value("${epd.ratelimit.max-user-keys:50000}") int maxUserKeys) {
+            @Value("${epd.ratelimit.max-user-keys:50000}") int maxUserKeys,
+            // Служебные учётки (роль API_INTEGRATOR): внешний агрегатор грузит путевые листы
+            // пачками одной учёткой (канал /api/v1/aggregator). Предел человека (300 в минуту) ему
+            // мал (нагрузочный тест 24.09.2026). Внешней границей остаётся предел по адресу.
+            @Value("${epd.ratelimit.integrator-capacity:3000}") int integratorCapacity) {
         this.enabled = enabled;
         this.windowMillis = windowSeconds * 1000L;
         this.generalCapacity = generalCapacity;
         this.publicCapacity = publicCapacity;
         this.ipCapacity = ipCapacity;
         this.maxUserKeys = maxUserKeys;
+        this.integratorCapacity = integratorCapacity;
     }
 
     @Override
@@ -106,8 +119,9 @@ public class RateLimitFilter extends OncePerRequestFilter {
             String subject = subjectKey(request);
             if (subject != null && (userCounters.size() < maxUserKeys || userCounters.containsKey(subject))) {
                 Window userWindow = hit(userCounters, subject, now);
-                if (userWindow.count().get() > generalCapacity) {
-                    reject(response, request, now, userWindow, generalCapacity, "user");
+                int userLimit = isIntegrator(request) ? integratorCapacity : generalCapacity;
+                if (userWindow.count().get() > userLimit) {
+                    reject(response, request, now, userWindow, userLimit, "user");
                     return;
                 }
             }
@@ -133,6 +147,28 @@ public class RateLimitFilter extends OncePerRequestFilter {
         response.setContentType("application/json;charset=UTF-8");
         response.getWriter().write("{\"error\":\"too_many_requests\",\"retryAfterSeconds\":" + retryAfterSec + "}");
         log.warn("Rate limit: {} path={} count={} capacity={}", who, request.getRequestURI(), w.count().get(), capacity);
+    }
+
+    /**
+     * Токен служебной учётки (роль API_INTEGRATOR). Подпись, как и в {@link #subjectKey}, здесь
+     * не проверяется: поддельный токен всё равно отвергнет аутентификация, а поток подделок
+     * ограничен пределом по адресу.
+     */
+    static boolean isIntegrator(HttpServletRequest request) {
+        String header = request.getHeader("Authorization");
+        if (header == null || !header.startsWith(BEARER)) {
+            return false;
+        }
+        String[] parts = header.substring(BEARER.length()).trim().split("\\.");
+        if (parts.length != 3) {
+            return false;
+        }
+        try {
+            String payload = new String(Base64.getUrlDecoder().decode(parts[1]), StandardCharsets.UTF_8);
+            return payload.contains("\"API_INTEGRATOR\"");
+        } catch (RuntimeException e) {
+            return false;
+        }
     }
 
     /**
