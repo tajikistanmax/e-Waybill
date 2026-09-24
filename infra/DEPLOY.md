@@ -78,6 +78,10 @@ docker compose -f docker-compose.prod.yml up -d --build --remove-orphans
 `--remove-orphans` удаляет контейнер Keycloak, оставшийся от прежних версий (из стека убран
 24.09.2026; вход — в самой платформе). Сборка web занимает ~10 минут.
 
+Службы стартуют по готовности: master-data → waybill → web и портал → прокси (у каждой
+проверка здоровья; первый запуск новой версии с миграциями может занять до 3 минут). Пока
+прокси не стартовал, стенд не отвечает — это нормально.
+
 Миграции баз применяются автоматически при старте служб (Flyway). Проверить:
 
 ```bash
@@ -88,7 +92,7 @@ docker logs epd-prod-waybill     2>&1 | grep -iE "flyway|Successfully applied|ER
 ## 5. Проверка после выкладки
 
 ```bash
-docker compose -f docker-compose.prod.yml ps                     # всё Up
+docker compose -f docker-compose.prod.yml ps                     # master-data, waybill, web, public, proxy — (healthy)
 curl -sI  http://10.10.29.70/        | head -3                  # 301 → https
 curl -skI https://10.10.29.70/login  | grep -iE "HTTP/|strict|content-security|x-frame"
 curl -skI https://10.10.29.70:8443/  | head -1                  # портал проверки QR

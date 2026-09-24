@@ -164,6 +164,15 @@ services:
         condition: service_healthy
       redis:
         condition: service_started
+    # Готовность службы, а не только «контейнер запущен»: от неё зависит порядок старта
+    # waybill / web / public / proxy и статус в `docker compose ps`. start_period — запас на
+    # миграции Flyway при первом запуске новой версии.
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8081/actuator/health >/dev/null || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 180s
     restart: unless-stopped
     logging: *epd-logging
 
@@ -210,8 +219,15 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      # Ключи проверки токенов и служебный вход — у master-data: стартуем, когда она готова.
       master-data:
-        condition: service_started
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8082/actuator/health >/dev/null || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 180s
     restart: unless-stopped
     logging: *epd-logging
 
@@ -239,8 +255,16 @@ services:
     # Порт наружу не публикуется: снаружи — только через proxy (HTTPS). Локально
     # docker-compose.local.yml открывает 3000 для автотестов.
     depends_on:
-      - master-data
-      - waybill
+      master-data:
+        condition: service_healthy
+      waybill:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO /dev/null http://127.0.0.1:3000/login || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
     restart: unless-stopped
     logging: *epd-logging
 
@@ -259,8 +283,16 @@ services:
     container_name: epd-prod-public
     # Наружу — только через proxy (HTTPS :8443).
     depends_on:
-      - waybill
-      - master-data
+      waybill:
+        condition: service_healthy
+      master-data:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO /dev/null http://127.0.0.1:3002/ || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
     restart: unless-stopped
     logging: *epd-logging
 
@@ -290,9 +322,18 @@ services:
       - "${EPD_VERIFY_PORT:-8443}:8443"
     volumes:
       - ./nginx/certs:/etc/nginx/certs
+    # Открываем дверь, только когда за ней есть кому ответить (иначе первые минуты — 502).
     depends_on:
-      - web
-      - public
+      web:
+        condition: service_healthy
+      public:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO /dev/null http://127.0.0.1/healthz || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
     restart: unless-stopped
     logging: *epd-logging
 
