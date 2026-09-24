@@ -144,6 +144,34 @@ docker compose -f docker-compose.prod.yml exec proxy wget -qO- http://waybill:80
   При следующем входе (с паролем) он подключит приложение заново.
 - **Учётка заблокирована** после 10 неудачных попыток — снимется сама через 15 минут.
 
+## 7½. Резервные копии: проверка и восстановление
+
+Копии обеих баз делает контейнер `backup` каждый день в 00:00 (том `backups`, хранятся 30 дней,
+зашифрованы `BACKUP_ENCRYPTION_KEY`; ключ хранить отдельно от сервера — без него копии не
+расшифровать).
+
+**Учение по восстановлению** — раз в месяц и после изменения ключа или версии PostgreSQL:
+
+```bash
+cd ~/e-rohkhat && sh infra/backup/restore-check.sh
+```
+
+Скрипт восстанавливает последнюю пару копий во **временный** PostgreSQL (рабочую базу не трогает),
+печатает число строк «в копии / сейчас в рабочей базе» и удаляет временный контейнер. Локально
+24.09.2026: обе базы (около 200 МБ зашифрованных копий, ~1,9 млн строк) восстановились за 32 с.
+
+**Настоящее восстановление** (авария; службы остановить, чтобы никто не писал в базу):
+
+```bash
+cd ~/e-rohkhat/infra
+docker compose -f docker-compose.prod.yml stop proxy web public waybill master-data
+docker exec epd-prod-backup ls -1t /backups            # выбрать копию по времени
+docker exec epd-prod-backup sh -c 'openssl enc -d -aes-256-cbc -pbkdf2 -pass env:BACKUP_ENCRYPTION_KEY \
+  -in /backups/waybill-<время>.dump.enc | pg_restore -h postgres -U epd -d waybill --clean --if-exists'
+# то же для masterdata-<время>.dump.enc → -d masterdata
+docker compose -f docker-compose.prod.yml up -d
+```
+
 ## 8. Откат
 
 ```bash
@@ -154,7 +182,7 @@ cd infra && docker compose -f docker-compose.prod.yml up -d --build
 
 Миграции только добавляют таблицы и колонки — прежний код с ними работает, откатывать базу не
 нужно. Если всё же нужна база на момент до выкладки — восстановить копию из шага 1
-(порядок — в `infra/backup/backup-loop.sh`). Вернуть прежние порты (80 → web напрямую) можно
+(раздел 7½). Вернуть прежние порты (80 → web напрямую) можно
 только откатом версии: в текущей снаружи открыт один прокси.
 
 ## 9. Данные: шаги, требующие решения владельца
