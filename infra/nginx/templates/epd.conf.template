@@ -43,6 +43,18 @@ server {
     add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: ${EPD_CSP_IMG_EXTRA}; font-src 'self' data:; connect-src 'self'; media-src 'self' blob:; worker-src 'self' blob:; frame-src 'self' blob:; object-src 'self' blob:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; upgrade-insecure-requests" always;
     add_header Strict-Transport-Security "${EPD_HSTS}" always;
 
+    # Служебные точки служб: снаружи — только состояние (health; его показывает карточка
+    # «Состояние систем» на главной панели администратора). Метрики и прочее закрыты — иначе
+    # их читал бы любой вошедший, включая водителя. nginx берёт первое совпавшее выражение,
+    # поэтому health стоит выше запрета.
+    location ~ ^/(md|wb)-api/actuator/health$ {
+        proxy_pass http://web:3000;
+        include /etc/nginx/snippets/proxy.conf;
+    }
+    location ~ ^/(md|wb)-api/actuator(/|$) {
+        return 404;
+    }
+
     # Точки входа — с ограничением частоты.
     location ~ ^/md-api/api/v1/auth/(token|second-factor|password)$ {
         limit_req zone=epd_auth burst=60 nodelay;
