@@ -1,0 +1,76 @@
+# Обратный прокси платформы «е-Роҳхат». Шаблон: при старте контейнера ${EPD_*} заменяются
+# значениями из окружения (docker-compose.prod.yml), переменные nginx ($host и т.п.) не трогаются.
+
+map $http_upgrade $connection_upgrade {
+    default upgrade;
+    ''      close;
+}
+
+# Ограничение частоты запросов к точкам входа (логин, код второго фактора, смена пароля) по IP —
+# вторая линия защиты от подбора пароля поверх блокировки учётки. Запас на офис за одним NAT:
+# 60 попыток в минуту и всплеск 60.
+limit_req_zone $binary_remote_addr zone=epd_auth:10m rate=60r/m;
+limit_req_status 429;
+
+server_tokens off;
+# Документы и вложения до 15 МБ (как у служб), с запасом на multipart.
+client_max_body_size 16m;
+
+# ---------------------------------------------------------------- HTTP: только перенаправление
+server {
+    listen 80 default_server;
+    server_name _;
+
+    location = /healthz {
+        access_log off;
+        default_type text/plain;
+        return 200 "ok\n";
+    }
+
+    location / {
+        return 301 https://$host:${EPD_HTTPS_PORT}$request_uri;
+    }
+}
+
+# ---------------------------------------------------------------- платформа (web + API)
+server {
+    listen 443 ssl default_server;
+    http2 on;
+    server_name _;
+
+    include /etc/nginx/snippets/tls.conf;
+    include /etc/nginx/snippets/security-headers.conf;
+    add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: ${EPD_CSP_IMG_EXTRA}; font-src 'self' data:; connect-src 'self'; media-src 'self' blob:; worker-src 'self' blob:; frame-src 'self' blob:; object-src 'self' blob:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; upgrade-insecure-requests" always;
+    add_header Strict-Transport-Security "${EPD_HSTS}" always;
+
+    # Точки входа — с ограничением частоты.
+    location ~ ^/md-api/api/v1/auth/(token|second-factor|password)$ {
+        limit_req zone=epd_auth burst=60 nodelay;
+        proxy_pass http://web:3000;
+        include /etc/nginx/snippets/proxy.conf;
+    }
+
+    location / {
+        proxy_pass http://web:3000;
+        include /etc/nginx/snippets/proxy.conf;
+    }
+}
+
+# ---------------------------------------------------------------- публичный портал проверки QR
+# Отдельное приложение (минимальная поверхность атаки) на своём порту: у него свои /_next/*,
+# поэтому на общий 443 под путём его не посадить.
+server {
+    listen 8443 ssl;
+    http2 on;
+    server_name _;
+
+    include /etc/nginx/snippets/tls.conf;
+    include /etc/nginx/snippets/security-headers.conf;
+    add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: ${EPD_CSP_IMG_EXTRA}; font-src 'self' data:; connect-src 'self'; media-src 'self' blob:; worker-src 'self' blob:; frame-src 'self' blob:; object-src 'self' blob:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; upgrade-insecure-requests" always;
+    add_header Strict-Transport-Security "${EPD_HSTS}" always;
+
+    location / {
+        proxy_pass http://public:3002;
+        include /etc/nginx/snippets/proxy.conf;
+    }
+}

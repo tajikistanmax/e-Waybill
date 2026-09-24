@@ -2,9 +2,15 @@
 # Запуск: docker compose -f infra/docker-compose.prod.yml up -d --build
 #
 # ВНИМАНИЕ: значения секретов ниже — dev-дефолты для локальной проверки.
-#           В ПРОДЕ заменить (через .env / docker secrets / vault) все пароли,
-#           перевести Keycloak в режим `start` за HTTPS reverse-proxy и задать единый
-#           внешний issuer (см. комментарии у сервиса keycloak).
+#           В ПРОДЕ заменить (через .env / docker secrets / vault) все пароли.
+#
+# Снаружи открыт ТОЛЬКО обратный прокси (сервис proxy): HTTPS 443 — платформа, 8443 — портал
+# проверки QR, 80 — перенаправление на HTTPS. web, public, API, БД и прочее наружу не
+# публикуются. Выкладка на стенд — infra/DEPLOY.md.
+#
+# Keycloak из стека убран 24.09.2026: вход с 23.09 выполняет сама платформа (master-data,
+# /api/v1/auth), контейнер Keycloak ни одной службой не использовался. Экспорт realm
+# (infra/keycloak/epd-realm.json) остаётся — из него master-data один раз переносит учётки.
 name: epd-rt-prod
 
 services:
@@ -71,54 +77,6 @@ services:
       KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
-    restart: unless-stopped
-
-  keycloak:
-    image: quay.io/keycloak/keycloak:26.0
-    container_name: epd-prod-keycloak
-    # TODO(prod): заменить `start-dev` на `start` (продакшн-режим Keycloak):
-    #   - вынести хранилище в внешнюю БД (KC_DB=postgres, KC_DB_URL=...),
-    #   - терминировать HTTPS на reverse-proxy (KC_PROXY_HEADERS=xforwarded, KC_HTTP_ENABLED=true),
-    #   - убрать импорт realm из файла в пользу управляемой миграции.
-    command: start-dev --import-realm
-    environment:
-      KC_BOOTSTRAP_ADMIN_USERNAME: ${KC_ADMIN:-admin}
-      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KC_ADMIN_PASSWORD:-admin_dev_password}   # в проде заменить
-      KC_HTTP_PORT: 8180
-      KC_HEALTH_ENABLED: "true"
-      # Токены Keycloak содержат issuer = адрес, с которого их запросили. Браузер ходит на
-      # http://localhost:8180 (внешний), а backend-сервисы обращаются на http://keycloak:8180
-      # (внутренний). KC_HOSTNAME_STRICT=false разрешает Keycloak отвечать по обоим хостам.
-      #
-      # ВАЖНО (prod): для сквозной валидации JWT нужен ЕДИНЫЙ внешний issuer, одинаково
-      #   резолвящийся и браузером, и сервисами (например, https://auth.epd.tj/realms/epd
-      #   через reverse-proxy + KC_HOSTNAME). Тогда KEYCLOAK_ISSUER_URI сервисов и адрес
-      #   Keycloak во фронте указывают на один и тот же URL, и issuer в токене совпадает
-      #   с ожидаемым сервисами. В этом же compose (localhost vs keycloak) issuer'ы различаются —
-      #   это осознанное упрощение dev-подобного стенда.
-      KC_HOSTNAME_STRICT: "false"
-      # ВНЕШНИЙ адрес Keycloak: он подставляется во все страницы, которые открывает браузер
-      # (форма входа, смена временного пароля, настройка второго фактора), и в claim `iss`.
-      # Раньше адрес был жёстко записан В САМОМ realm (attributes.frontendUrl), поэтому на
-      # любой машине, кроме 10.10.29.70, форма входа отправлялась на недоступный хост: после
-      # ввода логина и пароля пользователь оставался на :8180 (находка владельца 23.09.2026).
-      # Из realm адрес убран, здесь он задаётся переменной: стенд оставляет своё значение,
-      # локальная машина переопределяет его в docker-compose.local.yml.
-      # ВАЖНО: значение обязано совпадать с KEYCLOAK_EXPECTED_ISSUER служб (без /realms/epd),
-      # иначе API отвечает 401 «The iss claim is not valid».
-      KC_HOSTNAME: ${KC_HOSTNAME:-http://10.10.29.70:8180}
-    ports:
-      - "8180:8180"   # нужен браузеру (фронт редиректит на Keycloak); в проде — через reverse-proxy
-    volumes:
-      - ./keycloak:/opt/keycloak/data/import:ro
-    healthcheck:
-      # В образе Keycloak нет curl/wget; проверяем доступность realm через /dev/tcp (bash-фича,
-      # /bin/sh на ubi9 — это bash). Успех = realm epd импортирован и отдаёт OIDC-конфигурацию.
-      test: ["CMD-SHELL", "exec 3<>/dev/tcp/localhost/8180 && printf 'GET /realms/epd/.well-known/openid-configuration HTTP/1.0\\r\\nHost: localhost\\r\\n\\r\\n' >&3 && cat <&3 | grep -q epd"]
-      interval: 10s
-      timeout: 5s
-      retries: 20
-      start_period: 40s
     restart: unless-stopped
 
   minio:
@@ -250,19 +208,16 @@ services:
         # rewrites Next.js вычисляются на этапе сборки → адреса сервисов передаём как build-arg.
         MD_API_URL: http://master-data:8081
         WB_API_URL: http://waybill:8082
-        # Публичный адрес Keycloak для браузера (в проде — внешний https-домен).
-        NEXT_PUBLIC_KEYCLOAK_URL: ${NEXT_PUBLIC_KEYCLOAK_URL:-http://localhost:8180}
-        # QR-коды ведут на публичный портал проверки (сервис public, браузерный адрес).
-        NEXT_PUBLIC_VERIFY_BASE_URL: ${NEXT_PUBLIC_VERIFY_BASE_URL:-http://localhost:3002}
+        # QR-коды ведут на публичный портал проверки — через прокси, порт 8443 того же стенда.
+        NEXT_PUBLIC_VERIFY_BASE_URL: ${NEXT_PUBLIC_VERIFY_BASE_URL:-https://${EPD_TLS_HOST:-localhost}:8443}
     image: epd/web:0.1.0
     container_name: epd-prod-web
     environment:
       # Дублируем как runtime-env (страховка на случай runtime-вычисления rewrites).
       MD_API_URL: http://master-data:8081
       WB_API_URL: http://waybill:8082
-    ports:
-      - "80:3000"
-      - "3000:3000"   # привычный адрес localhost:3000 (origin разрешён клиентом Keycloak epd-web)
+    # Порт наружу не публикуется: снаружи — только через proxy (HTTPS). Локально
+    # docker-compose.local.yml открывает 3000 для автотестов.
     depends_on:
       - master-data
       - waybill
@@ -279,10 +234,40 @@ services:
         WB_API_URL: http://waybill:8082
     image: epd/public:0.1.0
     container_name: epd-prod-public
-    ports:
-      - "3002:3002"
+    # Наружу — только через proxy (HTTPS :8443).
     depends_on:
       - waybill
+    restart: unless-stopped
+
+  # Обратный прокси — единственная дверь снаружи (infra/nginx): TLS 1.2/1.3, заголовки
+  # безопасности и CSP, ограничение частоты запросов к входу, подлинный IP клиента для служб.
+  # Сертификат: infra/nginx/certs/tls.crt + tls.key (не в git). Если их нет — создаётся
+  # самоподписанный на EPD_TLS_HOST (пилот во внутренней сети; браузер покажет предупреждение).
+  proxy:
+    build:
+      context: ./nginx
+    image: epd/proxy:0.1.0
+    container_name: epd-prod-proxy
+    environment:
+      # Адрес стенда (IP или имя) — на него выпускается самоподписанный сертификат.
+      EPD_TLS_HOST: ${EPD_TLS_HOST:-localhost}
+      # Порт HTTPS снаружи — для перенаправления с HTTP.
+      EPD_HTTPS_PORT: ${EPD_HTTPS_PORT:-443}
+      # HSTS включать ТОЛЬКО с настоящим сертификатом УЦ (max-age=31536000): с самоподписанным
+      # браузер после HSTS не даст пройти предупреждение, и стенд станет недоступен.
+      EPD_HSTS: ${EPD_HSTS:-}
+      # Дополнительные источники картинок для CSP (например, сервер тайлов карты
+      # NEXT_PUBLIC_MAP_TILES_URL: https://tiles.example.tj). Пусто — только свои.
+      EPD_CSP_IMG_EXTRA: ${EPD_CSP_IMG_EXTRA:-}
+    ports:
+      - "${EPD_HTTP_PORT:-80}:80"
+      - "${EPD_HTTPS_PORT:-443}:443"
+      - "${EPD_VERIFY_PORT:-8443}:8443"
+    volumes:
+      - ./nginx/certs:/etc/nginx/certs
+    depends_on:
+      - web
+      - public
     restart: unless-stopped
 
   # --- Профильные сборки web (opt-in: docker compose --profile split up --build) ---
@@ -297,8 +282,7 @@ services:
         NEXT_PUBLIC_APP_PROFILE: waybill
         MD_API_URL: http://master-data:8081
         WB_API_URL: http://waybill:8082
-        NEXT_PUBLIC_KEYCLOAK_URL: ${NEXT_PUBLIC_KEYCLOAK_URL:-http://localhost:8180}
-        NEXT_PUBLIC_VERIFY_BASE_URL: ${NEXT_PUBLIC_VERIFY_BASE_URL:-http://localhost:3002}
+        NEXT_PUBLIC_VERIFY_BASE_URL: ${NEXT_PUBLIC_VERIFY_BASE_URL:-https://${EPD_TLS_HOST:-localhost}:8443}
         # Ссылка на «соседний» кабинет надзора (экран «Это не ваш кабинет»).
         NEXT_PUBLIC_OVERSIGHT_URL: ${NEXT_PUBLIC_OVERSIGHT_URL:-http://localhost:3011}
     image: epd/web-waybill:0.1.0
@@ -322,8 +306,7 @@ services:
         NEXT_PUBLIC_APP_PROFILE: oversight
         MD_API_URL: http://master-data:8081
         WB_API_URL: http://waybill:8082
-        NEXT_PUBLIC_KEYCLOAK_URL: ${NEXT_PUBLIC_KEYCLOAK_URL:-http://localhost:8180}
-        NEXT_PUBLIC_VERIFY_BASE_URL: ${NEXT_PUBLIC_VERIFY_BASE_URL:-http://localhost:3002}
+        NEXT_PUBLIC_VERIFY_BASE_URL: ${NEXT_PUBLIC_VERIFY_BASE_URL:-https://${EPD_TLS_HOST:-localhost}:8443}
         # Ссылка на «соседний» кабинет перевозчика.
         NEXT_PUBLIC_WAYBILL_URL: ${NEXT_PUBLIC_WAYBILL_URL:-http://localhost:3010}
     image: epd/web-oversight:0.1.0

@@ -46,3 +46,5 @@ apps/web/e2e-shots/
 apps/web/playwright/.cache/
 
 apps/backend/crypto-service-mock/*.class
+# TLS certificate and private key of the stand (infra/nginx/certs) - secrets, never in git
+infra/nginx/certs/

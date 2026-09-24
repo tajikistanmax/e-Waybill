@@ -44,15 +44,16 @@ git push origin main
 
 ## Где что лежит
 - `apps/backend/` — Java 21 / Spring Boot микросервисы (`master-data-service` :8081, `waybill-service` :8082).
-- `apps/web/` — Next.js фронтенд (порт контейнера 3000 → на стенде опубликован на :80).
+- `apps/web/` — Next.js фронтенд (порт контейнера 3000; снаружи — только через обратный прокси `infra/nginx`: HTTPS 443, портал проверки QR 8443, 80 → перенаправление на HTTPS).
 - `infra/` — docker-compose (dev и prod), Keycloak realm, init БД.
 - `changelog/` — журнал изменений (что/почему/как + откат).
 - `spec/` — ТЗ и QA-плейбук.
 
 ## Деплой на стенд (после пуша)
+Полная инструкция (секреты, сертификат, проверка, восстановление доступа, откат) — `infra/DEPLOY.md`.
 ```
 # на сервере 10.10.29.70 (behruz):
 cd ~/e-rohkhat && git pull    # либо загрузка исходников
-cd infra && docker compose -f docker-compose.prod.yml up -d --build
+cd infra && docker compose -f docker-compose.prod.yml up -d --build --remove-orphans
 ```
-Секреты стенда — в `infra/.env` (в git НЕ коммитятся; см. `.gitignore`).
+Секреты стенда — в `infra/.env` (в git НЕ коммитятся; см. `.gitignore`). Сертификат HTTPS — `infra/nginx/certs/` (тоже не в git).

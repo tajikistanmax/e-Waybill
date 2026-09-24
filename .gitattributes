@@ -1,0 +1,5 @@
+# Скрипты, исполняемые внутри Linux-контейнеров, — всегда с переводом строки LF: с CRLF (Windows)
+# интерпретатор не находит «/bin/sh\r», и контейнер не стартует.
+*.sh text eol=lf
+*.conf text eol=lf
+*.template text eol=lf

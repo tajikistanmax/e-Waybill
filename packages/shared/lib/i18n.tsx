@@ -2442,7 +2442,7 @@ const DICT: Record<string, { ru: string; tj: string; en?: string }> = {
   'setsec.params.lead': { ru: 'Действующие настройки (изменяет администратор). Авто-выход при бездействии завершает веб-сессию после указанного времени.', tj: 'Танзимоти амалкунанда (маъмур тағйир медиҳад). Баромади худкор ҳангоми бефаъолиятӣ сессияро пас аз вақти нишондодашуда мебандад.' },
   'setsec.domains.h': { ru: 'Модель безопасности (справочно)', tj: 'Модели амният (маълумотӣ)' },
   'setsec.auth.t': { ru: 'Аутентификация', tj: 'Аутентификатсия' },
-  'setsec.auth.d': { ru: 'Keycloak OIDC, realm epd; JWT resource-server; собственная страница входа (grant_type=password).', tj: 'Keycloak OIDC, realm epd; JWT resource-server; саҳифаи вуруди худӣ (grant_type=password).' },
+  'setsec.auth.d': { ru: 'Вход — сама платформа (master-data): пароль BCrypt, токены JWT (подпись RSA), второй фактор TOTP для привилегированных ролей; снаружи — только HTTPS через обратный прокси.', tj: 'Воридшавӣ — худи платформа (master-data): пароли BCrypt, токенҳои JWT (имзои RSA), омили дуюми TOTP барои нақшҳои имтиёзнок; аз берун — танҳо HTTPS тавассути прокси.' },
   'setsec.rbac.t': { ru: 'Авторизация (RBAC)', tj: 'Иҷозатдиҳӣ (RBAC)' },
   'setsec.rbac.d': { ru: 'Роли realm_access.roles → ROLE_*, @PreAuthorize на эндпоинтах, method-security.', tj: 'Нақшҳо realm_access.roles → ROLE_*, @PreAuthorize дар эндпоинтҳо, method-security.' },
   'setsec.tenant.t': { ru: 'Мультиарендность', tj: 'Бисёриҷоранишинӣ' },
