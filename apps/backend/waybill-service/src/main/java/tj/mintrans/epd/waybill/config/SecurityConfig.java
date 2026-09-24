@@ -28,7 +28,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Защита API: stateless resource server, JWT от Keycloak (realm "epd").
+ * Защита API: stateless resource server, JWT платформы (выпускает master-data, /api/v1/auth).
  * Роли берутся из claim realm_access.roles и превращаются в ROLE_<имя>.
  */
 @Configuration
@@ -38,8 +38,8 @@ public class SecurityConfig {
 
     /**
      * Legacy-агрегаторы (ЧУРА/НЕРУ) исторически ходят без токена — в dev оставлено
-     * открытым (true). В проде AGGREGATOR_OPEN=false: требуется client-credentials
-     * токен клиента epd-aggregator с ролью API_INTEGRATOR (см. infra/keycloak/epd-realm.json).
+     * открытым (true). В проде AGGREGATOR_OPEN=false: требуется токен учётной записи
+     * epd-aggregator с ролью API_INTEGRATOR (master-data POST /api/v1/auth/token, пароль AGGREGATOR_PASSWORD).
      */
     private final boolean aggregatorOpen;
 
@@ -63,7 +63,7 @@ public class SecurityConfig {
     void warnAggregatorOpen() {
         if (aggregatorOpen) {
             log.warn("AGGREGATOR_OPEN=true: /api/v1/aggregator/** ОТКРЫТ без токена (dev-режим). "
-                    + "Для прода задайте AGGREGATOR_OPEN=false — обязателен client-credentials токен epd-aggregator.");
+                    + "Для прода задайте AGGREGATOR_OPEN=false — обязателен токен учётной записи epd-aggregator.");
         }
     }
 
@@ -105,12 +105,11 @@ public class SecurityConfig {
     /**
      * JWT-декодер: подпись по JWK Set + проверка claim iss + exp; audience — опционально.
      *
-     * <p>Split-horizon Keycloak: браузер обращается к Keycloak по внешнему адресу
-     * ({@code http://localhost:8180}), а сервисы внутри docker-сети — по {@code http://keycloak:8180}.
-     * Ключи (JWK Set) тянутся по ВНУТРЕННЕМУ адресу (всегда доступен), а claim {@code iss}
-     * сверяется с ВНЕШНИМ issuer'ом — именно он попадает в токен (realm frontendUrl).</p>
+     * <p>Ключи (JWK Set) и издатель — master-data по внутреннему адресу docker-сети; claim
+     * {@code iss} обязан совпасть с {@code AUTH_ISSUER}.</p>
      *
-     * <p>{@code epd.security.required-audience} задан (прод) → токен обязан нести этот aud.</p>
+     * <p>{@code epd.security.required-audience}: токены платформы claim {@code aud} НЕ содержат —
+     * оставлять пустым, иначе все запросы получат 401.</p>
      */
     @Bean
     public JwtDecoder jwtDecoder(
@@ -136,7 +135,7 @@ public class SecurityConfig {
         return converter;
     }
 
-    /** realm_access.roles → ROLE_<имя> (Keycloak realm roles). */
+    /** realm_access.roles → ROLE_<имя> (формат claim токена платформы). */
     private static Collection<GrantedAuthority> realmRoles(Jwt jwt) {
         Map<String, Object> realmAccess = jwt.getClaimAsMap("realm_access");
         if (realmAccess == null || !(realmAccess.get("roles") instanceof Collection<?> roles)) {

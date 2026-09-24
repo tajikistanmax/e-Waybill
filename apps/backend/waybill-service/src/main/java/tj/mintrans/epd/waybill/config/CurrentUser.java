@@ -8,7 +8,7 @@ import org.springframework.stereotype.Component;
 import java.util.Optional;
 
 /**
- * Текущий пользователь из JWT (Keycloak realm "epd").
+ * Текущий пользователь из JWT платформы (выпускает master-data, /api/v1/auth).
  * Мультиарендность: не-админ видит только данные своей организации
  * (claim "organization_rma"). Анонимные (внутренние) вызовы не фильтруются.
  */
@@ -32,7 +32,7 @@ public class CurrentUser {
         return Optional.empty();
     }
 
-    /** ФИО из JWT (claim {@code name}, если Keycloak его отдаёт) — для отметок «кто подтвердил». */
+    /** ФИО из JWT (claim {@code name}, если он есть в токене) — для отметок «кто подтвердил». */
     public Optional<String> fullName() {
         if (authentication() instanceof JwtAuthenticationToken jwt
                 && jwt.getToken().getClaim("name") instanceof String n && !n.isBlank()) {
@@ -80,7 +80,7 @@ public class CurrentUser {
 
     /**
      * Идентификаторы контрагентов (Client master-data) внешнего пользователя — claim {@code client_ids}
-     * (атрибут Keycloak {@code clientIds}, UUID через запятую). Кабинеты грузоотправителя/экспедитора
+     * (поле {@code client_ids} учётной записи, UUID через запятую). Кабинеты грузоотправителя/экспедитора
      * (MIGRATION.md 1.1/3.11, legacy {@code has_client_senders/has_client_forwarders}).
      */
     public java.util.Set<String> clientIds() {

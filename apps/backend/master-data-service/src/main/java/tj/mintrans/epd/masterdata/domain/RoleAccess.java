@@ -11,7 +11,7 @@ import java.time.OffsetDateTime;
 
 /**
  * Доступ роли к разделам меню (UI-навигация, §29). НЕ граница безопасности — реальные права
- * проверяет @PreAuthorize по ролям Keycloak. home_key — стартовый раздел роли; nav_keys — CSV
+ * проверяет @PreAuthorize по ролям из токена. home_key — стартовый раздел роли; nav_keys — CSV
  * разделов бокового меню. Редактирует SYSTEM_ADMIN на /settings/roles.
  */
 @Entity

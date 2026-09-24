@@ -9,7 +9,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 /**
- * Swagger UI: кнопка Authorize (Bearer JWT от Keycloak realm "epd").
+ * Swagger UI: кнопка Authorize (Bearer JWT платформы: POST /api/v1/auth/token).
  */
 @Configuration
 public class OpenApiConfig {

@@ -24,7 +24,7 @@ import java.util.Set;
 /**
  * Доступ ролей к разделам меню (§29). Чтение — любому авторизованному (фронт строит навигацию);
  * изменение — SYSTEM_ADMIN, с аудитом. Это UI-навигация, а не безопасность: реальные права
- * проверяет @PreAuthorize по ролям Keycloak (их из UI не поменять).
+ * проверяет @PreAuthorize по ролям из токена (их из UI не поменять).
  */
 @RestController
 @RequestMapping("/api/v1/role-access")
@@ -67,7 +67,7 @@ public class RoleAccessController {
     @PostMapping
     @PreAuthorize("hasRole('SYSTEM_ADMIN')")
     public RoleAccessView update(@Valid @RequestBody RoleAccessUpdate req) {
-        // Роли заводятся миграцией (набор ролей Keycloak фиксирован) — произвольные через API не создаём.
+        // Роли заводятся миграцией (набор ролей платформы фиксирован) — произвольные через API не создаём.
         var ra = repository.findById(req.role())
                 .orElseThrow(() -> new NotFoundException("Роль %s не найдена".formatted(req.role())));
 

@@ -65,14 +65,14 @@ epd:
     jwk-set-uri: ${AUTH_JWK_SET_URI:http://master-data:8081/api/v1/auth/jwks}
     expected-issuer: ${AUTH_ISSUER:http://master-data:8081/api/v1/auth}
     # Legacy-агрегаторы (ЧУРА/НЕРУ): по умолчанию ЗАКРЫТ (fail-closed) — нужен
-    # client-credentials токен клиента epd-aggregator (роль API_INTEGRATOR). Для локального
-    # запуска без Keycloak/compose явно задайте AGGREGATOR_OPEN=true.
+    # токен учётной записи epd-aggregator (роль API_INTEGRATOR). Для локального запуска
+    # без compose явно задайте AGGREGATOR_OPEN=true.
     aggregator-open: ${AGGREGATOR_OPEN:false}
     # OpenAPI/Swagger UI: dev открыт, прод (DOCS_OPEN=false) — под аутентификацией.
     docs-open: ${DOCS_OPEN:true}
     # Проверка audience JWT: пусто (dev) — только issuer+exp; задан (напр. epd-waybill) —
-    # токен обязан нести этот aud (нужен audience-mapper в Keycloak). Защита от приёма
-    # токена, выпущенного для другого клиента/цели того же realm.
+    # токен обязан нести этот aud. ВНИМАНИЕ: токены платформы (master-data /api/v1/auth)
+    # claim aud не содержат — не задавать, иначе все запросы получат 401.
     required-audience: ${REQUIRED_AUDIENCE:}
   signing:
     # Подпись титулов ПЛ. stub (dev) — SHA-256 хеш содержимого (НЕ юридически значима);

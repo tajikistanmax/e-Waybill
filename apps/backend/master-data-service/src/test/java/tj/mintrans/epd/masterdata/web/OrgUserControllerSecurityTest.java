@@ -38,7 +38,7 @@ class OrgUserControllerSecurityTest {
 
     @Autowired MockMvc mvc;
 
-    @MockitoBean UserDirectory keycloak;
+    @MockitoBean UserDirectory directory;
     @MockitoBean CurrentUser currentUser;
     @MockitoBean TenantScope tenantScope;
     @MockitoBean AuditService audit;
@@ -56,19 +56,19 @@ class OrgUserControllerSecurityTest {
      * иначе тест проверял бы обработку ошибки, а не право доступа. Задаём валидные ответы.
      */
     @BeforeEach
-    void stubKeycloak() {
+    void stubDirectory() {
         var sample = new UserDirectory.OrgUser("uid", "+992900000000", "Иван", "Иванов",
                 true, "111111111", "025680800", java.util.List.of("DRIVER"));
         org.mockito.Mockito.lenient()
-                .when(keycloak.createUser(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(),
+                .when(directory.createUser(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(),
                         org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(),
                         org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(),
                         org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any()))
                 .thenReturn("uid");
         org.mockito.Mockito.lenient()
-                .when(keycloak.getUser(org.mockito.ArgumentMatchers.any())).thenReturn(sample);
+                .when(directory.getUser(org.mockito.ArgumentMatchers.any())).thenReturn(sample);
         org.mockito.Mockito.lenient()
-                .when(keycloak.listByOrganizations(org.mockito.ArgumentMatchers.any()))
+                .when(directory.listByOrganizations(org.mockito.ArgumentMatchers.any()))
                 .thenReturn(java.util.List.of(sample));
     }
 
@@ -117,7 +117,7 @@ class OrgUserControllerSecurityTest {
         org.mockito.Mockito.when(tenantScope.contains("025680800")).thenReturn(true);
         org.mockito.Mockito.when(currentUser.hasRole("COMPANY_ADMIN")).thenReturn(true);
         org.mockito.Mockito.when(currentUser.subject()).thenReturn(java.util.Optional.of("company-admin-id"));
-        org.mockito.Mockito.when(keycloak.getUser("target")).thenReturn(new UserDirectory.OrgUser(
+        org.mockito.Mockito.when(directory.getUser("target")).thenReturn(new UserDirectory.OrgUser(
                 "target", "992900000009", "Т", "Т", true, null, "025680800", java.util.List.of(targetRole)));
     }
 

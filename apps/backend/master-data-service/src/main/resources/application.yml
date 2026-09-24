@@ -75,16 +75,6 @@ epd:
       # замена client-credentials клиента Keycloak epd-aggregator. Без пароля не создаётся.
       aggregator-username: ${AGGREGATOR_USERNAME:epd-aggregator}
       aggregator-password: ${AGGREGATOR_PASSWORD:}
-  keycloak:
-    # ОТКЛЮЧЕНО с 23.09.2026: аутентификация перенесена в платформу (epd.auth выше).
-    # Блок оставлен, чтобы классы прежней интеграции собирались и не мешали запуску;
-    # при enabled=false к Keycloak не делается ни одного обращения. Сами классы
-    # (KeycloakAdminClient, KeycloakEventAuditSync) удаляются отдельным шагом.
-    enabled: ${KEYCLOAK_ADMIN_ENABLED:false}
-    base-url: ${KEYCLOAK_BASE_URL:http://keycloak:8180}
-    realm: ${KEYCLOAK_REALM:epd}
-    client-id: ${KEYCLOAK_PROVISIONER_CLIENT_ID:epd-provisioner}
-    client-secret: ${KEYCLOAK_PROVISIONER_CLIENT_SECRET:}
 
 springdoc:
   swagger-ui:

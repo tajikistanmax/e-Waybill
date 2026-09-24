@@ -70,14 +70,14 @@ public class OrgUserController {
     private static final char[] PWD_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789".toCharArray();
 
     /** Справочник учётных записей платформы (таблица app_user). До 23.09.2026 — Keycloak. */
-    private final tj.mintrans.epd.masterdata.auth.UserDirectory keycloak;
+    private final tj.mintrans.epd.masterdata.auth.UserDirectory directory;
     private final CurrentUser currentUser;
     private final TenantScope tenantScope;
     private final AuditService audit;
 
-    public OrgUserController(tj.mintrans.epd.masterdata.auth.UserDirectory keycloak, CurrentUser currentUser,
+    public OrgUserController(tj.mintrans.epd.masterdata.auth.UserDirectory directory, CurrentUser currentUser,
                              TenantScope tenantScope, AuditService audit) {
-        this.keycloak = keycloak;
+        this.directory = directory;
         this.currentUser = currentUser;
         this.tenantScope = tenantScope;
         this.audit = audit;
@@ -122,14 +122,14 @@ public class OrgUserController {
 
     @GetMapping("/enabled")
     public boolean provisioningEnabled() {
-        return keycloak.isAvailable();
+        return directory.isAvailable();
     }
 
     @GetMapping
     @PreAuthorize("hasAnyRole('SYSTEM_ADMIN','COMPANY_ADMIN','BRANCH_ADMIN')")
     public List<OrgUserView> list(@RequestParam(required = false) String organizationRma) {
         Iterable<String> scope = scopeFor(organizationRma);
-        return keycloak.listByOrganizations(scope).stream()
+        return directory.listByOrganizations(scope).stream()
                 .map(u -> OrgUserView.of(u, null, canManage(u)))
                 .toList();
     }
@@ -144,12 +144,12 @@ public class OrgUserController {
         List<String> clientIds = normalizeClientIds(role, req.clientIds());
         // Занятый логин (409) и нарушение парольной политики (422) справочник отдаёт сам,
         // с понятным текстом — отдельные перехваты ошибок внешней службы больше не нужны.
-        String id = keycloak.createUser(req.username().trim(), req.firstName(), req.lastName(),
+        String id = directory.createUser(req.username().trim(), req.firstName(), req.lastName(),
                 req.email(), blankToNull(req.personRma()), req.organizationRma(), password, clientIds);
-        keycloak.setSingleRealmRole(id, role, ALL_REVOCABLE);
+        directory.setSingleRealmRole(id, role, ALL_REVOCABLE);
         audit.record(AuditService.CREATE, "ORG_USER", req.username().trim(), null,
                 role + " @ " + req.organizationRma());
-        UserDirectory.OrgUser created = keycloak.getUser(id);
+        UserDirectory.OrgUser created = directory.getUser(id);
         return ResponseEntity.status(HttpStatus.CREATED).body(OrgUserView.of(created, password, true));
     }
 
@@ -157,10 +157,10 @@ public class OrgUserController {
     @PreAuthorize("hasAnyRole('SYSTEM_ADMIN','COMPANY_ADMIN','BRANCH_ADMIN')")
     public OrgUserView setEnabled(@PathVariable String id, @RequestBody EnabledRequest req) {
         var user = requireManageable(id);
-        keycloak.setEnabled(id, req.enabled());
+        directory.setEnabled(id, req.enabled());
         audit.record(AuditService.UPDATE, "ORG_USER", user.username(),
                 String.valueOf(user.enabled()), String.valueOf(req.enabled()));
-        return OrgUserView.of(keycloak.getUser(id), null, true);
+        return OrgUserView.of(directory.getUser(id), null, true);
     }
 
     @PostMapping("/{id}/reset-password")
@@ -170,7 +170,7 @@ public class OrgUserController {
         String password = randomPassword();
         // Политику пароля проверяет сам справочник и отвечает понятной 422 — отдельный перехват
         // ошибки внешней службы больше не нужен (учётные записи в нашей базе).
-        keycloak.resetPassword(id, password);
+        directory.resetPassword(id, password);
         audit.record(AuditService.UPDATE, "ORG_USER", user.username(), null, "reset-password");
         return OrgUserView.of(user, password, true);
     }
@@ -183,9 +183,9 @@ public class OrgUserController {
     @PreAuthorize("hasAnyRole('SYSTEM_ADMIN','COMPANY_ADMIN','BRANCH_ADMIN')")
     public OrgUserView resetSecondFactor(@PathVariable String id) {
         UserDirectory.OrgUser user = requireManageable(id);
-        keycloak.resetSecondFactor(id);
+        directory.resetSecondFactor(id);
         audit.record(AuditService.UPDATE, "ORG_USER", user.username(), null, "reset-second-factor");
-        return OrgUserView.of(keycloak.getUser(id), null, true);
+        return OrgUserView.of(directory.getUser(id), null, true);
     }
 
     /** Включить / выключить обязательный второй фактор для учётной записи. */
@@ -193,10 +193,10 @@ public class OrgUserController {
     @PreAuthorize("hasAnyRole('SYSTEM_ADMIN','COMPANY_ADMIN','BRANCH_ADMIN')")
     public OrgUserView setSecondFactorRequired(@PathVariable String id, @RequestBody SecondFactorRequest req) {
         UserDirectory.OrgUser user = requireManageable(id);
-        keycloak.setSecondFactorRequired(id, req.required());
+        directory.setSecondFactorRequired(id, req.required());
         audit.record(AuditService.UPDATE, "ORG_USER", user.username(),
                 String.valueOf(user.secondFactorRequired()), "second-factor-required=" + req.required());
-        return OrgUserView.of(keycloak.getUser(id), null, true);
+        return OrgUserView.of(directory.getUser(id), null, true);
     }
 
     @PatchMapping("/{id}/role")
@@ -204,16 +204,16 @@ public class OrgUserController {
     public OrgUserView setRole(@PathVariable String id, @RequestBody CreateRequest req) {
         var user = requireManageable(id);
         String role = normalizeRole(req.role());
-        keycloak.setSingleRealmRole(id, role, ALL_REVOCABLE);
+        directory.setSingleRealmRole(id, role, ALL_REVOCABLE);
         audit.record(AuditService.UPDATE, "ORG_USER", user.username(), null, "role → " + role);
-        return OrgUserView.of(keycloak.getUser(id), null, true);
+        return OrgUserView.of(directory.getUser(id), null, true);
     }
 
     @DeleteMapping("/{id}")
     @PreAuthorize("hasAnyRole('SYSTEM_ADMIN','COMPANY_ADMIN','BRANCH_ADMIN')")
     public ResponseEntity<Void> delete(@PathVariable String id) {
         var user = requireManageable(id);
-        keycloak.deleteUser(id);
+        directory.deleteUser(id);
         audit.record(AuditService.DELETE, "ORG_USER", user.username(), null, null);
         return ResponseEntity.noContent().build();
     }
@@ -296,7 +296,7 @@ public class OrgUserController {
     }
 
     private UserDirectory.OrgUser requireInScope(String userId) {
-        var user = keycloak.getUser(userId);
+        var user = directory.getUser(userId);
         if (tenantScope.isBounded()
                 && (user.organizationRma() == null || !tenantScope.contains(user.organizationRma()))) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Пользователь не найден");
@@ -352,7 +352,7 @@ public class OrgUserController {
     }
 
     // Длина 16 — с запасом над минимумом парольной политики реалма (length(12), см.
-    // infra/keycloak/epd-realm.json); 10 символов не проходили политику и роняли
+    // infra/directory/epd-realm.json); 10 символов не проходили политику и роняли
     // create()/resetPassword() в 500 (найдено приёмочным тестированием 2026-09-04).
     private static String randomPassword() {
         StringBuilder sb = new StringBuilder(16);

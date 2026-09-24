@@ -71,9 +71,8 @@ public class AuditService {
     }
 
     /**
-     * Вариант для вызовов без HTTP-контекста текущего пользователя (фоновые задачи —
-     * например, приём событий входа из Keycloak {@code KeycloakEventAuditSync}, где
-     * «актор» записи — не тот, кто вызвал этот метод, а субъект самого события).
+     * Вариант, когда «актор» записи — не текущий пользователь из токена, а субъект самого
+     * события (вход до выдачи сессии — {@link #recordAuth}, фоновые задачи).
      */
     @Transactional
     public void recordAs(String actor, String actorOrg, String action, String entityType, String entityKey,

@@ -8,7 +8,7 @@ import org.springframework.stereotype.Component;
 import java.util.Optional;
 
 /**
- * Текущий пользователь из JWT (Keycloak realm "epd").
+ * Текущий пользователь из JWT платформы (выпускает /api/v1/auth).
  * Мультиарендность: не-админ видит только данные своей организации
  * (claim "organization_rma"). Анонимные (внутренние) вызовы не фильтруются —
  * так продолжают работать межсервисные GET из waybill-service (permitAll).

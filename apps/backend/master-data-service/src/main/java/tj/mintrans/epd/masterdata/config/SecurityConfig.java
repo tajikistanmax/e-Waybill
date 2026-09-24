@@ -25,7 +25,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Защита API: stateless resource server, JWT от Keycloak (realm "epd").
+ * Защита API: stateless resource server, JWT выпускает сама платформа (/api/v1/auth).
  * Роли берутся из claim realm_access.roles и превращаются в ROLE_<имя>.
  */
 @Configuration
@@ -73,7 +73,7 @@ public class SecurityConfig {
                         // GET и межсервисный PATCH одометра требуют токена (закрыт анонимный доступ
                         // к ПДн — аудит). Пользователь ходит со своим JWT (тенант-фильтр по организации),
                         // а межсервисные вызовы waybill-service без пользователя (агрегатор ЧУРА/НЕРУ,
-                        // планировщик) — с сервисным client-credentials токеном epd-aggregator
+                        // планировщик) — с токеном служебной учётной записи epd-service
                         // (роль API_INTEGRATOR = платформенное чтение всех организаций).
                         .requestMatchers(HttpMethod.GET, "/api/v1/**").authenticated()
                         .requestMatchers(HttpMethod.PATCH, "/api/v1/vehicles/*/odometer").authenticated()
@@ -127,7 +127,7 @@ public class SecurityConfig {
         return converter;
     }
 
-    /** realm_access.roles → ROLE_<имя> (Keycloak realm roles). */
+    /** realm_access.roles → ROLE_<имя> (формат claim сохранён прежним, см. TokenIssuer). */
     private static Collection<GrantedAuthority> realmRoles(Jwt jwt) {
         Map<String, Object> realmAccess = jwt.getClaimAsMap("realm_access");
         if (realmAccess == null || !(realmAccess.get("roles") instanceof Collection<?> roles)) {
