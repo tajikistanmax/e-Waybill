@@ -9,7 +9,7 @@ dependencies {
     implementation("com.google.zxing:core:3.5.3")
     implementation("com.google.zxing:javase:3.5.3")
     // Выгрузка отчётов в XLSX (Apache POI, OOXML).
-    implementation("org.apache.poi:poi-ooxml:5.3.0")
+    implementation("org.apache.poi:poi-ooxml:5.4.1")
     // Интеграционные тесты жизненного цикла ПЛ против реального Postgres + Flyway
     // (см. src/test/.../integration) — версии управляются Spring Boot BOM (без пиннинга).
     testImplementation("org.testcontainers:junit-jupiter")
