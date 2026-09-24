@@ -125,7 +125,7 @@
 
 <div class="section">
     <table class="bordered">
-        <tr><th style="width: 30%">Номгӯи бор</th><th>Воҳид</th><th>Массаи брутто (т)</th><th>Шумораи ҷойҳо</th><th>Синфи бор</th><th>Синфи ADR</th></tr>
+        <tr><th style="width: 28%">Номгӯи бор</th><th>Воҳид</th><th>Массаи брутто (т)</th><th>Шумораи ҷойҳо</th><th>Синфи бор</th><th>Синфи ADR</th><th>Рақами UN (СММ)</th></tr>
         <tr>
             <td th:text="${cargoName}"></td>
             <td class="center" th:text="${cargoUnit}"></td>
@@ -133,6 +133,7 @@
             <td class="center" th:text="${cargoPackages}"></td>
             <td class="center" th:text="${cargoClass}"></td>
             <td class="center" th:text="${adrClass}"></td>
+            <td class="center nowrap" th:text="${unNumber}"></td>
         </tr>
     </table>
     <div style="margin-top: 2px">Қайди махсус: <span th:text="${specialMark}"></span></div>

@@ -103,14 +103,14 @@
             <th style="width: 15%">10. Статист. / Statistik-Nr.</th>
             <th style="width: 15%">11. Вес брутто, кг / Bruttogew.</th>
             <th style="width: 15%">12. Объём, м³ / Umfang</th>
-            <th style="width: 15%">Класс ДОПОГ / ADR</th>
+            <th style="width: 15%">Класс ДОПОГ / ADR, № ООН / UN</th>
         </tr>
         <tr>
             <td th:text="${cargoName}"></td>
             <td class="center" th:text="${cargoStatCode}"></td>
             <td class="center" th:text="${cargoWeight}"></td>
             <td class="center" th:text="${cargoVolume}"></td>
-            <td class="center" th:text="${adrClass}"></td>
+            <td class="center" th:text="${unNumber} == '—' ? ${adrClass} : ${adrClass} + ' / ' + ${unNumber}"></td>
         </tr>
     </table>
 </div>

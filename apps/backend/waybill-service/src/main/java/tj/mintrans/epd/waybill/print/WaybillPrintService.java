@@ -347,6 +347,9 @@ public class WaybillPrintService {
         m.put("cargoPackages", orDash(str(cargo.get("packages"))));
         m.put("cargoClass", orDash(str(cargo.get("class"))));
         m.put("adrClass", orDash(str(td.get("adrClass"))));
+        // Номер ООН опасного груза (ДОПОГ 5.4.1.1.1: обязателен в документе на перевозку) —
+        // до 24.09.2026 вводился в мастере, но на бланк не выводился.
+        m.put("unNumber", unNumberLabel(str(td.get("unNumber"))));
         m.put("cargoCapacity", orDash(str(veh.get("carrying"))));
         m.put("loadCountry", orDash(str(td.get("loadCountry"))));
         m.put("unloadCountry", orDash(str(td.get("unloadCountry"))));
@@ -537,6 +540,9 @@ public class WaybillPrintService {
         });
         addExtra(extras, "Вид услуги", str(td.get("serviceKind")));
         addExtra(extras, "Класс опасного груза (ADR)", str(td.get("adrClass")));
+        if (!str(td.get("unNumber")).isBlank()) {
+            addExtra(extras, "Номер ООН (UN)", unNumberLabel(str(td.get("unNumber"))));
+        }
         addExtra(extras, "Наименование груза", str(td.get("cargoName")));
         addExtra(extras, "Страна визы", str(td.get("visaCountry")));
         addExtra(extras, "Номер дозвола (E-PERMIT)", str(td.get("permitNumber")));
@@ -802,6 +808,19 @@ public class WaybillPrintService {
 
     private static String orDash(String s) {
         return s == null || s.isBlank() ? "—" : s;
+    }
+
+    /**
+     * Номер ООН для бланка в принятом виде «UN 1203»: в мастер вводят и «UN1203», и «1203».
+     * Пусто — «—».
+     */
+    static String unNumberLabel(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return "—";
+        }
+        String s = raw.trim().toUpperCase();
+        String digits = s.startsWith("UN") ? s.substring(2).trim() : s;
+        return "UN " + digits;
     }
 
     /**
