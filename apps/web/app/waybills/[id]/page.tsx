@@ -226,6 +226,8 @@ export default function WaybillCard({ params }: { params: Promise<{ id: string }
   })();
 
   const vehicleName = String(w.vehicleSnapshot?.brand ?? '');
+  // Кондиционер у ТС (карточка: норма кондиционера > 0) — тогда при возврате спрашиваем его часы.
+  const hasConditioner = Number(w.vehicleSnapshot?.airConditioner ?? 0) > 0;
   const driverName = String(w.driverSnapshot?.fullName ?? w.driverRma);
   const orgName = String(w.organizationSnapshot?.name ?? w.organizationRma);
   const validFrom = w.validFrom ? new Date(w.validFrom).toLocaleString('ru-RU') : '—';
@@ -325,10 +327,12 @@ export default function WaybillCard({ params }: { params: Promise<{ id: string }
                   <input type="number" min={0} step="1" style={{ width: 110 }} placeholder="Ездок Z"
                     value={retMetrics.trips} onChange={e => setRetMetrics(m => ({ ...m, trips: e.target.value }))} />
                 </>
-              ) : (
+              ) : hasConditioner ? (
+                // Только у ТС с отмеченным кондиционером (анализ базы, раздел 9.2 п. 5): в старой
+                // платформе поле заполнено у ≤ 0,3 % листов, у остальных оно было лишним.
                 <input type="number" min={0} step="0.1" style={{ width: 150 }} placeholder="Часы кондиционера"
                   value={retMetrics.conditionerHours} onChange={e => setRetMetrics(m => ({ ...m, conditionerHours: e.target.value }))} />
-              )}
+              ) : null}
               {isIntlForm && (
                 <label style={{ display: 'inline-flex', gap: 6, alignItems: 'center', fontSize: 12, color: 'var(--muted)' }}>
                   {t('wb.ph.arrival')}
