@@ -33,9 +33,13 @@ const REGION_OPTIONS: Option[] = [
 // вкладки/перезагрузку. Живёт только в localStorage браузера — на сервере до шага 4 ничего
 // не создаётся (submit — единственная точка появления ПЛ), поэтому это не серверный черновик.
 const DRAFT_KEY = 'epd:wb-new-draft';
-// Срок жизни черновика: старше — сбрасывается (не восстанавливается) при открытии.
-// Отсчёт от последнего изменения, а не от создания: активно правишь — живёт; забыл на день — сбрасывается.
-const DRAFT_TTL_MS = 12 * 60 * 60 * 1000; // 12 часов
+// Срок жизни черновика — до конца текущих суток по времени Душанбе (решение владельца 24.09.2026:
+// «не 12 ч, а по логике и правилам»). Путевой лист оформляется на рабочий день (смену), поэтому
+// черновик вчерашнего дня уже не годится: другие водители и ТС, другой одометр и остаток топлива.
+// В черновике есть персональные данные (Ф.И.О., РМА водителя) — он же удаляется при выходе из
+// системы (lib/auth), чтобы на общем компьютере его не увидел следующий пользователь.
+const DRAFT_TZ = 'Asia/Dushanbe';
+const draftDay = (ts: number) => new Date(ts).toLocaleDateString('en-CA', { timeZone: DRAFT_TZ });
 type DraftState = {
   step: number; orgRma: string;
   form: { waybillType: string; vehicleRegNumber: string; driverRma: string; communicationType: string; route: string; schedule: string };
@@ -233,9 +237,9 @@ export default function NewWaybillPage() {
       const raw = window.localStorage.getItem(DRAFT_KEY);
       if (raw) {
         const d = JSON.parse(raw) as DraftState;
-        // Просроченный (старше TTL) или пустой черновик не восстанавливаем и удаляем,
+        // Черновик прошлых суток (или пустой) не восстанавливаем и удаляем,
         // чтобы он не «воскресал» при следующем открытии.
-        const expired = !d.savedAt || (Date.now() - d.savedAt) > DRAFT_TTL_MS;
+        const expired = !d.savedAt || draftDay(d.savedAt) !== draftDay(Date.now());
         if (expired || !draftHasContent(d)) {
           window.localStorage.removeItem(DRAFT_KEY);
           setDraftLoaded(true);

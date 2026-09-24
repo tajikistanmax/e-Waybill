@@ -11,11 +11,12 @@ import { ConfirmDialog } from '../../ConfirmDialog';
 /** Структурные параметры типов ПЛ (из enum WaybillType) — read-only. Редактируется только НАЗВАНИЕ
  *  (классификатор WAYBILL_TYPE), которое применяется во всём приложении (tType). */
 const TYPES = [
+  // Порядок — как в меню старой платформы (24.09.2026); код в номере ПЛ (num) не меняется.
+  { code: 'WB_TROLLEYBUS', form: 'Т(1-АД)', num: '05', days: 1, pax: true, intl: false },
+  { code: 'WB_BUS', form: 'Т(1-АД)', num: '04', days: 1, pax: true, intl: false },
+  { code: 'WB_MINIBUS', form: '1-А', num: '03', days: 4, pax: true, intl: false },
   { code: 'WB_CAR', form: '3-С', num: '01', days: 7, pax: false, intl: false },
   { code: 'WB_TAXI', form: '3-С такси', num: '02', days: 7, pax: true, intl: false },
-  { code: 'WB_MINIBUS', form: '1-А', num: '03', days: 4, pax: true, intl: false },
-  { code: 'WB_BUS', form: 'Т(1-АД)', num: '04', days: 1, pax: true, intl: false },
-  { code: 'WB_TROLLEYBUS', form: 'Т(1-АД)', num: '05', days: 1, pax: true, intl: false },
   { code: 'WB_TRUCK', form: '2-Б', num: '06', days: 15, pax: false, intl: false },
   { code: 'WB_TRUCK_INTL', form: '5Б-БМ', num: '07', days: 30, pax: false, intl: true },
   { code: 'WB_PAX_INTL', form: '4М-БМ', num: '08', days: 30, pax: true, intl: true },

@@ -254,6 +254,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       } catch { /* ignore */ }
     }
     clearRt();
+    // Черновик нового путевого листа (waybills/new) несёт персональные данные водителя —
+    // на общем компьютере следующий пользователь не должен его увидеть.
+    try { localStorage.removeItem('epd:wb-new-draft'); } catch { /* приватный режим */ }
     setAuthToken('');
     currentAccessToken = '';
     setState({ ready: true, authenticated: false, username: '', roles: [] });
