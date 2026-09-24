@@ -48,13 +48,16 @@ public class DriverController {
     private final AuditService audit;
     private final tj.mintrans.epd.masterdata.service.DriverTabNumbers tabNumbers;
     private final tj.mintrans.epd.masterdata.service.RegistryQuery registryQuery;
+    private final tj.mintrans.epd.masterdata.service.FormFieldPolicy formFields;
 
     public DriverController(DriverRepository drivers, OrganizationRepository organizations,
                             tj.mintrans.epd.masterdata.repository.VehicleRepository vehicles,
                             CurrentUser currentUser, TenantScope tenantScope, AuditService audit,
                             tj.mintrans.epd.masterdata.service.DriverTabNumbers tabNumbers,
-                            tj.mintrans.epd.masterdata.service.RegistryQuery registryQuery) {
+                            tj.mintrans.epd.masterdata.service.RegistryQuery registryQuery,
+                            tj.mintrans.epd.masterdata.service.FormFieldPolicy formFields) {
         this.registryQuery = registryQuery;
+        this.formFields = formFields;
         this.drivers = drivers;
         this.organizations = organizations;
         this.vehicles = vehicles;
@@ -106,6 +109,11 @@ public class DriverController {
     @PreAuthorize("hasAnyRole('API_INTEGRATOR','SYSTEM_ADMIN','COMPANY_ADMIN','BRANCH_ADMIN','DISPATCHER')")
     public ResponseEntity<Driver> upsert(@Valid @RequestBody DriverRequest req) {
         requireWritable(req.organizationRma());
+        // Обязательные по настройке поля (Настройки → Поля водителя) — для ручного ввода;
+        // push-канал единой платформы (API_INTEGRATOR) не проверяется, как и у организации.
+        if (!currentUser.hasRole("API_INTEGRATOR")) {
+            formFields.requireFilled(tj.mintrans.epd.masterdata.service.FormFieldPolicy.DRIVER, req);
+        }
         var org = organizations.findByRma(req.organizationRma())
                 .orElseThrow(() -> new NotFoundException("Организация не найдена"));
         var existing = drivers.findByRma(req.rma());

@@ -27,6 +27,7 @@ import tj.mintrans.epd.masterdata.domain.Vehicle;
 import tj.mintrans.epd.masterdata.repository.OrganizationRepository;
 import tj.mintrans.epd.masterdata.repository.VehicleRepository;
 import tj.mintrans.epd.masterdata.service.AuditService;
+import tj.mintrans.epd.masterdata.service.FormFieldPolicy;
 import tj.mintrans.epd.masterdata.web.error.NotFoundException;
 
 import java.math.BigDecimal;
@@ -48,11 +49,13 @@ public class VehicleController {
     private final AuditService audit;
     private final tj.mintrans.epd.masterdata.service.VehicleCardRules cardRules;
     private final tj.mintrans.epd.masterdata.service.RegistryQuery registryQuery;
+    private final FormFieldPolicy formFields;
 
     public VehicleController(VehicleRepository vehicles, OrganizationRepository organizations,
                              CurrentUser currentUser, TenantScope tenantScope, AuditService audit,
                              tj.mintrans.epd.masterdata.service.VehicleCardRules cardRules,
-                             tj.mintrans.epd.masterdata.service.RegistryQuery registryQuery) {
+                             tj.mintrans.epd.masterdata.service.RegistryQuery registryQuery,
+                             FormFieldPolicy formFields) {
         this.vehicles = vehicles;
         this.organizations = organizations;
         this.currentUser = currentUser;
@@ -60,6 +63,7 @@ public class VehicleController {
         this.audit = audit;
         this.cardRules = cardRules;
         this.registryQuery = registryQuery;
+        this.formFields = formFields;
     }
 
     public record VehicleRequest(
@@ -111,6 +115,11 @@ public class VehicleController {
     @PreAuthorize("hasAnyRole('API_INTEGRATOR','SYSTEM_ADMIN','COMPANY_ADMIN','BRANCH_ADMIN','DISPATCHER')")
     public ResponseEntity<Vehicle> upsert(@Valid @RequestBody VehicleRequest req) {
         requireWritable(req.organizationRma());
+        // Обязательные по настройке поля (Настройки → Поля транспорта) — для ручного ввода;
+        // push-канал единой платформы (API_INTEGRATOR) не проверяется, как и у организации.
+        if (!currentUser.hasRole("API_INTEGRATOR")) {
+            formFields.requireFilled(FormFieldPolicy.VEHICLE, req);
+        }
         var org = organizations.findByRma(req.organizationRma())
                 .orElseThrow(() -> new NotFoundException("Организация не найдена"));
         // Госномер канонизируется (обрезка пробелов + верхний регистр), иначе "0114TJ01"

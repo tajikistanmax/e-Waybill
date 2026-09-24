@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { md, wb } from '@/lib/api';
 import { downloadCsv } from '@/lib/csv';
 import { useAuth } from '@/lib/auth';
+import { FORM_FIELDS, fieldLabel, useFormFieldModes } from '@/lib/formFields';
 import { useT } from '@/lib/i18n';
 import { Icon, P } from '../icons';
 import SubjectDocuments from './SubjectDocuments';
@@ -18,7 +19,7 @@ const ACT_FORM_TYPES: Record<string, string[]> = {
 const ACT_FORM_LABELS: { v: string; l: string }[] = [
   { v: '3c', l: '3-С' }, { v: '2b', l: '2-Б' }, { v: '1ad', l: '1-АД' }, { v: '1a', l: '1-А' }, { v: '5bbm', l: '5Б-БМ' },
 ];
-type Field = { key: string; label: string; type?: 'text' | 'number' | 'date' | 'select'; opts?: { v: string; l: string }[]; req?: boolean; keyField?: boolean };
+type Field = { key: string; label: string; type?: 'text' | 'number' | 'date' | 'select'; opts?: { v: string; l: string }[]; req?: boolean; keyField?: boolean; numeric?: boolean; hidden?: boolean };
 
 /**
  * Раздел «Транспорт и водители» организации: полное нативное управление внутри платформы —
@@ -124,55 +125,24 @@ export default function FleetView({ kind }: { kind: FleetKind }) {
   ];
   const ET = [{ v: '1', l: t('fleet.emp.1') }, { v: '2', l: t('fleet.emp.2') }, { v: '3', l: t('fleet.emp.3') },
     { v: '4', l: t('fleet.emp.4') }, { v: '5', l: t('fleet.emp.5') }];
-  // Классификатор видов топлива — тот же, что у заправок (FuelRecord.fuelType) и тарифов.
-  const FUEL = [
-    { v: '1', l: t('fuel.type.1') }, { v: '2', l: t('fuel.type.2') }, { v: '3', l: t('fuel.type.3') },
-    { v: '4', l: t('fuel.type.4') }, { v: '5', l: t('fuel.type.5') },
-  ];
-  const vehicleFields: Field[] = [
-    { key: 'registrationNumber', label: t('fleet.f.plate'), req: true, keyField: true },
-    { key: 'transportType', label: t('fleet.f.type'), type: 'select', opts: TT, req: true },
-    { key: 'brand', label: t('fleet.f.brand') },
-    { key: 'vincode', label: t('fleet.f.vin') },
-    { key: 'fuelType', label: t('fleet.f.fueltype'), type: 'select', opts: FUEL },
-    { key: 'enginePower', label: t('fleet.f.enginepower'), type: 'number' },
-    { key: 'yearManufacture', label: t('fleet.f.year'), type: 'number' },
-    { key: 'parkingNumber', label: t('fleet.f.parking') },
-    { key: 'capacity', label: t('fleet.f.capacity'), type: 'number' },
-    { key: 'carrying', label: t('fleet.f.carrying'), type: 'number' },
-    { key: 'odometer', label: t('fleet.f.odometer'), type: 'number' },
-    { key: 'techInspectionValidTo', label: t('fleet.f.tech'), type: 'date' },
-    { key: 'controlCardValidTo', label: t('fleet.f.card'), type: 'date' },
-    { key: 'controlCardNumber', label: t('dt.controlcardnum') },
-    { key: 'intlCertificateNumber', label: t('dt.intlcertnum') },
-    { key: 'insuranceValidTo', label: t('fleet.f.insurance'), type: 'date' },
-    { key: 'adrApprovalValidTo', label: t('fleet.f.adrappr'), type: 'date' },
-  ];
-  const driverFields: Field[] = [
-    { key: 'rma', label: t('fleet.f.inn'), req: true, keyField: true },
-    { key: 'fullName', label: t('fleet.f.name'), req: true },
-    { key: 'birthDate', label: t('fleet.f.birth'), type: 'date' },
-    { key: 'experienceYears', label: t('fleet.f.experience'), type: 'number' },
-    { key: 'licenseNumber', label: t('fleet.f.license') },
-    { key: 'licenseCategories', label: t('fleet.f.cat') },
-    { key: 'licenseValidTo', label: t('fleet.f.licenseto'), type: 'date' },
-    { key: 'medCertNumber', label: t('fleet.f.medcert') },
-    { key: 'medCertValidTo', label: t('fleet.f.medcertto'), type: 'date' },
-    { key: 'safetyCourseValidTo', label: t('fleet.f.safety'), type: 'date' },
-    { key: 'safetyCourseNumber', label: t('dt.safetynum') },
-    { key: 'adrCertValidTo', label: t('fleet.f.adrcert'), type: 'date' },
-    { key: 'medRestrictions', label: t('fleet.f.medrestr') },
-    { key: 'phone', label: t('fleet.f.phone') },
-  ];
-  const employeeFields: Field[] = [
-    { key: 'rma', label: t('fleet.f.inn'), req: true, keyField: true },
-    { key: 'name', label: t('fleet.f.name'), req: true },
-    { key: 'type', label: t('fleet.f.emptype'), type: 'select', opts: ET, req: true },
-    { key: 'tabNumber', label: t('fleet.f.tab') },
-    { key: 'phone', label: t('fleet.f.phone') },
-    { key: 'address', label: t('col.address') },
-  ];
-  const fields = kind === 'vehicles' ? vehicleFields : kind === 'drivers' ? driverFields : employeeFields;
+  // Поля формы — из общего списка карточки (тот же, что в разделе «Компания») с режимами из
+  // Настройки → Поля водителя / транспорта / сотрудника. Раньше здесь был свой короткий список:
+  // при изменении водителя паспорт, адрес, договор и закреплённое ТС уходили пустыми и затирались.
+  const formName = kind === 'vehicles' ? 'vehicle' : kind === 'drivers' ? 'driver' : 'employee';
+  const { modes } = useFormFieldModes(formName);
+  const fields: Field[] = FORM_FIELDS[formName].map(f => ({
+    key: f.key,
+    label: fieldLabel(t, f, false),
+    type: f.type === 'email' ? 'text' : f.type,
+    opts: f.options?.map(o => ({ v: o.v, l: t(o.labelKey) })),
+    req: !!f.locked || modes[f.key] === 'required',
+    keyField: f.key === (kind === 'vehicles' ? 'registrationNumber' : 'rma'),
+    numeric: f.numeric,
+    // Закреплённое ТС выбирается в карточке ТС и в разделе «Компания» — здесь списка ТС нет;
+    // поле не рисуется, но его значение отправляется обратно и не теряется.
+    hidden: modes[f.key] === 'hidden' || f.key === 'assignedVehicleId',
+  }));
+  const shown = fields.filter(f => !f.hidden);
 
   const load = useCallback(async (query: string, which: FleetKind) => {
     setLoading(true); setErr('');
@@ -216,7 +186,7 @@ export default function FleetView({ kind }: { kind: FleetKind }) {
       for (const f of fields) {
         const val = (form[f.key] ?? '').trim();
         if (val === '') continue;
-        body[f.key] = (f.type === 'number' || f.key === 'transportType' || f.key === 'type') ? Number(val) : val;
+        body[f.key] = f.numeric ? Number(val) : val;
       }
       if (kind === 'vehicles') await md.createVehicle(body);
       else if (kind === 'drivers') await md.createDriver(body);
@@ -243,8 +213,8 @@ export default function FleetView({ kind }: { kind: FleetKind }) {
 
   /** CSV текущего списка: колонки = поля формы раздела (подписи локализованы), плюс счётчик ПЛ при активном отборе. */
   function exportCsv() {
-    const head = fields.map(f => f.label).concat(actMap ? [t('fleet.act.count')] : []);
-    const line = (r: Row): unknown[] => fields.map(f => {
+    const head = shown.map(f => f.label).concat(actMap ? [t('fleet.act.count')] : []);
+    const line = (r: Row): unknown[] => shown.map(f => {
       const v = r[f.key];
       if (f.type === 'select' && f.opts) return f.opts.find(o => o.v === String(v))?.l ?? (v ?? '');
       return v ?? '';
@@ -330,7 +300,7 @@ export default function FleetView({ kind }: { kind: FleetKind }) {
             </div>
           )}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 12 }}>
-            {fields.map(f => (
+            {shown.map(f => (
               <div key={f.key}>
                 <label htmlFor={`fleet-${f.key}`} style={{ fontSize: 12.5, color: 'var(--muted)' }}>{f.label}{f.req ? ' *' : ''}</label>
                 {f.type === 'select' ? (

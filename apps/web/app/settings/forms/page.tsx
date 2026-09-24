@@ -15,9 +15,9 @@ const FORMS = Object.keys(FORM_FIELDS);
 const MODES: FieldMode[] = ['show', 'required', 'hidden'];
 
 /**
- * Настройки → Поля компании (организации) (решение владельца 24.09.2026): администратор платформы скрывает поле
- * формы или делает его обязательным без изменения кода. Системные поля (РМА/ИНН, название)
- * закреплены. Обязательность проверяет и сервер (FormFieldPolicy), не только браузер.
+ * Настройки → Поля компании / водителя / транспорта / сотрудника (решение владельца 24.09.2026):
+ * администратор платформы скрывает поле формы или делает его обязательным без изменения кода.
+ * Системные поля каждой формы закреплены. Обязательность проверяет и сервер (FormFieldPolicy).
  */
 export default function FormFieldsSettingsPage() {
   const { t } = useT();
@@ -25,6 +25,12 @@ export default function FormFieldsSettingsPage() {
   const canEdit = roles.includes('SYSTEM_ADMIN');
 
   const [form, setForm] = useState<string>(FORMS[0]);
+  // Плитки хаба ведут сюда с ?form=driver|vehicle|employee — открываем нужную форму.
+  // (useSearchParams в Next 15 требует Suspense на статической странице — читаем адрес напрямую.)
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search).get('form');
+    if (q && FORMS.includes(q)) setForm(q);
+  }, []);
   const [saved, setSaved] = useState<Record<string, FieldMode>>(() => defaultFieldModes(FORMS[0]));
   const [draft, setDraft] = useState<Record<string, FieldMode>>(() => defaultFieldModes(FORMS[0]));
   const [error, setError] = useState('');
@@ -79,7 +85,7 @@ export default function FormFieldsSettingsPage() {
     <>
       <div className="toolbar">
         <div>
-          <h1>{t('set.mod.forms')}</h1>
+          <h1>{t(`formset.title.${form}`)}</h1>
           <div className="page-lead" style={{ margin: 0 }}>{t('formset.lead')}</div>
         </div>
         <Link href="/settings" className="btn secondary" style={{ marginLeft: 'auto', textDecoration: 'none' }}>

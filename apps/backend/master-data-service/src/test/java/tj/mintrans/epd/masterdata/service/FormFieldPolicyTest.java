@@ -84,6 +84,39 @@ class FormFieldPolicyTest {
         assertThatCode(() -> p.validateSetting("organization", "")).doesNotThrowAnyException();
     }
 
+    private FormFieldPolicy policyFor(String form, String value) {
+        var repo = mock(PlatformSettingRepository.class);
+        var s = new PlatformSetting();
+        s.setSettingValue(value);
+        when(repo.findByCategoryAndSettingKey("forms", form)).thenReturn(Optional.of(s));
+        return new FormFieldPolicy(repo);
+    }
+
+    record DriverLike(String rma, String organizationRma, String fullName, String passport, java.time.LocalDate licenseValidTo) {
+    }
+
+    /** Водитель, ТС, сотрудник (24.09.2026): значения берутся из тела запроса по именам полей. */
+    @Test
+    void driverRequiredFieldsAreCheckedFromRequestRecord() {
+        var p = policyFor("driver", "{\"passport\":\"required\",\"licenseValidTo\":\"required\",\"phone\":\"hidden\"}");
+        assertThatThrownBy(() -> p.requireFilled("driver", new DriverLike("111111111", "025680800", "Иванов", "", null)))
+                .hasMessageContaining("Паспорт").hasMessageContaining("ВУ действует до");
+        assertThatCode(() -> p.requireFilled("driver",
+                new DriverLike("111111111", "025680800", "Иванов", "A1234567", java.time.LocalDate.of(2030, 1, 1))))
+                .doesNotThrowAnyException();
+    }
+
+    @Test
+    void systemFieldsOfFleetFormsAreLocked() {
+        var p = policyWith("");
+        assertThatThrownBy(() -> p.validateSetting("vehicle", "{\"transportType\":\"hidden\"}")).hasMessageContaining("Тип ТС");
+        assertThatThrownBy(() -> p.validateSetting("employee", "{\"type\":\"show\"}")).hasMessageContaining("Должность");
+        assertThatThrownBy(() -> p.validateSetting("driver", "{\"assignedVehicleId\":\"required\"}")).hasMessageContaining("да/нет");
+        assertThatCode(() -> p.validateSetting("vehicle", "{\"vincode\":\"required\",\"trailer2Weight\":\"hidden\"}"))
+                .doesNotThrowAnyException();
+        assertThatCode(() -> p.validateSetting("employee", "{\"certNumber\":\"required\"}")).doesNotThrowAnyException();
+    }
+
     @Test
     void corruptedStoredValueDoesNotBreakSaving() {
         var p = policyWith("{broken");

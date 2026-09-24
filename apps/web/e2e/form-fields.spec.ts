@@ -11,18 +11,19 @@ const MD = process.env.E2E_MD_URL || 'http://localhost:8081';
 const ADMIN = process.env.E2E_ADMIN_USER || 'admin';
 const ADMIN_PASSWORD = process.env.E2E_ADMIN_PASSWORD || 'Epd-Qa-AdminRoot-2026';
 
-async function setOrganizationForm(value: string) {
+async function setForm(form: string, value: string) {
   const ctx = await request.newContext();
   const tok = await ctx.post(`${MD}/api/v1/auth/token`, { data: { username: ADMIN, password: ADMIN_PASSWORD } });
   expect(tok.ok()).toBeTruthy();
   const { access_token } = await tok.json();
   const r = await ctx.post(`${MD}/api/v1/settings`, {
     headers: { Authorization: `Bearer ${access_token}` },
-    data: { category: 'forms', settingKey: 'organization', value },
+    data: { category: 'forms', settingKey: form, value },
   });
   expect(r.status()).toBe(200);
   await ctx.dispose();
 }
+const setOrganizationForm = (value: string) => setForm('organization', value);
 
 async function uiLogin(page: Page) {
   await page.goto('/login');
@@ -33,7 +34,32 @@ async function uiLogin(page: Page) {
 }
 
 test.describe('Поля форм из настроек', () => {
-  test.afterAll(async () => { await setOrganizationForm(''); });
+  test.afterAll(async () => {
+    for (const f of ['organization', 'driver', 'vehicle', 'employee']) await setForm(f, '');
+  });
+
+  test('водитель в «Парке»: скрытое поле пропадает, обязательное помечено', async ({ page }) => {
+    await setForm('driver', '{"passport":"required","tabNumber":"hidden"}');
+    await uiLogin(page);
+    await page.goto('/fleet/drivers');
+    await page.getByRole('button', { name: 'Добавить водителя' }).click();
+    const card = page.locator('.card', { has: page.getByRole('heading', { name: 'Новый водитель' }) });
+    await expect(card).toBeVisible();
+    await expect(card.locator('label', { hasText: /^Паспорт \(№\) \*$/ })).toHaveCount(1);
+    await expect(card.locator('label', { hasText: /^Табельный номер$/ })).toHaveCount(0);
+    // Поля, которых раньше в «Парке» не было, теперь есть (общий состав карточки).
+    await expect(card.locator('label', { hasText: /^№ договора$/ })).toHaveCount(1);
+  });
+
+  test('страница настроек открывает нужную форму по плитке', async ({ page }) => {
+    await uiLogin(page);
+    await page.goto('/settings/forms?form=vehicle');
+    await expect(page.getByRole('heading', { name: 'Поля транспорта' })).toBeVisible();
+    await expect(page.getByText('Системное — всегда обязательно')).toHaveCount(2);
+    await page.goto('/settings/forms?form=employee');
+    await expect(page.getByRole('heading', { name: 'Поля сотрудника' })).toBeVisible();
+    await expect(page.getByText('Системное — всегда обязательно')).toHaveCount(3);
+  });
 
   test('скрытое поле пропадает из формы, обязательное помечено и требуется', async ({ page }) => {
     await setOrganizationForm('{"phone":"required","kpp":"hidden"}');

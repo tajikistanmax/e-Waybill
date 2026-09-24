@@ -32,6 +32,9 @@ public class FormFieldPolicy {
 
     public static final String CATEGORY = "forms";
     public static final String ORGANIZATION = "organization";
+    public static final String DRIVER = "driver";
+    public static final String VEHICLE = "vehicle";
+    public static final String EMPLOYEE = "employee";
 
     public enum Mode { SHOW, REQUIRED, HIDDEN }
 
@@ -76,7 +79,78 @@ public class FormFieldPolicy {
                     Field.field("longitude", "Долгота"),
                     Field.field("mapPoints", "Отметка на карте"),
                     new Field("giveFuel", "Предприятие выдаёт топливо", false, false),
-                    Field.field("allowedWaybillTypes", "Разрешённые типы ПЛ")));
+                    Field.field("allowedWaybillTypes", "Разрешённые типы ПЛ")),
+            // Водитель: РМА и Ф.И.О. — ключ записи и подпись во всех документах.
+            DRIVER, List.of(
+                    new Field("rma", "РМА / ИНН", true, true),
+                    new Field("fullName", "Ф.И.О.", true, true),
+                    Field.field("tabNumber", "Табельный номер"),
+                    Field.field("birthDate", "Дата рождения"),
+                    Field.field("experienceYears", "Стаж вождения"),
+                    Field.field("licenseNumber", "Номер ВУ"),
+                    Field.field("licenseCategories", "Категории ВУ"),
+                    Field.field("licenseValidTo", "ВУ действует до"),
+                    Field.field("degree", "Классность"),
+                    Field.field("medCertNumber", "Медсправка №"),
+                    Field.field("medCertValidTo", "Медсправка до"),
+                    Field.field("medRestrictions", "Медограничения"),
+                    Field.field("safetyCourseValidTo", "Курс БДД до"),
+                    Field.field("safetyCourseNumber", "№ талона курса БДД"),
+                    Field.field("adrCertValidTo", "Свидетельство ADR до"),
+                    Field.field("phone", "Телефон"),
+                    Field.field("passport", "Паспорт"),
+                    Field.field("address", "Адрес"),
+                    Field.field("email", "Email"),
+                    Field.field("powerAttorney", "Доверенность"),
+                    Field.field("visaValidTo", "Виза действует до"),
+                    Field.field("contractNumber", "№ договора"),
+                    Field.field("contractValidTo", "Договор действует до"),
+                    // Закрепление ТС делается и из карточки ТС; обязательным его не делаем —
+                    // в разделе «Парк» у перевозчика нет списка ТС в форме водителя.
+                    new Field("assignedVehicleId", "Закреплённое ТС", false, false)),
+            // ТС: госномер — ключ записи, тип — от него зависят виды ПЛ и формат номера.
+            VEHICLE, List.of(
+                    new Field("registrationNumber", "Госномер", true, true),
+                    new Field("transportType", "Тип ТС", true, true),
+                    Field.field("brand", "Марка / модель"),
+                    Field.field("vincode", "VIN"),
+                    Field.field("fuelType", "Вид топлива"),
+                    Field.field("enginePower", "Мощность"),
+                    Field.field("yearManufacture", "Год выпуска"),
+                    Field.field("parkingNumber", "Стоянка"),
+                    Field.field("capacity", "Вместимость"),
+                    Field.field("carrying", "Грузоподъёмность"),
+                    Field.field("odometer", "Одометр"),
+                    Field.field("techInspectionValidTo", "Техосмотр до"),
+                    Field.field("techInspectionNumber", "№ техосмотра"),
+                    Field.field("techPassportNumber", "№ техпаспорта"),
+                    Field.field("certificateNumber", "№ сертификата"),
+                    Field.field("controlCardValidTo", "Контрольная карточка до"),
+                    Field.field("controlCardNumber", "№ контрольного листа"),
+                    Field.field("intlCertificateNumber", "№ сертификата ТС (межд.)"),
+                    Field.field("intlControlCardNumber", "№ контр. листа (межд.)"),
+                    Field.field("intlControlCardValidTo", "Контр. лист до (межд.)"),
+                    Field.field("insuranceValidTo", "Страховка до"),
+                    Field.field("adrApprovalValidTo", "Допуск ДОПОГ до"),
+                    Field.field("airConditioner", "Кондиционер"),
+                    Field.field("trailer1Number", "Прицеп 1 — госномер"),
+                    Field.field("trailer1Brand", "Прицеп 1 — марка"),
+                    Field.field("trailer1Carrying", "Прицеп 1 — грузоподъёмность"),
+                    Field.field("trailer1Weight", "Прицеп 1 — вес"),
+                    Field.field("trailer2Number", "Прицеп 2 — госномер"),
+                    Field.field("trailer2Brand", "Прицеп 2 — марка"),
+                    Field.field("trailer2Carrying", "Прицеп 2 — грузоподъёмность"),
+                    Field.field("trailer2Weight", "Прицеп 2 — вес")),
+            // Сотрудник: РМА, Ф.И.О. и должность — по должности выдаётся роль кабинета.
+            EMPLOYEE, List.of(
+                    new Field("rma", "РМА / ИНН", true, true),
+                    new Field("name", "Ф.И.О.", true, true),
+                    new Field("type", "Должность", true, true),
+                    Field.field("tabNumber", "Табельный номер"),
+                    Field.field("phone", "Телефон"),
+                    Field.field("address", "Адрес"),
+                    Field.field("certNumber", "Сертификат №"),
+                    Field.field("certValidTo", "Сертификат действует до")));
 
     private static final ObjectMapper JSON = new ObjectMapper();
 
@@ -196,6 +270,26 @@ public class FormFieldPolicy {
         if (!missing.isEmpty()) {
             throw unprocessable("Заполните обязательные поля: " + String.join(", ", missing));
         }
+    }
+
+    /**
+     * Проверка обязательных полей по телу запроса: значения берутся из компонентов record по
+     * имени — имена полей формы совпадают с именами полей запроса, отдельный список не нужен.
+     */
+    public void requireFilled(String form, Record request) {
+        requireFilled(form, valuesOf(request));
+    }
+
+    static Map<String, Object> valuesOf(Record rec) {
+        Map<String, Object> out = new java.util.HashMap<>();
+        for (var c : rec.getClass().getRecordComponents()) {
+            try {
+                out.put(c.getName(), c.getAccessor().invoke(rec));
+            } catch (ReflectiveOperationException e) {
+                throw new IllegalStateException("Не прочитать поле " + c.getName(), e);
+            }
+        }
+        return out;
     }
 
     private static Mode parseMode(String s) {

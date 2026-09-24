@@ -42,15 +42,21 @@ public class EmployeeController {
     private final TenantScope tenantScope;
     private final AuditService audit;
     private final tj.mintrans.epd.masterdata.service.RegistryQuery registryQuery;
+    private final tj.mintrans.epd.masterdata.service.FormFieldPolicy formFields;
+    private final tj.mintrans.epd.masterdata.config.CurrentUser currentUser;
 
     public EmployeeController(EmployeeRepository employees, OrganizationRepository organizations,
                               TenantScope tenantScope, AuditService audit,
-                              tj.mintrans.epd.masterdata.service.RegistryQuery registryQuery) {
+                              tj.mintrans.epd.masterdata.service.RegistryQuery registryQuery,
+                              tj.mintrans.epd.masterdata.service.FormFieldPolicy formFields,
+                              tj.mintrans.epd.masterdata.config.CurrentUser currentUser) {
         this.employees = employees;
         this.organizations = organizations;
         this.tenantScope = tenantScope;
         this.audit = audit;
         this.registryQuery = registryQuery;
+        this.formFields = formFields;
+        this.currentUser = currentUser;
     }
 
     public record EmployeeRequest(
@@ -78,6 +84,11 @@ public class EmployeeController {
     @PreAuthorize("hasAnyRole('API_INTEGRATOR','SYSTEM_ADMIN','COMPANY_ADMIN','BRANCH_ADMIN','DISPATCHER')")
     public ResponseEntity<Employee> upsert(@Valid @RequestBody EmployeeRequest req) {
         requireWritable(req.organizationRma());
+        // Обязательные по настройке поля (Настройки → Поля сотрудника) — для ручного ввода;
+        // push-канал единой платформы (API_INTEGRATOR) не проверяется, как и у организации.
+        if (!currentUser.hasRole("API_INTEGRATOR")) {
+            formFields.requireFilled(tj.mintrans.epd.masterdata.service.FormFieldPolicy.EMPLOYEE, req);
+        }
         var org = organizations.findByRma(req.organizationRma())
                 .orElseThrow(() -> new NotFoundException("Организация не найдена"));
         var existing = employees.findByRma(req.rma());

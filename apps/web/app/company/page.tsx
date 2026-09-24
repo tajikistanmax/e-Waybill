@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { authHeaders, md, type SubjectKind, type SubjectRef } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
-import { useFormFieldModes } from '@/lib/formFields';
+import { formKeys, numericKeys, useFormFieldModes } from '@/lib/formFields';
+import { ConfigurableFields } from '../ConfigurableFields';
 import { useT, WAYBILL_TYPE_CODES } from '@/lib/i18n';
 import { Icon, P } from '../icons';
 import { ExpiryAlert } from '../ExpiryAlert';
@@ -60,11 +61,13 @@ function clean(obj: Record<string, string>, numeric: string[]): Record<string, u
 const ORG_KEYS = ['rma', 'name', 'kpp', 'typeCompany', 'regionId', 'cityName', 'address', 'phone', 'email', 'nameHead', 'bank', 'licenseFrom', 'licenseTo', 'carrierLicenseNumber', 'percentIncome', 'cat1', 'cat2', 'cat3', 'allowedWaybillTypes', 'ownership', 'latitude', 'longitude', 'registrationCertNumber', 'extractNumber', 'vatCertNumber', 'planPassVolume', 'planPassTraffic',
   // Поля карточки старой платформы (V71): «Рамзи корхона», «Харита», «Сӯзишворӣ».
   'internalNumber', 'mapPoints', 'giveFuel'];
-// birthDate/experienceYears/medRestrictions нет в видимой форме (их нет в боевой карточке), но
-// держим их в ключах, чтобы при РЕДАКТИРОВАНИИ водителя они round-trip'ились, а не затирались в null.
-const DRIVER_KEYS = ['rma', 'fullName', 'tabNumber', 'licenseNumber', 'licenseCategories', 'licenseValidTo', 'degree', 'medCertNumber', 'medCertValidTo', 'safetyCourseValidTo', 'safetyCourseNumber', 'phone', 'passport', 'address', 'email', 'powerAttorney', 'visaValidTo', 'contractNumber', 'contractValidTo', 'assignedVehicleId', 'birthDate', 'experienceYears', 'medRestrictions'];
-const VEHICLE_KEYS = ['registrationNumber', 'transportType', 'brand', 'parkingNumber', 'capacity', 'carrying', 'odometer', 'vincode', 'yearManufacture', 'techInspectionValidTo', 'controlCardValidTo', 'controlCardNumber', 'intlCertificateNumber', 'insuranceValidTo', 'adrApprovalValidTo', 'techInspectionNumber', 'techPassportNumber', 'certificateNumber', 'airConditioner', 'intlControlCardNumber', 'intlControlCardValidTo', 'trailer1Number', 'trailer1Brand', 'trailer1Carrying', 'trailer1Weight', 'trailer2Number', 'trailer2Brand', 'trailer2Carrying', 'trailer2Weight'];
-const EMPLOYEE_KEYS = ['rma', 'name', 'type', 'tabNumber', 'phone', 'address'];
+// Водитель / ТС / сотрудник — полный состав карточки из общего списка (Настройки → Поля …):
+// при РЕДАКТИРОВАНИИ все поля round-trip'ятся, в т.ч. скрытые настройкой, и не затираются в null.
+// Раньше в этих списках не было вида топлива и мощности ТС и сертификата сотрудника — правка
+// карточки здесь их обнуляла.
+const DRIVER_KEYS = formKeys('driver');
+const VEHICLE_KEYS = formKeys('vehicle');
+const EMPLOYEE_KEYS = formKeys('employee');
 const COMPANY_TYPES: Record<string, string> = { '1': 'Общего пользования', '2': 'Отраслевая' };
 
 // Переводимые подписи справочников: карты выше — проверка допустимости кода и русский фолбэк,
@@ -263,6 +266,10 @@ export default function CompanyPage() {
  */
 function OrgRegistry() {
   const { t } = useT();
+  // Режимы полей ручных форм водителя / ТС / сотрудника (Настройки → Поля …).
+  const driverModes = useFormFieldModes('driver').modes;
+  const vehicleModes = useFormFieldModes('vehicle').modes;
+  const employeeModes = useFormFieldModes('employee').modes;
   const [orgs, setOrgs] = useState<Row[]>([]);
   const [counts, setCounts] = useState<Record<string, Counts>>({});
   const [orgRma, setOrgRma] = useState('');
@@ -423,15 +430,15 @@ function OrgRegistry() {
     setError(''); setOk('');
     try {
       if (tab === 'drivers') {
-        const d = await md.createDriver({ ...clean(driverManual, ['degree', 'experienceYears']), organizationRma: orgRma });
+        const d = await md.createDriver({ ...clean(driverManual, numericKeys('driver')), organizationRma: orgRma });
         setOk(`Водитель ${String(d.fullName)} сохранён`);
         setDriverManual({});
       } else if (tab === 'vehicles') {
-        const v = await md.createVehicle({ ...clean(vehicleManual, ['transportType', 'capacity', 'carrying', 'odometer', 'yearManufacture', 'airConditioner', 'trailer1Carrying', 'trailer1Weight', 'trailer2Carrying', 'trailer2Weight']), organizationRma: orgRma });
+        const v = await md.createVehicle({ ...clean(vehicleManual, numericKeys('vehicle')), organizationRma: orgRma });
         setOk(`ТС ${String(v.registrationNumber)} сохранено`);
         setVehicleManual({ transportType: '1' });
       } else {
-        const emp = await md.createEmployee({ ...clean(employeeManual, ['type']), organizationRma: orgRma });
+        const emp = await md.createEmployee({ ...clean(employeeManual, numericKeys('employee')), organizationRma: orgRma });
         setOk(`Сотрудник ${String(emp.name)} сохранён`);
         setEmployeeManual({ type: '1' });
       }
@@ -764,29 +771,18 @@ function OrgRegistry() {
                 <form className="grid" onSubmit={submitManual}>
                   <div><label>{t('comp.f.rmainn')}</label><input required pattern="\d{9,10}" {...dm('rma')} /></div>
                   <div><label>{t('comp.f.fio_req')}</label><input required placeholder="Иванов Иван Иванович" {...dm('fullName')} /></div>
-                  <div><label>{t('f.tab')}</label><input {...dm('tabNumber')} /></div>
-                  <div><label>{t('comp.f.licnum')}</label><input placeholder="77 01 123456" {...dm('licenseNumber')} /></div>
-                  <div><label>{t('comp.f.cats')}</label><input {...dm('licenseCategories')} /></div>
-                  <div><label>{t('comp.f.licvalid')}</label><input type="date" {...dm('licenseValidTo')} /></div>
-                  <div><label>{t('comp.f.degree')}</label><input type="number" {...dm('degree')} /></div>
-                  <div><label>{t('comp.f.medcertnum')}</label><input {...dm('medCertNumber')} /></div>
-                  <div><label>{t('col.medto')}</label><input type="date" {...dm('medCertValidTo')} /></div>
-                  <div><label>{t('comp.f.safetyto')}</label><input type="date" {...dm('safetyCourseValidTo')} /></div>
-                  <div><label>{t('cf.safetynum20')}</label><input {...dm('safetyCourseNumber')} /></div>
-                  <div><label>{t('col.phone')}</label><input {...dm('phone')} /></div>
-                  <div><label>{t('drv.f.passport')}</label><input {...dm('passport')} /></div>
-                  <div><label>{t('col.address')}</label><input {...dm('address')} /></div>
-                  <div><label>{t('drv.f.email')}</label><input type="email" {...dm('email')} /></div>
-                  <div><label>{t('drv.f.powerattorney')}</label><input {...dm('powerAttorney')} /></div>
-                  <div><label>{t('drv.f.visato')}</label><input type="date" {...dm('visaValidTo')} /></div>
-                  <div><label>{t('drv.f.contractnum')}</label><input {...dm('contractNumber')} /></div>
-                  <div><label>{t('drv.f.contractto')}</label><input type="date" {...dm('contractValidTo')} /></div>
-                  <div><label>{t('drv.f.assignedveh')}</label>
-                    <select {...dm('assignedVehicleId')}>
-                      <option value="">{t('reg.opt.novehicle')}</option>
-                      {orgVehicles.map(v => <option key={String(v.id)} value={String(v.id)}>{String(v.registrationNumber)}{v.brand ? ` · ${String(v.brand)}` : ''}</option>)}
-                    </select>
-                  </div>
+                  {/* Остальные поля — по Настройки → Поля водителя (скрыть / обязательное). */}
+                  <ConfigurableFields form="driver" modes={driverModes}
+                    value={k => driverManual[k] ?? ''} onChange={(k, v) => setDriverManual({ ...driverManual, [k]: v })}
+                    overrides={{
+                      assignedVehicleId: ({ label }) => (<>
+                        <label>{label}</label>
+                        <select {...dm('assignedVehicleId')}>
+                          <option value="">{t('reg.opt.novehicle')}</option>
+                          {orgVehicles.map(v => <option key={String(v.id)} value={String(v.id)}>{String(v.registrationNumber)}{v.brand ? ` · ${String(v.brand)}` : ''}</option>)}
+                        </select>
+                      </>),
+                    }} />
                   <div className="full" style={{ display: 'flex', gap: 8 }}>
                     <button className="btn" type="submit">{t('comp.btn.savedriver')}</button>
                     <button className="btn secondary" type="button" onClick={() => setShowForm(false)}>{t('btn.cancel')}</button>
@@ -807,33 +803,9 @@ function OrgRegistry() {
                       {Object.entries(TRANSPORT_TYPES).map(([v]) => <option key={v} value={v}>{t('veh.type.' + v)}</option>)}
                     </select>
                   </div>
-                  <div><label>{t('tech.f.brandmodel')}</label><input placeholder="КАМАЗ 65115" {...vm('brand')} /></div>
-                  <div><label>{t('comp.f.parking')}</label><input pattern="\d{4}" {...vm('parkingNumber')} /></div>
-                  <div><label>{t('comp.f.capacity')}</label><input type="number" {...vm('capacity')} /></div>
-                  <div><label>{t('comp.f.carrying')}</label><input type="number" step="0.01" {...vm('carrying')} /></div>
-                  <div><label>{t('comp.f.odometerkm')}</label><input type="number" {...vm('odometer')} /></div>
-                  <div><label>VIN</label><input {...vm('vincode')} /></div>
-                  <div><label>{t('comp.f.year')}</label><input type="number" min={1950} max={2100} {...vm('yearManufacture')} /></div>
-                  <div><label>{t('col.techto')}</label><input type="date" {...vm('techInspectionValidTo')} /></div>
-                  <div><label>{t('comp.f.controlcardto')}</label><input type="date" {...vm('controlCardValidTo')} /></div>
-                  <div><label>{t('cf.controlcardnum')}</label><input {...vm('controlCardNumber')} /></div>
-                  <div><label>{t('cf.intlcertnum')}</label><input {...vm('intlCertificateNumber')} /></div>
-                  <div><label>{t('cf.insosago')}</label><input type="date" {...vm('insuranceValidTo')} /></div>
-                  <div><label>{t('dt.adrto')}</label><input type="date" {...vm('adrApprovalValidTo')} /></div>
-                  <div><label>{t('veh.f.techinspnum')}</label><input {...vm('techInspectionNumber')} /></div>
-                  <div><label>{t('veh.f.techpassnum')}</label><input {...vm('techPassportNumber')} /></div>
-                  <div><label>{t('veh.f.certnum')}</label><input {...vm('certificateNumber')} /></div>
-                  <div><label>{t('veh.f.aircond')}</label><input type="number" min={0} max={100} {...vm('airConditioner')} /></div>
-                  <div><label>{t('veh.f.intlcardnum')}</label><input {...vm('intlControlCardNumber')} /></div>
-                  <div><label>{t('veh.f.intlcardto')}</label><input type="date" {...vm('intlControlCardValidTo')} /></div>
-                  <div><label>{t('veh.f.tr1num')}</label><input placeholder="0101TJ01" {...vm('trailer1Number')} /></div>
-                  <div><label>{t('veh.f.tr1brand')}</label><input {...vm('trailer1Brand')} /></div>
-                  <div><label>{t('veh.f.tr1carrying')}</label><input type="number" step="0.01" {...vm('trailer1Carrying')} /></div>
-                  <div><label>{t('veh.f.tr1weight')}</label><input type="number" step="0.01" {...vm('trailer1Weight')} /></div>
-                  <div><label>{t('veh.f.tr2num')}</label><input placeholder="0101TJ01" {...vm('trailer2Number')} /></div>
-                  <div><label>{t('veh.f.tr2brand')}</label><input {...vm('trailer2Brand')} /></div>
-                  <div><label>{t('veh.f.tr2carrying')}</label><input type="number" step="0.01" {...vm('trailer2Carrying')} /></div>
-                  <div><label>{t('veh.f.tr2weight')}</label><input type="number" step="0.01" {...vm('trailer2Weight')} /></div>
+                  {/* Остальные поля — по Настройки → Поля транспорта (скрыть / обязательное). */}
+                  <ConfigurableFields form="vehicle" modes={vehicleModes}
+                    value={k => vehicleManual[k] ?? ''} onChange={(k, v) => setVehicleManual({ ...vehicleManual, [k]: v })} />
                   <div className="full" style={{ display: 'flex', gap: 8 }}>
                     <button className="btn" type="submit">{t('comp.btn.savevehicle')}</button>
                     <button className="btn secondary" type="button" onClick={() => setShowForm(false)}>{t('btn.cancel')}</button>
@@ -849,9 +821,9 @@ function OrgRegistry() {
                       {Object.entries(EMPLOYEE_TYPES).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
                     </select>
                   </div>
-                  <div><label>{t('f.tab')}</label><input {...em('tabNumber')} /></div>
-                  <div><label>{t('col.phone')}</label><input {...em('phone')} /></div>
-                  <div className="full"><label>{t('col.address')}</label><input placeholder="г. Душанбе, ул. …" {...em('address')} /></div>
+                  {/* Остальные поля — по Настройки → Поля сотрудника (скрыть / обязательное). */}
+                  <ConfigurableFields form="employee" modes={employeeModes}
+                    value={k => employeeManual[k] ?? ''} onChange={(k, v) => setEmployeeManual({ ...employeeManual, [k]: v })} />
                   <div className="full" style={{ display: 'flex', gap: 8 }}>
                     <button className="btn" type="submit">{t('comp.btn.saveemployee')}</button>
                     <button className="btn secondary" type="button" onClick={() => setShowForm(false)}>{t('btn.cancel')}</button>

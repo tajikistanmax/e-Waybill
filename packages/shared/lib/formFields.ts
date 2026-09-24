@@ -13,8 +13,19 @@ import { md } from './api';
 export type FieldMode = 'show' | 'required' | 'hidden';
 
 /** Поле формы: ключ в запросе, ключ подписи i18n; locked — системное (всегда обязательно);
- *  noRequired — отметка «да/нет», обязательной быть не может. */
-export type FormFieldDef = { key: string; labelKey: string; locked?: boolean; noRequired?: boolean };
+ *  noRequired — поле, которое нельзя сделать обязательным (отметка «да/нет», закрепление ТС).
+ *  type/options/… — как рисовать поле в формах, которые строятся по этому списку
+ *  (водитель, ТС, сотрудник); numeric — значение отправляется числом. */
+export type FormFieldDef = {
+  key: string; labelKey: string; locked?: boolean; noRequired?: boolean;
+  type?: 'text' | 'number' | 'date' | 'email' | 'select';
+  options?: { v: string; labelKey: string }[];
+  numeric?: boolean; placeholder?: string; pattern?: string; min?: number; max?: number; step?: string; full?: boolean;
+};
+
+const opts = (prefix: string, n: number) => Array.from({ length: n }, (_, i) => ({ v: String(i + 1), labelKey: `${prefix}${i + 1}` }));
+const date = (key: string, labelKey: string): FormFieldDef => ({ key, labelKey, type: 'date' });
+const num = (key: string, labelKey: string, extra: Partial<FormFieldDef> = {}): FormFieldDef => ({ key, labelKey, type: 'number', numeric: true, ...extra });
 
 export const FORM_FIELDS: Record<string, FormFieldDef[]> = {
   organization: [
@@ -49,7 +60,88 @@ export const FORM_FIELDS: Record<string, FormFieldDef[]> = {
     { key: 'giveFuel', labelKey: 'org.f.givefuel', noRequired: true },
     { key: 'allowedWaybillTypes', labelKey: 'cf.allowedtypes' },
   ],
+  // Водитель, ТС, сотрудник — полный состав карточки (разделы «Компания» и «Парк» строят формы
+  // по этому списку, поэтому поля там одинаковые и при изменении записи ничего не затирается).
+  driver: [
+    { key: 'rma', labelKey: 'comp.f.rmainn', locked: true, pattern: '\\d{9,10}' },
+    { key: 'fullName', labelKey: 'comp.f.fio_req', locked: true, placeholder: 'Иванов Иван Иванович' },
+    { key: 'tabNumber', labelKey: 'f.tab' },
+    date('birthDate', 'fleet.f.birth'),
+    num('experienceYears', 'fleet.f.experience', { min: 0, max: 80 }),
+    { key: 'licenseNumber', labelKey: 'comp.f.licnum', placeholder: '77 01 123456' },
+    { key: 'licenseCategories', labelKey: 'comp.f.cats' },
+    date('licenseValidTo', 'comp.f.licvalid'),
+    num('degree', 'comp.f.degree', { min: 1, max: 3 }),
+    { key: 'medCertNumber', labelKey: 'comp.f.medcertnum' },
+    date('medCertValidTo', 'col.medto'),
+    { key: 'medRestrictions', labelKey: 'fleet.f.medrestr' },
+    date('safetyCourseValidTo', 'comp.f.safetyto'),
+    { key: 'safetyCourseNumber', labelKey: 'cf.safetynum20' },
+    date('adrCertValidTo', 'fleet.f.adrcert'),
+    { key: 'phone', labelKey: 'col.phone' },
+    { key: 'passport', labelKey: 'drv.f.passport' },
+    { key: 'address', labelKey: 'col.address' },
+    { key: 'email', labelKey: 'drv.f.email', type: 'email' },
+    { key: 'powerAttorney', labelKey: 'drv.f.powerattorney' },
+    date('visaValidTo', 'drv.f.visato'),
+    { key: 'contractNumber', labelKey: 'drv.f.contractnum' },
+    date('contractValidTo', 'drv.f.contractto'),
+    { key: 'assignedVehicleId', labelKey: 'drv.f.assignedveh', noRequired: true },
+  ],
+  vehicle: [
+    { key: 'registrationNumber', labelKey: 'comp.f.regnum_req', locked: true },
+    { key: 'transportType', labelKey: 'comp.f.vehtype_req', locked: true, type: 'select', numeric: true, options: opts('tt.', 6) },
+    { key: 'brand', labelKey: 'tech.f.brandmodel', placeholder: 'КАМАЗ 65115' },
+    { key: 'vincode', labelKey: 'fleet.f.vin' },
+    { key: 'fuelType', labelKey: 'fleet.f.fueltype', type: 'select', numeric: true, options: opts('fuel.type.', 5) },
+    num('enginePower', 'fleet.f.enginepower', { min: 0, max: 3000 }),
+    num('yearManufacture', 'comp.f.year', { min: 1950, max: 2100 }),
+    { key: 'parkingNumber', labelKey: 'comp.f.parking', pattern: '\\d{4}' },
+    num('capacity', 'comp.f.capacity', { min: 0 }),
+    num('carrying', 'comp.f.carrying', { min: 0, step: '0.01' }),
+    num('odometer', 'comp.f.odometerkm', { min: 0 }),
+    date('techInspectionValidTo', 'col.techto'),
+    { key: 'techInspectionNumber', labelKey: 'veh.f.techinspnum' },
+    { key: 'techPassportNumber', labelKey: 'veh.f.techpassnum' },
+    { key: 'certificateNumber', labelKey: 'veh.f.certnum' },
+    date('controlCardValidTo', 'comp.f.controlcardto'),
+    { key: 'controlCardNumber', labelKey: 'cf.controlcardnum' },
+    { key: 'intlCertificateNumber', labelKey: 'cf.intlcertnum' },
+    { key: 'intlControlCardNumber', labelKey: 'veh.f.intlcardnum' },
+    date('intlControlCardValidTo', 'veh.f.intlcardto'),
+    date('insuranceValidTo', 'cf.insosago'),
+    date('adrApprovalValidTo', 'dt.adrto'),
+    num('airConditioner', 'veh.f.aircond', { min: 0, max: 100 }),
+    { key: 'trailer1Number', labelKey: 'veh.f.tr1num', placeholder: '0101TJ01' },
+    { key: 'trailer1Brand', labelKey: 'veh.f.tr1brand' },
+    num('trailer1Carrying', 'veh.f.tr1carrying', { min: 0, step: '0.01' }),
+    num('trailer1Weight', 'veh.f.tr1weight', { min: 0, step: '0.01' }),
+    { key: 'trailer2Number', labelKey: 'veh.f.tr2num', placeholder: '0101TJ01' },
+    { key: 'trailer2Brand', labelKey: 'veh.f.tr2brand' },
+    num('trailer2Carrying', 'veh.f.tr2carrying', { min: 0, step: '0.01' }),
+    num('trailer2Weight', 'veh.f.tr2weight', { min: 0, step: '0.01' }),
+  ],
+  employee: [
+    { key: 'rma', labelKey: 'comp.f.rmainn', locked: true, pattern: '\\d{9,10}' },
+    { key: 'name', labelKey: 'comp.f.fio_req', locked: true, placeholder: 'Петров Пётр Петрович' },
+    { key: 'type', labelKey: 'comp.f.position_req', locked: true, type: 'select', numeric: true, options: opts('fleet.emp.', 5) },
+    { key: 'tabNumber', labelKey: 'f.tab' },
+    { key: 'phone', labelKey: 'col.phone' },
+    { key: 'address', labelKey: 'col.address', placeholder: 'г. Душанбе, ул. …', full: true },
+    { key: 'certNumber', labelKey: 'emp.f.certnum' },
+    date('certValidTo', 'emp.f.certto'),
+  ],
 };
+
+/** Ключи всех полей формы — для предзаполнения при изменении записи и отправки целиком. */
+export const formKeys = (form: string) => (FORM_FIELDS[form] ?? []).map(f => f.key);
+/** Ключи полей, значения которых отправляются числом. */
+export const numericKeys = (form: string) => (FORM_FIELDS[form] ?? []).filter(f => f.numeric).map(f => f.key);
+/** Подпись поля: без «*» из перевода; «*» добавляется, если поле обязательно. */
+export function fieldLabel(t: (k: string) => string, f: FormFieldDef, required: boolean) {
+  const s = t(f.labelKey).replace(/\s*\*\s*$/, '');
+  return required ? `${s} *` : s;
+}
 
 export const FORMS_CATEGORY = 'forms';
 
