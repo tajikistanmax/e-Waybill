@@ -53,13 +53,19 @@ public class AuthService {
     private final int maxFailedAttempts;
     private final long lockMinutes;
     private final long refreshTtlSeconds;
+    /** Подпись записи в приложении-аутентификаторе. */
+    private final String totpIssuer;
+
+    /** Срок ключа смены временного пароля и ключа второго шага входа. */
+    private static final long SHORT_KEY_SECONDS = 900;
 
     public AuthService(AppUserRepository users, AuthRefreshTokenRepository refreshTokens,
                        PasswordEncoder passwords, TokenIssuer tokens,
                        tj.mintrans.epd.masterdata.service.AuditService audit,
                        @Value("${epd.auth.max-failed-attempts:10}") int maxFailedAttempts,
                        @Value("${epd.auth.lock-minutes:15}") long lockMinutes,
-                       @Value("${epd.auth.refresh-ttl-seconds:43200}") long refreshTtlSeconds) {
+                       @Value("${epd.auth.refresh-ttl-seconds:43200}") long refreshTtlSeconds,
+                       @Value("${epd.auth.totp-issuer:e-Rohkhat}") String totpIssuer) {
         this.users = users;
         this.refreshTokens = refreshTokens;
         this.passwords = passwords;
@@ -68,6 +74,7 @@ public class AuthService {
         this.maxFailedAttempts = maxFailedAttempts;
         this.lockMinutes = lockMinutes;
         this.refreshTtlSeconds = refreshTtlSeconds;
+        this.totpIssuer = totpIssuer;
         this.dummyHash = passwords.encode(UUID.randomUUID().toString());
     }
 
@@ -94,6 +101,41 @@ public class AuthService {
     }
 
     /**
+     * Пароль верен, нужен код второго фактора. Выдаётся одноразовый ключ второго шага.
+     *
+     * <p>{@code setupSecret} не пуст, если второй фактор ещё не подключён: пользователь
+     * сканирует QR-код ({@code otpauthUri}) и подтверждает подключение первым кодом.</p>
+     */
+    public static class SecondFactorRequired extends RuntimeException {
+        private final String challengeToken;
+        private final String setupSecret;
+        private final String otpauthUri;
+
+        SecondFactorRequired(String challengeToken, String setupSecret, String otpauthUri) {
+            super("Требуется код второго фактора");
+            this.challengeToken = challengeToken;
+            this.setupSecret = setupSecret;
+            this.otpauthUri = otpauthUri;
+        }
+
+        public String challengeToken() {
+            return challengeToken;
+        }
+
+        public String setupSecret() {
+            return setupSecret;
+        }
+
+        public String otpauthUri() {
+            return otpauthUri;
+        }
+
+        public boolean setup() {
+            return setupSecret != null;
+        }
+    }
+
+    /**
      * Вход по логину и паролю.
      *
      * <p>{@code noRollbackFor}: отказ во входе сообщается исключением, но записи, сделанные до
@@ -102,7 +144,8 @@ public class AuthService {
      * «ключ недействителен» и новый пользователь не может войти вообще). До исправления
      * 23.09.2026 любое из этих исключений откатывало транзакцию вместе с записями.</p>
      */
-    @Transactional(noRollbackFor = {ResponseStatusException.class, PasswordChangeRequired.class})
+    @Transactional(noRollbackFor = {ResponseStatusException.class, PasswordChangeRequired.class,
+            SecondFactorRequired.class})
     public Tokens login(String username, String password) {
         var user = users.findByUsername(username == null ? "" : username.trim()).orElse(null);
         if (user == null) {
@@ -123,15 +166,93 @@ public class AuthService {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Учётная запись отключена");
         }
 
-        user.setFailedAttempts(0);
-        user.setLockedUntil(null);
+        // Счётчик неудач обнуляет верный пароль — но не у учёток со вторым фактором: там его
+        // обнулит только верный код. Иначе, зная пароль, код можно подбирать бесконечно,
+        // заново входя паролем после каждых девяти неверных кодов.
+        if (!user.secondFactorApplies()) {
+            user.setFailedAttempts(0);
+            user.setLockedUntil(null);
+        }
 
         if (user.isMustChangePassword()) {
             // Пароль верен, но временный: в систему не пускаем, выдаём ключ для страницы смены.
             users.save(user);
-            throw new PasswordChangeRequired(issueRefresh(user, true));
+            throw new PasswordChangeRequired(issueKey(user, AuthRefreshToken.PASSWORD_CHANGE, SHORT_KEY_SECONDS));
         }
 
+        if (user.secondFactorApplies()) {
+            // Пароль верен, но нужен код из приложения-аутентификатора. Сессию не выдаём —
+            // только ключ второго шага. Второй фактор ещё не подключён — выдаём секрет для
+            // QR-кода; повторная попытка входа отдаёт тот же секрет, чтобы уже отсканированный
+            // код не перестал подходить.
+            String setupSecret = null;
+            if (user.getTotpSecret() == null) {
+                if (user.getTotpPendingSecret() == null) {
+                    user.setTotpPendingSecret(Totp.newSecret());
+                }
+                setupSecret = user.getTotpPendingSecret();
+            }
+            users.save(user);
+            String challenge = issueKey(user, AuthRefreshToken.SECOND_FACTOR, SHORT_KEY_SECONDS);
+            throw new SecondFactorRequired(challenge, setupSecret,
+                    setupSecret == null ? null : Totp.otpauthUri(totpIssuer, user.getUsername(), setupSecret));
+        }
+
+        return completeLogin(user);
+    }
+
+    /**
+     * Второй шаг входа: код из приложения-аутентификатора по ключу, выданному после верного
+     * пароля. При первой настройке верный код подтверждает подключение второго фактора.
+     *
+     * <p>Неверный код считается неудачной попыткой входа (общий счётчик с паролем): десять
+     * неудач подряд блокируют учётную запись, как и при подборе пароля.</p>
+     */
+    @Transactional(noRollbackFor = ResponseStatusException.class)
+    public Tokens verifySecondFactor(String challengeToken, String code) {
+        var stored = refreshTokens.findByTokenHash(hash(challengeToken))
+                .filter(t -> t.isUsableFor(AuthRefreshToken.SECOND_FACTOR))
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED,
+                        "Время на ввод кода истекло, войдите заново"));
+        var user = users.findById(stored.getUserId()).orElse(null);
+        if (user == null || !user.isEnabled() || user.isMustChangePassword()) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Войдите заново");
+        }
+        if (user.getLockedUntil() != null && user.getLockedUntil().isAfter(OffsetDateTime.now())) {
+            throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS,
+                    "Учётная запись временно заблокирована из-за неудачных попыток входа. Повторите позже.");
+        }
+        boolean enrolling = user.getTotpSecret() == null;
+        String secret = enrolling ? user.getTotpPendingSecret() : user.getTotpSecret();
+        if (secret == null) {
+            // Второй фактор сбросили, пока пользователь вводил код, — начать вход сначала.
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Войдите заново");
+        }
+        long step = Totp.verify(secret, code, java.time.Instant.now(), user.getTotpLastStep());
+        if (step < 0) {
+            registerFailure(user);
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED,
+                    "Неверный код. Введите 6 цифр, которые сейчас показывает приложение.");
+        }
+        user.setTotpLastStep(step);
+        if (enrolling) {
+            user.setTotpSecret(secret);
+            user.setTotpPendingSecret(null);
+            user.setTotpEnrolledAt(OffsetDateTime.now());
+            audit.recordAs(user.getUsername(), user.getOrganizationRma(), "TOTP_ENROLL", "AUTH",
+                    user.getUsername(), null, null, null, null);
+            log.info("Второй фактор подключён: {}", user.getUsername());
+        }
+        // Ключ второго шага одноразовый.
+        stored.setRevoked(true);
+        refreshTokens.save(stored);
+        return completeLogin(user);
+    }
+
+    /** Все проверки пройдены: сбросить счётчик неудач, записать вход, выдать сессию. */
+    private Tokens completeLogin(AppUser user) {
+        user.setFailedAttempts(0);
+        user.setLockedUntil(null);
         user.setLastLoginAt(OffsetDateTime.now());
         users.save(user);
         // Вход в журнал аудита: раньше эти записи приходили из событий Keycloak отдельной
@@ -144,7 +265,9 @@ public class AuthService {
     @Transactional
     public Tokens refresh(String refreshToken) {
         var stored = refreshTokens.findByTokenHash(hash(refreshToken)).orElse(null);
-        if (stored == null || !stored.isUsable()) {
+        // Только токен обновления: ключ смены пароля и ключ второго шага входа лежат в той же
+        // таблице, но сессию по ним получить нельзя (иначе вход без кода второго фактора).
+        if (stored == null || !stored.isUsableFor(AuthRefreshToken.REFRESH)) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Сессия истекла, войдите заново");
         }
         var user = users.findById(stored.getUserId()).orElse(null);
@@ -180,7 +303,7 @@ public class AuthService {
         AppUser user;
         if (changeToken != null && !changeToken.isBlank()) {
             var stored = refreshTokens.findByTokenHash(hash(changeToken))
-                    .filter(AuthRefreshToken::isUsable)
+                    .filter(t -> t.isUsableFor(AuthRefreshToken.PASSWORD_CHANGE))
                     .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED,
                             "Ключ смены пароля недействителен, войдите заново"));
             user = users.findById(stored.getUserId()).orElseThrow(() ->
@@ -233,18 +356,20 @@ public class AuthService {
 
     private Tokens issueTokens(AppUser user) {
         String access = tokens.accessToken(user);
-        String refresh = issueRefresh(user, false);
+        String refresh = issueKey(user, AuthRefreshToken.REFRESH, refreshTtlSeconds);
         return new Tokens(access, tokens.accessTtlSeconds(), refresh, refreshTtlSeconds, "Bearer");
     }
 
-    private String issueRefresh(AppUser user, boolean shortLived) {
+    /** Одноразовый ключ заданного назначения; в базу пишется только его отпечаток. */
+    private String issueKey(AppUser user, String purpose, long ttlSeconds) {
         byte[] raw = new byte[48];
         RANDOM.nextBytes(raw);
         String token = Base64.getUrlEncoder().withoutPadding().encodeToString(raw);
         var entity = new AuthRefreshToken();
         entity.setUserId(user.getId());
         entity.setTokenHash(hash(token));
-        entity.setExpiresAt(OffsetDateTime.now().plusSeconds(shortLived ? 900 : refreshTtlSeconds));
+        entity.setPurpose(purpose);
+        entity.setExpiresAt(OffsetDateTime.now().plusSeconds(ttlSeconds));
         refreshTokens.save(entity);
         return token;
     }

@@ -55,7 +55,9 @@ public class SecurityConfig {
                         // Вход в платформу: выдача и обновление токена, смена пароля, открытые
                         // ключи подписи. Это единственная дверь без токена — ею же пользуется
                         // служба путевых листов, чтобы проверять подпись (набор ключей).
-                        .requestMatchers("/api/v1/auth/token", "/api/v1/auth/refresh",
+                        // second-factor — второй шаг входа (код из приложения); пускает только
+                        // по одноразовому ключу, выданному после верного пароля.
+                        .requestMatchers("/api/v1/auth/token", "/api/v1/auth/second-factor", "/api/v1/auth/refresh",
                                 "/api/v1/auth/logout", "/api/v1/auth/password", "/api/v1/auth/jwks").permitAll()
                         // Публичная проверка QR (инспектор без логина)
                         .requestMatchers("/api/v1/verify/**").permitAll()

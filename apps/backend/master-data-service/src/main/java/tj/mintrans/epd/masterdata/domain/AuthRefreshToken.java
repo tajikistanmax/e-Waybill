@@ -32,6 +32,18 @@ public class AuthRefreshToken {
     @Column(nullable = false)
     private boolean revoked;
 
+    /**
+     * Назначение ключа (V81): {@link #REFRESH} — токен обновления сессии, {@link #PASSWORD_CHANGE} —
+     * смена временного пароля, {@link #SECOND_FACTOR} — второй шаг входа. Каждая точка входа
+     * принимает только своё назначение.
+     */
+    @Column(nullable = false)
+    private String purpose = REFRESH;
+
+    public static final String REFRESH = "REFRESH";
+    public static final String PASSWORD_CHANGE = "PASSWORD_CHANGE";
+    public static final String SECOND_FACTOR = "SECOND_FACTOR";
+
     @Column(name = "created_at", nullable = false)
     private OffsetDateTime createdAt;
 
@@ -45,6 +57,19 @@ public class AuthRefreshToken {
 
     public boolean isUsable() {
         return !revoked && expiresAt != null && expiresAt.isAfter(OffsetDateTime.now());
+    }
+
+    /** Ключ годен и выдан именно для этого назначения. */
+    public boolean isUsableFor(String expectedPurpose) {
+        return isUsable() && expectedPurpose.equals(purpose);
+    }
+
+    public String getPurpose() {
+        return purpose;
+    }
+
+    public void setPurpose(String purpose) {
+        this.purpose = purpose;
     }
 
     public UUID getId() {

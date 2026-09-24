@@ -65,6 +65,17 @@ public class AppUser {
     @Column(name = "totp_required", nullable = false)
     private boolean totpRequired;
 
+    /** Секрет первой настройки, ещё не подтверждённый кодом (V81). */
+    @Column(name = "totp_pending_secret")
+    private String totpPendingSecret;
+
+    /** Шаг времени последнего принятого кода — повтор кода не принимается (V81). */
+    @Column(name = "totp_last_step")
+    private Long totpLastStep;
+
+    @Column(name = "totp_enrolled_at")
+    private OffsetDateTime totpEnrolledAt;
+
     @Column(name = "failed_attempts", nullable = false)
     private int failedAttempts;
 
@@ -243,6 +254,35 @@ public class AppUser {
 
     public void setTotpRequired(boolean totpRequired) {
         this.totpRequired = totpRequired;
+    }
+
+    public String getTotpPendingSecret() {
+        return totpPendingSecret;
+    }
+
+    public void setTotpPendingSecret(String totpPendingSecret) {
+        this.totpPendingSecret = totpPendingSecret;
+    }
+
+    public Long getTotpLastStep() {
+        return totpLastStep;
+    }
+
+    public void setTotpLastStep(Long totpLastStep) {
+        this.totpLastStep = totpLastStep;
+    }
+
+    public OffsetDateTime getTotpEnrolledAt() {
+        return totpEnrolledAt;
+    }
+
+    public void setTotpEnrolledAt(OffsetDateTime totpEnrolledAt) {
+        this.totpEnrolledAt = totpEnrolledAt;
+    }
+
+    /** Второй фактор спрашивается: обязателен по роли либо уже подключён самим пользователем. */
+    public boolean secondFactorApplies() {
+        return totpRequired || totpSecret != null;
     }
 
     public int getFailedAttempts() {

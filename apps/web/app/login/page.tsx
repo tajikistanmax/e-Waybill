@@ -3,7 +3,8 @@
 import { useEffect, useState, type CSSProperties } from 'react';
 import { useRouter } from 'next/navigation';
 import { Icon, P } from '../icons';
-import { useAuth, PasswordChangeRequired } from '@/lib/auth';
+import QRCode from 'qrcode';
+import { useAuth, PasswordChangeRequired, SecondFactorRequired, pendingSecondFactor, cancelSecondFactor, type SecondFactorPending } from '@/lib/auth';
 import { useT } from '@/lib/i18n';
 import { md, type PlatformSetting } from '@/lib/api';
 import { useBrand, BrandLogo } from '@/lib/brand';
@@ -45,6 +46,19 @@ const EN: Record<string, string> = {
   'login.p.valid': 'Active',
   'kpi.done': 'Completed',
   'login.caption': 'Digital platform for efficient and secure transport management',
+  'mfa.h': 'Sign-in confirmation',
+  'mfa.intro': 'Enter the 6-digit code from the authenticator app on your phone.',
+  'mfa.code': 'Code from the app',
+  'mfa.code.ph': '6 digits',
+  'mfa.setup.intro': 'Two-factor sign-in is required for your account. Set it up once:',
+  'mfa.setup.s1': 'Install an authenticator app on your phone (Google Authenticator, Microsoft Authenticator, FreeOTP or similar).',
+  'mfa.setup.s2': 'Scan the QR code with the app.',
+  'mfa.setup.s3': 'Enter the 6-digit code the app shows.',
+  'mfa.setup.manual': 'Cannot scan? Enter the key manually:',
+  'mfa.submit': 'Confirm',
+  'mfa.busy': 'Checking…',
+  'mfa.back': 'Sign in as another user',
+  'mfa.lost': 'No access to your phone? Contact your administrator to reset the second factor.',
 };
 
 const card: CSSProperties = {
@@ -53,7 +67,7 @@ const card: CSSProperties = {
 };
 
 export default function LoginPage() {
-  const { login, authenticated, ready, roles } = useAuth();
+  const { login, verifySecondFactor, authenticated, ready, roles } = useAuth();
   const { t, lang, setLang } = useT();
   const brand = useBrand();
   const { homeFor } = useRoleAccess();
@@ -67,11 +81,44 @@ export default function LoginPage() {
   const [showSupport, setShowSupport] = useState(false);
   const [ssoNote, setSsoNote] = useState(false);
   const [contacts, setContacts] = useState<Record<string, string>>({});
+  // Второй шаг входа (код из приложения); null — обычная форма логина и пароля.
+  const [mfa, setMfa] = useState<SecondFactorPending | null>(null);
+  const [code, setCode] = useState('');
+  const [qr, setQr] = useState('');
 
   // Английский для страницы входа; иначе — обычный перевод (RU/TJ).
   const L = (k: string) => (lang === 'en' && EN[k] ? EN[k] : t(k));
 
   useEffect(() => { if (ready && authenticated) router.replace(homeFor(roles)); }, [ready, authenticated, roles, router, homeFor]);
+
+  // Незавершённый вход со вторым фактором (например, сюда вернула страница смены временного
+  // пароля) — сразу показываем шаг ввода кода, а не просим пароль ещё раз.
+  useEffect(() => { const p = pendingSecondFactor(); if (p) setMfa(p); }, []);
+
+  // QR-код первой настройки рисуется в браузере (библиотека в сборке) — секрет никуда не уходит.
+  useEffect(() => {
+    if (!mfa?.otpauthUri) { setQr(''); return; }
+    QRCode.toDataURL(mfa.otpauthUri, { width: 200, margin: 1 }).then(setQr).catch(() => setQr(''));
+  }, [mfa]);
+
+  async function submitCode(e: React.FormEvent) {
+    e.preventDefault();
+    setError(''); setBusy(true);
+    try {
+      await verifySecondFactor(code);
+    } catch (err) {
+      setError(err instanceof Error && err.message ? err.message : L('login.err'));
+      setCode('');
+      // Ключ второго шага погашен (истёк / блокировка) — назад к логину и паролю.
+      if (!pendingSecondFactor()) setMfa(null);
+      setBusy(false);
+    }
+  }
+
+  function backToPassword() {
+    cancelSecondFactor();
+    setMfa(null); setCode(''); setError(''); setPassword('');
+  }
 
   // Контакты поддержки — из публичных настроек платформы (§29), не захардкожены.
   useEffect(() => {
@@ -92,6 +139,11 @@ export default function LoginPage() {
       // она была недоступна, и первый вход нового пользователя упирался в пустой экран.
       if (err instanceof PasswordChangeRequired) {
         router.replace('/auth/password');
+        return;
+      }
+      // Пароль верен, нужен код второго фактора — показываем второй шаг.
+      if (err instanceof SecondFactorRequired) {
+        setMfa(err.pending); setCode(''); setBusy(false);
         return;
       }
       // Показываем настоящую причину: auth.login бросает разные сообщения — «Сервер
@@ -140,6 +192,49 @@ export default function LoginPage() {
         <div className="sub">{L('app.subtitle')}</div>
         <div className="rule" />
 
+        {mfa ? (
+        <form className="login-form" onSubmit={submitCode} data-testid="mfa-form">
+          {error && <div className="error">{error}</div>}
+          <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ink)', marginBottom: 6 }}>{L('mfa.h')}</div>
+          {mfa.secret ? (
+            <div style={{ fontSize: 12.5, color: 'var(--muted)', lineHeight: 1.55, marginBottom: 8 }}>
+              {L('mfa.setup.intro')}
+              <ol style={{ margin: '6px 0 0', paddingLeft: 18 }}>
+                <li>{L('mfa.setup.s1')}</li>
+                <li>{L('mfa.setup.s2')}</li>
+                <li>{L('mfa.setup.s3')}</li>
+              </ol>
+              {qr && (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={qr} alt="QR" data-testid="mfa-qr" style={{ display: 'block', width: 180, height: 180, margin: '10px auto 6px', border: '1px solid var(--line-soft)', borderRadius: 8 }} />
+              )}
+              <div style={{ marginTop: 4 }}>{L('mfa.setup.manual')}</div>
+              <code data-testid="mfa-secret" style={{ display: 'block', marginTop: 4, padding: '6px 8px', background: 'var(--blue-050)', borderRadius: 6, fontSize: 13, letterSpacing: 1, wordBreak: 'break-all', color: 'var(--ink)' }}>
+                {mfa.secret.replace(/(.{4})/g, '$1 ').trim()}
+              </code>
+            </div>
+          ) : (
+            <div style={{ fontSize: 12.5, color: 'var(--muted)', lineHeight: 1.55, marginBottom: 8 }}>{L('mfa.intro')}</div>
+          )}
+          <label htmlFor="mfa-code">{L('mfa.code')}</label>
+          <div className="field">
+            <Icon d={P.shield} cls="fic" />
+            <input id="mfa-code" name="code" value={code} onChange={e => setCode(e.target.value.replace(/[^\d ]/g, '').slice(0, 7))}
+              placeholder={L('mfa.code.ph')} inputMode="numeric" autoComplete="one-time-code" required autoFocus
+              pattern="\d{3} ?\d{3}" />
+          </div>
+          <button className="btn btn-login" type="submit" disabled={busy}>
+            <Icon d={P.login} cls="" /> {busy ? L('mfa.busy') : L('mfa.submit')}
+          </button>
+          <div className="login-row" style={{ marginTop: 10 }}>
+            <button type="button" onClick={backToPassword}
+              style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--blue-600)', font: 'inherit' }}>
+              {L('mfa.back')}
+            </button>
+          </div>
+          <div className="hint" style={{ marginTop: 8, lineHeight: 1.5 }}>{L('mfa.lost')}</div>
+        </form>
+        ) : (
         <form className="login-form" onSubmit={submit}>
           {error && <div className="error">{error}</div>}
           <label>{L('login.user')}</label>
@@ -195,6 +290,7 @@ export default function LoginPage() {
             {L('login.secure')}
           </div>
         </form>
+        )}
 
         <div className="login-foot">© 2025 ГУП «Маркази рақамикунонии соҳаи нақлиёт» · Министерство транспорта Республики Таджикистан</div>
       </div>

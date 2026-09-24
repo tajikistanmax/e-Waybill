@@ -565,6 +565,13 @@ export const md = {
     }).then(r => handle<OrgUser>(r)),
     resetPassword: (id: string) => fetch(`/md-api/api/v1/org-users/${id}/reset-password`, {
       method: 'POST', headers: authHeaders() }).then(r => handle<OrgUser>(r)),
+    // Второй фактор: сброс (потерян телефон) и признак обязательности.
+    resetSecondFactor: (id: string) => fetch(`/md-api/api/v1/org-users/${id}/reset-second-factor`, {
+      method: 'POST', headers: authHeaders() }).then(r => handle<OrgUser>(r)),
+    setSecondFactorRequired: (id: string, required: boolean) => fetch(`/md-api/api/v1/org-users/${id}/second-factor`, {
+      method: 'PATCH', headers: authHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ required }),
+    }).then(r => handle<OrgUser>(r)),
     remove: (id: string) => mdDelete(`org-users/${id}`),
   },
   // Учредительные/разрешительные документы организации (скан-копии).
@@ -636,6 +643,9 @@ export type OrgUser = {
   roles: string[]; temporaryPassword: string | null;
   /** Вправе ли текущий пользователь блокировать/сбрасывать/менять роль/удалять эту учётку. */
   manageable?: boolean;
+  /** Второй фактор входа: обязателен / уже подключён (V81). */
+  secondFactorRequired?: boolean;
+  secondFactorEnrolled?: boolean;
 };
 
 export type PlatformSetting = {

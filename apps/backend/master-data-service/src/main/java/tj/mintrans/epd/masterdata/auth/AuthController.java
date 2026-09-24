@@ -45,6 +45,9 @@ public class AuthController {
     public record PasswordRequest(String changeToken, String currentPassword, @NotBlank String newPassword) {
     }
 
+    public record SecondFactorRequest(@NotBlank String challengeToken, @NotBlank String code) {
+    }
+
     /**
      * Выдача токена по логину и паролю. Ответ повторяет прежний формат, чтобы клиент не
      * пришлось переписывать целиком.
@@ -62,7 +65,37 @@ public class AuthController {
             out.put("changeToken", e.changeToken());
             out.put("message", "Пароль временный. Задайте постоянный пароль для входа.");
             return ResponseEntity.status(HttpStatus.PRECONDITION_REQUIRED).body(out);
+        } catch (AuthService.SecondFactorRequired e) {
+            return ResponseEntity.status(HttpStatus.PRECONDITION_REQUIRED).body(secondFactor(e));
         }
+    }
+
+    /**
+     * Второй шаг входа: код из приложения-аутентификатора. Ответ — такой же, как у /token.
+     * При первой настройке верный код заодно подтверждает подключение второго фактора.
+     */
+    @PostMapping("/second-factor")
+    public Map<String, Object> secondFactor(@Valid @RequestBody SecondFactorRequest req) {
+        return body(auth.verifySecondFactor(req.challengeToken(), req.code()));
+    }
+
+    /**
+     * 428 «нужен код»: {@code second_factor_required} — второй фактор подключён, спросить код;
+     * {@code second_factor_setup} — ещё не подключён: показать QR-код (otpauthUri) и секрет для
+     * ручного ввода, затем спросить первый код.
+     */
+    private static Map<String, Object> secondFactor(AuthService.SecondFactorRequired e) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("error", e.setup() ? "second_factor_setup" : "second_factor_required");
+        out.put("challengeToken", e.challengeToken());
+        if (e.setup()) {
+            out.put("secret", e.setupSecret());
+            out.put("otpauthUri", e.otpauthUri());
+            out.put("message", "Для этой учётной записи обязателен второй фактор. Подключите приложение-аутентификатор.");
+        } else {
+            out.put("message", "Введите код из приложения-аутентификатора.");
+        }
+        return out;
     }
 
     @PostMapping("/refresh")

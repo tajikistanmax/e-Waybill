@@ -133,20 +133,20 @@ foreach ($t in 'WB_BUS', 'WB_TRUCK') {
     Check "waybill-norm.xlsx $t" (Api 'analyst-automation' 'GET' "$Wb/api/v1/reports/waybill-norm.xlsx?type=$t&$p") 'xlsx' 'analyst'
 }
 Check 'summary (analyst, all orgs)' (Api 'analyst-automation' 'GET' "$Wb/api/v1/reports/summary?$p") 'json' 'analyst'
-Check 'passenger COMPANY_SUMMARY (admin)' (Api 'admin' 'GET' "$Wb/api/v1/reports/passenger?type=COMPANY_SUMMARY&$p&organizationRma=$Org") 'json' 'admin'
+Check 'passenger COMPANY_SUMMARY (admin)' (Api 'admin-automation' 'GET' "$Wb/api/v1/reports/passenger?type=COMPANY_SUMMARY&$p&organizationRma=$Org") 'json' 'admin'
 
 # archive of a real organization (platform role picks the organization)
 if ($ArchiveOrg) {
     $q = "$p&organizationRma=$ArchiveOrg"
-    Check "summary org=$ArchiveOrg" (Api 'admin' 'GET' "$Wb/api/v1/reports/summary?$q") 'json' 'admin'
+    Check "summary org=$ArchiveOrg" (Api 'admin-automation' 'GET' "$Wb/api/v1/reports/summary?$q") 'json' 'admin'
     foreach ($t in 'COMPANY_SUMMARY', 'BY_VEHICLE', 'BY_DRIVER', 'DRIVER_SALARY', 'FUEL_GENERAL', 'REGISTRY_JOURNAL') {
         foreach ($bill in 'passenger', 'cargo') {
-            Check "$bill $t org=$ArchiveOrg" (Api 'admin' 'GET' "$Wb/api/v1/reports/$bill`?type=$t&$q") 'json' 'admin'
+            Check "$bill $t org=$ArchiveOrg" (Api 'admin-automation' 'GET' "$Wb/api/v1/reports/$bill`?type=$t&$q") 'json' 'admin'
         }
     }
-    Check "passenger.xlsx COMPANY_SUMMARY org=$ArchiveOrg" (Api 'admin' 'GET' "$Wb/api/v1/reports/passenger.xlsx?type=COMPANY_SUMMARY&$q") 'xlsx' 'admin'
-    Check "journal/doctor org=$ArchiveOrg" (Api 'admin' 'GET' "$Wb/api/v1/reports/journal/doctor?$q") 'json' 'admin'
-    Check "by-driver org=$ArchiveOrg" (Api 'admin' 'GET' "$Wb/api/v1/reports/by-driver?$q") 'json' 'admin'
+    Check "passenger.xlsx COMPANY_SUMMARY org=$ArchiveOrg" (Api 'admin-automation' 'GET' "$Wb/api/v1/reports/passenger.xlsx?type=COMPANY_SUMMARY&$q") 'xlsx' 'admin'
+    Check "journal/doctor org=$ArchiveOrg" (Api 'admin-automation' 'GET' "$Wb/api/v1/reports/journal/doctor?$q") 'json' 'admin'
+    Check "by-driver org=$ArchiveOrg" (Api 'admin-automation' 'GET' "$Wb/api/v1/reports/by-driver?$q") 'json' 'admin'
 }
 
 # registry / dashboards used by report pages

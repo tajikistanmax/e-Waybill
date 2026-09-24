@@ -8,8 +8,9 @@
  */
 
 const MD = process.env.E2E_MD_URL || 'http://localhost:8081';
-const ADMIN = process.env.E2E_ADMIN_USER || 'admin';
-const ADMIN_PASSWORD = process.env.E2E_ADMIN_PASSWORD || 'Epd-Qa-AdminRoot-2026';
+// У `admin` обязателен второй фактор (код из телефона) — автотест входит дублем без него.
+const ADMIN = process.env.E2E_ADMIN_USER || 'admin-automation';
+const ADMIN_PASSWORD = process.env.E2E_ADMIN_PASSWORD || 'Epd-Qa-Automation-Admin-2026';
 
 async function setSetting(category: string, key: string, value: string) {
   const ctx = await request.newContext();

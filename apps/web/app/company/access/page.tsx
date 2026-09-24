@@ -173,6 +173,21 @@ export default function AccessPage() {
     } catch (e) { setErr(e instanceof Error ? e.message : String(e)); }
   }
 
+  // Второй фактор (находка 27): сброс — сотрудник потерял или сменил телефон; признак
+  // «требовать» — при следующем входе сотрудник подключит приложение-аутентификатор.
+  async function resetSecondFactor(u: OrgUser) {
+    if (!confirm(`«${u.username}»: ${t('acc.2fa.reset.confirm')}`)) return;
+    setErr('');
+    try { await md.orgUsers.resetSecondFactor(u.id); await load(); }
+    catch (e) { setErr(e instanceof Error ? e.message : String(e)); }
+  }
+
+  async function toggleSecondFactor(u: OrgUser) {
+    setErr('');
+    try { await md.orgUsers.setSecondFactorRequired(u.id, !u.secondFactorRequired); await load(); }
+    catch (e) { setErr(e instanceof Error ? e.message : String(e)); }
+  }
+
   // Смена роли учётной записи (одна роль модуля; API /org-users/{id}/role). Раньше в интерфейсе
   // этого действия не было — только через API.
   async function changeRole(u: OrgUser, role: string) {
@@ -313,7 +328,7 @@ export default function AccessPage() {
         <div style={{ overflowX: 'auto' }}>
         <table>
           <thead>
-            <tr><th>{t('access.col.login')}</th><th>{t('access.col.fullname')}</th><th>{t('access.col.org')}</th><th>{t('access.col.role')}</th><th>{t('access.col.status')}</th><th>{' '}</th></tr>
+            <tr><th>{t('access.col.login')}</th><th>{t('access.col.fullname')}</th><th>{t('access.col.org')}</th><th>{t('access.col.role')}</th><th>{t('access.col.status')}</th><th>{t('acc.2fa')}</th><th>{' '}</th></tr>
           </thead>
           <tbody>
             {sortedUsers.map(u => (
@@ -332,6 +347,11 @@ export default function AccessPage() {
                   ) : t('role.' + roleOf(u))}
                 </td>
                 <td>{u.enabled ? <span className="badge green">{t('access.status.enabled')}</span> : <span className="badge">{t('access.status.disabled')}</span>}</td>
+                <td>
+                  {u.secondFactorEnrolled ? <span className="badge green">{t('acc.2fa.on')}</span>
+                    : u.secondFactorRequired ? <span className="badge amber">{t('acc.2fa.pending')}</span>
+                    : <span style={dim}>{t('acc.2fa.off')}</span>}
+                </td>
                 <td style={{ textAlign: 'right' }}><div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, justifyContent: 'flex-end' }}>
                   {u.manageable === false ? (
                     <span style={{ ...dim, fontSize: 12 }}>{t('access.notmanageable')}</span>
@@ -339,6 +359,10 @@ export default function AccessPage() {
                     <>
                       <button className="btn secondary" style={smallBtn} onClick={() => toggle(u)}>{u.enabled ? t('access.btn.disable') : t('access.btn.enable')}</button>{' '}
                       <button className="btn secondary" style={smallBtn} onClick={() => reset(u)}>{t('access.btn.resetpwd')}</button>{' '}
+                      <button className="btn secondary" style={smallBtn} onClick={() => toggleSecondFactor(u)}>{u.secondFactorRequired ? t('acc.2fa.unrequire') : t('acc.2fa.require')}</button>{' '}
+                      {u.secondFactorEnrolled && (
+                        <button className="btn secondary" style={smallBtn} onClick={() => resetSecondFactor(u)}>{t('acc.2fa.reset')}</button>
+                      )}{' '}
                       <button className="btn danger" style={smallBtn} onClick={() => remove(u)}>{t('access.btn.remove')}</button>
                     </>
                   )}
@@ -346,7 +370,7 @@ export default function AccessPage() {
               </tr>
             ))}
             {sortedUsers.length === 0 && (
-              <tr><td colSpan={6} style={{ textAlign: 'center', ...dim, padding: 22 }}>{t('access.empty')}</td></tr>
+              <tr><td colSpan={7} style={{ textAlign: 'center', ...dim, padding: 22 }}>{t('access.empty')}</td></tr>
             )}
           </tbody>
         </table>

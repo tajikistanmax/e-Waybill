@@ -11,7 +11,13 @@ const TOKEN_URL = `${AUTH_BASE}/token`;
 const REFRESH_URL = `${AUTH_BASE}/refresh`;
 const LOGOUT_URL = `${AUTH_BASE}/logout`;
 const PASSWORD_URL = `${AUTH_BASE}/password`;
+const SECOND_FACTOR_URL = `${AUTH_BASE}/second-factor`;
 const RT_KEY = 'dts_rt';
+/**
+ * Незавершённый вход со вторым фактором: ключ второго шага (живёт 15 минут на сервере) и,
+ * при первой настройке, секрет для QR-кода. Только sessionStorage — закрытие вкладки его стирает.
+ */
+const MFA_KEY = 'dts_mfa';
 /** Одноразовый ключ смены временного пароля — живёт только до перехода на страницу смены. */
 const CHANGE_KEY = 'dts_pwd_change';
 /** Логин и выбор «Запомнить меня» того, кто меняет временный пароль (пароль НЕ хранится). */
@@ -54,6 +60,8 @@ type AuthState = {
    * true — после смены временного пароля вход выполнен автоматически.
    */
   changePassword: (newPassword: string, currentPassword?: string) => Promise<boolean>;
+  /** Второй шаг входа: код из приложения-аутентификатора. */
+  verifySecondFactor: (code: string) => Promise<void>;
 };
 
 /** Временный пароль: вход не даётся, интерфейс ведёт на страницу смены пароля. */
@@ -64,9 +72,40 @@ export class PasswordChangeRequired extends Error {
   }
 }
 
+/** Незавершённый вход: пароль верен, нужен код второго фактора. */
+export type SecondFactorPending = {
+  challengeToken: string;
+  /** Не пусто — второй фактор ещё не подключён: показать QR-код и секрет для ручного ввода. */
+  secret?: string;
+  otpauthUri?: string;
+  remember: boolean;
+};
+
+/** Пароль верен, но вход завершится только после кода из приложения-аутентификатора. */
+export class SecondFactorRequired extends Error {
+  constructor(public readonly pending: SecondFactorPending) {
+    super('Требуется код второго фактора');
+    this.name = 'SecondFactorRequired';
+  }
+}
+
+/** Незавершённый вход со вторым фактором (например, после смены временного пароля). */
+export function pendingSecondFactor(): SecondFactorPending | null {
+  try {
+    const raw = sessionStorage.getItem(MFA_KEY);
+    return raw ? JSON.parse(raw) as SecondFactorPending : null;
+  } catch { return null; }
+}
+
+/** Отменить незавершённый вход (кнопка «Назад» на шаге кода). */
+export function cancelSecondFactor() {
+  try { sessionStorage.removeItem(MFA_KEY); } catch { /* приватный режим */ }
+}
+
 const AuthContext = createContext<AuthState>({
   ready: false, authenticated: false, username: '', roles: [],
   login: async () => {}, logout: () => {}, changePassword: async () => false,
+  verifySecondFactor: async () => {},
 });
 
 export const useAuth = () => useContext(AuthContext);
@@ -85,7 +124,7 @@ function decode(token: string): Record<string, unknown> {
  * сервере больше нет (отказ от Keycloak, 23.09.2026).
  */
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [state, setState] = useState<Omit<AuthState, 'login' | 'logout' | 'changePassword'>>({
+  const [state, setState] = useState<Omit<AuthState, 'login' | 'logout' | 'changePassword' | 'verifySecondFactor'>>({
     ready: false, authenticated: false, username: '', roles: [],
   });
   const timer = useRef<number | undefined>(undefined);
@@ -187,7 +226,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Временный пароль: вход не даётся, но выдан одноразовый ключ — страница входа
     // отправляет на смену пароля. Раньше здесь был переход на страницу Keycloak.
     if (res.status === 428) {
-      const body = await res.json().catch(() => ({} as { changeToken?: string }));
+      const body = await res.json().catch(() => ({} as Record<string, string>));
+      // Второй фактор: пароль верен, вход завершит код из приложения-аутентификатора.
+      if (body.error === 'second_factor_required' || body.error === 'second_factor_setup') {
+        const pending: SecondFactorPending = {
+          challengeToken: String(body.challengeToken ?? ''),
+          secret: body.secret || undefined,
+          otpauthUri: body.otpauthUri || undefined,
+          remember,
+        };
+        try { sessionStorage.setItem(MFA_KEY, JSON.stringify(pending)); } catch { /* приватный режим */ }
+        throw new SecondFactorRequired(pending);
+      }
       const token = String(body.changeToken ?? '');
       try {
         sessionStorage.setItem(CHANGE_KEY, token);
@@ -202,6 +252,36 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
     const data = await res.json();
     chooseRt(data.refresh_token, remember); // разместить RT по выбору «Запомнить меня»
+    applyToken(data);
+  }, [applyToken]);
+
+  /**
+   * Второй шаг входа. Неверный код — ошибка с текстом сервера, незавершённый вход остаётся
+   * (можно ввести код ещё раз); истёкший ключ — ошибка, незавершённый вход снимается.
+   */
+  const verifySecondFactor = useCallback(async (code: string) => {
+    const pending = pendingSecondFactor();
+    if (!pending) throw new Error('Время на ввод кода истекло, войдите заново');
+    let res: Response;
+    try {
+      res = await fetch(SECOND_FACTOR_URL, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ challengeToken: pending.challengeToken, code: code.replace(/\s/g, '') }),
+        signal: AbortSignal.timeout(12000),
+      });
+    } catch {
+      throw new Error('Сервер аутентификации недоступен. Повторите попытку.');
+    }
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({} as { detail?: string }));
+      const message = String(body.detail ?? 'Неверный код');
+      // Ключ второго шага истёк или учётка заблокирована — этим ключом больше не войти.
+      if (res.status === 429 || /заново/.test(message)) cancelSecondFactor();
+      throw new Error(message);
+    }
+    cancelSecondFactor();
+    const data = await res.json();
+    chooseRt(data.refresh_token, pending.remember);
     applyToken(data);
   }, [applyToken]);
 
@@ -254,6 +334,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       } catch { /* ignore */ }
     }
     clearRt();
+    cancelSecondFactor();
     // Черновик нового путевого листа (waybills/new) несёт персональные данные водителя —
     // на общем компьютере следующий пользователь не должен его увидеть.
     try { localStorage.removeItem('epd:wb-new-draft'); } catch { /* приватный режим */ }
@@ -287,7 +368,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => { window.clearTimeout(idleTimer); events.forEach(e => window.removeEventListener(e, reset)); };
   }, [state.authenticated, logout]);
 
-  return <AuthContext.Provider value={{ ...state, login, logout, changePassword }}>{children}</AuthContext.Provider>;
+  return <AuthContext.Provider value={{ ...state, login, logout, changePassword, verifySecondFactor }}>{children}</AuthContext.Provider>;
 }
 
 /** Заголовок с токеном, если пользователь уже вошёл (для смены своего пароля). */

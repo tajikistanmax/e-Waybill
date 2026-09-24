@@ -26,14 +26,21 @@ const MD = process.env.E2E_MD_URL || 'http://localhost:8081';
 const SHOTS = process.env.E2E_SHOTS || path.join(__dirname, '..', 'e2e-shots');
 fs.mkdirSync(SHOTS, { recursive: true });
 
-/** Пароли демо-логинов — те же, что в scripts/demo-credentials.ps1. */
+/**
+ * Пароли демо-логинов — те же, что в scripts/demo-credentials.ps1. У admin / inspector / analyst
+ * обязателен второй фактор (код из телефона, находка 27) — автотест входит их дублями
+ * `*-automation` той же роли без второго фактора (см. LOGIN).
+ */
 const DEMO: Record<string, string> = {
-  admin: 'Epd-Qa-AdminRoot-2026', company: 'Epd-Qa-CompanyAdm-2026', branch: 'Epd-Qa-BranchAdm-2026',
+  admin: 'Epd-Qa-Automation-Admin-2026', company: 'Epd-Qa-CompanyAdm-2026', branch: 'Epd-Qa-BranchAdm-2026',
   dispatcher: 'Epd-Qa-Tanzim-2026', doctor: 'Epd-Qa-Duxtur-2026', mechanic: 'Epd-Qa-Mexanik-2026',
-  driver: 'Epd-Qa-Ronanda-2026', accountant: 'Epd-Qa-Buxgalter-2026', inspector: 'Epd-Qa-Nozir-2026',
-  analyst: 'Epd-Qa-Analyst-2026', fuel: 'Epd-Qa-FuelStation-2026', sender: 'Epd-Qa-Sender-2026',
+  driver: 'Epd-Qa-Ronanda-2026', accountant: 'Epd-Qa-Buxgalter-2026', inspector: 'Epd-Qa-Automation-Inspector-2026',
+  analyst: 'Epd-Qa-Automation-Analyst-2026', fuel: 'Epd-Qa-FuelStation-2026', sender: 'Epd-Qa-Sender-2026',
   forwarder: 'Epd-Qa-Forwarder-2026', customs: 'Epd-Qa-Customs-2026',
 };
+const SECOND_FACTOR_ROLES = new Set(['admin', 'inspector', 'analyst']);
+/** Логин, которым автотест входит за роль `who`. */
+const LOGIN = (who: string) => (SECOND_FACTOR_ROLES.has(who) ? `${who}-automation` : who);
 /** Стартовая страница роли (матрица role_access / roleHome). */
 const HOME: Record<string, string> = {
   admin: '/dashboard', company: '/dashboard', branch: '/dashboard', dispatcher: '/dispatcher',
@@ -174,7 +181,7 @@ test.describe.serial('новый перевозчик', () => {
 
   test.beforeAll(async () => {
     md = await api();
-    adminJwt = await bearer(md, 'admin', DEMO.admin);
+    adminJwt = await bearer(md, LOGIN('admin'), DEMO.admin);
     const h = { Authorization: `Bearer ${adminJwt}` };
     // Компания и филиал — как их заводит администратор платформы (идемпотентно).
     for (const o of [
@@ -195,7 +202,7 @@ test.describe.serial('новый перевозчик', () => {
 
   test('администратор платформы выдаёт компании администратора', async ({ page }) => {
     const st = watch(page, 'admin');
-    await uiLogin(page, 'admin', DEMO.admin);
+    await uiLogin(page, LOGIN('admin'), DEMO.admin);
     await expect(page.locator('.sidebar')).toBeVisible({ timeout: 15_000 });
     st.current = '/company/access';
     await page.getByRole('link', { name: 'Доступы' }).click();
@@ -401,7 +408,7 @@ test.describe.serial('новый перевозчик', () => {
 
   test.afterAll(async () => {
     // Уборка: учётки сценария и запись водителя; организации удаляются, если пусты.
-    const h = { Authorization: `Bearer ${await bearer(md, 'admin', DEMO.admin)}` };
+    const h = { Authorization: `Bearer ${await bearer(md, LOGIN('admin'), DEMO.admin)}` };
     for (const org of [CO, BR]) {
       const list = await (await md.get(`/api/v1/org-users?organizationRma=${org}`, { headers: h })).json() as { id: string; username: string }[];
       for (const u of list) if (u.username.startsWith('9929905000')) await md.delete(`/api/v1/org-users/${u.id}`, { headers: h });
@@ -426,7 +433,7 @@ test.describe('кабинеты демо-логинов', () => {
       test.setTimeout(240_000);
       const st = watch(page, who);
       st.current = '/login';
-      await uiLogin(page, who, DEMO[who]);
+      await uiLogin(page, LOGIN(who), DEMO[who]);
       await page.waitForURL(u => !u.pathname.startsWith('/login'), { timeout: 20_000 });
       await expect(page.locator('.sidebar')).toBeVisible({ timeout: 15_000 });
       await settle(page);
@@ -480,7 +487,7 @@ test.describe('кабинеты демо-логинов', () => {
     test(`${who}: подстраницы разделов`, async ({ page }) => {
       test.setTimeout(420_000);
       const st = watch(page, who);
-      await uiLogin(page, who, DEMO[who]);
+      await uiLogin(page, LOGIN(who), DEMO[who]);
       await page.waitForURL(u => !u.pathname.startsWith('/login'), { timeout: 20_000 });
       await expect(page.locator('.sidebar')).toBeVisible({ timeout: 15_000 });
       for (const p of pages) {
@@ -564,13 +571,13 @@ test.describe('кабинеты демо-логинов', () => {
   test('матрица ролей на странице «Роли» меняет меню', async ({ browser }) => {
     test.setTimeout(150_000);
     const md = await api();
-    const h = { Authorization: `Bearer ${await bearer(md, 'admin', DEMO.admin)}` };
+    const h = { Authorization: `Bearer ${await bearer(md, LOGIN('admin'), DEMO.admin)}` };
     const before = (await (await md.get('/api/v1/role-access', { headers: h })).json() as { role: string; homeKey: string; navKeys: string[] }[])
       .find(r => r.role === 'ACCOUNTANT')!;
     try {
       const actx = await browser.newContext({ baseURL: BASE });
       const ap = await actx.newPage();
-      await uiLogin(ap, 'admin', DEMO.admin);
+      await uiLogin(ap, LOGIN('admin'), DEMO.admin);
       await expect(ap.locator('.sidebar')).toBeVisible({ timeout: 15_000 });
       await ap.goto('/settings/roles');
       await settle(ap);

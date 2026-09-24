@@ -26,7 +26,12 @@ public class UserDirectory {
 
     /** Учётная запись в том виде, в каком её отдаёт API управления доступом. */
     public record OrgUser(String id, String username, String firstName, String lastName,
-                          boolean enabled, String rma, String organizationRma, List<String> roles) {
+                          boolean enabled, String rma, String organizationRma, List<String> roles,
+                          boolean secondFactorRequired, boolean secondFactorEnrolled) {
+        public OrgUser(String id, String username, String firstName, String lastName,
+                       boolean enabled, String rma, String organizationRma, List<String> roles) {
+            this(id, username, firstName, lastName, enabled, rma, organizationRma, roles, false, false);
+        }
     }
 
     private final AppUserRepository users;
@@ -137,6 +142,30 @@ public class UserDirectory {
         refreshTokens.revokeAllForUser(user.getId());
     }
 
+    /**
+     * Сброс второго фактора (потерян или заменён телефон): секрет удаляется, при следующем
+     * входе пользователь подключит приложение заново. Действующие сессии гасятся — ими мог
+     * пользоваться тот, у кого теперь телефон.
+     */
+    @Transactional
+    public void resetSecondFactor(String userId) {
+        var user = entity(userId);
+        user.setTotpSecret(null);
+        user.setTotpPendingSecret(null);
+        user.setTotpLastStep(null);
+        user.setTotpEnrolledAt(null);
+        users.save(user);
+        refreshTokens.revokeAllForUser(user.getId());
+    }
+
+    /** Обязателен ли второй фактор для учётной записи. */
+    @Transactional
+    public void setSecondFactorRequired(String userId, boolean required) {
+        var user = entity(userId);
+        user.setTotpRequired(required);
+        users.save(user);
+    }
+
     @Transactional
     public void deleteUser(String userId) {
         var user = entity(userId);
@@ -165,7 +194,8 @@ public class UserDirectory {
 
     private static OrgUser toOrgUser(AppUser u) {
         return new OrgUser(u.getId().toString(), u.getUsername(), u.getFirstName(), u.getLastName(),
-                u.isEnabled(), u.getRma(), u.getOrganizationRma(), u.roleList());
+                u.isEnabled(), u.getRma(), u.getOrganizationRma(), u.roleList(),
+                u.isTotpRequired(), u.getTotpSecret() != null);
     }
 
     private static String trimToNull(String s) {

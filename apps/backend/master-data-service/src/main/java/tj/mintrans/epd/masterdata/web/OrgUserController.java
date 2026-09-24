@@ -108,11 +108,16 @@ public class OrgUserController {
      */
     public record OrgUserView(String id, String username, String firstName, String lastName,
                               boolean enabled, String rma, String organizationRma,
-                              List<String> roles, String temporaryPassword, boolean manageable) {
+                              List<String> roles, String temporaryPassword, boolean manageable,
+                              boolean secondFactorRequired, boolean secondFactorEnrolled) {
         static OrgUserView of(UserDirectory.OrgUser u, String tempPassword, boolean manageable) {
             return new OrgUserView(u.id(), u.username(), u.firstName(), u.lastName(), u.enabled(),
-                    u.rma(), u.organizationRma(), u.roles(), tempPassword, manageable);
+                    u.rma(), u.organizationRma(), u.roles(), tempPassword, manageable,
+                    u.secondFactorRequired(), u.secondFactorEnrolled());
         }
+    }
+
+    public record SecondFactorRequest(boolean required) {
     }
 
     @GetMapping("/enabled")
@@ -168,6 +173,30 @@ public class OrgUserController {
         keycloak.resetPassword(id, password);
         audit.record(AuditService.UPDATE, "ORG_USER", user.username(), null, "reset-password");
         return OrgUserView.of(user, password, true);
+    }
+
+    /**
+     * Сброс второго фактора (сотрудник потерял или сменил телефон): при следующем входе он
+     * подключит приложение заново. Права — те же, что у сброса пароля.
+     */
+    @PostMapping("/{id}/reset-second-factor")
+    @PreAuthorize("hasAnyRole('SYSTEM_ADMIN','COMPANY_ADMIN','BRANCH_ADMIN')")
+    public OrgUserView resetSecondFactor(@PathVariable String id) {
+        UserDirectory.OrgUser user = requireManageable(id);
+        keycloak.resetSecondFactor(id);
+        audit.record(AuditService.UPDATE, "ORG_USER", user.username(), null, "reset-second-factor");
+        return OrgUserView.of(keycloak.getUser(id), null, true);
+    }
+
+    /** Включить / выключить обязательный второй фактор для учётной записи. */
+    @PatchMapping("/{id}/second-factor")
+    @PreAuthorize("hasAnyRole('SYSTEM_ADMIN','COMPANY_ADMIN','BRANCH_ADMIN')")
+    public OrgUserView setSecondFactorRequired(@PathVariable String id, @RequestBody SecondFactorRequest req) {
+        UserDirectory.OrgUser user = requireManageable(id);
+        keycloak.setSecondFactorRequired(id, req.required());
+        audit.record(AuditService.UPDATE, "ORG_USER", user.username(),
+                String.valueOf(user.secondFactorRequired()), "second-factor-required=" + req.required());
+        return OrgUserView.of(keycloak.getUser(id), null, true);
     }
 
     @PatchMapping("/{id}/role")

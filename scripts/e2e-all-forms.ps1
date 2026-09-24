@@ -110,21 +110,21 @@ function Seed {
     $o = @{}
     $fx.organization.PSObject.Properties | ForEach-Object { $o[$_.Name] = $_.Value }
     $o.licenseTo = D 730
-    $r = Api 'admin' 'POST' "$Md/api/v1/organizations" $o
+    $r = Api 'admin-automation' 'POST' "$Md/api/v1/organizations" $o
     Check 'seed' 'organization' ($r.Status -in 200, 201) (Detail $r)
     foreach ($e in $fx.employees) {
         $b = @{ rma = $e.rma; organizationRma = $ORG; name = $e.name; type = $e.type }
         if ($e.type -eq 1) { $b.certNumber = $e.certNumber; $b.certValidTo = D 365 }
-        $r = Api 'admin' 'POST' "$Md/api/v1/employees" $b
+        $r = Api 'admin-automation' 'POST' "$Md/api/v1/employees" $b
         Check 'seed' "employee $($e.rma)/t$($e.type)" ($r.Status -in 200, 201) (Detail $r)
     }
-    $existing = @((Api 'admin' 'GET' "$Md/api/v1/dictionaries/routes").Body | Where-Object { $_.organizationRma -eq $ORG })
+    $existing = @((Api 'admin-automation' 'GET' "$Md/api/v1/dictionaries/routes").Body | Where-Object { $_.organizationRma -eq $ORG })
     foreach ($rt in $fx.routes) {
         $b = @{ organizationRma = $ORG }
         $rt.PSObject.Properties | ForEach-Object { $b[$_.Name] = $_.Value }
         $ex = $existing | Where-Object { $_.number -eq $rt.number } | Select-Object -First 1
         if ($ex) { $b.id = $ex.id }
-        $r = Api 'admin' 'POST' "$Md/api/v1/dictionaries/routes" $b
+        $r = Api 'admin-automation' 'POST' "$Md/api/v1/dictionaries/routes" $b
         Check 'seed' "route $($rt.number)" ($r.Status -in 200, 201) (Detail $r)
     }
     $all = @($fx.forms) + @($fx.negative)
@@ -138,14 +138,14 @@ function Seed {
         if ($f.PSObject.Properties['carrying']) { $v.carrying = $f.carrying }
         if ($f.PSObject.Properties['fuelType']) { $v.fuelType = $f.fuelType }
         if ($f.tt -eq 6) { $v.intlCertificateNumber = 'IC-' + $f.plate; $v.intlControlCardNumber = 'IKK-' + $f.plate; $v.intlControlCardValidTo = D 180 }
-        $r = Api 'admin' 'POST' "$Md/api/v1/vehicles" $v
+        $r = Api 'admin-automation' 'POST' "$Md/api/v1/vehicles" $v
         Check 'seed' "vehicle $($f.plate)" ($r.Status -in 200, 201) (Detail $r)
         $d = @{ rma = $f.driverRma; organizationRma = $ORG; fullName = $f.driverName; birthDate = '1985-05-05'
                 experienceYears = 12; licenseNumber = 'AA' + $f.driverRma.Substring(2); licenseCategories = 'B,C,D,E'
                 licenseValidTo = D 900; degree = 1; medCertNumber = 'MS-' + $f.driverRma; medCertValidTo = D 180
                 safetyCourseValidTo = D 365; safetyCourseNumber = 'BDD-' + $f.driverRma; phone = '+992900000000'
                 passport = 'A' + $f.driverRma.Substring(1); visaValidTo = D 365 }
-        $r = Api 'admin' 'POST' "$Md/api/v1/drivers" $d
+        $r = Api 'admin-automation' 'POST' "$Md/api/v1/drivers" $d
         Check 'seed' "driver $($f.driverRma)" ($r.Status -in 200, 201) (Detail $r)
     }
 }
@@ -159,7 +159,7 @@ function Cleanup {
         if ($plates -notcontains $w.vehicleRegNumber) { continue }
         switch ($w.status) {
             'BLOCKED' {
-                [void](Api 'admin' 'POST' "$Wb/api/v1/waybills/$($w.id)/unblock" @{ reason = 'e2e cleanup' })
+                [void](Api 'admin-automation' 'POST' "$Wb/api/v1/waybills/$($w.id)/unblock" @{ reason = 'e2e cleanup' })
                 [void](Api 'dispatcher' 'POST' "$Wb/api/v1/waybills/$($w.id)/cancel" @{ reason = 'e2e cleanup'; actor = $DISP })
             }
             'RETURNED' {
@@ -241,7 +241,7 @@ function ToReady($id, [string]$form, [int]$odoExit) {
 }
 
 function VehicleOdometer([string]$plate) {
-    $r = Api 'admin' 'GET' "$Md/api/v1/vehicles?registrationNumber=$plate"
+    $r = Api 'admin-automation' 'GET' "$Md/api/v1/vehicles?registrationNumber=$plate"
     if ($r.Status -eq 200 -and @($r.Body).Count -gt 0) { return [int](@($r.Body)[0].odometer) }
     return -1
 }
@@ -469,7 +469,7 @@ function Run-Negative {
         Check $form 'cancel BLOCKED -> 409' ($r.Status -eq 409) (Detail $r)
         $r = Api 'dispatcher' 'POST' "$Wb/api/v1/waybills/$id/unblock" @{ reason = 'try' }
         Check $form 'dispatcher unblock -> 403' ($r.Status -eq 403) (Detail $r)
-        $r = Api 'admin' 'POST' "$Wb/api/v1/waybills/$id/unblock" @{ reason = 'e2e: act reviewed' }
+        $r = Api 'admin-automation' 'POST' "$Wb/api/v1/waybills/$id/unblock" @{ reason = 'e2e: act reviewed' }
         Check $form 'admin unblock' ($r.Status -eq 200 -and $r.Body.status -ne 'BLOCKED') ("{0} -> {1}" -f (Detail $r), $r.Body.status)
         $r = Api 'dispatcher' 'POST' "$Wb/api/v1/waybills/$id/cancel" @{ reason = $fx.text.cancelReason; actor = $DISP }
         Check $form 'cancel after unblock' ($r.Status -eq 200 -and $r.Body.status -eq 'CANCELLED') (Detail $r)
@@ -521,7 +521,7 @@ $cls = Api 'dispatcher' 'GET' "$Md/api/v1/classifiers?category=COUNTRY"
 $script:TJ = (@($cls.Body) | Where-Object { $_.code -eq 'TJ' } | Select-Object -First 1).nameRu
 $wt = Api 'dispatcher' 'GET' "$Md/api/v1/classifiers?category=WORK_TYPE"
 $script:WorkType = (@($wt.Body) | Select-Object -First 1).nameRu
-$pm = Api 'admin' 'GET' "$Md/api/v1/sync/permit/EP-2026-0001"
+$pm = Api 'admin-automation' 'GET' "$Md/api/v1/sync/permit/EP-2026-0001"
 $script:PermitCountry = $pm.Body.country
 $at = Api 'dispatcher' 'GET' "$Wb/api/v1/waybills/available-types?organizationRma=$ORG"
 $avail = @($at.Body | Where-Object { $_.available } | ForEach-Object { $_.type })

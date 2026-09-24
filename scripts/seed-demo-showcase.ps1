@@ -40,9 +40,10 @@ param(
     [string]$DataFile = '',
     [string]$MdUrl = 'http://localhost:8081',
     [string]$WbUrl = 'http://localhost:8082',
-    [string]$AdminUser = 'admin',
+    # admin / inspector require a second factor (TOTP) - the seed signs in with the QA doubles.
+    [string]$AdminUser = 'admin-automation',
     [string]$AdminPassword = '',
-    [string]$InspectorUser = 'inspector',
+    [string]$InspectorUser = 'inspector-automation',
     [string]$InspectorPassword = '',
     [switch]$SkipWaybills,
     [switch]$SkipVerify,
