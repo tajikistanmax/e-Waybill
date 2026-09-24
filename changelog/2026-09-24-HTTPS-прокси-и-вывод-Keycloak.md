@@ -83,8 +83,8 @@ nginx 1.27 (alpine) + openssl; шаблон подставляет только 
 - Контейнер Keycloak удалён (`--remove-orphans`), вход и все проверки работают без него.
 
 ## Коммиты
-- `<hash>` — feat(infra): HTTPS через обратный прокси, заголовки безопасности; Keycloak убран из стека
+- `03db0f1` — feat(infra): HTTPS через обратный прокси, заголовки безопасности; Keycloak убран из стека
 
 ## Как откатить
-`git revert <hash>` + на стенде `docker compose -f docker-compose.prod.yml up -d --build --remove-orphans`
+`git revert 03db0f1` + на стенде `docker compose -f docker-compose.prod.yml up -d --build --remove-orphans`
 (вернутся порты 80 → web, 3002, контейнер Keycloak). Данные не затрагиваются.
