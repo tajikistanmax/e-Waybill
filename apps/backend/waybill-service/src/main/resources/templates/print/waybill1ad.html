@@ -105,15 +105,16 @@
             <th rowspan="2" style="width: 22%">Имзои шахси масъул</th>
         </tr>
         <tr><th>рӯз, моҳ</th><th>соат, дақ.</th><th>рӯз, моҳ</th><th>соат, дақ.</th></tr>
+        <!-- «Аз рӯи нақша» — плановое начало срока; «воқеъӣ» — фактические Т4/Т5 (сверка 25.09, B2). -->
         <tr>
             <td>Баромад</td>
+            <td class="center" th:text="${planExitDate}"></td><td class="center" th:text="${planExitTime}"></td>
             <td class="center" th:text="${exitDate}"></td><td class="center" th:text="${exitTime}"></td>
-            <td class="center" th:text="${exitDate}"></td><td class="center" th:text="${exitTime}"></td>
-            <td class="center" th:text="${counterExit}"></td><td></td>
+            <td class="center" th:text="${counterExit}"></td><td th:text="${dispatcherName}"></td>
         </tr>
         <tr>
             <td>Даромад</td>
-            <td class="center" th:text="${entryDate}"></td><td class="center" th:text="${entryTime}"></td>
+            <td class="center"></td><td class="center"></td>
             <td class="center" th:text="${entryDate}"></td><td class="center" th:text="${entryTime}"></td>
             <td class="center" th:text="${counterEntry}"></td><td></td>
         </tr>
@@ -212,11 +213,14 @@
             <th>ҳамагӣ рейс</th><th>маблағи сметавӣ</th>
             <th>аз хазина</th><th>аз рӯи чипта</th><th>аз рӯи талабнома</th><th>аз рӯи чиптаи бағоҷ</th>
         </tr>
+        <!-- Строка задания legacy bill1ad:382-385: название и рамзи хатсайр, рақами ҷадвал (график),
+             план рейсов маршрута, выполнено рейсов, выручка «аз хазина» (сверка 25.09, B2). -->
         <tr>
-            <td th:text="${routeName}"></td>
-            <td></td><td></td><td></td><td></td>
-            <td class="center" th:text="${routeNumber}"></td>
-            <td></td><td></td><td></td><td></td><td></td>
+            <td><span th:text="${routeFull}"></span><br/><span style="font-size: 7pt">Рақами ҷадвал: <span th:text="${schedule}"></span></span></td>
+            <td class="center" th:text="${plannedLaps}"></td><td></td><td></td><td></td>
+            <td class="center" th:text="${totalLaps > 0} ? ${totalLaps} : ''"></td>
+            <td></td>
+            <td class="center" th:text="${totalRevenue}"></td><td></td><td></td><td></td>
             <td></td><td></td>
         </tr>
         <tr th:if="${clientName != null and clientName != '—'}">

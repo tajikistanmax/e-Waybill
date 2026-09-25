@@ -260,12 +260,25 @@ public class WaybillPrintService {
             m.put("year", from.getYear());
             m.put("fromDay", from.getDayOfMonth());
         }
-        if (to != null) {
-            m.put("toDay", to.getDayOfMonth());
-            m.put("toMonthName", MONTHS_TJ[to.getMonthValue() - 1]);
-            m.put("toYear", to.getYear());
-            m.put("dayTo", to.getDayOfMonth());
+        // Срок «аз … то …» — последний календарный день листа включительно (legacy: выезд + N−1, у 3-С
+        // +6, у 1-А +3). Раньше печаталась дата validTo (= выпуск + N суток) — на день позже legacy.
+        java.time.ZonedDateTime lastDay = to;
+        if (from != null && wb.getValidFrom() != null && wb.getValidTo() != null) {
+            long validityDays = Math.max(1, (java.time.Duration.between(wb.getValidFrom(), wb.getValidTo()).toHours() + 23) / 24);
+            lastDay = from.plusDays(validityDays - 1);
         }
+        if (lastDay != null) {
+            m.put("toDay", lastDay.getDayOfMonth());
+            m.put("toMonthName", MONTHS_TJ[lastDay.getMonthValue() - 1]);
+            m.put("toYear", lastDay.getYear());
+            m.put("dayTo", lastDay.getDayOfMonth());
+        }
+        if (from != null) {
+            m.put("fromMonthName", MONTHS_TJ[from.getMonthValue() - 1]);
+            m.put("fromYear", from.getYear());
+        }
+        // Заголовок бланка 3-С: «ТАКСӢ» — только у такси, у легкового — «АВТОМОБИЛИ САБУКРАВ» (legacy bill3c:236).
+        m.put("title3c", type == WaybillType.WB_CAR ? "РОҲХАТИ АВТОМОБИЛИ САБУКРАВ" : "РОҲХАТИ ТАКСӢ");
         m.put("validFrom", from != null ? DT.format(from) : "—");
         m.put("validTo", to != null ? DT.format(to) : "—");
 
@@ -298,10 +311,30 @@ public class WaybillPrintService {
         m.put("columnNumber", orDash(str(td.get("columnNumber"))));
         m.put("brigadeNumber", orDash(str(td.get("brigadeNumber"))));
 
-        // --- Маршрут / задание
-        m.put("routeNumber", orDash(wb.getRoute()));
-        m.put("routeName", orDash(wb.getRoute()));
+        // --- Маршрут / задание: номер и название — из справочника маршрутов организации (legacy
+        // «number – name_a name_b»), а не один и тот же свободный текст в обеих графах.
+        Map<String, Object> routeRef = null;
+        if (wb.getRoute() != null && !wb.getRoute().isBlank()) {
+            try {
+                routeRef = masterData.findRoute(wb.getRoute(), wb.getOrganizationRma()).orElse(null);
+            } catch (RuntimeException e) {
+                log.debug("Печать {}: маршрут недоступен ({})", wb.getId(), e.toString());
+            }
+        }
+        String routeDictName = routeRef == null ? "" : firstNonBlank(
+                (str(routeRef.get("nameA")) + " — " + str(routeRef.get("nameB"))).replaceAll("^ — | — $", "").trim(),
+                str(routeRef.get("name")));
+        m.put("routeNumber", orDash(routeRef != null ? str(routeRef.get("number")) : wb.getRoute()));
+        m.put("routeName", orDash(firstNonBlank(routeDictName, wb.getRoute())));
+        m.put("routeFull", orDash(routeRef != null
+                ? (str(routeRef.get("number")) + " – " + firstNonBlank(routeDictName, str(routeRef.get("name")))).trim()
+                : wb.getRoute()));
         m.put("schedule", orDash(wb.getSchedule()));
+        // План кругов маршрута (legacy «Шумораи рейсҳо» задания) — из справочника маршрутов.
+        m.put("plannedLaps", routeRef != null && routeRef.get("plannedLap") != null ? str(routeRef.get("plannedLap")) : "");
+        // Плановое начало (срок действия) — отдельно от фактического выезда Т4 (графы «аз рӯи нақша»).
+        m.put("planExitDate", from != null ? D.format(from) : "");
+        m.put("planExitTime", from != null ? TM.format(from) : "");
         // «Самт» бланка 2-Б — для WB_TRUCK берём РЕАЛЬНОЕ направление из справочника Direction
         // (typeData.directionId), а не пару стран погрузки/разгрузки — те заполняются только
         // у международных ПЛ (WB_TRUCK_INTL/5Б-БМ) и на внутреннем 2-Б почти всегда пусты.
@@ -321,12 +354,19 @@ public class WaybillPrintService {
         m.put("consignorName", orDash(str(td.get("consignorName"))));
         m.put("cashierName", "—");
 
-        // --- Операции (выезд/возврат/пробег)
-        m.put("exitDate", from != null ? D.format(from) : "");
-        m.put("exitTime", from != null ? TM.format(from) : "");
-        m.put("entryDate", to != null ? D.format(to) : "");
-        m.put("entryTime", to != null ? TM.format(to) : "");
-        m.put("counterExit", orDash(str(wb.getOdometerExit())));
+        // --- Операции (выезд/возврат/пробег): «Вақти воқеъӣ» — фактические моменты выезда (Т4) и
+        // возврата (Т5), а не срок действия. Раньше возвратом печатался validTo (= выпуск + сутки).
+        // До выезда — плановое начало срока; до возврата — пусто (графа для руки).
+        java.time.ZonedDateTime exitAt = titles.findFirstByWaybillIdAndTitleTypeOrderBySignedAtDesc(wb.getId(), "T4")
+                .map(t -> PrintZone.local(t.getSignedAt())).orElse(from);
+        java.time.ZonedDateTime entryAt = titles.findFirstByWaybillIdAndTitleTypeOrderBySignedAtDesc(wb.getId(), "T5")
+                .map(t -> PrintZone.local(t.getSignedAt())).orElse(null);
+        m.put("exitDate", exitAt != null ? D.format(exitAt) : "");
+        m.put("exitTime", exitAt != null ? TM.format(exitAt) : "");
+        m.put("entryDate", entryAt != null ? D.format(entryAt) : "");
+        m.put("entryTime", entryAt != null ? TM.format(entryAt) : "");
+        // Одометр выезда до Т3/Т4 — последний пробег из карточки ТС (legacy печатал parkings.indication_counter).
+        m.put("counterExit", orDash(firstNonBlank(str(wb.getOdometerExit()), str(veh.get("odometer")))));
         m.put("counterEntry", orDash(str(wb.getOdometerEntry())));
         int distanceKm = wb.getOdometerExit() != null && wb.getOdometerEntry() != null
                 ? Math.max(0, wb.getOdometerEntry() - wb.getOdometerExit()) : 0;
@@ -375,8 +415,10 @@ public class WaybillPrintService {
         m.put("permitNumber", orDash(str(td.get("permitNumber"))));
         m.put("transitCountries", td.get("transitCountries") instanceof List<?> tc
                 ? tc.stream().map(String::valueOf).reduce((a, b) -> a + ", " + b).orElse("—") : "—");
-        m.put("trailer1", trailerAt(td, 0));
-        m.put("trailer2", trailerAt(td, 1));
+        // «Ядаки 1/2»: прицеп из листа, иначе — из карточки ТС (legacy bill5bm/bill2b печатали
+        // parkings.number_ydak / brand_ydak; у 5Б-БМ ввода прицепов в мастере нет вовсе — было всегда «—»).
+        m.put("trailer1", trailerOr(trailerAt(td, 0), str(veh.get("trailer1Number")), str(veh.get("trailer1Brand"))));
+        m.put("trailer2", trailerOr(trailerAt(td, 1), str(veh.get("trailer2Number")), str(veh.get("trailer2Brand"))));
 
         // --- Накладная (приложение к 2-Б / CMR к 5Б-БМ): стороны, груз, операции
         // погрузки-разгрузки. Перенос bill2b_attachment{1,2}.blade.php и
@@ -519,6 +561,9 @@ public class WaybillPrintService {
         m.put("totalDistance", totalDistance);
         m.put("totalWorkTime", totalMinutes > 0 ? (totalMinutes / 60) + ":" + String.format("%02d", totalMinutes % 60) : "");
         m.put("laps", totalLaps > 0 ? totalLaps : orDash(""));
+        java.math.BigDecimal totalRevenue = days.stream().map(WorkDay::getRevenue).filter(java.util.Objects::nonNull)
+                .reduce(java.math.BigDecimal.ZERO, java.math.BigDecimal::add);
+        m.put("totalRevenue", totalRevenue.signum() > 0 ? num(totalRevenue) : "");
 
         // --- Подписи (из подписанных титулов)
         m.put("mechanicName", signerName(wb, "T3"));
@@ -751,6 +796,16 @@ public class WaybillPrintService {
         row.put("additionalOps", "—");
         row.put("signature", "—");
         return row;
+    }
+
+    private static String trailerOr(String fromWaybill, String vehicleNumber, String vehicleBrand) {
+        if (!"—".equals(fromWaybill)) {
+            return fromWaybill;
+        }
+        if (vehicleNumber == null || vehicleNumber.isBlank()) {
+            return "—";
+        }
+        return vehicleBrand == null || vehicleBrand.isBlank() ? vehicleNumber : vehicleNumber + " (" + vehicleBrand + ")";
     }
 
     private static String trailerAt(Map<String, Object> td, int idx) {

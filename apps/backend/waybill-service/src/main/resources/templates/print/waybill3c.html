@@ -6,7 +6,7 @@
 -->
 <head>
     <meta charset="UTF-8"/>
-    <title th:text="'Роҳхати такси № ' + ${number}">Роҳхат</title>
+    <title th:text="${title3c} + ' № ' + ${number}">Роҳхат</title>
     <th:block th:replace="~{print/styles :: styles}"/>
 </head>
 <body>
@@ -54,9 +54,11 @@
                 </table>
             </td>
             <td class="center" style="width: 60%">
-                <div class="title" th:text="'РОҲХАТИ ТАКСӢ № ' + ${number}">РОҲХАТИ ТАКСӢ №</div>
-                <div>аз «<span th:text="${fromDay}">__</span>» то «<span th:text="${toDay}">__</span>»
-                    <span th:text="${toMonthName}">____</span> <span th:text="${toYear}">20__</span> с.</div>
+                <!-- Заголовок по виду (legacy bill3c:236): у легкового — «АВТОМОБИЛИ САБУКРАВ», у такси — «ТАКСӢ»;
+                     срок «аз dd моҳ сол то dd моҳ сол» — последний день включительно (сверка 25.09, B3). -->
+                <div class="title" th:text="${title3c} + ' № ' + ${number}">РОҲХАТИ ТАКСӢ №</div>
+                <div>аз «<span th:text="${fromDay}">__</span>» <span th:text="${fromMonthName}">____</span> <span th:text="${fromYear}">20__</span>
+                    то «<span th:text="${toDay}">__</span>» <span th:text="${toMonthName}">____</span> <span th:text="${toYear}">20__</span> с.</div>
             </td>
         </tr>
     </table>
@@ -104,7 +106,16 @@
             <td class="center" th:text="${d.workTime}"></td>
             <td class="center" th:text="${d.revenue}"></td>
         </tr>
-        <tr th:if="${#lists.isEmpty(days)}"><td colspan="9" class="center">Рӯзҳои корӣ ворид нашудаанд</td></tr>
+        <!-- Без рабочих дней — строка выезда листа (legacy pcversion/bill3c:369-391: дата-время и одометр выезда). -->
+        <tr th:if="${#lists.isEmpty(days)}">
+            <td class="center" th:text="${exitDate}"></td>
+            <td class="center" th:text="${exitTime}"></td>
+            <td class="center" th:text="${entryTime}"></td>
+            <td class="center" th:text="${counterExit}"></td>
+            <td class="center" th:text="${counterEntry}"></td>
+            <td class="center" th:text="${distanceKm > 0} ? ${distanceKm} : ''"></td>
+            <td></td><td></td><td></td>
+        </tr>
         <tr>
             <td class="bold" colspan="5">Ҳамагӣ</td>
             <td class="center bold" th:text="${totalDistance}"></td>
@@ -133,7 +144,8 @@
 <div th:replace="~{print/blocks :: expenses}"></div>
 
 <div class="section">
-    Хатсайр / супоришдиҳанда: <span th:text="${clientName}"></span>
+    <!-- Для маршрутного такси — маршрут «number – name_a name_b» (legacy bill3c:516-521), иначе вид услуги. -->
+    Хатсайр / супоришдиҳанда: <span th:text="${routeFull != '—'} ? ${routeFull} : ${clientName}"></span>
     &#160;&#160; Ҳудуди фаъолият: <span th:text="${workRegions}"></span>
     &#160;&#160; Қайди махсус: <span th:text="${specialMark}"></span>
 </div>

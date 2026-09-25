@@ -80,6 +80,9 @@
                         <td class="nowrap" style="width: 14%">Рақ.таб.</td><td class="line" style="width: 14%" th:text="${driverNumber}"></td></tr>
                     <tr><td class="nowrap">Шаҳодатнома</td><td class="line" th:text="${driverLicense}"></td>
                         <td class="nowrap">Иҷозатнома</td><td class="line" th:text="${checklistNumber}"></td></tr>
+                    <!-- «Рақами талон 20 соатаи ҚҲР ва МО» (legacy bill2b:301-306) — сверка 25.09, B4. -->
+                    <tr><td class="nowrap" colspan="2">Талони курси 20-соатаи ҚҲР ва МО</td>
+                        <td class="line" colspan="2" th:text="${driverLessons20Hours}"></td></tr>
                 </table>
             </td>
             <td style="width: 50%">
@@ -106,6 +109,34 @@
             <td class="center" th:text="${counterEntry}"></td><td></td></tr>
         <tr><td class="bold">Ҳамагӣ гашт (км)</td><td colspan="2"></td>
             <td class="center bold" th:text="${cargoDistance}"></td><td></td></tr>
+    </table>
+</div>
+
+<!-- Рабочие дни 2-Б (1..15): строка на каждый день — дата, выезд/возврат, одометр, пробег, время
+     (legacy mobile/pcversion/bill2b:410-476; раньше дни в бланк не выводились) — сверка 25.09, B4. -->
+<div class="section" th:if="${!#lists.isEmpty(days)}">
+    <table class="bordered">
+        <tr>
+            <th style="width: 14%">Сана</th><th style="width: 11%">Баромад</th><th style="width: 11%">Даромад</th>
+            <th style="width: 15%">Суръатнигор баромад</th><th style="width: 15%">Суръатнигор даромад</th>
+            <th style="width: 10%">Гашт (км)</th><th style="width: 10%">Вақти корӣ</th><th>Имзо</th>
+        </tr>
+        <tr th:each="d : ${days}">
+            <td class="center" th:text="${d.date}"></td>
+            <td class="center" th:text="${d.exitTime}"></td>
+            <td class="center" th:text="${d.entryTime}"></td>
+            <td class="center" th:text="${d.counterExit}"></td>
+            <td class="center" th:text="${d.counterEntry}"></td>
+            <td class="center" th:text="${d.distance}"></td>
+            <td class="center" th:text="${d.workTime}"></td>
+            <td></td>
+        </tr>
+        <tr>
+            <td class="bold" colspan="5">Ҳамагӣ</td>
+            <td class="center bold" th:text="${totalDistance}"></td>
+            <td class="center bold" th:text="${totalWorkTime}"></td>
+            <td></td>
+        </tr>
     </table>
 </div>
 
