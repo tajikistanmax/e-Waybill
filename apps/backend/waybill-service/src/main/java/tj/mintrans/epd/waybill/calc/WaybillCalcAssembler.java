@@ -168,7 +168,7 @@ public class WaybillCalcAssembler {
             }
         }
         PassengerCalcInput passengerInput = buildPassenger(wb, s, brandName, year, capacity,
-                exitOdo, entryOdo, workMinutes, laps, revenue, fuels, calcDate, route);
+                exitOdo, entryOdo, workMinutes, laps, revenue, fuels, calcDate, route, days);
         PassengerCalcResult r = engine.passenger(passengerInput);
 
         // Показатели «свободного» такси (METER, type_service=1) и почасовой аренды (HOURLY=3)
@@ -311,12 +311,31 @@ public class WaybillCalcAssembler {
     private PassengerCalcInput buildPassenger(Waybill wb, Supplement s, String brandName, LocalDate year,
                                               Integer capacity, long exitOdo, long entryOdo, int workMinutes,
                                               long laps, BigDecimal revenue, List<CalcFuelLine> fuels,
-                                              LocalDate calcDate, Map<String, Object> route) {
+                                              LocalDate calcDate, Map<String, Object> route, List<WorkDay> days) {
         Long orgRegion = longOf(get(organization(wb), "regionId"));
         boolean speedometer = s.speedometerTotalDistance() != null ? s.speedometerTotalDistance()
                 : (wb.getWaybillType() == WaybillType.WB_BUS && orgRegion != null && orgRegion == 1);
 
         Map<String, Object> tariff = firstRouteTariff(route);
+
+        // Нулевой пробег «гашти ибтидоӣ»: legacy берёт route->{begin_path_a} + route->{begin_path_b}
+        // по СЕЛЕКТОРАМ листа (BusBaseCalc:43-44) — «А+А», «только А», «А+Б»… Селекторы хранятся в
+        // рабочих днях; если ни в одном дне их нет (архив, старые листы) — прежнее правило А + Б маршрута.
+        Double zeroA = dbl(route, "beginPathA");
+        Double zeroB = dbl(route, "beginPathB");
+        boolean selectors = days.stream().anyMatch(d -> d.getBeginPathA() != null || d.getBeginPathB() != null);
+        if (selectors && route != null) {
+            double total = 0d;
+            for (WorkDay d : days) {
+                total += zeroRun(route, d.getBeginPathA()) + zeroRun(route, d.getBeginPathB());
+            }
+            zeroA = total;
+            zeroB = 0d;
+        }
+        // Автобус вне Душанбе: норма топлива считается от «гашти ҳамагӣ» (пробег по маршруту + нулевой),
+        // а не от одометра — legacy BusBaseCalc:45-47/72: fuel_calc_100($row, $l_main) с
+        // l_main = l_pass + l1 + l2 (для Душанбе — одометр). Троллейбус топлива не имеет.
+        boolean fuelByRouteRun = wb.getWaybillType() == WaybillType.WB_BUS && !speedometer;
 
         return PassengerCalcInput.builder()
                 .brandName(brandName)
@@ -335,8 +354,9 @@ public class WaybillCalcAssembler {
                 .routeHeatingFuel(dbl(route, "heatingFuel"))
                 .routeDistanceA(dbl(route, "distanceA"))
                 .routeDistanceB(dbl(route, "distanceB"))
-                .routeBeginPathA(dbl(route, "beginPathA"))
-                .routeBeginPathB(dbl(route, "beginPathB"))
+                .routeBeginPathA(zeroA)
+                .routeBeginPathB(zeroB)
+                .fuelByRouteRun(fuelByRouteRun)
                 .routePlannedLap(intOf(get(route, "plannedLap")))
                 .routeCoeUseCapacity(dbl(route, "coeUseCapacity"))
                 .routeAverageLengthPassSeat(dbl(route, "averageLengthPassSeat"))
@@ -401,6 +421,19 @@ public class WaybillCalcAssembler {
         };
     }
 
+    /** Значение нулевого пробега маршрута по селектору legacy ('begin_path_a' → А, 'begin_path_b' → Б). */
+    private static double zeroRun(Map<String, Object> route, String selector) {
+        if (selector == null) {
+            return 0d;
+        }
+        Double v = switch (selector.trim()) {
+            case "begin_path_a" -> dbl(route, "beginPathA");
+            case "begin_path_b" -> dbl(route, "beginPathB");
+            default -> null;
+        };
+        return v == null ? 0d : v;
+    }
+
     /** Путевые поля маршрута для посуточного расчёта; {@code null} → показатели нулевые (как у движка). */
     private static RoutePassengerRef routePassengerRef(Map<String, Object> route) {
         if (route == null) {
@@ -423,8 +456,8 @@ public class WaybillCalcAssembler {
             result.add(new PassengerDay(
                     d.getWorkDate(),
                     d.getLaps(),
-                    null,
-                    null,
+                    d.getBeginPathA(),
+                    d.getBeginPathB(),
                     d.getOdometerExit() == null ? null : d.getOdometerExit().longValue(),
                     d.getOdometerEntry() == null ? null : d.getOdometerEntry().longValue(),
                     d.getExitTime(),

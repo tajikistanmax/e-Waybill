@@ -191,7 +191,9 @@ export default function PrintWaybill({ params }: { params: Promise<{ id: string 
       `}</style>
 
       <div className="no-print toolbar" style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-        <button className="btn" onClick={() => window.print()}>🖨 Печать / сохранить в PDF</button>
+        {/* Официальный бланк формы (серверный PDF) — потерян при слиянии 29b25e8, возвращён 25.09.2026. */}
+        {w.number && <button className="btn" onClick={downloadPdf}>⬇ Официальный бланк (PDF)</button>}
+        <button className="btn secondary" onClick={() => window.print()}>🖨 Печать этой страницы</button>
         <button className="btn secondary" onClick={printCopy}>📄 Печать копии</button>
         {isIntlTruck && <span className="badge green" style={{ fontSize: 12 }}>Бланк 5Б-БМ (международный)</span>}
         <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, color: 'var(--muted)' }}>

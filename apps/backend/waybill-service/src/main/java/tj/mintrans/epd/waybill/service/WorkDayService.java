@@ -56,20 +56,45 @@ public class WorkDayService {
     public WorkDay addWorkDay(UUID waybillId, LocalDate workDate, LocalTime exitTime, LocalTime entryTime,
                               Integer odometerExit, Integer odometerEntry, Integer laps, BigDecimal revenue,
                               BigDecimal conditionerHours, UUID clientId, LocalTime clientTime) {
+        return addWorkDay(waybillId, workDate, exitTime, entryTime, odometerExit, odometerEntry, laps, revenue,
+                conditionerHours, clientId, clientTime, null, null);
+    }
+
+    /**
+     * Полный рабочий день legacy 1-А/3-С/2-Б: плюс селекторы «гашти ибтидоӣ» начала/конца смены
+     * ({@code begin_path_a}/{@code begin_path_b} — какой нулевой пробег маршрута входит в пробег дня).
+     */
+    @Transactional
+    public WorkDay addWorkDay(UUID waybillId, LocalDate workDate, LocalTime exitTime, LocalTime entryTime,
+                              Integer odometerExit, Integer odometerEntry, Integer laps, BigDecimal revenue,
+                              BigDecimal conditionerHours, UUID clientId, LocalTime clientTime,
+                              String beginPathA, String beginPathB) {
         var wb = waybillService.get(waybillId);
-        if (wb.getStatus() != WaybillStatus.ACTIVE) {
-            throw new ConflictException("Рабочий день можно добавить только в статусе ACTIVE (текущий: %s)".formatted(wb.getStatus()));
+        if (wb.getStatus() != WaybillStatus.ACTIVE && !waybillService.isOverdueOnLine(wb)) {
+            throw new ConflictException("Рабочий день можно добавить только листу на линии (текущий статус: %s)".formatted(wb.getStatus()));
         }
+        // Окно дат — срок листа в календарных днях от даты выпуска: 3-С — 7 дней (legacy exit + 6),
+        // 1-А — 4 (exit + 3), 2-Б — 15 (exit + 14), 3-С «30» — 30. Раньше бралась дата validTo
+        // (= выпуск + N суток), и принимался лишний (N+1)-й день.
+        long days = WaybillService.validityDays(wb);
         var from = wb.getValidFrom().toLocalDate();
-        var to = wb.getValidTo().toLocalDate();
+        var to = from.plusDays(Math.max(0, days - 1));
         if (workDate.isBefore(from) || workDate.isAfter(to)) {
             throw new UnprocessableException("Дата рабочего дня вне срока действия путевого листа (%s — %s)".formatted(from, to));
         }
         if (workDays.existsByWaybillIdAndWorkDate(waybillId, workDate)) {
             throw new ConflictException("Рабочий день на дату %s уже добавлен".formatted(workDate));
         }
-        if (workDays.countByWaybillId(waybillId) >= wb.getWaybillType().maxValidityDays()) {
-            throw new UnprocessableException("Число рабочих дней превышает лимит типа: %d".formatted(wb.getWaybillType().maxValidityDays()));
+        if (workDays.countByWaybillId(waybillId) >= Math.max(1, days)) {
+            throw new UnprocessableException("Число рабочих дней превышает срок листа: %d".formatted(days));
+        }
+        WaybillService.assertBeginPath(beginPathA, true);
+        WaybillService.assertBeginPath(beginPathB, false);
+        if (laps != null && (laps < 0 || laps > 99)) {
+            throw new UnprocessableException("Число кругов (рейсов) — от 0 до 99");
+        }
+        if (revenue != null && revenue.signum() < 0) {
+            throw new UnprocessableException("Выручка не может быть отрицательной");
         }
         if (odometerExit != null && odometerEntry != null && odometerEntry < odometerExit) {
             throw new UnprocessableException("Одометр возврата меньше одометра выезда");
@@ -93,7 +118,137 @@ public class WorkDayService {
         day.setConditionerHours(conditionerHours);
         day.setClientId(clientId);
         day.setClientTime(clientTime);
+        day.setBeginPathA(beginPathA == null || beginPathA.isBlank() ? null : beginPathA.trim());
+        day.setBeginPathB(beginPathB == null || beginPathB.isBlank() ? null : beginPathB.trim());
         return workDays.save(day);
+    }
+
+    /**
+     * Правка рабочего дня: до закрытия листа (на линии, возвращён, просрочен на линии) — как в legacy,
+     * где строки work_days редактировались в форме листа. Проверки те же, что при добавлении.
+     */
+    @Transactional
+    public WorkDay updateWorkDay(UUID waybillId, UUID dayId, LocalDate workDate, LocalTime exitTime, LocalTime entryTime,
+                                 Integer odometerExit, Integer odometerEntry, Integer laps, BigDecimal revenue,
+                                 BigDecimal conditionerHours, UUID clientId, LocalTime clientTime,
+                                 String beginPathA, String beginPathB) {
+        var wb = waybillService.get(waybillId);
+        requireEditable(wb);
+        var day = ownDay(waybillId, dayId);
+        long days = WaybillService.validityDays(wb);
+        var from = wb.getValidFrom().toLocalDate();
+        var to = from.plusDays(Math.max(0, days - 1));
+        if (workDate.isBefore(from) || workDate.isAfter(to)) {
+            throw new UnprocessableException("Дата рабочего дня вне срока действия путевого листа (%s — %s)".formatted(from, to));
+        }
+        if (!workDate.equals(day.getWorkDate()) && workDays.existsByWaybillIdAndWorkDate(waybillId, workDate)) {
+            throw new ConflictException("Рабочий день на дату %s уже добавлен".formatted(workDate));
+        }
+        if (odometerExit != null && odometerEntry != null && odometerEntry < odometerExit) {
+            throw new UnprocessableException("Одометр возврата меньше одометра выезда");
+        }
+        WaybillService.assertBeginPath(beginPathA, true);
+        WaybillService.assertBeginPath(beginPathB, false);
+        if (laps != null && (laps < 0 || laps > 99)) {
+            throw new UnprocessableException("Число кругов (рейсов) — от 0 до 99");
+        }
+        if (revenue != null && revenue.signum() < 0) {
+            throw new UnprocessableException("Выручка не может быть отрицательной");
+        }
+        day.setWorkDate(workDate);
+        day.setExitTime(exitTime);
+        day.setEntryTime(entryTime);
+        day.setOdometerExit(odometerExit);
+        day.setOdometerEntry(odometerEntry);
+        day.setLaps(laps);
+        day.setRevenue(revenue);
+        day.setConditionerHours(conditionerHours);
+        day.setClientId(clientId);
+        day.setClientTime(clientTime);
+        day.setBeginPathA(beginPathA == null || beginPathA.isBlank() ? null : beginPathA.trim());
+        day.setBeginPathB(beginPathB == null || beginPathB.isBlank() ? null : beginPathB.trim());
+        return workDays.save(day);
+    }
+
+    /** Удаление рабочего дня вместе с привязанными к нему строками топлива. */
+    @Transactional
+    public void deleteWorkDay(UUID waybillId, UUID dayId) {
+        var wb = waybillService.get(waybillId);
+        requireEditable(wb);
+        var day = ownDay(waybillId, dayId);
+        fuelRecords.findByWaybillIdOrderByCreatedAt(waybillId).stream()
+                .filter(f -> dayId.equals(f.getWorkDayId()))
+                .forEach(fuelRecords::delete);
+        workDays.delete(day);
+    }
+
+    /** Правка строки топлива (legacy fuels редактировались до закрытия листа). Остаток после возврата пересчитывается. */
+    @Transactional
+    public FuelRecord updateFuel(UUID waybillId, UUID fuelId, UUID workDayId, short fuelType,
+                                 BigDecimal fuelGiven, BigDecimal remainBeforeExit,
+                                 BigDecimal additionalGiven, BigDecimal returned, BigDecimal coefBelow0) {
+        var wb = waybillService.get(waybillId);
+        if (wb.getStatus().isTerminal() && !waybillService.isOverdueOnLine(wb)) {
+            throw new ConflictException("Изменение топлива невозможно в статусе " + wb.getStatus());
+        }
+        var record = ownFuel(waybillId, fuelId);
+        if (isNegative(fuelGiven) || isNegative(remainBeforeExit) || isNegative(additionalGiven)
+                || isNegative(returned) || isNegative(coefBelow0)) {
+            throw new UnprocessableException("Объёмы топлива не могут быть отрицательными");
+        }
+        if (record.getFuelType() != fuelType) {
+            throw new UnprocessableException("Вид топлива строки не меняется — удалите строку и добавьте новую");
+        }
+        int maxAdditional = wb.getWaybillType().maxAdditionalFuelLiters();
+        if (maxAdditional >= 0 && additionalGiven != null && additionalGiven.compareTo(BigDecimal.valueOf(maxAdditional)) > 0) {
+            throw new UnprocessableException("Довыдача в пути для формы %s — не более %d л"
+                    .formatted(wb.getWaybillType().legacyForm(), maxAdditional));
+        }
+        if (workDayId != null) {
+            ownDay(waybillId, workDayId);
+        }
+        record.setWorkDayId(workDayId);
+        record.setFuelGiven(fuelGiven);
+        record.setRemainBeforeExit(remainBeforeExit);
+        record.setAdditionalGiven(additionalGiven);
+        record.setReturned(returned);
+        record.setCoefBelow0(coefBelow0);
+        return fuelRecords.save(record);
+    }
+
+    @Transactional
+    public void deleteFuel(UUID waybillId, UUID fuelId) {
+        var wb = waybillService.get(waybillId);
+        if (wb.getStatus().isTerminal() && !waybillService.isOverdueOnLine(wb)) {
+            throw new ConflictException("Удаление топлива невозможно в статусе " + wb.getStatus());
+        }
+        fuelRecords.delete(ownFuel(waybillId, fuelId));
+    }
+
+    /** Дни листа правятся на линии, после возврата и у просроченного на линии листа — до закрытия. */
+    private void requireEditable(tj.mintrans.epd.waybill.domain.Waybill wb) {
+        boolean ok = wb.getStatus() == WaybillStatus.ACTIVE || wb.getStatus() == WaybillStatus.RETURNED
+                || waybillService.isOverdueOnLine(wb);
+        if (!ok) {
+            throw new ConflictException("Рабочие дни можно исправить только до закрытия листа (текущий статус: %s)"
+                    .formatted(wb.getStatus()));
+        }
+    }
+
+    private WorkDay ownDay(UUID waybillId, UUID dayId) {
+        var day = workDays.findById(dayId).orElseThrow(() -> new NotFoundException("Рабочий день не найден"));
+        if (!waybillId.equals(day.getWaybillId())) {
+            throw new UnprocessableException("Рабочий день не относится к этому путевому листу");
+        }
+        return day;
+    }
+
+    private FuelRecord ownFuel(UUID waybillId, UUID fuelId) {
+        var record = fuelRecords.findById(fuelId).orElseThrow(() -> new NotFoundException("Строка топлива не найдена"));
+        if (!waybillId.equals(record.getWaybillId())) {
+            throw new UnprocessableException("Строка топлива не относится к этому путевому листу");
+        }
+        return record;
     }
 
     public List<WorkDay> listWorkDays(UUID waybillId) {
@@ -135,7 +290,7 @@ public class WorkDayService {
                               BigDecimal additionalGiven, BigDecimal returned,
                               BigDecimal coefBelow0, BigDecimal beGiven) {
         var wb = waybillService.get(waybillId);
-        if (wb.getStatus().isTerminal()) {
+        if (wb.getStatus().isTerminal() && !waybillService.isOverdueOnLine(wb)) {
             throw new ConflictException("Добавление топлива невозможно в статусе " + wb.getStatus());
         }
         // Объёмы топлива — только неотрицательные: выданное, довыданное в пути, остатки, возврат,

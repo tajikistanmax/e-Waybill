@@ -58,7 +58,10 @@ public record PassengerCalcInput(
         // --- тариф маршрута ---
         Double tariffPricePer1Mkm,
         Double tariffPriceOneTime,
-        Double brandCostServices
+        Double brandCostServices,
+        // Норма топлива от «гашти ҳамагӣ» (пробег по маршруту + нулевой), а не от одометра —
+        // автобус 1-АД вне Душанбе (legacy BusBaseCalc: fuel_calc_100($row, $l_main)).
+        boolean fuelByRouteRun
 ) {
 
     public PassengerCalcInput {
@@ -111,6 +114,7 @@ public record PassengerCalcInput(
         private Double tariffPricePer1Mkm;
         private Double tariffPriceOneTime;
         private Double brandCostServices;
+        private boolean fuelByRouteRun;
 
         public Builder brandName(String v) { this.brandName = v; return this; }
         public Builder vehicleYearManufacture(LocalDate v) { this.vehicleYearManufacture = v; return this; }
@@ -153,6 +157,7 @@ public record PassengerCalcInput(
         public Builder tariffPricePer1Mkm(Double v) { this.tariffPricePer1Mkm = v; return this; }
         public Builder tariffPriceOneTime(Double v) { this.tariffPriceOneTime = v; return this; }
         public Builder brandCostServices(Double v) { this.brandCostServices = v; return this; }
+        public Builder fuelByRouteRun(boolean v) { this.fuelByRouteRun = v; return this; }
 
         public PassengerCalcInput build() {
             return new PassengerCalcInput(brandName, vehicleYearManufacture, airConditionerPercent, capacity,
@@ -163,7 +168,7 @@ public record PassengerCalcInput(
                     odometerExit, odometerEntry, workTimeMinutes, conditionerHours, numberLap, workDays,
                     speedometerTotalDistance, calcDate, fuels, earning, kassa, companyPercentIncome,
                     driverDegree, companyCat1, companyCat2, companyCat3, tariffPricePer1Mkm,
-                    tariffPriceOneTime, brandCostServices);
+                    tariffPriceOneTime, brandCostServices, fuelByRouteRun);
         }
     }
 }

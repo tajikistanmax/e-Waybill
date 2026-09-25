@@ -53,6 +53,8 @@ type AuthState = {
   authenticated: boolean;
   username: string;
   roles: string[];
+  /** РМА сотрудника из токена (claim «rma»); у диспетчера — им подписываются Т1/Т4/Т5. */
+  rma: string;
   login: (username: string, password: string, remember?: boolean) => Promise<void>;
   logout: () => void;
   /**
@@ -103,7 +105,7 @@ export function cancelSecondFactor() {
 }
 
 const AuthContext = createContext<AuthState>({
-  ready: false, authenticated: false, username: '', roles: [],
+  ready: false, authenticated: false, username: '', roles: [], rma: '',
   login: async () => {}, logout: () => {}, changePassword: async () => false,
   verifySecondFactor: async () => {},
 });
@@ -125,7 +127,7 @@ function decode(token: string): Record<string, unknown> {
  */
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState<Omit<AuthState, 'login' | 'logout' | 'changePassword' | 'verifySecondFactor'>>({
-    ready: false, authenticated: false, username: '', roles: [],
+    ready: false, authenticated: false, username: '', roles: [], rma: '',
   });
   const timer = useRef<number | undefined>(undefined);
   /** Момент истечения текущего токена доступа (мс), 0 — токена нет. */
@@ -143,6 +145,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       ready: true, authenticated: true,
       username: String(claims.preferred_username ?? claims.email ?? ''),
       roles: ((claims.realm_access as { roles?: string[] })?.roles) ?? [],
+      rma: typeof claims.rma === 'string' ? claims.rma : '',
     });
     window.clearTimeout(timer.current);
     timer.current = window.setTimeout(() => { void refresh(); }, Math.max(30, data.expires_in - 45) * 1000);
@@ -340,7 +343,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try { localStorage.removeItem('epd:wb-new-draft'); } catch { /* приватный режим */ }
     setAuthToken('');
     currentAccessToken = '';
-    setState({ ready: true, authenticated: false, username: '', roles: [] });
+    setState({ ready: true, authenticated: false, username: '', roles: [], rma: '' });
     window.location.href = '/login';
   }, []);
 

@@ -1,13 +1,14 @@
 'use client';
 
 import { use, useCallback, useEffect, useState } from 'react';
-import { md, wb, Waybill, Title, StatusEvent, Payment, STATUS_LABELS, type GpsPing, type FieldDefinition, type Inspection } from '@/lib/api';
+import { md, wb, Waybill, Title, StatusEvent, Payment, STATUS_LABELS, type GpsPing, type FieldDefinition, type Inspection, type WorkDaysResponse } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 import { useAuth } from '@/lib/auth';
 import { verifyLink } from '@/lib/verify';
 import { ExpensesSection } from './ExpensesSection';
 import { Attachments } from './Attachments';
 import { Consignment } from './Consignment';
+import WorkDaysFuel from './WorkDaysFuel';
 import QRCode from 'qrcode';
 
 type Employees = { doctors: { rma: string; name: string }[]; mechanics: { rma: string; name: string }[]; dispatchers: { rma: string; name: string }[] };
@@ -66,14 +67,15 @@ export default function WaybillCard({ params }: { params: Promise<{ id: string }
   const [retMetrics, setRetMetrics] = useState({ transportWork: '', trips: '', conditionerHours: '' }); // факт. показатели рейса
   // Международные формы (MIGRATION.md 3.14/3.15): прибытие в пункт назначения (5Б-БМ/4-МБМ) и пассажиры (4-МБМ).
   const [retIntl, setRetIntl] = useState({ arrivalTime: '', passengersCount: '' });
-  const [fuelCalc, setFuelCalc] = useState<Record<string, unknown> | null>(null);
-  const [workDays, setWorkDays] = useState<Record<string, unknown>[]>([]);
-  const [dayForm, setDayForm] = useState({ workDate: '', exitTime: '06:00', entryTime: '', odometerExit: '', odometerEntry: '', laps: '', revenue: '' });
-  const [fuelForm, setFuelForm] = useState({ fuelType: '1', fuelGiven: '', remainBeforeExit: '', additionalGiven: '', returned: '', coefBelow0: '', beGiven: '', workDayId: '' });
+  // Рабочие дни и строки топлива (GET /work-days отдаёт объект {workDays:[{workDay,fuel}], waybillFuel}).
+  const [wdData, setWdData] = useState<WorkDaysResponse | null>(null);
+  const workDays = wdData?.workDays ?? [];
+  // Показатели листа без рабочих дней при возврате (legacy «коркард» 1-АД): круги, выручка, гашти ибтидоӣ.
+  const [retDay, setRetDay] = useState({ numberLap: '', earning: '', beginPathA: 'begin_path_a', beginPathB: '' });
+  // Подписант Т1/Т4/Т5 у администратора платформы (у диспетчера — он сам, по РМА из токена).
+  const [dispPick, setDispPick] = useState('');
   // Посуточный расчёт топлива многодневных 1-А/3-С (MIGRATION.md 5.4, B10): разбивка по дням из POST /calculation.
   const [dailyCalc, setDailyCalc] = useState<Record<string, unknown> | null>(null);
-  // Подсказка «из предыдущего ПЛ этого ТС» (legacy parking_fuel_left/parking_fuel_give) — текст под формой топлива.
-  const [fuelHint, setFuelHint] = useState('');
   const [replacement, setReplacement] = useState(''); // РМА нового водителя или госномер нового ТС
   const [candidates, setCandidates] = useState<{ value: string; label: string }[]>([]);
   const [blockReason, setBlockReason] = useState(''); // разблокировка (Минтранс) — свободное обоснование
@@ -89,24 +91,7 @@ export default function WaybillCard({ params }: { params: Promise<{ id: string }
   // all=true: поле могло быть отключено после выдачи ПЛ, но его значение в документе остаётся.
   const [fieldDefs, setFieldDefs] = useState<FieldDefinition[]>([]);
   const { t, tType, tStatus, lang } = useT();
-  const { roles } = useAuth();
-
-  // Автоподстановка остатка до выезда и нормы к выдаче из предыдущего ПЛ того же ТС по выбранному
-  // виду топлива (перенос legacy: при смене вида топлива форма перезапрашивала parking_fuel_left/give).
-  useEffect(() => {
-    if (!w || !['ISSUED', 'ACTIVE', 'RETURNED', 'READY'].includes(w.status)) return;
-    let cancelled = false;
-    wb.fuelPrefill(id, Number(fuelForm.fuelType)).then(p => {
-      if (cancelled) return;
-      setFuelForm(f => ({
-        ...f,
-        remainBeforeExit: p.remainBeforeExit != null ? String(p.remainBeforeExit) : '',
-      }));
-      setFuelHint(p.found ? `${t('wbd.fuelprefill.from')}${p.sourceWaybillNumber ? ` (${p.sourceWaybillNumber})` : ''}` : t('wbd.fuelprefill.none'));
-    }).catch(() => { if (!cancelled) setFuelHint(''); });
-    return () => { cancelled = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id, fuelForm.fuelType, w?.status]);
+  const { roles, rma: myRma } = useAuth();
 
   const reload = useCallback(async () => {
     const data = await wb.get(id);
@@ -124,10 +109,7 @@ export default function WaybillCard({ params }: { params: Promise<{ id: string }
         setQrUrl(await QRCode.toDataURL(verifyUrl, { width: 240, margin: 1 }));
       } catch { /* QR доступен с READY */ }
     }
-    try {
-      const wd = await fetch(`/wb-api/api/v1/waybills/${id}/work-days`, { headers: (await import('@/lib/api')).authHeaders() });
-      if (wd.ok) setWorkDays(await wd.json());
-    } catch { /* work-days могут отсутствовать */ }
+    wb.workDays(id).then(setWdData).catch(() => setWdData(null));
     const list = await md.employees(data.organizationRma);
     setEmp({
       doctors: list.filter(e => e.type === 1).map(e => ({ rma: String(e.rma), name: String(e.name) })),
@@ -175,14 +157,25 @@ export default function WaybillCard({ params }: { params: Promise<{ id: string }
   if (!w) return error ? <div className="error">{error}</div> : <p>{t('common.loading')}</p>;
 
   const s = STATUS_LABELS[w.status] ?? { label: w.status, color: 'gray' };
-  const dispatcher = emp.dispatchers[0]?.rma;
+  const has = (r: string) => roles.includes(r);
+  // Т1/Т4/Т5 подписывает диспетчер своим РМА (legacy: вошедший пользователь); раньше подставлялся
+  // первый диспетчер организации — при нескольких диспетчерах на бланке стояло чужое имя.
+  // Администратор платформы выбирает подписанта из диспетчеров организации.
+  const dispatcher = has('DISPATCHER') && myRma ? myRma : (dispPick || emp.dispatchers[0]?.rma);
+  const dispatcherName = emp.dispatchers.find(d => d.rma === dispatcher)?.name ?? dispatcher ?? '—';
   const doctor = emp.doctors[0]?.rma;
   const mechanic = emp.mechanics[0]?.rma;
 
-  // Доступ к действиям жизненного цикла по роли (админы — сквозной доступ для контроля).
-  const has = (r: string) => roles.includes(r);
+  // Доступ к действиям жизненного цикла по роли — как на сервере (@PreAuthorize DISPATCHER/SYSTEM_ADMIN):
+  // админам перевозчика кнопки не показываем, иначе они получали 403.
   const isAdmin = has('SYSTEM_ADMIN') || has('COMPANY_ADMIN') || has('BRANCH_ADMIN');
-  const canDispatch = has('DISPATCHER') || isAdmin;   // Т1, выдача, Т4, Т5, закрытие, замена, аннулирование
+  const canDispatch = has('DISPATCHER') || has('SYSTEM_ADMIN');   // Т1, выдача, Т4, Т5, закрытие, замена, аннулирование
+  const canFuel = canDispatch || has('FUEL_STATION');
+  const overdue = w.status === 'EXPIRED' && titles.some(x => x.titleType === 'T4') && !titles.some(x => x.titleType === 'T5');
+  const canReturn = w.status === 'ACTIVE' || overdue;
+  const passengerForm = ['WB_BUS', 'WB_TROLLEYBUS', 'WB_MINIBUS', 'WB_CAR', 'WB_TAXI'].includes(w.waybillType);
+  const beginPathForm = ['WB_BUS', 'WB_TROLLEYBUS', 'WB_MINIBUS'].includes(w.waybillType)
+    || (['WB_CAR', 'WB_TAXI'].includes(w.waybillType) && (w.typeData as Record<string, unknown> | null)?.serviceKind === 'ROUTE');
   const canPay = has('ACCOUNTANT') || isAdmin;        // подтверждение оплаты
   const canBlock = has('INSPECTOR') || has('SYSTEM_ADMIN');   // блокировка инспектором
   const canKassa = has('ACCOUNTANT') || has('SYSTEM_ADMIN');  // касса 3-С «выручка сдана» (4.7)
@@ -272,12 +265,30 @@ export default function WaybillCard({ params }: { params: Promise<{ id: string }
         <span className={`badge ${s.color}`}>{tStatus(w.status)}</span>
         <span className="spacer" />
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+          {/* Официальный бланк формы (серверный PDF: 1-АД, 1-А, 3-С, 2-Б, 5Б-БМ, 4-МБМ) — как «Чоп» legacy.
+              Кнопка была потеряна при слиянии 29b25e8; «Печатная форма» — упрощённый веб-лист. */}
+          {w.number && (
+            <button className="btn" data-testid="wb-pdf" onClick={async () => {
+              try {
+                const blob = await wb.printPdf(id);
+                const url = URL.createObjectURL(blob);
+                window.open(url, '_blank');
+                setTimeout(() => URL.revokeObjectURL(url), 60_000);
+              } catch (e) { setError((e as Error).message); }
+            }}>{t('wb.btn.pdf')}</button>
+          )}
           {w.number && <a className="btn secondary" href={`/waybills/${id}/print`}>{t('wb.printform')}</a>}
           <a className="btn secondary" href={`/waybills/new?from=${id}`}>{t('wb.btn.copy')}</a>
+          {/* Подписант-диспетчер для администратора платформы (у диспетчера — он сам). */}
+          {canDispatch && !has('DISPATCHER') && emp.dispatchers.length > 1 && ['DRAFT', 'ISSUED', 'ACTIVE', 'EXPIRED'].includes(w.status) && (
+            <select value={dispatcher ?? ''} onChange={e => setDispPick(e.target.value)} style={{ width: 230 }} title={t('wb.r.dispatcher')}>
+              {emp.dispatchers.map(d => <option key={d.rma} value={d.rma}>{d.name}</option>)}
+            </select>
+          )}
           {w.status === 'DRAFT' && canDispatch && (
             <button className="btn" disabled={!dispatcher}
               onClick={() => act(t('wb.act.t1'), () => wb.post(`/${id}/titles/t1`, { dispatcherRma: dispatcher }))}>
-              {t('wb.btn.signt1')} ({t('wb.r.dispatcher')} {emp.dispatchers[0]?.name ?? '—'})
+              {t('wb.btn.signt1')} ({t('wb.r.dispatcher')} {dispatcherName})
             </button>
           )}
           {/* Предрейсовый медосмотр (Т2) и техконтроль (Т3) проводятся ТОЛЬКО в АРМ врача (/med)
@@ -311,8 +322,32 @@ export default function WaybillCard({ params }: { params: Promise<{ id: string }
               {t('wb.btn.t4')}
             </button>
           )}
-          {w.status === 'ACTIVE' && canDispatch && (
+          {overdue && <span className="badge red" title={t('wb.overdue.hint')}>{t('wb.overdue')}</span>}
+          {canReturn && canDispatch && (
             <span style={{ display: 'inline-flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+              {/* Лист без рабочих дней: круги, выручка и «гашти ибтидоӣ» вносятся при возврате (legacy «коркард»). */}
+              {passengerForm && workDays.length === 0 && (
+                <>
+                  {/* Круги — у маршрутных форм; у такси по счётчику и почасовой аренды кругов нет. */}
+                  {(!['WB_CAR', 'WB_TAXI'].includes(w.waybillType) || beginPathForm) ? (
+                    <input type="number" min={0} max={99} style={{ width: 110 }} placeholder={t('wb.ph.laps')} title={t('wb.ph.laps')}
+                      value={retDay.numberLap} onChange={e => setRetDay(d => ({ ...d, numberLap: e.target.value }))} />
+                  ) : null}
+                  <input type="number" min={0} step="0.01" style={{ width: 130 }} placeholder={t('wb.ph.earning')} title={t('wb.ph.earning')}
+                    value={retDay.earning} onChange={e => setRetDay(d => ({ ...d, earning: e.target.value }))} />
+                  {beginPathForm && (
+                    <span style={{ display: 'inline-flex', gap: 4, alignItems: 'center', fontSize: 12, color: 'var(--muted)' }} title={t('wb.f.beginpath')}>
+                      {t('wb.f.beginpath')}
+                      <select value={retDay.beginPathA} onChange={e => setRetDay(d => ({ ...d, beginPathA: e.target.value }))} style={{ width: 60 }}>
+                        <option value="">—</option><option value="begin_path_a">А</option><option value="begin_path_b">Б</option>
+                      </select>
+                      <select value={retDay.beginPathB} onChange={e => setRetDay(d => ({ ...d, beginPathB: e.target.value }))} style={{ width: 60 }}>
+                        <option value="">—</option><option value="begin_path_a">А</option><option value="begin_path_b">Б</option>
+                      </select>
+                    </span>
+                  )}
+                </>
+              )}
               {isSpecial && (
                 <input type="number" min={0} step="0.1" style={{ width: 180 }} placeholder={t('wb.ph.motohours')}
                   value={motorHoursEntry} onChange={e => setMotorHoursEntry(e.target.value)} />
@@ -357,6 +392,12 @@ export default function WaybillCard({ params }: { params: Promise<{ id: string }
                   ...(retMetrics.conditionerHours.trim() !== '' ? { conditionerHours: Number(retMetrics.conditionerHours) } : {}),
                   ...(isIntlForm && retIntl.arrivalTime.trim() !== '' ? { arrivalTime: retIntl.arrivalTime.trim() } : {}),
                   ...(w.waybillType === 'WB_PAX_INTL' && retIntl.passengersCount.trim() !== '' ? { passengersCount: Number(retIntl.passengersCount) } : {}),
+                  ...(passengerForm && workDays.length === 0 ? {
+                    ...(retDay.numberLap.trim() !== '' ? { numberLap: Number(retDay.numberLap) } : {}),
+                    ...(retDay.earning.trim() !== '' ? { earning: Number(retDay.earning) } : {}),
+                    ...(beginPathForm && (retDay.numberLap.trim() !== '' || retDay.earning.trim() !== '')
+                      ? { beginPathA: retDay.beginPathA || null, beginPathB: retDay.beginPathB || null } : {}),
+                  } : {}),
                 }))}>
                 {t('wb.btn.t5')}
               </button>
@@ -674,149 +715,8 @@ export default function WaybillCard({ params }: { params: Promise<{ id: string }
             </dl>
           </div>
 
-          {(w.status === 'ACTIVE' || workDays.length > 0) && (
-            <div className="card">
-              <h2>{t('wb.workdays.h')}</h2>
-              {workDays.length > 0 && (
-                <table style={{ marginBottom: 12 }}>
-                  <thead><tr><th>{t('col.date')}</th><th>{t('wb.th.exit')}</th><th>{t('wb.th.entry')}</th><th>{t('col.odometer')}</th><th>{t('wb.th.laps')}</th><th>{t('rep.revenue')}</th></tr></thead>
-                  <tbody>
-                    {workDays.map((d, i) => (
-                      <tr key={String(d.id ?? i)}>
-                        <td>{String(d.workDate)}</td>
-                        <td>{String(d.exitTime ?? '—')}</td>
-                        <td>{String(d.entryTime ?? '—')}</td>
-                        <td>{String(d.odometerExit ?? '—')} → {String(d.odometerEntry ?? '—')}</td>
-                        <td>{String(d.laps ?? '—')}</td>
-                        <td>{String(d.revenue ?? '—')}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
-              {w.status === 'ACTIVE' && (
-                <>
-                  <form className="grid" onSubmit={async e => {
-                    e.preventDefault();
-                    await act(t('wb.act.dayadded'), () => wb.post(`/${id}/work-days`, {
-                      workDate: dayForm.workDate,
-                      exitTime: dayForm.exitTime || null,
-                      entryTime: dayForm.entryTime || null,
-                      odometerExit: dayForm.odometerExit ? Number(dayForm.odometerExit) : null,
-                      odometerEntry: dayForm.odometerEntry ? Number(dayForm.odometerEntry) : null,
-                      laps: dayForm.laps ? Number(dayForm.laps) : null,
-                      revenue: dayForm.revenue ? Number(dayForm.revenue) : null,
-                    }));
-                  }}>
-                    <div><label>{t('col.date')}</label><input type="date" required value={dayForm.workDate} onChange={e => setDayForm({ ...dayForm, workDate: e.target.value })} /></div>
-                    <div><label>{t('wb.f.exitentry')}</label>
-                      <span style={{ display: 'flex', gap: 6 }}>
-                        <input type="time" value={dayForm.exitTime} onChange={e => setDayForm({ ...dayForm, exitTime: e.target.value })} />
-                        <input type="time" value={dayForm.entryTime} onChange={e => setDayForm({ ...dayForm, entryTime: e.target.value })} />
-                      </span>
-                    </div>
-                    <div><label>{t('wb.f.odoexitentry')}</label>
-                      <span style={{ display: 'flex', gap: 6 }}>
-                        <input type="number" value={dayForm.odometerExit} onChange={e => setDayForm({ ...dayForm, odometerExit: e.target.value })} />
-                        <input type="number" value={dayForm.odometerEntry} onChange={e => setDayForm({ ...dayForm, odometerEntry: e.target.value })} />
-                      </span>
-                    </div>
-                    <div><label>{t('wb.f.lapsrevenue')}</label>
-                      <span style={{ display: 'flex', gap: 6 }}>
-                        <input type="number" value={dayForm.laps} onChange={e => setDayForm({ ...dayForm, laps: e.target.value })} />
-                        <input type="number" step="0.01" value={dayForm.revenue} onChange={e => setDayForm({ ...dayForm, revenue: e.target.value })} />
-                      </span>
-                    </div>
-                    <div className="full"><button className="btn secondary" type="submit">{t('wb.btn.addday')}</button></div>
-                  </form>
-                  <form className="grid" style={{ marginTop: 10 }} onSubmit={async e => {
-                    e.preventDefault();
-                    await act(t('wb.act.fuelrecorded'), () => wb.post(`/${id}/fuel`, {
-                      fuelType: Number(fuelForm.fuelType),
-                      fuelGiven: fuelForm.fuelGiven ? Number(fuelForm.fuelGiven) : null,
-                      remainBeforeExit: fuelForm.remainBeforeExit ? Number(fuelForm.remainBeforeExit) : null,
-                      additionalGiven: fuelForm.additionalGiven ? Number(fuelForm.additionalGiven) : null,
-                      returned: fuelForm.returned ? Number(fuelForm.returned) : null,
-                      coefBelow0: fuelForm.coefBelow0 ? Number(fuelForm.coefBelow0) : null,
-                      workDayId: fuelForm.workDayId || null,
-                    }));
-                  }}>
-                    {workDays.length > 0 && (
-                      <div><label>{t('wb.f.workday')}</label>
-                        <select value={fuelForm.workDayId} onChange={e => setFuelForm({ ...fuelForm, workDayId: e.target.value })}>
-                          <option value="">{t('wb.f.workday.whole')}</option>
-                          {workDays.map(d => <option key={String(d.id)} value={String(d.id)}>{String(d.workDate)}</option>)}
-                        </select>
-                      </div>
-                    )}
-                    <div><label>{t('rep.col.fueltype')}</label>
-                      <select value={fuelForm.fuelType} onChange={e => setFuelForm({ ...fuelForm, fuelType: e.target.value })}>
-                        <option value="1">{t('wb.fuel.petrol')}</option><option value="2">{t('wb.fuel.diesel')}</option>
-                        <option value="3">{t('wb.fuel.lpg')}</option><option value="4">{t('wb.fuel.cng')}</option>
-                      </select>
-                    </div>
-                    <div><label>{t('rep.col.given')}</label><input type="number" step="0.1" required value={fuelForm.fuelGiven} onChange={e => setFuelForm({ ...fuelForm, fuelGiven: e.target.value })} /></div>
-                    <div><label>{t('wb.f.remainbefore')}</label><input type="number" step="0.1" value={fuelForm.remainBeforeExit} onChange={e => setFuelForm({ ...fuelForm, remainBeforeExit: e.target.value })} /></div>
-                    <div><label>{t('wbd.fueladd')}</label><input type="number" step="0.1" value={fuelForm.additionalGiven} onChange={e => setFuelForm({ ...fuelForm, additionalGiven: e.target.value })} /></div>
-                    <div><label>{t('wbd.fuelreturn')}</label><input type="number" step="0.1" value={fuelForm.returned} onChange={e => setFuelForm({ ...fuelForm, returned: e.target.value })} /></div>
-                    <div><label>{t('wbd.fuelcoef0')}</label><input type="number" step="0.1" min="0" value={fuelForm.coefBelow0} onChange={e => setFuelForm({ ...fuelForm, coefBelow0: e.target.value })} /></div>
-                    {/* «Норма к выдаче» (Дода шавад) убрана 24.09.2026: 0 из 118 536 строк в старой платформе. */}
-                    {fuelHint && <div className="full" style={{ fontSize: 12, color: 'var(--muted)' }}>{fuelHint}</div>}
-                    <div className="full"><button className="btn secondary" type="submit">{t('wb.btn.recordfuel')}</button></div>
-                  </form>
-                </>
-              )}
-            </div>
-          )}
-
-          {/* Троллейбус — электротранспорт: нормы топлива нет, кнопка расчёта только выдавала бы ошибку. */}
-          {(w.status === 'RETURNED' || w.status === 'COMPLETED') && w.waybillType !== 'WB_TROLLEYBUS' && (
-            <div className="card">
-              <h2>{t('wb.fuelnorm.h')}</h2>
-              {!fuelCalc ? (
-                <button className="btn secondary" onClick={async () => {
-                  try {
-                    const { authHeaders } = await import('@/lib/api');
-                    const r = await fetch(`/wb-api/api/v1/waybills/${id}/fuel-calculation`, { headers: authHeaders() });
-                    if (!r.ok) {
-                      const p = await r.json().catch(() => null);
-                      throw new Error(p?.detail ?? `${t('wb.error')} ${r.status}`);
-                    }
-                    setFuelCalc(await r.json());
-                  } catch (e) {
-                    setError((e as Error).message);
-                  }
-                }}>
-                  {t('wb.btn.calcnorm')}
-                </button>
-              ) : (
-                <dl className="kv">
-                  {fuelCalc.unit === 'MOTORHOUR' ? (
-                    <>
-                      <dt>{t('wb.spec.worked')}</dt><dd>{String(fuelCalc.motorHours)} {t('unit.mh')}</dd>
-                      <dt>{t('wb.basenorm')}</dt><dd>{String(fuelCalc.baseNormPer100km)} {t('unit.lpermh')}</dd>
-                    </>
-                  ) : (
-                    <>
-                      <dt>{t('col.mileage')}</dt><dd>{String(fuelCalc.km)} {t('unit.km')}</dd>
-                      <dt>{t('wb.basenorm')}</dt><dd>{String(fuelCalc.baseNormPer100km)} л/100км</dd>
-                    </>
-                  )}
-                  <dt>{t('dict.sec.coefficients')}</dt>
-                  <dd>{Array.isArray(fuelCalc.coefficientsApplied) && fuelCalc.coefficientsApplied.length
-                    ? (fuelCalc.coefficientsApplied as Record<string, unknown>[]).map(c => `${c.name} ×${c.value}`).join(', ')
-                    : t('wb.notapplied')}</dd>
-                  <dt>{t('wb.norm')}</dt><dd><b>{String(fuelCalc.normLiters)} л</b></dd>
-                  <dt>{t('wb.fact')}</dt><dd>{String(fuelCalc.factLiters)} л</dd>
-                  <dt>{t('wb.deviation')}</dt>
-                  <dd style={{ color: Number(fuelCalc.deviationLiters) > 0 ? 'var(--accent)' : 'var(--brand)' }}>
-                    {Number(fuelCalc.deviationLiters) > 0 ? '+' : ''}{String(fuelCalc.deviationLiters)} л
-                  </dd>
-                  {fuelCalc.tripCost != null && <><dt>{t('wb.tripcost')}</dt><dd>{String(fuelCalc.tripCost)} сомони ({String(fuelCalc.tariffPerKm)} сомони/км)</dd></>}
-                </dl>
-              )}
-            </div>
-          )}
+          <WorkDaysFuel id={id} w={w} data={wdData} overdue={overdue} canDispatch={canDispatch} canFuel={canFuel}
+            hasConditioner={hasConditioner} act={act} onError={setError} />
 
           {/* Посуточный расчёт топлива (B10): 1-А / 3-С с рабочими днями — строки топлива, привязанные к дням */}
           {workDays.length > 0 && ['WB_MINIBUS', 'WB_CAR', 'WB_TAXI'].includes(w.waybillType) && (

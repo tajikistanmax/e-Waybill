@@ -56,6 +56,30 @@ public enum WaybillType {
      */
     public int maxAdditionalFuelLiters() { return maxAdditionalFuelLiters; }
 
+    /**
+     * Юридический максимум срока действия, до которого политика {@code max_validity_days} может ПОДНЯТЬ
+     * срок: у 3-С — 30 дней (legacy отдельная форма 3-С «30» для предприятий Душанбе,
+     * {@code Waybill3c30Request: valid_date_range …,29}); у остальных форм равен {@link #maxValidityDays()}.
+     */
+    public int legalMaxValidityDays() {
+        return (this == WB_CAR || this == WB_TAXI) ? 30 : maxValidityDays;
+    }
+
+    /**
+     * Предел пробега за весь лист, км: одометр возврата − одометр выезда (legacy {@code valid_counter_value}
+     * в Request-классах форм, проверялся всегда): автобус 600, троллейбус 215, 1-А 1600, 3-С 2800,
+     * 3-С «30» 12 000. 0 — без предела. {@code validityDays} — фактический срок листа (для 3-С «30»).
+     */
+    public int maxTripKm(long validityDays) {
+        return switch (this) {
+            case WB_BUS -> 600;
+            case WB_TROLLEYBUS -> 215;
+            case WB_MINIBUS -> 1600;
+            case WB_CAR, WB_TAXI -> validityDays > maxValidityDays ? 12000 : 2800;
+            default -> 0;
+        };
+    }
+
     public boolean isPassenger() {
         return this == WB_BUS || this == WB_TROLLEYBUS || this == WB_MINIBUS || this == WB_PAX_INTL || this == WB_TAXI;
     }

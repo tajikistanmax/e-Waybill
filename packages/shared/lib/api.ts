@@ -850,6 +850,23 @@ export const wb = {
       headers: authHeaders({ 'Content-Type': 'application/json' }),
       body: body != null ? JSON.stringify(body) : '{}',
     }).then(r => handle<T>(r)),
+  put: <T = unknown>(path: string, body?: unknown) =>
+    fetch(`/wb-api/api/v1/waybills${path}`, {
+      method: 'PUT',
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
+      body: body != null ? JSON.stringify(body) : '{}',
+    }).then(r => handle<T>(r)),
+  del: (path: string) =>
+    fetch(`/wb-api/api/v1/waybills${path}`, { method: 'DELETE', headers: authHeaders() })
+      .then(async r => {
+        if (!r.ok && r.status !== 204) {
+          const p = await r.json().catch(() => null);
+          throw new Error(p?.detail ?? p?.title ?? `Ошибка ${r.status}`);
+        }
+      }),
+  // Рабочие дни и строки топлива листа (с посчитанным остатком после возврата).
+  workDays: (id: string) => fetch(`/wb-api/api/v1/waybills/${id}/work-days`, { headers: authHeaders() })
+    .then(r => handle<WorkDaysResponse>(r)),
   // Уведомления организации (waybill-service).
   notifications: () => fetch('/wb-api/api/v1/notifications', { headers: authHeaders() }).then(r => handle<NotificationItem[]>(r)),
   unreadCount: () => fetch('/wb-api/api/v1/notifications/unread-count', { headers: authHeaders() }).then(r => handle<{ count: number }>(r)),
@@ -1065,6 +1082,24 @@ export type SubjectDocument = {
 };
 
 // Автоподстановка топливной строки из предыдущего ПЛ того же ТС (MIGRATION.md §4.9).
+/** Строка топлива листа (fuel_record); remainEntry — остаток после возврата, считает сервер. */
+export type FuelRecordRow = {
+  id: string; waybillId: string; workDayId: string | null; fuelType: number;
+  fuelGiven: number | null; remainBeforeExit: number | null; remainEntry: number | null;
+  additionalGiven: number | null; returned: number | null; coefBelow0: number | null; beGiven: number | null;
+  createdAt: string;
+};
+/** Рабочий день листа (work_day); beginPathA/B — селекторы «гашти ибтидоӣ» ('begin_path_a' | 'begin_path_b'). */
+export type WorkDayRow = {
+  id: string; waybillId: string; workDate: string; exitTime: string | null; entryTime: string | null;
+  odometerExit: number | null; odometerEntry: number | null; laps: number | null; revenue: number | null;
+  conditionerHours: number | null; clientId: string | null; clientTime: string | null;
+  beginPathA: string | null; beginPathB: string | null;
+};
+export type WorkDaysResponse = {
+  workDays: { workDay: WorkDayRow; fuel: FuelRecordRow[] }[];
+  waybillFuel: FuelRecordRow[];
+};
 export type FuelPrefill = {
   found: boolean; fuelType: number;
   remainBeforeExit: number | null; beGiven: number | null;

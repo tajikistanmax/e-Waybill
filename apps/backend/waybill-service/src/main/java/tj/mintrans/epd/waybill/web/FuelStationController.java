@@ -51,11 +51,14 @@ public class FuelStationController {
     private final WaybillRepository waybills;
     private final WorkDayService workDays;
     private final CurrentUser currentUser;
+    private final tj.mintrans.epd.waybill.service.FuelBalanceService fuelBalance;
 
-    public FuelStationController(WaybillRepository waybills, WorkDayService workDays, CurrentUser currentUser) {
+    public FuelStationController(WaybillRepository waybills, WorkDayService workDays, CurrentUser currentUser,
+                                 tj.mintrans.epd.waybill.service.FuelBalanceService fuelBalance) {
         this.waybills = waybills;
         this.workDays = workDays;
         this.currentUser = currentUser;
+        this.fuelBalance = fuelBalance;
     }
 
     public record FuelStationWaybill(String id, String number, String type, String status,
@@ -124,7 +127,9 @@ public class FuelStationController {
         FuelRecord saved = workDays.addFuel(id, null, req.fuelType().shortValue(),
                 req.fuelGiven(), req.remainBeforeExit(), req.remainEntry(),
                 req.additionalGiven(), req.returned(), req.coefBelow0(), req.beGiven());
-        return ResponseEntity.status(HttpStatus.CREATED).body(saved);
+        // Выдача после возврата меняет остаток после возврата — пересчитываем (FuelBalanceService).
+        fuelBalance.recompute(id);
+        return ResponseEntity.status(HttpStatus.CREATED).body(fuelBalance.reload(saved));
     }
 
     // ------------------------------------------------------------------

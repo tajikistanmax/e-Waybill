@@ -114,6 +114,12 @@ public class WaybillCalcEngine {
         List<FuelRow> rows = toFuelRows(in.fuels());
         Map<Long, Double> given = fuel.givenByFuel(rows);
 
+        PassengerMetrics metrics = passengerMetrics(in, distanceKm);
+        // Пробег для нормы: у автобуса вне Душанбе — «гашти ҳамагӣ» (legacy BusBaseCalc: l_main =
+        // l_pass + l1 + l2), иначе одометр. Нет рейсов/маршрута (гашти ҳамагӣ = 0) — одометр.
+        double normDistance = in.fuelByRouteRun() && metrics.totalDistanceKm() > 0
+                ? metrics.totalDistanceKm() : distanceKm;
+
         List<FuelConsumption> fuels = new ArrayList<>();
         double totalNorm = 0d;
         for (FuelNorm norm : norms) {
@@ -122,11 +128,11 @@ public class WaybillCalcEngine {
 
             double normLiters = 0d;
             // §1.5: при нулевом выданном топливе норматив 0; §2.1: считается только при ненулевом пробеге.
-            if (givenLiters != 0d && distanceKm > 0) {
+            if (givenLiters != 0d && normDistance > 0) {
                 FuelNormRequest request = FuelNormRequest.builder()
                         .fuelId(norm.fuelId())
                         .baseNorm100(norm.consumption())
-                        .distanceKm(distanceKm)
+                        .distanceKm(normDistance)
                         .excludingCoef(excludingCoef)
                         .additionalFuel100(nz(in.routeAdditionalFuel100()))
                         .additionalFuel(nz(in.routeAdditionalFuel()))
@@ -170,8 +176,6 @@ public class WaybillCalcEngine {
 
         DriverSalary salary = WaybillMath.driverSalary(in.earning(), in.companyPercentIncome(),
                 WaybillMath.classBonus(in.companyCat1(), in.companyCat2(), in.companyCat3(), in.driverDegree()));
-
-        PassengerMetrics metrics = passengerMetrics(in, distanceKm);
 
         TariffAmount tariff = TariffMath.calculate(in.tariffPricePer1Mkm(), in.tariffPriceOneTime(),
                 in.brandCostServices(), distanceKm, (int) Math.max(in.numberLap(), 0), 0);

@@ -57,6 +57,17 @@ public class WorkDay {
     @Column(name = "client_time")
     private LocalTime clientTime;
 
+    /**
+     * «Гашти ибтидоӣ» начала и конца смены — СЕЛЕКТОРЫ нулевого пробега legacy: имя поля маршрута
+     * ({@code begin_path_a} / {@code begin_path_b}), чьё значение входит в общий пробег дня.
+     * Пусто (оба) — прежнее правило: нулевые пробеги А и Б маршрута.
+     */
+    @Column(name = "begin_path_a")
+    private String beginPathA;
+
+    @Column(name = "begin_path_b")
+    private String beginPathB;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private OffsetDateTime createdAt;
 
@@ -89,5 +100,9 @@ public class WorkDay {
     public void setClientId(UUID clientId) { this.clientId = clientId; }
     public LocalTime getClientTime() { return clientTime; }
     public void setClientTime(LocalTime clientTime) { this.clientTime = clientTime; }
+    public String getBeginPathA() { return beginPathA; }
+    public void setBeginPathA(String beginPathA) { this.beginPathA = beginPathA; }
+    public String getBeginPathB() { return beginPathB; }
+    public void setBeginPathB(String beginPathB) { this.beginPathB = beginPathB; }
     public OffsetDateTime getCreatedAt() { return createdAt; }
 }

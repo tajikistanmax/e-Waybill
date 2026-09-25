@@ -53,6 +53,7 @@ public class WaybillController {
     private final CurrentUser currentUser;
     private final TenantScope tenantScope;
     private final tj.mintrans.epd.waybill.service.WaybillRegistryService registry;
+    private final tj.mintrans.epd.waybill.service.FuelBalanceService fuelBalance;
 
     /** Защитный лимит листинга реестра (после миграции Ф5 в waybill ~2.3 млн архивных ПЛ). */
     private static final int LIST_CAP = 1000;
@@ -63,7 +64,9 @@ public class WaybillController {
                              QrTokenService qr, FuelCalculationService fuelCalculation,
                              WaybillCalcAssembler waybillCalc, CurrentUser currentUser,
                              TenantScope tenantScope,
-                             tj.mintrans.epd.waybill.service.WaybillRegistryService registry) {
+                             tj.mintrans.epd.waybill.service.WaybillRegistryService registry,
+                             tj.mintrans.epd.waybill.service.FuelBalanceService fuelBalance) {
+        this.fuelBalance = fuelBalance;
         this.service = service;
         this.waybills = waybills;
         this.titles = titles;
@@ -130,7 +133,13 @@ public class WaybillController {
             // Международные формы (MIGRATION.md 3.14/3.15): прибытие в пункт назначения
             // (5Б-БМ/4-МБМ, ISO yyyy-MM-ddTHH:mm) и перевезено пассажиров (4-МБМ).
             String arrivalTime,
-            @Min(0) Integer passengersCount) {
+            @Min(0) Integer passengersCount,
+            // Лист без рабочих дней (legacy вкладка «коркард» 1-АД): круги, выручка, «гашти ибтидоӣ»
+            // начала/конца смены ('begin_path_a' | 'begin_path_b') — сохраняются рабочим днём.
+            @Min(0) @jakarta.validation.constraints.Max(99) Integer numberLap,
+            @jakarta.validation.constraints.DecimalMin("0") BigDecimal earning,
+            String beginPathA,
+            String beginPathB) {
     }
 
     public record CloseRequest(String actor) {
@@ -240,16 +249,22 @@ public class WaybillController {
     @PostMapping("/{id}/return")
     @PreAuthorize("hasAnyRole('DISPATCHER','SYSTEM_ADMIN')")
     public Waybill returnTrip(@PathVariable UUID id, @Valid @RequestBody ReturnRequest req) {
-        return service.returnTrip(id, req.dispatcherRma(), req.odometerEntry(), req.motorHoursEntry(),
+        var wb = service.returnTrip(id, req.dispatcherRma(), req.odometerEntry(), req.motorHoursEntry(),
                 new WaybillService.ReturnMetrics(req.transportWork(), req.trips(),
                         req.conditionerHours(), req.airConditionerPercent(),
-                        req.arrivalTime(), req.passengersCount()));
+                        req.arrivalTime(), req.passengersCount(),
+                        req.numberLap(), req.earning(), req.beginPathA(), req.beginPathB()));
+        // «Бақияи пас аз даромад» — теперь известен пробег, остаток после возврата пересчитывается.
+        fuelBalance.recompute(id);
+        return wb;
     }
 
     @PostMapping("/{id}/close")
     @PreAuthorize("hasAnyRole('DISPATCHER','SYSTEM_ADMIN')")
     public Waybill close(@PathVariable UUID id, @RequestBody(required = false) CloseRequest req) {
-        return service.close(id, req == null ? "system" : req.actor());
+        var wb = service.close(id, req == null ? "system" : req.actor());
+        fuelBalance.recompute(id);
+        return wb;
     }
 
     @PostMapping("/{id}/cancel")

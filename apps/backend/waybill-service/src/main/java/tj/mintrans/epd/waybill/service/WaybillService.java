@@ -59,6 +59,8 @@ public class WaybillService {
     /** Проверять лимит суточного пробега ({@code epd.limits.daily-km-enabled}, MIGRATION.md 12.5). */
     private final boolean dailyKmEnabled;
 
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(WaybillService.class);
+
     public WaybillService(WaybillRepository waybills,
                           WaybillTitleRepository titles,
                           WaybillStatusEventRepository events,
@@ -851,8 +853,10 @@ public class WaybillService {
         // уникального индекса БД (uq_active_waybill_vehicle/driver, миграция V7).
         assertNoOpenWaybill(wb.getVehicleRegNumber(), wb.getDriverRma());
         var from = validFrom != null ? validFrom : OffsetDateTime.now();
-        // Лимит срока действия: легальный максимум типа ПЛ, который политика max_validity_days
-        // (уровни NATIONAL/ORGANIZATION/VEHICLE_TYPE) может только УЖЕСТОЧИТЬ, но не превысить.
+        // Лимит срока действия: по умолчанию — срок типа ПЛ; политика max_validity_days (уровни
+        // NATIONAL/ORGANIZATION/VEHICLE_TYPE) задаёт срок в пределах юридического максимума формы.
+        // Так 3-С «30» предприятий Душанбе (legacy Waybill3c30, до 30 дней) включается политикой
+        // организации max_validity_days=30, а не хардкодом списка компаний (MIGRATION.md 3.6/5.7).
         int typeCap = wb.getWaybillType().maxValidityDays();
         int effectiveCap = typeCap;
         String maxDaysRule = masterData
@@ -862,7 +866,7 @@ public class WaybillService {
             try {
                 int policyCap = Integer.parseInt(maxDaysRule.trim());
                 if (policyCap >= 1) {
-                    effectiveCap = Math.min(typeCap, policyCap);
+                    effectiveCap = Math.min(wb.getWaybillType().legalMaxValidityDays(), policyCap);
                 }
             } catch (NumberFormatException ignored) {
                 // некорректное значение политики — остаётся легальный лимит типа
@@ -1207,16 +1211,32 @@ public class WaybillService {
      */
     public record ReturnMetrics(Double transportWork, Double trips,
                                 Double conditionerHours, Integer airConditionerPercent,
-                                String arrivalTime, Integer passengersCount) {
+                                String arrivalTime, Integer passengersCount,
+                                // Лист без рабочих дней (legacy «коркард»): круги, выручка (kassa/earning),
+                                // селекторы нулевого пробега «гашти ибтидоӣ» начала и конца смены.
+                                Integer numberLap, java.math.BigDecimal earning,
+                                String beginPathA, String beginPathB) {
         public static final ReturnMetrics EMPTY = new ReturnMetrics(null, null, null, null, null, null);
 
         public ReturnMetrics(Double transportWork, Double trips, Double conditionerHours, Integer airConditionerPercent) {
             this(transportWork, trips, conditionerHours, airConditionerPercent, null, null);
         }
 
+        public ReturnMetrics(Double transportWork, Double trips, Double conditionerHours, Integer airConditionerPercent,
+                             String arrivalTime, Integer passengersCount) {
+            this(transportWork, trips, conditionerHours, airConditionerPercent, arrivalTime, passengersCount,
+                    null, null, null, null);
+        }
+
         boolean any() {
             return transportWork != null || trips != null || conditionerHours != null || airConditionerPercent != null
                     || arrivalTime != null || passengersCount != null;
+        }
+
+        /** Переданы показатели дня (круги / выручка / гашти ибтидоӣ) — сохраняются рабочим днём. */
+        boolean hasDayData() {
+            return numberLap != null || earning != null
+                    || (beginPathA != null && !beginPathA.isBlank()) || (beginPathB != null && !beginPathB.isBlank());
         }
     }
 
@@ -1260,10 +1280,59 @@ public class WaybillService {
     public Waybill returnTrip(UUID id, String dispatcherRma, int odometerEntry, Double motorHoursEntry,
                               ReturnMetrics metrics) {
         var wb = getForUpdate(id);
-        requireStatus(wb, WaybillStatus.ACTIVE);
+        // Просроченный на линии лист (EXPIRED после Т4, возврат не оформлен) обрабатывается так же, как
+        // действующий: в legacy «просрочен и не обработан» — фильтр списка, а не запрет обработки; иначе
+        // пробег, топливо, круги и выручка рейса терялись. Нарушение срока остаётся в истории статусов.
+        boolean overdue = isOverdueOnLine(wb);
+        if (!overdue) {
+            requireStatus(wb, WaybillStatus.ACTIVE);
+        }
         var dispatcher = requireEmployee(wb, dispatcherRma, 3, "Диспетчер");
         if (wb.getOdometerExit() != null && odometerEntry < wb.getOdometerExit()) {
             throw new UnprocessableException("Одометр возврата меньше одометра выезда");
+        }
+        // Предел пробега за лист (legacy valid_counter_value: автобус 600, троллейбус 215, 1-А 1600,
+        // 3-С 2800, 3-С «30» 12 000 км) — защита от ошибки ввода одометра возврата.
+        int maxTripKm = wb.getWaybillType().maxTripKm(validityDays(wb));
+        if (maxTripKm > 0 && wb.getOdometerExit() != null && odometerEntry - wb.getOdometerExit() > maxTripKm) {
+            throw new UnprocessableException("Пробег %d км за лист превышает предел формы %s — %d км; проверьте одометр возврата"
+                    .formatted(odometerEntry - wb.getOdometerExit(), wb.getWaybillType().legacyForm(), maxTripKm));
+        }
+        // Показатели листа без рабочих дней (legacy вкладка «коркард»: number_lap, earning/kassa, гашти
+        // ибтидои А/Б) вносятся при возврате и сохраняются рабочим днём — так же хранит их архив
+        // (один день на однодневный лист), и расчёт/отчёты читают их из одного места.
+        if (metrics != null && metrics.hasDayData()) {
+            if (metrics.numberLap() != null && (metrics.numberLap() < 0 || metrics.numberLap() > 99)) {
+                throw new UnprocessableException("Число кругов (рейсов) — от 0 до 99");
+            }
+            if (metrics.earning() != null && metrics.earning().signum() < 0) {
+                throw new UnprocessableException("Выручка не может быть отрицательной");
+            }
+            assertBeginPath(metrics.beginPathA(), true);
+            assertBeginPath(metrics.beginPathB(), false);
+            if (workDays.countByWaybillId(id) > 0) {
+                throw new UnprocessableException("У листа есть рабочие дни — круги и выручка вносятся по дням");
+            }
+            var t4 = titles.findFirstByWaybillIdAndTitleTypeOrderBySignedAtDesc(id, "T4").orElse(null);
+            var exitAt = t4 != null ? t4.getSignedAt() : wb.getValidFrom();
+            var now = OffsetDateTime.now();
+            var day = new tj.mintrans.epd.waybill.domain.WorkDay();
+            day.setWaybillId(id);
+            day.setWorkDate((exitAt != null ? exitAt : now).toLocalDate());
+            if (exitAt != null) day.setExitTime(exitAt.toLocalTime().withNano(0));
+            day.setEntryTime(now.toLocalTime().withNano(0));
+            day.setOdometerExit(wb.getOdometerExit());
+            day.setOdometerEntry(odometerEntry);
+            // Legacy (BillNumberTrait): при нулевом пробеге 1-АД число кругов обнуляется.
+            boolean zeroRun = wb.getOdometerExit() != null && odometerEntry == wb.getOdometerExit();
+            day.setLaps(zeroRun && isBusForm(wb.getWaybillType()) ? Integer.valueOf(0) : metrics.numberLap());
+            day.setRevenue(metrics.earning());
+            day.setBeginPathA(blankToNull(metrics.beginPathA()));
+            day.setBeginPathB(blankToNull(metrics.beginPathB()));
+            if (metrics.conditionerHours() != null) {
+                day.setConditionerHours(java.math.BigDecimal.valueOf(metrics.conditionerHours()));
+            }
+            workDays.save(day);
         }
         // Лимит суточного пробега (MIGRATION.md 12.5) для ПЛ без рабочих дней: пробег по шапке = один день.
         int maxDailyKm = wb.getWaybillType().maxDailyKm();
@@ -1311,8 +1380,55 @@ public class WaybillService {
                 // Ф.И.О. в данных титула — чтобы отметка возврата на бланке показывала диспетчера по
                 // имени, а не РМА (Т1 так делал всегда, Т4/Т5 — нет; находка 23.09.2026).
                 "dispatcher", str(dispatcher.get("name"))));
-        transition(wb, WaybillStatus.RETURNED, dispatcherRma, "Возвращение");
-        return waybills.save(wb);
+        transition(wb, WaybillStatus.RETURNED, dispatcherRma,
+                overdue ? "Возвращение после истечения срока действия (нарушение срока сохранено в истории)" : "Возвращение");
+        var saved = waybills.save(wb);
+        // Пробег ТС в справочнике обновляется сразу при возврате (legacy BillNumberTrait: parkings.
+        // indication_counter = одометр возврата при обработке), а не только при закрытии: иначе, пока
+        // лист ждёт Т6, следующий уезжал со старым одометром. Отказ справочника (в карточке уже больше)
+        // возврат не блокирует — повторная попытка будет при закрытии.
+        if (wb.getVehicleSnapshot() != null && wb.getVehicleSnapshot().get("id") != null) {
+            try {
+                masterData.updateVehicleOdometer(str(wb.getVehicleSnapshot().get("id")), odometerEntry);
+            } catch (RuntimeException e) {
+                log.warn("Пробег ТС {} при возврате ПЛ {} не обновлён: {}", wb.getVehicleRegNumber(), wb.getId(), e.toString());
+            }
+        }
+        return saved;
+    }
+
+    /**
+     * Лист просрочен на линии: переведён в EXPIRED планировщиком после выезда (Т4), возврат (Т5) не
+     * оформлен. Такой лист можно вернуть и дооформить (рабочие дни, топливо) — как в legacy.
+     */
+    public boolean isOverdueOnLine(Waybill wb) {
+        return wb.getStatus() == WaybillStatus.EXPIRED
+                && titles.existsByWaybillIdAndTitleType(wb.getId(), "T4")
+                && !titles.existsByWaybillIdAndTitleType(wb.getId(), "T5");
+    }
+
+    /** Фактический срок листа в днях (validFrom … validTo), 0 — срок не задан. */
+    static long validityDays(Waybill wb) {
+        if (wb.getValidFrom() == null || wb.getValidTo() == null) {
+            return 0;
+        }
+        long hours = java.time.Duration.between(wb.getValidFrom(), wb.getValidTo()).toHours();
+        return Math.max(1, (hours + 23) / 24);
+    }
+
+    private static boolean isBusForm(WaybillType type) {
+        return type == WaybillType.WB_BUS || type == WaybillType.WB_TROLLEYBUS;
+    }
+
+    /** Селектор нулевого пробега legacy: имя поля маршрута «begin_path_a» / «begin_path_b». */
+    static void assertBeginPath(String selector, boolean first) {
+        if (selector == null || selector.isBlank()) {
+            return;
+        }
+        if (!"begin_path_a".equals(selector) && !"begin_path_b".equals(selector)) {
+            throw new UnprocessableException("Гашти ибтидоӣ %s: допустимо «begin_path_a» (А) или «begin_path_b» (Б)"
+                    .formatted(first ? "(начало)" : "(конец)"));
+        }
     }
 
     /**
@@ -1843,6 +1959,17 @@ public class WaybillService {
     }
 
     private Map<String, Object> requireEmployee(Waybill wb, String rma, int type, String roleName) {
+        // Диспетчер подписывает Т1/Т4/Т5 и замены своим РМА (legacy: отметка — вошедший пользователь,
+        // createUser/Auth::user()). Раньше карточка подставляла РМА первого диспетчера организации, и
+        // при нескольких диспетчерах на бланке и в журнале стояло чужое имя. Админы и системные
+        // учётки (агрегатор, B2B-канал) по-прежнему указывают подписанта явно.
+        if (type == 3 && currentUser.hasRole("DISPATCHER") && !currentUser.hasRole("SYSTEM_ADMIN")
+                && !currentUser.hasRole("COMPANY_ADMIN") && !currentUser.hasRole("BRANCH_ADMIN")) {
+            var own = currentUser.rma().orElse(null);
+            if (own != null && !own.equals(rma)) {
+                throw new ForbiddenException("Диспетчер подписывает только своим РМА (" + own + ")");
+            }
+        }
         var employee = masterData.findEmployee(rma)
                 .orElseThrow(() -> new NotFoundException(roleName + " не найден"));
         if (!Integer.valueOf(type).equals(intOrNull(employee.get("type")))) {
