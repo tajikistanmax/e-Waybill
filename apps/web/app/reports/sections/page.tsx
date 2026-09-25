@@ -1,6 +1,6 @@
-﻿import ReportsView from '../ReportsView';
+import { redirect } from 'next/navigation';
 
+/** Старый адрес «Разрезы Роҳхат» — типовые отчёты разделены на Мусофирбарӣ и Боркашонӣ. */
 export default function Page() {
-  return <ReportsView tab="typed" />;
+  redirect('/reports/passenger');
 }
-

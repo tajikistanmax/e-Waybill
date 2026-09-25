@@ -10,8 +10,6 @@ import { Icon, P } from '../icons';
 import { Pager, usePaged } from '../Pager';
 import MalumotnomaTab from './MalumotnomaTab';
 import JournalsTab from './JournalsTab';
-import PlansEditor from './PlansEditor';
-import { useAuth } from '@/lib/auth';
 
 type Summary = {
   period: { from: string; to: string };
@@ -149,11 +147,15 @@ function BarRow({ label, value, max, color }: { label: string; value: number; ma
 
 export type ReportTab = 'summary' | 'journal' | 'driver' | 'vehicle' | 'fuel' | 'typed' | 'regional' | 'malum' | 'journals';
 
-/** Один раздел отчётов; вкладка задаётся маршрутом (/reports/<...>), а не состоянием. */
-export default function ReportsView({ tab }: { tab: ReportTab }) {
+/**
+ * Один раздел отчётов; вкладка задаётся маршрутом (/reports/<...>), а не состоянием.
+ * `kind` — Мусофирбарӣ / Боркашонӣ для типовых (/reports/passenger|cargo),
+ * `mode` — отчёт группы «Умумӣ» (/reports/regional, /regional/count, /regional/norm).
+ */
+export default function ReportsView({ tab, kind = 'passenger', mode = 'trans' }: {
+  tab: ReportTab; kind?: 'passenger' | 'cargo'; mode?: 'trans' | 'count' | 'norm';
+}) {
   const { t, tType, tStatus } = useT();
-  const { roles } = useAuth();
-  const isMintrans = roles.includes('SYSTEM_ADMIN') || roles.includes('MINTRANS_ANALYST');
   const [from, setFrom] = useState(today(-30));
   const [to, setTo] = useState(today());
   const [journalDate, setJournalDate] = useState(today());
@@ -163,8 +165,8 @@ export default function ReportsView({ tab }: { tab: ReportTab }) {
   const [byVehicle, setByVehicle] = useState<GroupRow[]>([]);
   const [fuel, setFuel] = useState<FuelRow[]>([]);
   const [error, setError] = useState('');
-  // Типовые разрезы движка «Роҳхат» (11 типов, пассажирский / грузовой).
-  const [typedKind, setTypedKind] = useState<'passenger' | 'cargo'>('passenger');
+  // Типовые разрезы движка «Роҳхат» (11 типов); пассажирский / грузовой — по адресу страницы.
+  const typedKind = kind;
   const [typedType, setTypedType] = useState('BY_VEHICLE');
   const [typedTypes, setTypedTypes] = useState<ReportTypeMeta[]>([]);
   const [typedReport, setTypedReport] = useState<TypedReport | null>(null);
@@ -185,7 +187,7 @@ export default function ReportsView({ tab }: { tab: ReportTab }) {
     + (typedDriver.trim() ? `&driverRma=${encodeURIComponent(typedDriver.trim())}` : '')
     + (typedOrg ? `&organizationRma=${encodeURIComponent(typedOrg)}` : '');
   const [regional, setRegional] = useState<RegionalReport | null>(null);
-  const [regionalMode, setRegionalMode] = useState<'trans' | 'count' | 'norm'>('trans');
+  const regionalMode = mode;
   const [regionalBill, setRegionalBill] = useState<'PASSENGER' | 'CARGO'>('PASSENGER');
   // Форма ПЛ внутри разреза (Шакли 3-С / 1-А / 2-Б / 5Б-БМ) — как в старой платформе; пусто = все формы.
   const [regionalForm, setRegionalForm] = useState('');
@@ -403,10 +405,6 @@ export default function ReportsView({ tab }: { tab: ReportTab }) {
 
       {tab === 'regional' && (
         <div className="toolbar">
-          <button className={`btn ${regionalMode === 'trans' ? '' : 'secondary'}`} onClick={() => setRegionalMode('trans')}>{t('rep.mode.trans')}</button>
-          <button className={`btn ${regionalMode === 'count' ? '' : 'secondary'}`} onClick={() => setRegionalMode('count')}>{t('rep.mode.count')}</button>
-          <button className={`btn ${regionalMode === 'norm' ? '' : 'secondary'}`} onClick={() => setRegionalMode('norm')}>{t('rep.mode.norm')}</button>
-          <span className="spacer" style={{ flex: 1 }} />
           {regionalMode === 'trans' && (
             <select value={regionalBill} onChange={e => { setRegionalBill(e.target.value as 'PASSENGER' | 'CARGO'); setRegionalForm(''); }} style={{ width: 160 }}>
               <option value="PASSENGER">{t('rep.opt.passenger')}</option>
@@ -442,10 +440,6 @@ export default function ReportsView({ tab }: { tab: ReportTab }) {
 
       {tab === 'typed' && (
         <div className="toolbar">
-          <select value={typedKind} onChange={e => setTypedKind(e.target.value as 'passenger' | 'cargo')} style={{ width: 170 }}>
-            <option value="passenger">{t('rep.opt.passenger')}</option>
-            <option value="cargo">{t('rep.opt.cargo')}</option>
-          </select>
           <select value={typedType} onChange={e => setTypedType(e.target.value)} style={{ width: 280 }}>
             {typedTypes.map(rt => <option key={rt.code} value={rt.code}>{rt.label}</option>)}
           </select>
@@ -678,8 +672,6 @@ export default function ReportsView({ tab }: { tab: ReportTab }) {
           <Pager {...normPage} />
         </div>
       )}
-
-      {tab === 'regional' && isMintrans && <PlansEditor />}
 
       {tab === 'regional' && regionalMode === 'trans' && (
         <div className="card" style={{ overflowX: 'auto' }}>

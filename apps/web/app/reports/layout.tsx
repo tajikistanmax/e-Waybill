@@ -4,65 +4,56 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useT } from '@/lib/i18n';
 import { useAuth } from '@/lib/auth';
-import { canSeeMintransReports, canSeeCarrierEconomics } from '@/lib/roles';
+import {
+  CARRIER_REPORTS, GENERAL_REPORTS, OPERATIONAL_TABS,
+  carrierReportsFor, generalReportsFor, isGeneralPath, isLinkActive,
+} from './nav';
 
 /**
- * `mintrans` — сводные отчёты Минтранса (закрыты ролям перевозчика);
- * `economics` — внутренняя экономика перевозчика (топливо, зарплата, разрезы, справки):
- * инспектору дорожного контроля не показываем, ему доступны сводка и журналы контроля.
- */
-const TABS: { href: string; label: string; mintrans?: boolean; economics?: boolean }[] = [
-  { href: '/reports/summary', label: 'rep.tab.summary' },
-  { href: '/reports/journal', label: 'rep.tab.journal', economics: true },
-  { href: '/reports/by-driver', label: 'rep.tab.driver', economics: true },
-  { href: '/reports/by-vehicle', label: 'rep.tab.vehicle', economics: true },
-  { href: '/reports/fuel', label: 'rep.tab.fuel', economics: true },
-  { href: '/reports/sections', label: 'rep.tab.sections', economics: true },
-  { href: '/reports/regional', label: 'rep.tab.regional', mintrans: true },
-  { href: '/reports/malumotnoma', label: 'rep.tab.malumotnoma', economics: true },
-  { href: '/reports/journals', label: 'rep.tab.journals' },
-];
-
-/**
- * Каркас отчётов: заголовок + вкладки-ссылки. У каждого отчёта свой адрес
- * (/reports/summary, /reports/regional …) — deep-link, «назад» и F5 работают,
- * ссылку на конкретный отчёт можно передать для интеграции.
+ * Каркас отчётов. Навигация между отчётами — в боковом меню (группы «Отчёты» и
+ * «Общие отчёты (Умумӣ)», см. ./nav.ts); здесь — заголовок текущего отчёта и вкладки
+ * только внутри пункта «Оперативные». У каждого отчёта свой адрес — deep-link,
+ * «назад» и F5 работают.
  *
- * Состав вкладок — по роли: сводные отчёты Минтранса видят только надзор и
- * администратор платформы, остальным они возвращали бы 403.
+ * Прямой заход на отчёт, закрытый роли, показывает понятное сообщение вместо
+ * каскада 403 от API.
  */
 export default function ReportsLayout({ children }: { children: React.ReactNode }) {
   const path = usePathname();
   const { t } = useT();
   const { roles } = useAuth();
-  const label = (l: string) => (l.startsWith('@') ? l.slice(1) : t(l));
-  const tabs = TABS.filter(s =>
-    (!s.mintrans || canSeeMintransReports(roles))
-    && (!s.economics || canSeeCarrierEconomics(roles)));
+  const general = isGeneralPath(path);
+  const all = general ? GENERAL_REPORTS : CARRIER_REPORTS;
+  const allowed = general ? generalReportsFor(roles) : carrierReportsFor(roles);
+  const item = all.find(l => isLinkActive(l, path));
+  const denied = !!item && !allowed.includes(item);
+  const operational = OPERATIONAL_TABS.some(o => o.href === path);
 
   return (
     <>
       <div className="toolbar">
         <div>
-          <h1>{t('nav.reports')}</h1>
-          <div className="page-lead" style={{ margin: 0 }}>{t('rep.lead')}</div>
+          <h1>{item ? t(item.label) : t(general ? 'nav.general' : 'nav.reports')}</h1>
+          <div className="page-lead" style={{ margin: 0 }}>{t(general ? 'rep.general.lead' : 'rep.lead')}</div>
         </div>
       </div>
 
-      <div className="toolbar" style={{ flexWrap: 'wrap' }}>
-        {tabs.map(s => (
-          <Link
-            key={s.href}
-            href={s.href}
-            className={`btn ${path.startsWith(s.href) ? '' : 'secondary'}`}
-            style={{ textDecoration: 'none' }}
-          >
-            {label(s.label)}
-          </Link>
-        ))}
-      </div>
+      {!denied && operational && (
+        <div className="toolbar" style={{ flexWrap: 'wrap' }}>
+          {OPERATIONAL_TABS.map(s => (
+            <Link
+              key={s.href}
+              href={s.href}
+              className={`btn ${path === s.href ? '' : 'secondary'}`}
+              style={{ textDecoration: 'none' }}
+            >
+              {t(s.label)}
+            </Link>
+          ))}
+        </div>
+      )}
 
-      {children}
+      {denied ? <div className="card" style={{ color: 'var(--muted)' }}>{t('rep.noaccess')}</div> : children}
     </>
   );
 }

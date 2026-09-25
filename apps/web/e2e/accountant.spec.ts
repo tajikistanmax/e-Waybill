@@ -9,15 +9,18 @@ import { loginAs } from './fixtures';
  * to /waybills/new shows a clear explanation instead of a raw 403 cascade).
  */
 
-// Tabs visible to ACCOUNTANT per lib/roles.ts canSeeCarrierEconomics/canSeeMintransReports:
-// economics tabs ARE visible (accountant is in the allow-list), mintrans (regional) is NOT.
+// Reports visible to ACCOUNTANT per app/reports/nav.ts (canSeeCarrierEconomics/canSeeMintransReports):
+// economics reports ARE visible (accountant is in the allow-list), the Mintrans «Умумӣ» group is NOT.
+// Sidebar sub-items of «Отчёты»; the four operational ones are in-page tabs of «Оперативные».
 const EXPECTED_TABS: { name: string; href: string }[] = [
   { name: 'Сводка', href: '/reports/summary' },
-  { name: 'Журнал диспетчера', href: '/reports/journal' },
+  { name: 'Пассажирские (Мусофирбарӣ)', href: '/reports/passenger' },
+  { name: 'Грузовые (Боркашонӣ)', href: '/reports/cargo' },
+  { name: 'Оперативные', href: '/reports/journal' },
   { name: 'По водителям', href: '/reports/by-driver' },
   { name: 'По транспорту', href: '/reports/by-vehicle' },
   { name: 'Топливо', href: '/reports/fuel' },
-  { name: 'Разрезы Роҳхат', href: '/reports/sections' },
+  { name: 'Журнал диспетчера', href: '/reports/journal' },
   { name: 'Справки', href: '/reports/malumotnoma' },
   { name: 'Журналы контроля', href: '/reports/journals' },
 ];
@@ -31,8 +34,8 @@ test.describe('Accountant: reports access + waybill-creation gating', () => {
   test('every visible report tab loads without a 403', async ({ page }) => {
     await loginAs(page, 'accountant');
 
-    // The Mintrans-only "Сводный (Минтранс)" tab must not even be offered to an accountant.
-    await expect(page.getByRole('link', { name: 'Сводный (Минтранс)' })).toHaveCount(0);
+    // The Mintrans-only «Общие отчёты (Умумӣ)» group must not even be offered to an accountant.
+    await expect(page.locator('.sidebar').getByText('Общие отчёты (Умумӣ)')).toHaveCount(0);
 
     for (const tab of EXPECTED_TABS) {
       await page.getByRole('link', { name: tab.name, exact: true }).click();

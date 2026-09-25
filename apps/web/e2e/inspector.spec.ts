@@ -46,8 +46,13 @@ test.describe('Inspector: Neru plate lookup + carrier-economics gating', () => {
     await expect(page.getByRole('link', { name: 'Сводка', exact: true })).toBeVisible();
     await expect(page.getByRole('link', { name: 'Журналы контроля', exact: true })).toBeVisible();
 
-    for (const hidden of ['Журнал диспетчера', 'По водителям', 'По транспорту', 'Топливо', 'Разрезы Роҳхат', 'Справки', 'Сводный (Минтранс)']) {
+    for (const hidden of ['Оперативные', 'Пассажирские (Мусофирбарӣ)', 'Грузовые (Боркашонӣ)', 'Справки']) {
       await expect(page.getByRole('link', { name: hidden, exact: true })).toHaveCount(0);
     }
+    // Группа Минтранса «Умумӣ» инспектору не показывается вовсе.
+    await expect(page.locator('.sidebar').getByText('Общие отчёты (Умумӣ)')).toHaveCount(0);
+    // Прямой заход на закрытый отчёт — понятное сообщение, а не каскад 403.
+    await page.goto('/reports/fuel');
+    await expect(page.getByText('Этот отчёт недоступен вашей роли.')).toBeVisible();
   });
 });

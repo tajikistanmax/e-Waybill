@@ -68,6 +68,7 @@ export function Topbar() {
       : pathname.startsWith('/settings/') ? { t: 'nav.settings', c: 'nav.group.management' }
       : pathname.startsWith('/registry/') ? { t: 'nav.registry', c: 'nav.group.management' }
       : pathname.startsWith('/fleet/') ? { t: 'nav.fleet', c: 'nav.group.workplaces' }
+      : pathname.startsWith('/reports/regional') ? { t: 'nav.general', c: 'nav.group.management' }
       : pathname.startsWith('/reports/') ? { t: 'nav.reports', c: 'nav.group.management' }
       : pathname.startsWith('/dictionaries/') ? { t: 'nav.dictionaries', c: 'nav.group.management' }
       : { t: 'app.title', c: '' });

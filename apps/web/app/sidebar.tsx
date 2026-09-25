@@ -9,6 +9,37 @@ import { useT } from '@/lib/i18n';
 import { useBrand, BrandLogo } from '@/lib/brand';
 import { useRoleAccess } from '@/lib/roleaccess';
 import { canCreateWaybill } from '@/lib/roles';
+import { carrierReportsFor, generalReportsFor, isGeneralPath, isLinkActive, type ReportLink } from './reports/nav';
+
+/**
+ * Раскрывающаяся группа меню. В свёрнутом меню (только значки) подпункты скрыты,
+ * поэтому заголовок группы становится ссылкой на первый её отчёт.
+ */
+function NavGroup({ label, icon, links, open, setOpen, collapsed, pathname, t }: {
+  label: string; icon: string; links: ReportLink[]; open: boolean; setOpen: (f: (o: boolean) => boolean) => void;
+  collapsed: boolean; pathname: string; t: (k: string) => string;
+}) {
+  if (links.length === 0) return null;
+  const anyActive = links.some(l => isLinkActive(l, pathname));
+  if (collapsed) {
+    return <Link href={links[0].href} className={`snav ${anyActive ? 'active' : ''}`} title={label}><Icon d={icon} /> {label}</Link>;
+  }
+  return (
+    <>
+      <button className={`snav ${open ? 'open' : ''}`} onClick={() => setOpen(o => !o)} aria-expanded={open}>
+        <Icon d={icon} /> {label}
+        <Icon d={P.chevron} cls="chev" />
+      </button>
+      {open && (
+        <div className="subnav">
+          {links.map(l => (
+            <Link key={l.href} href={l.href} className={isLinkActive(l, pathname) ? 'active' : ''}>{t(l.label)}</Link>
+          ))}
+        </div>
+      )}
+    </>
+  );
+}
 
 export function Sidebar() {
   const pathname = usePathname();
@@ -44,6 +75,16 @@ export function Sidebar() {
   const fleetIcon = !manages && roles.includes('DOCTOR') ? P.user : P.car;
   const showManagement = nav.has('company') || nav.has('access') || nav.has('registry') || nav.has('violations') || nav.has('reports') || nav.has('dictionaries') || nav.has('monitoring') || nav.has('settings');
   const canCreate = canCreateWaybill(roles);
+  const carrierLinks = carrierReportsFor(roles);
+  const generalLinks = generalReportsFor(roles);
+  const inReports = pathname === '/reports' || pathname.startsWith('/reports/');
+  const [repOpen, setRepOpen] = useState(inReports && !isGeneralPath(pathname));
+  const [genOpen, setGenOpen] = useState(isGeneralPath(pathname));
+  // Переход по ссылке извне меню (дашборд, закладка) раскрывает группу нужного отчёта.
+  useEffect(() => {
+    if (isGeneralPath(pathname)) setGenOpen(true);
+    else if (inReports) setRepOpen(true);
+  }, [pathname, inReports]);
 
   return (
     <aside className={`sidebar no-print${collapsed ? ' collapsed' : ''}`}>
@@ -118,7 +159,20 @@ export function Sidebar() {
         {nav.has('access') && roles.includes('SYSTEM_ADMIN') && <Link href="/company/access/users" className={`snav ${active('/company/access/users') ? 'active' : ''}`}><Icon d={P.user} /> {t('nav.users')}</Link>}
         {nav.has('registry') && <Link href="/registry/vehicles" className={`snav ${active('/registry') ? 'active' : ''}`}><Icon d={P.users} /> {t('nav.registry')}</Link>}
         {nav.has('violations') && <Link href="/violations" className={`snav ${active('/violations') ? 'active' : ''}`}><Icon d={P.shield} /> {t('nav.violations')}</Link>}
-        {nav.has('reports') && <Link href="/reports/summary" className={`snav ${active('/reports') ? 'active' : ''}`}><Icon d={P.chart} /> {t('nav.reports')}</Link>}
+        {/* Отчёты — две группы, как меню «Ҳисобот» старой платформы: свои отчёты предприятия
+            и отдельно «Умумӣ» — сводные Минтранса по всем организациям (см. reports/nav.ts). */}
+        {nav.has('reports') && (
+          <NavGroup
+            label={t('nav.reports')} icon={P.chart} links={carrierLinks}
+            open={repOpen} setOpen={setRepOpen} collapsed={collapsed} pathname={pathname} t={t}
+          />
+        )}
+        {nav.has('reports') && generalLinks.length > 0 && (
+          <NavGroup
+            label={t('nav.general')} icon={P.globe} links={generalLinks}
+            open={genOpen} setOpen={setGenOpen} collapsed={collapsed} pathname={pathname} t={t}
+          />
+        )}
         {nav.has('dictionaries') && <Link href="/dictionaries/routes" className={`snav ${active('/dictionaries') ? 'active' : ''}`}><Icon d={P.book} /> {t('nav.dictionaries')}</Link>}
         {/* GPS-мониторинг — надзорный раздел (наблюдение за парком на линии), а не рабочее
             место: место в «Управлении», между справочниками и настройками. */}

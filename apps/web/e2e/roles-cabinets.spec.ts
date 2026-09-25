@@ -469,19 +469,21 @@ test.describe('кабинеты демо-логинов', () => {
       '/dictionaries/drive-classes',
       '/registry/vehicles', '/registry/drivers', '/registry/employees', '/registry/devices',
       '/reports/summary', '/reports/journal', '/reports/by-driver', '/reports/by-vehicle', '/reports/fuel',
-      '/reports/sections', '/reports/regional', '/reports/malumotnoma', '/reports/journals', '/notifications',
+      '/reports/passenger', '/reports/cargo', '/reports/malumotnoma', '/reports/journals',
+      '/reports/regional', '/reports/regional/count', '/reports/regional/norm', '/reports/regional/plans', '/notifications',
     ],
     company: [
       '/company', '/company/access', '/fleet/vehicles', '/fleet/drivers', '/fleet/employees',
       '/registry/vehicles', '/registry/drivers', '/registry/employees',
       '/dictionaries/routes', '/dictionaries/clients', '/dictionaries/fuel-norms',
       '/reports/summary', '/reports/journal', '/reports/by-driver', '/reports/by-vehicle', '/reports/fuel',
-      '/reports/sections', '/reports/malumotnoma', '/reports/journals', '/notifications',
+      '/reports/passenger', '/reports/cargo', '/reports/malumotnoma', '/reports/journals', '/notifications',
     ],
     branch: ['/company', '/company/access', '/fleet/vehicles', '/fleet/drivers', '/fleet/employees', '/monitoring', '/reports/summary'],
     dispatcher: ['/fleet/vehicles', '/fleet/drivers', '/fleet/employees', '/waybills/journal'],
     inspector: ['/reports/summary', '/reports/journals'],
-    analyst: ['/registry/drivers', '/registry/employees', '/reports/regional', '/reports/sections'],
+    analyst: ['/registry/drivers', '/registry/employees', '/reports/regional', '/reports/regional/count',
+      '/reports/regional/norm', '/reports/regional/plans', '/reports/passenger', '/reports/cargo'],
   };
   for (const [who, pages] of Object.entries(SUBPAGES)) {
     test(`${who}: подстраницы разделов`, async ({ page }) => {
