@@ -301,14 +301,19 @@ public class WaybillService {
             m.forEach((k, v) -> custom.put(String.valueOf(k), v));
         }
         for (var fd : fieldDefs) {
+            String key = str(fd.get("fieldKey"));
+            Object value = custom.get(key);
             if (Boolean.TRUE.equals(fd.get("required"))) {
-                String key = str(fd.get("fieldKey"));
-                Object value = custom.get(key);
                 if (value == null || str(value).isBlank()) {
                     String label = str(fd.get("labelRu"));
                     throw new UnprocessableException(
                             "Обязательное дополнительное поле «%s» не заполнено".formatted(label.isBlank() ? key : label));
                 }
+            }
+            // Значение — по типу поля (число, дата, да/нет, вариант списка).
+            String error = CustomFieldRules.valueError(fd, value);
+            if (error != null) {
+                throw new UnprocessableException(error);
             }
         }
     }

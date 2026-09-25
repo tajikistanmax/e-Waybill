@@ -363,12 +363,19 @@ export default function NewWaybillPage() {
 
   // Доп.поля выбранного типа ПЛ (конструктор полей). Флаг отмены — против гонки:
   // запоздавший ответ по прежнему типу не должен перезаписать поля текущего.
+  // Значения чистим не сразу, а по пришедшим определениям — оставляем ключи полей этого вида.
+  // Прежний сброс setCustomValues({}) в этом эффекте срабатывал и сразу после восстановления
+  // черновика: доп.поля из черновика всегда терялись.
   useEffect(() => {
-    setCustomValues({});
     let ignore = false;
     md.fieldDefinitions(form.waybillType)
-      .then(defs => { if (!ignore) setCustomDefs(defs); })
-      .catch(() => { if (!ignore) setCustomDefs([]); });
+      .then(defs => {
+        if (ignore) return;
+        setCustomDefs(defs);
+        const keys = new Set(defs.map(d => d.fieldKey));
+        setCustomValues(v => Object.fromEntries(Object.entries(v).filter(([k]) => keys.has(k))));
+      })
+      .catch(() => { if (!ignore) { setCustomDefs([]); setCustomValues({}); } });
     return () => { ignore = true; };
   }, [form.waybillType]);
 
@@ -1000,7 +1007,7 @@ export default function NewWaybillPage() {
               )}
               {customDefs.map(d => (
                 <div key={d.id}>
-                  <label>{d.labelRu}{d.required ? tt('wb.required.suffix') : ''}</label>
+                  <label>{lang === 'tj' && d.labelTj ? d.labelTj : d.labelRu}{d.required ? tt('wb.required.suffix') : ''}</label>
                   {d.dataType === 'BOOLEAN' ? (
                     <select value={customValues[d.fieldKey] ?? ''} onChange={e => setCustomValues(v => ({ ...v, [d.fieldKey]: e.target.value }))}>
                       <option value="">—</option>
@@ -1014,6 +1021,7 @@ export default function NewWaybillPage() {
                     </select>
                   ) : (
                     <input type={d.dataType === 'NUMBER' ? 'number' : d.dataType === 'DATE' ? 'date' : 'text'}
+                      step={d.dataType === 'NUMBER' ? 'any' : undefined} maxLength={d.dataType === 'STRING' ? 500 : undefined}
                       required={d.required} value={customValues[d.fieldKey] ?? ''}
                       onChange={e => setCustomValues(v => ({ ...v, [d.fieldKey]: e.target.value }))} />
                   )}

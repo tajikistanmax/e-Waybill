@@ -334,7 +334,14 @@ public class WaybillPrintService {
         m.put("cargoDistance", distanceKm);
         m.put("specialDeviceTime", orDash(str(td.get("specialWorkHours"))));
         m.put("conditionerTime", orDash(str(td.get("conditionerHours"))));
-        m.put("specialMark", orDash(wb.getSpecialMark()));
+        // Доп.поля (конструктор полей): на официальных бланках графы для них нет — печатаются в
+        // «Қайди махсус» (как на веб-печати); на универсальном бланке — строками «Дополнительных сведений».
+        List<String[]> customFields = customFieldRows(wb, td);
+        String customText = String.join("; ", customFields.stream().map(r -> r[0] + ": " + r[1]).toList());
+        m.put("customText", customText);
+        m.put("specialMark", orDash(firstNonBlank(
+                String.join(" · ", java.util.stream.Stream.of(str(wb.getSpecialMark()), customText)
+                        .filter(s -> !s.isBlank()).toList()))));
 
         // --- Груз / прицепы / виза
         Map<String, Object> cargo = mapOrEmpty(td.get("cargo"));
@@ -555,6 +562,9 @@ public class WaybillPrintService {
         if (wb.getSecondDriverRma() != null) {
             addExtra(extras, "Второй водитель (РМА)", wb.getSecondDriverRma());
         }
+        for (String[] cf : customFieldRows(wb, td)) {
+            addExtra(extras, cf[0], cf[1]);
+        }
         m.put("extras", extras);
 
         List<Map<String, String>> signed = new ArrayList<>();
@@ -640,6 +650,43 @@ public class WaybillPrintService {
             }
         }
         return "";
+    }
+
+    /**
+     * Значения доп.полей листа ({@code typeData.custom}) с подписями из конструктора полей:
+     * [подпись, значение] в порядке полей; да/нет — словами; поле без определения — по ключу.
+     */
+    private List<String[]> customFieldRows(Waybill wb, Map<String, Object> td) {
+        Map<String, Object> custom = mapOrEmpty(td.get("custom"));
+        if (custom.isEmpty()) {
+            return List.of();
+        }
+        Map<String, Map<String, Object>> defs = new LinkedHashMap<>();
+        try {
+            for (Map<String, Object> d : masterData.listFieldDefinitions(wb.getWaybillType().name())) {
+                defs.put(str(d.get("fieldKey")), d);
+            }
+        } catch (RuntimeException e) {
+            // справочник недоступен — печатаем по ключам
+        }
+        List<String[]> rows = new ArrayList<>();
+        custom.entrySet().stream()
+                .sorted(java.util.Comparator
+                        .comparingInt((Map.Entry<String, Object> e) -> defs.containsKey(e.getKey())
+                                ? ((Number) defs.get(e.getKey()).getOrDefault("sortOrder", 0)).intValue() : 9999)
+                        .thenComparing(Map.Entry::getKey))
+                .forEach(e -> {
+                    String value = str(e.getValue()).trim();
+                    if (value.isEmpty()) {
+                        return;
+                    }
+                    if ("true".equals(value)) value = "Ҳа / Да";
+                    else if ("false".equals(value)) value = "Не / Нет";
+                    Map<String, Object> d = defs.get(e.getKey());
+                    String label = d == null ? e.getKey() : firstNonBlank(str(d.get("labelRu")), e.getKey());
+                    rows.add(new String[]{label, value});
+                });
+        return rows;
     }
 
     /** РМА подписанта последнего титула вида {@code titleType} (или null — титул не подписан). */

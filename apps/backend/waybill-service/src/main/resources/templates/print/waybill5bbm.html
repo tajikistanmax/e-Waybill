@@ -162,6 +162,8 @@
     </table>
     <div style="margin-top: 3px">Коэффитсиенти меъёри сӯзишворӣ (K): <span th:text="${fuelCoefficient}"></span>
         &#160;·&#160; зарбкунанда: <span th:text="${fuelMultiplier}"></span></div>
+    <!-- Особые отметки и доп.поля конструктора (раньше на этом бланке не печатались вовсе). -->
+    <div style="margin-top: 3px">Қайди махсус: <span th:text="${specialMark}"></span></div>
 </div>
 
 <div th:replace="~{print/blocks :: admission}"></div>

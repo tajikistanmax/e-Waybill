@@ -137,7 +137,9 @@ try {
 # --- Очистка тестовой конфигурации (идемпотентность) ---
 try {
     $ha = Hdr 'admin-automation'
-    $defs = Invoke-RestMethod "$fdUrl?waybillType=WB_SPECIAL&all=true" -Headers $ha
+    # ${fdUrl}: в "$fdUrl?..." PowerShell считал «?» частью имени переменной — URL был пустым,
+    # уборка молча не работала, и поле secTest («т») оставалось в мастере спецтехники.
+    $defs = Invoke-RestMethod "${fdUrl}?waybillType=WB_SPECIAL&all=true" -Headers $ha
     foreach ($d in $defs) { if ($d.fieldKey -eq 'secTest') { Invoke-RestMethod -Method Delete -Uri "$fdUrl/$($d.id)" -Headers $ha | Out-Null } }
 } catch {}
 
