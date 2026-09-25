@@ -627,7 +627,8 @@ export default function NewWaybillPage() {
 
           {/* ======= ШАГ 1 — Выбор типа ======= */}
           {step === 1 && (
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+            // minmax(0, 1fr): длинная пометка «Недоступно…» не раздвигает колонку на правую панель.
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 14 }}>
               {Object.entries(TYPE_LABELS).filter(([value]) => !offTypes.has(value)).map(([value]) => {
                 const meta = TYPE_META[value];
                 const active = form.waybillType === value;
@@ -658,7 +659,7 @@ export default function NewWaybillPage() {
                       <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2, lineHeight: 1.35 }}>{tt(meta.desc)}</div>
                       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8, alignItems: 'center' }}>
                         <span style={{ display: 'inline-block', fontSize: 10.5, fontWeight: 600, color: 'var(--ink-soft)', background: 'var(--line-soft)', padding: '3px 9px', borderRadius: 999 }}>{tt(meta.group)}</span>
-                        {unavailable && <span className="badge red" title={reason} style={{ fontSize: 10.5 }}>{tt('wb.type.unavail')}</span>}
+                        {unavailable && <span className="badge red" title={reason} style={{ fontSize: 10.5, whiteSpace: 'normal' }}>{tt('wb.type.unavail')}</span>}
                       </div>
                     </div>
                     <Icon d={P.chevron} cls="" style={{ width: 18, height: 18, color: active ? 'var(--blue-600)' : 'var(--faint)', flex: 'none' }} />

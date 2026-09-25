@@ -23,6 +23,11 @@ const TITLES: Record<string, { t: string; c: string }> = {
   '/fleet': { t: 'nav.fleet', c: 'nav.group.workplaces' },
   '/company': { t: 'nav.company', c: 'nav.group.management' },
   '/company/access': { t: 'nav.access', c: 'nav.group.management' },
+  '/company/access/users': { t: 'nav.users', c: 'nav.group.management' },
+  '/med/journal': { t: 'med.history', c: 'nav.group.workplaces' },
+  '/tech/journal': { t: 'tech.journal.link', c: 'nav.group.workplaces' },
+  '/consignments': { t: 'nav.consignments', c: 'nav.group.workplaces' },
+  '/notifications': { t: 'notif.title', c: '' },
   '/monitoring': { t: 'nav.monitoring', c: 'nav.group.workplaces' },
   '/registry': { t: 'nav.registry', c: 'nav.group.management' },
   '/violations': { t: 'nav.violations', c: 'nav.group.management' },
@@ -73,7 +78,7 @@ export function Topbar() {
 
   return (
     <header className="topbar no-print">
-      <div>
+      <div className="tb-head">
         <div className="tb-title">{t(meta.t)}</div>
         <div className="tb-crumb">{t(meta.c)}</div>
       </div>
@@ -84,7 +89,7 @@ export function Topbar() {
           value={selected}
           onChange={e => setSelected(e.target.value)}
           title={t('branch.switch.title')}
-          style={{ fontSize: 12.5, padding: '5px 8px', borderRadius: 8, border: '1px solid var(--line)', background: '#fff', color: 'var(--ink)', maxWidth: 220 }}
+          style={{ fontSize: 12.5, padding: '5px 8px', borderRadius: 8, border: '1px solid var(--line)', background: '#fff', color: 'var(--ink)', width: 190, flexShrink: 0 }}
         >
           <option value="">{t('branch.switch.all')}</option>
           {branches.map(b => (
@@ -96,7 +101,7 @@ export function Topbar() {
         <button className={lang === 'ru' ? 'on' : ''} onClick={() => setLang('ru')}>RU</button>
         <button className={lang === 'tj' ? 'on' : ''} onClick={() => setLang('tj')}>TJ</button>
       </span>
-      <span style={{ fontSize: 12.5, color: 'var(--muted)', margin: '0 4px' }}>{now}</span>
+      <span className="tb-date" style={{ fontSize: 12.5, color: 'var(--muted)', margin: '0 4px' }}>{now}</span>
       <Link href="/notifications" className="tb-icon" aria-label={t('notif.title')} style={{ position: 'relative' }}>
         <Icon d={P.bell} />
         {unread > 0 && <span className="tb-badge">{unread > 99 ? '99+' : unread}</span>}

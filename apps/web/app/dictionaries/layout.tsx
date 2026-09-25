@@ -47,7 +47,9 @@ export default function DictionariesLayout({ children }: { children: React.React
         </div>
       </div>
 
-      <div className="kpi-row" style={{ gridTemplateColumns: 'repeat(5, 1fr)' }}>
+      {/* Плитки переносятся по ширине: при жёстких 5 колонках длинные слова («Коэффициенты»)
+          раздвигали сетку, и пятая колонка уходила за правый край на экране 1280. */}
+      <div className="kpi-row" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))' }}>
         {SECTIONS.map(s => {
           const sel = path.startsWith(s.href);
           return (

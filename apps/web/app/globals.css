@@ -215,6 +215,10 @@ a { color: inherit; }
 }
 .topbar .tb-title { font-weight: 700; font-size: 16px; color: var(--ink); }
 .topbar .tb-crumb { font-size: 12px; color: var(--muted); margin-top: 1px; }
+/* Заголовок и дата — в одну строку: с переключателем филиалов шапка переносила их в 2–3 строки. */
+.topbar .tb-head { min-width: 0; }
+.topbar .tb-title, .topbar .tb-crumb, .topbar .tb-date { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+@media (max-width: 1400px) { .topbar { gap: 10px; } .topbar .tb-date { display: none; } }
 .topbar .sp { flex: 1; }
 .topbar .tb-icon { position: relative; width: 38px; height: 38px; border-radius: 10px; display: grid; place-items: center; color: var(--ink-soft); cursor: pointer; }
 .topbar .tb-icon:hover { background: var(--line-soft); }

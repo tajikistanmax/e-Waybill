@@ -113,7 +113,8 @@ export default function ConsignmentsPage() {
 
       <div style={{ display: 'grid', gridTemplateColumns: current ? '1fr 1fr' : '1fr', gap: 14, alignItems: 'start' }}>
         <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-          <table>
+          <div style={{ overflowX: 'auto' }}>
+          <table className="dense">
             <thead><tr><th>{t('col.wbnum')}</th><th>{t('col.type')}</th><th>{t('col.company')}</th><th>{t('col.transport')}</th><th>{t('cn.f.sender')}</th><th>{t('cn.f.receiver')}</th><th>{t('wb.cargo')}</th>{isCustoms && <th>{t('cs.col.customs')}</th>}</tr></thead>
             <tbody>
               {rows.map(w => {
@@ -132,6 +133,7 @@ export default function ConsignmentsPage() {
               {rows.length === 0 && <tr><td colSpan={isCustoms ? 8 : 7} style={{ textAlign: 'center', color: 'var(--muted)', padding: 24 }}>{t('cs.empty')}</td></tr>}
             </tbody>
           </table>
+          </div>
           <div style={{ display: 'flex', alignItems: 'center', padding: '12px 16px', borderTop: '1px solid var(--line)', fontSize: 13, color: 'var(--muted)' }}>
             <span>{t('dict.totalrecords')}: <b style={{ color: 'var(--ink)' }}>{data?.totalElements ?? 0}</b></span>
             <span style={{ flex: 1 }} />

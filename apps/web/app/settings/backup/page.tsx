@@ -11,13 +11,14 @@ const fmtSize = (b: number) =>
   b >= 1073741824 ? `${(b / 1073741824).toFixed(1)} ГБ` : `${Math.max(1, Math.round(b / 1048576))} МБ`;
 
 /** Политика резервного копирования и восстановления (справочно, read-only).
- *  st: 'on' — уже действует, 'planned' — реализация на этапе продовой инфраструктуры. */
+ *  st: 'on' — уже действует, 'planned' — ещё не сделано. С 24.09.2026 действует всё: служба backup
+ *  стенда (infra/backup/backup-loop.sh) — ежедневно, AES-256, 30 дней; учение restore-check.sh. */
 const CARDS: { key: string; icon: string; cls: string; st: 'on' | 'planned' }[] = [
-  { key: 'scope', icon: P.shield, cls: 'ic-blue', st: 'planned' },
-  { key: 'freq', icon: P.settings, cls: 'ic-cyan', st: 'planned' },
-  { key: 'enc', icon: P.shield, cls: 'ic-amber', st: 'planned' },
+  { key: 'scope', icon: P.shield, cls: 'ic-blue', st: 'on' },
+  { key: 'freq', icon: P.settings, cls: 'ic-cyan', st: 'on' },
+  { key: 'enc', icon: P.shield, cls: 'ic-amber', st: 'on' },
   { key: 'retention', icon: P.doc, cls: 'ic-green', st: 'on' },
-  { key: 'restore', icon: P.route, cls: 'ic-purple', st: 'planned' },
+  { key: 'restore', icon: P.route, cls: 'ic-purple', st: 'on' },
 ];
 
 export default function BackupSettingsPage() {

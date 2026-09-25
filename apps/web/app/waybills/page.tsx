@@ -115,7 +115,7 @@ export default function WaybillsPage() {
     const C: Record<string, Col> = {
       num: { key: 'num', label: t('col.wbnum'), cell: w => (
         <>
-          <span className="number">{w.number ?? t('viol.draft')}</span>
+          <span className="number">{w.number ?? (w.status === 'DRAFT' ? t('viol.draft') : t('wb.nonum'))}</span>
           {w.branchSerial != null && (
             <div style={{ fontSize: 11, color: 'var(--muted)' }}>
               №&nbsp;{w.branchSerial}/{w.branchSerialYear} по журналу
@@ -288,7 +288,9 @@ export default function WaybillsPage() {
 
       {/* Таблица */}
       <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-        <table>
+        {/* Прокрутка внутри карточки: при overflow:hidden на экране 1280 «Статус» и «Открыть» обрезались. */}
+        <div style={{ overflowX: 'auto' }}>
+        <table className="dense">
           <thead>
             <tr>{cols.map(c => <th key={c.key}>{c.label}</th>)}</tr>
           </thead>
@@ -303,6 +305,7 @@ export default function WaybillsPage() {
             )}
           </tbody>
         </table>
+        </div>
 
         {/* Пагинация — серверная: страница PER_PAGE строк, общее число — с сервера */}
         <div style={{ display: 'flex', alignItems: 'center', padding: '14px 16px', borderTop: '1px solid var(--line)', fontSize: 13, color: 'var(--muted)' }}>

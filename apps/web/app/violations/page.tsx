@@ -135,7 +135,9 @@ export default function ViolationsPage() {
           <input value={q} onChange={e => setQ(e.target.value)} placeholder={t('viol.search')} style={{ marginLeft: 'auto', width: 300 }} />
         </div>
 
-        <table>
+        {/* 9 колонок: плотная таблица с прокруткой внутри карточки — на 1280 колонка «Статус» уходила за край. */}
+        <div style={{ overflowX: 'auto' }}>
+        <table className="dense">
           <thead>
             <tr>
               <th>{t('col.datetime')}</th><th>{t('col.wbnum')}</th><th>{t('viol.col.type')}</th><th>{t('col.transport')}</th>
@@ -150,7 +152,7 @@ export default function ViolationsPage() {
                 <tr key={w.id} className="clickable" onClick={() => router.push(`/waybills/${w.id}`)}>
                   <td>{fmt(d?.at ?? w.validFrom ?? w.createdAt)}</td>
                   <td><span className="number">{w.number ?? t('viol.draft')}</span></td>
-                  <td style={{ fontWeight: 600, color: 'var(--ink)' }}>{d?.reason ?? '—'}</td>
+                  <td style={{ fontWeight: 600, color: 'var(--ink)', minWidth: 220 }}>{d?.reason ?? '—'}</td>
                   <td>{String(w.vehicleSnapshot?.brand ?? '')} {w.vehicleRegNumber}</td>
                   <td>{String(w.driverSnapshot?.fullName ?? w.driverRma)}</td>
                   <td>{String(w.organizationSnapshot?.name ?? w.organizationRma)}</td>
@@ -171,6 +173,7 @@ export default function ViolationsPage() {
             )}
           </tbody>
         </table>
+        </div>
 
         <div style={{ display: 'flex', alignItems: 'center', padding: '14px 16px', borderTop: '1px solid var(--line)', fontSize: 13, color: 'var(--muted)' }}>
           {t('dash.total')}: <b style={{ color: 'var(--ink)', marginLeft: 4 }}>{rows.length}</b>
