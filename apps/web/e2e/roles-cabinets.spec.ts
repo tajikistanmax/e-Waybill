@@ -555,6 +555,12 @@ test.describe('кабинеты демо-логинов', () => {
     await page.getByPlaceholder('3', { exact: true }).fill(NUM);
     await page.getByPlaceholder('Вокзал — Аэропорт').fill('Автотест — Туда');
     await page.locator('form.grid select').first().selectOption({ index: 1 });
+    // Входы расчёта маршрута (длины, нулевой пробег, план кругов, коэф. использования, длина поездки)
+    // обязательны, как в legacy RouteCrud (сверка 25.09, E3).
+    const required = page.locator('form.grid input[required][type="number"]');
+    for (let i = 0; i < await required.count(); i++) {
+      if ((await required.nth(i).inputValue()) === '') await required.nth(i).fill('1');
+    }
     await page.getByRole('button', { name: 'Сохранить' }).click();
     await expect(page.getByText('Сохранено')).toBeVisible();
     await page.getByPlaceholder('Поиск по справочнику').fill(NUM);

@@ -56,6 +56,13 @@ public class Brand {
     @Column(name = "tariff_rate")
     private Double tariffRate;
 
+    /** «Вазни холис» — снаряжённая масса марки, т (legacy brands.net_weight; колонка V27 загружена Ф1). */
+    @Column(name = "net_weight")
+    private java.math.BigDecimal netWeight;
+
+    public java.math.BigDecimal getNetWeight() { return netWeight; }
+    public void setNetWeight(java.math.BigDecimal netWeight) { this.netWeight = netWeight; }
+
     public Long getId() { return id; }
     public String getNumber() { return number; }
     public void setNumber(String number) { this.number = number; }

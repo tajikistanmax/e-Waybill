@@ -48,6 +48,7 @@ class LegacyReferenceControllerSecurityTest {
     @Autowired MockMvc mvc;
 
     @MockitoBean BrandRepository brands;
+    @MockitoBean tj.mintrans.epd.masterdata.repository.VehicleRepository vehicles;
     @MockitoBean FuelWinterCoefRepository winterCoefs;
     @MockitoBean MountainCoefRepository mountainCoefs;
     @MockitoBean CityCoefRepository cityCoefs;

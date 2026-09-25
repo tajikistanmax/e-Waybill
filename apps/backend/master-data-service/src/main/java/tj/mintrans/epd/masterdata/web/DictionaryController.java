@@ -161,16 +161,26 @@ public class DictionaryController {
         route.setTransportType(req.transportType());
         route.setRegionId(req.regionId());
         route.setRouteTypeCode(req.routeTypeCode());
-        route.setWinterCoefId(req.winterCoefId());
-        route.setMountainCoefValue(req.mountainCoefValue());
-        route.setInCityCoefValue(req.inCityCoefValue());
-        route.setStationCoef(req.stationCoef());
-        route.setRoadQuality(req.roadQuality());
-        route.setExcludingCoef(Boolean.TRUE.equals(req.excludingCoef()));
-        route.setAdditionalFuel100(req.additionalFuel100());
-        route.setAdditionalFuel(req.additionalFuel());
-        route.setCondFuel(req.condFuel());
-        route.setHeatingFuel(req.heatingFuel());
+        // Коэффициенты нормы топлива маршрута (зима/горы/город/станция/дорога, норматив Душанбе без K,
+        // доп. топливо, кондиционер, отопление) устанавливает регулятор: в legacy маршруты правил только
+        // superadmin/region (RouteCrudController:24). Перевозчик ведёт свои маршруты (номер, название,
+        // пункты, длины), но коэффициенты у него только для чтения — иначе он сам поднимал бы себе норму
+        // (сверка 25.09, E1). Новый маршрут перевозчика — без коэффициентов (нейтральный K).
+        boolean regulator = !currentUser.isTenantScoped();
+        if (regulator) {
+            route.setWinterCoefId(req.winterCoefId());
+            route.setMountainCoefValue(req.mountainCoefValue());
+            route.setInCityCoefValue(req.inCityCoefValue());
+            route.setStationCoef(req.stationCoef());
+            route.setRoadQuality(req.roadQuality());
+            route.setExcludingCoef(Boolean.TRUE.equals(req.excludingCoef()));
+            route.setAdditionalFuel100(req.additionalFuel100());
+            route.setAdditionalFuel(req.additionalFuel());
+            route.setCondFuel(req.condFuel());
+            route.setHeatingFuel(req.heatingFuel());
+        } else if (existing.isEmpty()) {
+            route.setExcludingCoef(false);
+        }
         route.setDistanceA(req.distanceA());
         route.setDistanceB(req.distanceB());
         route.setBeginPathA(req.beginPathA());
@@ -392,6 +402,14 @@ public class DictionaryController {
     public ResponseEntity<Cargo> upsertCargo(@Valid @RequestBody CargoRequest req) {
         var existing = req.id() != null ? Optional.of(byId(cargos, req.id(), "Груз"))
                 : cargos.findFirstByNameIgnoreCase(req.name());
+        // Справочник грузов — общий для всех перевозчиков (в legacy из компаний его правил один
+        // пользователь, удаление запрещено всем). Перевозчик может ДОБАВИТЬ новый груз для своих
+        // накладных, но не переписать существующую общую запись (раньше апсерт по названию без id
+        // молча перезаписывал чужую запись) — сверка 25.09, E4.
+        if (currentUser.isTenantScoped() && existing.isPresent()) {
+            throw new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.CONFLICT,
+                    "Груз «" + existing.get().getName() + "» уже есть в общем справочнике; изменить его может Минтранс");
+        }
         String oldValue = existing.map(c -> String.valueOf(c.getPrice())).orElse(null); // до мутации
         var cargo = existing.orElseGet(Cargo::new);
         cargo.setName(req.name());
@@ -434,8 +452,9 @@ public class DictionaryController {
         return ResponseEntity.noContent().build();
     }
 
+    /** Общий справочник грузов удаляет только администратор платформы (legacy: удаление запрещено всем). */
     @DeleteMapping("/cargos/{id}")
-    @PreAuthorize("hasAnyRole('COMPANY_ADMIN','SYSTEM_ADMIN')")
+    @PreAuthorize("hasRole('SYSTEM_ADMIN')")
     public ResponseEntity<Void> deleteCargo(@PathVariable UUID id) {
         var cargo = byId(cargos, id, "Груз");
         cargos.delete(cargo);

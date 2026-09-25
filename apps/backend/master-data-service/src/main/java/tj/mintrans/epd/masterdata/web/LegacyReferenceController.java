@@ -64,12 +64,15 @@ public class LegacyReferenceController {
     private final DirectionRepository directions;
     private final RouteTariffRepository routeTariffs;
     private final AuditService audit;
+    private final tj.mintrans.epd.masterdata.repository.VehicleRepository vehicles;
 
     public LegacyReferenceController(BrandRepository brands, FuelWinterCoefRepository winterCoefs,
                                      MountainCoefRepository mountainCoefs, CityCoefRepository cityCoefs,
                                      UsedCoefRepository usedCoefs, DriveClassRepository driveClasses,
                                      DirectionRepository directions, RouteTariffRepository routeTariffs,
-                                     AuditService audit) {
+                                     AuditService audit,
+                                     tj.mintrans.epd.masterdata.repository.VehicleRepository vehicles) {
+        this.vehicles = vehicles;
         this.brands = brands;
         this.winterCoefs = winterCoefs;
         this.mountainCoefs = mountainCoefs;
@@ -115,7 +118,41 @@ public class LegacyReferenceController {
             String fuel100Dushanbe,
             String fuelHour,
             Double fuelInteriorHeating,
-            Double tariffRate) {
+            Double tariffRate,
+            // «Вазни холис» (legacy brands.net_weight), т.
+            java.math.BigDecimal netWeight) {
+    }
+
+    /**
+     * Нормативы марки (fuel_100 / fuel_100_dushanbe / fuel_hour) — JSON-массив строк
+     * {@code [{"fuel_id":1..5,"consumption":>0}]}, как повторяющиеся строки legacy {@code Brand.php}.
+     * Раньше битый JSON сохранялся молча, и норма у всех ТС этой марки становилась 0 (сверка 25.09, E2).
+     */
+    static void assertNormsJson(String json, String what) {
+        if (json == null || json.isBlank()) {
+            return;
+        }
+        com.fasterxml.jackson.databind.JsonNode node;
+        try {
+            node = new com.fasterxml.jackson.databind.ObjectMapper().readTree(json);
+        } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
+            throw new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.UNPROCESSABLE_ENTITY,
+                    what + ": не JSON — ожидается [{\"fuel_id\":1,\"consumption\":25}]");
+        }
+        if (!node.isArray()) {
+            throw new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.UNPROCESSABLE_ENTITY,
+                    what + ": ожидается список строк [{\"fuel_id\":…,\"consumption\":…}]");
+        }
+        for (var row : node) {
+            var fuelId = row.get("fuel_id");
+            var consumption = row.get("consumption");
+            int f = fuelId == null ? -1 : fuelId.asInt(-1);
+            double c = consumption == null ? -1 : consumption.asDouble(-1);
+            if (f < 1 || f > 5 || c <= 0) {
+                throw new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.UNPROCESSABLE_ENTITY,
+                        what + ": у каждой строки вид топлива fuel_id 1–5 и расход consumption > 0");
+            }
+        }
     }
 
     /** Upsert по естественному ключу марки (имя + модель) — после V57 имя не уникально
@@ -134,11 +171,17 @@ public class LegacyReferenceController {
         brand.setCapacity(req.capacity());
         brand.setCarrying(req.carrying());
         brand.setCostServices(req.costServices());
+        assertNormsJson(req.fuel100(), "Норма на 100 км");
+        assertNormsJson(req.fuel100Dushanbe(), "Норма на 100 км (Душанбе)");
+        assertNormsJson(req.fuelHour(), "Норма на час");
         brand.setFuel100(req.fuel100());
         brand.setFuel100Dushanbe(req.fuel100Dushanbe());
         brand.setFuelHour(req.fuelHour());
         brand.setFuelInteriorHeating(req.fuelInteriorHeating());
         brand.setTariffRate(req.tariffRate());
+        if (req.netWeight() != null) {
+            brand.setNetWeight(req.netWeight());
+        }
         var saved = brands.save(brand);
         audit.record(existing.isPresent() ? AuditService.UPDATE : AuditService.CREATE,
                 "BRAND", req.name(), oldValue, req.model());
@@ -376,6 +419,14 @@ public class LegacyReferenceController {
     @PreAuthorize("hasRole('SYSTEM_ADMIN')")
     public ResponseEntity<Void> deleteBrand(@PathVariable long id) {
         var brand = byId(brands, id, "Марка");
+        // Legacy: марку не удалить никогда (RoleTrait:184, BrandCrudController). Здесь — запрет, если
+        // марка стоит в карточках ТС: ТС ссылается на марку по названию, и после удаления норма их
+        // топлива стала бы 0 (сверка 25.09, E2).
+        long used = vehicles.countByBrandIgnoreCase(brand.getName());
+        if (used > 0) {
+            throw new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.CONFLICT,
+                    "Марка «" + brand.getName() + "» указана у " + used + " ТС — удалить нельзя (иначе их норма топлива станет 0)");
+        }
         brands.delete(brand);
         audit.record(AuditService.DELETE, "BRAND", brand.getName(), brand.getModel(), null);
         return ResponseEntity.noContent().build();

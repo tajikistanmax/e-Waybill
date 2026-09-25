@@ -172,7 +172,7 @@ export default function DictionariesView({ tab }: { tab: DictTab }) {
       for (const k of ['transportType', 'regionId', 'routeTypeCode', 'fuelType', 'monthFrom', 'monthTo',
           // города: регион — число; остальные ключи общие
 
-          'typeId', 'capacity', 'carrying', 'costServices', 'fuelInteriorHeating', 'tariffRate',
+          'typeId', 'capacity', 'carrying', 'costServices', 'fuelInteriorHeating', 'tariffRate', 'netWeight',
           'price', 'cargoClass', 'winterCoefId', 'mountainCoefId', 'inCityCoefId', 'fuelId',
           'distanceA', 'distanceB', 'beginPathA', 'beginPathB', 'plannedLap', 'coeUseCapacity', 'averageLengthPassSeat',
           'stationCoef', 'roadQuality', 'mountainCoefValue', 'inCityCoefValue',
@@ -319,23 +319,28 @@ export default function DictionariesView({ tab }: { tab: DictTab }) {
         <div><label>{t('route.f.timelapb')}</label><input type="time" {...f('timeOneLapB')} /></div>
         {/* Широта/долгота маршрута убраны из формы 24.09.2026: в старой платформе 0,5 %, никто не читает.
             Значение, если было, сохраняется (остаётся в состоянии формы и отправляется как было). */}
-        <div><label>{t('route.f.distancea')}</label><input type="number" step="0.1" {...f('distanceA')} /></div>
-        <div><label>{t('route.f.distanceb')}</label><input type="number" step="0.1" {...f('distanceB')} /></div>
-        <div><label>{t('route.f.beginpatha')}</label><input type="number" step="0.1" {...f('beginPathA')} /></div>
+        <div><label>{t('route.f.distancea')}</label><input type="number" step="0.1" required {...f('distanceA')} /></div>
+        <div><label>{t('route.f.distanceb')}</label><input type="number" step="0.1" required {...f('distanceB')} /></div>
+        <div><label>{t('route.f.beginpatha')}</label><input type="number" step="0.1" required {...f('beginPathA')} /></div>
         <div><label>{t('route.f.beginpathb')}</label><input type="number" step="0.1" {...f('beginPathB')} /></div>
-        <div><label>{t('route.f.plannedlap')}</label><input type="number" min={0} {...f('plannedLap')} /></div>
-        <div><label>{t('route.f.coeuse')}</label><input type="number" step="0.01" {...f('coeUseCapacity')} /></div>
-        <div><label>{t('route.f.avgseat')}</label><input type="number" step="0.1" {...f('averageLengthPassSeat')} /></div>
-        <div><label>{t('route.f.stationcoef')}</label><input type="number" min={0} max={100} {...f('stationCoef')} /></div>
-        <div><label>{t('route.f.roadquality')}</label><input type="number" min={0} max={100} {...f('roadQuality')} /></div>
-        <div><label>{t('route.f.mountain')}</label><input type="number" min={0} max={100} {...f('mountainCoefValue')} /></div>
-        <div><label>{t('route.f.incity')}</label><input type="number" min={0} max={100} {...f('inCityCoefValue')} /></div>
-        <div><label>{t('route.f.wintercoef')}</label>{refSelect('winterCoefId', winterList, r => `${String(r.name)} (${s(r.coef)})`)}</div>
-        <div><label>{t('route.f.addfuel100')}</label><input type="number" step="0.1" {...f('additionalFuel100')} /></div>
-        <div><label>{t('route.f.addfuel')}</label><input type="number" step="0.1" {...f('additionalFuel')} /></div>
-        <div><label>{t('route.f.condfuel')}</label><input type="number" step="0.1" {...f('condFuel')} /></div>
-        <div><label>{t('route.f.heatingfuel')}</label><input type="number" step="0.1" {...f('heatingFuel')} /></div>
-        <div><label><input type="checkbox" {...fCheck('excludingCoef')} /> {t('route.f.excludingcoef')}</label></div>
+        <div><label>{t('route.f.plannedlap')}</label><input type="number" min={0} required {...f('plannedLap')} /></div>
+        <div><label>{t('route.f.coeuse')}</label><input type="number" step="0.01" required {...f('coeUseCapacity')} /></div>
+        <div><label>{t('route.f.avgseat')}</label><input type="number" step="0.1" required {...f('averageLengthPassSeat')} /></div>
+        {/* Коэффициенты нормы топлива устанавливает регулятор (legacy: маршруты правил только superadmin/region);
+            у перевозчика — только для чтения, сервер их от него не принимает (сверка 25.09, E1). */}
+        <fieldset className="full" disabled={!isSysAdmin} style={{ border: '1px dashed var(--line)', borderRadius: 10, padding: 10, margin: 0, display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 10 }}>
+          <legend style={{ fontSize: 12, color: 'var(--muted)', padding: '0 6px' }}>{isSysAdmin ? t('route.coef.legend') : t('route.coef.readonly')}</legend>
+          <div><label>{t('route.f.stationcoef')}</label><input type="number" min={0} max={100} {...f('stationCoef')} /></div>
+          <div><label>{t('route.f.roadquality')}</label><input type="number" min={0} max={100} {...f('roadQuality')} /></div>
+          <div><label>{t('route.f.mountain')}</label><input type="number" min={0} max={100} {...f('mountainCoefValue')} /></div>
+          <div><label>{t('route.f.incity')}</label><input type="number" min={0} max={100} {...f('inCityCoefValue')} /></div>
+          <div><label>{t('route.f.wintercoef')}</label>{refSelect('winterCoefId', winterList, r => `${String(r.name)} (${s(r.coef)})`)}</div>
+          <div><label>{t('route.f.addfuel100')}</label><input type="number" step="0.1" {...f('additionalFuel100')} /></div>
+          <div><label>{t('route.f.addfuel')}</label><input type="number" step="0.1" {...f('additionalFuel')} /></div>
+          <div><label>{t('route.f.condfuel')}</label><input type="number" step="0.1" {...f('condFuel')} /></div>
+          <div><label>{t('route.f.heatingfuel')}</label><input type="number" step="0.1" {...f('heatingFuel')} /></div>
+          <div><label><input type="checkbox" {...fCheck('excludingCoef')} /> {t('route.f.excludingcoef')}</label></div>
+        </fieldset>
       </>}
       {tab === 'clients' && <>
         <div><label>{t('col.number')}</label><input required {...f('number')} placeholder="000123" /></div>
@@ -396,13 +401,20 @@ export default function DictionariesView({ tab }: { tab: DictTab }) {
       </>}
       {tab === 'brands' && <>
         <div><label>{t('col.name')}</label><input required {...f('name')} placeholder="КамАЗ" /></div>
-        <div><label>{t('col.number')}</label><input {...f('number')} /></div>
-        <div><label>{t('col.model')}</label><input {...f('model')} /></div>
+        {/* Код марки, модель и вместимость обязательны, как в legacy Brand.php: от кода зависит тип кузова
+            в грузовом расчёте, от вместимости — пассажирооборот (сверка 25.09, E2). */}
+        <div><label>{t('col.number')}</label><input required {...f('number')} /></div>
+        <div><label>{t('col.model')}</label><input required {...f('model')} /></div>
         {/* «Тип марки» убран из формы 24.09.2026: в старой платформе 0 %, в расчётах не участвует
             (код марки — поле «Номер» выше — остаётся, от него зависит норма). */}
-        <div><label>{t('col.capacity')}</label><input type="number" {...f('capacity')} /></div>
+        <div><label>{t('col.capacity')}</label><input type="number" min={0} required {...f('capacity')} /></div>
         <div><label>{t('col.carrying')}</label><input type="number" step="0.1" {...f('carrying')} /></div>
-        {/* «Тариф марки» убран 24.09.2026 (раздел 9.2 п. 13): реально 2,4 %, нигде не используется. */}
+        <div><label>{t('dict.f.netweight')}</label><input type="number" step="0.01" min={0} {...f('netWeight')} /></div>
+        {/* Тариф марки — ставка в отчёте «Музди меҳнат» legacy (bus|mbus/type_5); стоимость услуг, отопление салона
+            (режим CALC_INTERIOR_HEATING) — поля формы legacy Brand.php:98-130. */}
+        <div><label>{t('dict.f.tariffrate')}</label><input type="number" step="0.01" min={0} {...f('tariffRate')} /></div>
+        <div><label>{t('dict.f.costservices')}</label><input type="number" step="0.01" min={0} {...f('costServices')} /></div>
+        <div><label>{t('dict.f.interiorheating')}</label><input type="number" step="0.01" min={0} {...f('fuelInteriorHeating')} /></div>
         <div className="full"><label>{t('dict.f.fuel100')}</label><textarea rows={2} {...f('fuel100')} placeholder='[{"fuel_id":2,"consumption":25}]' /></div>
         <div className="full"><label>{t('dict.f.fuel100dushanbe')}</label><textarea rows={2} {...f('fuel100Dushanbe')} /></div>
         <div className="full"><label>{t('dict.f.fuelhour')}</label><textarea rows={2} {...f('fuelHour')} /></div>
