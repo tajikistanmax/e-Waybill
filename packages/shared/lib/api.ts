@@ -383,6 +383,9 @@ function mdDelete(path: string): Promise<void> {
 
 export const md = {
   organizations: () => fetch('/md-api/api/v1/organizations', { headers: authHeaders() }).then(r => handle<Record<string, unknown>[]>(r)),
+  // Блокировка организации Минтрансом (legacy status_lock «Блок»): запрет новых ПЛ, причина обязательна.
+  blockOrganization: (id: string, reason: string) => mdPost(`organizations/${id}/block`, { reason }),
+  unblockOrganization: (id: string) => mdPost(`organizations/${id}/unblock`, {}),
   // Счётчики ТС/водителей/сотрудников по всем организациям одним запросом (без N+1 со страницы «Компания»).
   organizationCounts: () => fetch('/md-api/api/v1/organizations/counts', { headers: authHeaders() })
     .then(r => handle<{ rma: string; vehicles: number; drivers: number; employees: number }[]>(r)),

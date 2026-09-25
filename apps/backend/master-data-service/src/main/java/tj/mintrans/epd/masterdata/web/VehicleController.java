@@ -70,11 +70,16 @@ public class VehicleController {
     }
 
     public record VehicleRequest(
-            @NotBlank @Pattern(regexp = "[A-Za-zА-Яа-я0-9]{4,20}", message = "Госномер: буквы и цифры") String registrationNumber,
+            // Legacy ParkingRequest: госномер только обязателен; строгий формат — лишь у легковых
+            // (тип 4, VehicleCardRules.assertPlateFormat). Раньше здесь требовались только буквы и цифры
+            // для ВСЕХ типов — ≈10 тыс. перенесённых ТС вида «42-69TT05» не сохранялись (сверка 25.09, F2).
+            @NotBlank @Pattern(regexp = "[A-Za-zА-Яа-яЁёҒғӢӣҚқӮӯҲҳҶҷ0-9 \\-]{2,20}", message = "Госномер: буквы, цифры, дефис, пробел (2–20 знаков)") String registrationNumber,
             @NotBlank @Pattern(regexp = "\\d{9,10}", message = "РМА организации должен содержать 9–10 цифр") String organizationRma,
             @NotNull @Min(value = 1, message = "Тип ТС: 1–6") @Max(value = 6, message = "Тип ТС: 1–6") Short transportType,
             String brand,
-            @Pattern(regexp = "\\d{4}", message = "Номер стоянки — 4 цифры") String parkingNumber,
+            // Номер стоянки (гаражный): в legacy только уникален в организации, формат не проверялся —
+            // «4 цифры» отвергали 42 190 перенесённых ТС с 1–3-значными номерами (сверка 25.09, F3).
+            @Pattern(regexp = "[0-9A-Za-zА-Яа-я/\\-]{1,20}", message = "Номер стоянки — до 20 цифр/букв") String parkingNumber,
             Integer capacity,
             BigDecimal carrying,
             Integer odometer,

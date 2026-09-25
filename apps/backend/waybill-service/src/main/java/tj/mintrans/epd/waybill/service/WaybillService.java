@@ -451,6 +451,13 @@ public class WaybillService {
             if (controlCard == null || controlCard.isBefore(today)) {
                 throw new UnprocessableException("Контрольная карточка ТС отсутствует или истекла");
             }
+        } else {
+            // Legacy (AuthenticatesUsers → Notification): истёкшая лицензия блокирует работу
+            // организации любого вида; ведомственным без даты лицензии выписка не запрещается.
+            var licenseTo = dateOrNull(org.get("licenseTo"));
+            if (licenseTo != null && licenseTo.isBefore(today)) {
+                throw new UnprocessableException("Срок лицензии организации истёк (" + licenseTo + ")");
+            }
         }
         var licenseValidTo = dateOrNull(driver.get("licenseValidTo"));
         if (licenseValidTo != null && licenseValidTo.isBefore(today)) {
@@ -736,6 +743,17 @@ public class WaybillService {
             if (licenseTo == null || licenseTo.isBefore(today)) {
                 out.add(new CheckResult("LICENSE_EXPIRED", "ERROR", "Лицензия организации отсутствует или истекла"));
             }
+        } else {
+            var licenseTo = dateOrNull(org.get("licenseTo"));
+            if (licenseTo != null && licenseTo.isBefore(today)) {
+                out.add(new CheckResult("LICENSE_EXPIRED", "ERROR", "Срок лицензии организации истёк (" + licenseTo + ")"));
+            }
+        }
+        // Предупреждение за 30 дней до окончания лицензии (legacy: «пас аз N рӯз … қатъ карда мешавад»).
+        var licenseSoon = dateOrNull(org.get("licenseTo"));
+        if (licenseSoon != null && !licenseSoon.isBefore(today) && licenseSoon.isBefore(today.plusDays(30))) {
+            out.add(new CheckResult("LICENSE_EXPIRING", "WARN",
+                    "Лицензия организации истекает " + licenseSoon + " — через " + java.time.temporal.ChronoUnit.DAYS.between(today, licenseSoon) + " дн."));
         }
         // Разрешённые организации типы ПЛ (per-org permissions, аналог «Роҳхат»).
         var allowedTypes = allowedTypeSet(org);

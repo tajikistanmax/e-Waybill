@@ -740,12 +740,31 @@ function OrgRegistry() {
                   <td>{c ? c.vehicles : '—'}</td>
                   <td>{c ? c.drivers : '—'}</td>
                   <td>{c ? (c.employees ?? '—') : '—'}</td>
-                  <td><span className={`badge ${active ? 'green' : 'red'}`}>{active ? t('comp.badge.active') : t('comp.badge.licexpired')}</span></td>
+                  <td>
+                    {o.blocked
+                      ? <span className="badge red" title={String(o.blockReason ?? '')}>{t('org.badge.blocked')}</span>
+                      : <span className={`badge ${active ? 'green' : 'red'}`}>{active ? t('comp.badge.active') : t('comp.badge.licexpired')}</span>}
+                  </td>
                   <td onClick={e => e.stopPropagation()} style={{ whiteSpace: 'nowrap' }}>
                     <button type="button" className="btn secondary" style={{ padding: '4px 9px', fontSize: 12 }} title={t('btn.view')} onClick={() => setOrgView(o)}>
                       <Icon d={P.eye} cls="" />
                     </button>{' '}
-                    <button type="button" className="btn secondary" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => editOrg(o)}>{t('btn.edit')}</button>
+                    <button type="button" className="btn secondary" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => editOrg(o)}>{t('btn.edit')}</button>{' '}
+                    {/* Блок / разблокировка (legacy «Блок» status_lock): запрет новых путевых листов организации. */}
+                    {o.blocked ? (
+                      <button type="button" className="btn secondary" style={{ padding: '4px 10px', fontSize: 12 }} data-testid="org-unblock"
+                        onClick={async () => {
+                          if (!window.confirm(t('org.unblock.confirm'))) return;
+                          try { await md.unblockOrganization(String(o.id)); await loadOrgs(); } catch (e) { setError((e as Error).message); }
+                        }}>{t('org.btn.unblock')}</button>
+                    ) : (
+                      <button type="button" className="btn secondary" style={{ padding: '4px 10px', fontSize: 12, color: 'var(--red)' }} data-testid="org-block"
+                        onClick={async () => {
+                          const reason = window.prompt(t('org.block.reason'));
+                          if (!reason || !reason.trim()) return;
+                          try { await md.blockOrganization(String(o.id), reason.trim()); await loadOrgs(); } catch (e) { setError((e as Error).message); }
+                        }}>{t('org.btn.block')}</button>
+                    )}
                   </td>
                 </tr>
               );
@@ -841,7 +860,7 @@ function OrgRegistry() {
                 <form className="grid" onSubmit={submitManual}>
                   {/* Легковые (тип 4): строгий формат legacy 234AB01 / 1234AB01 (MIGRATION.md 12.2); прочие — буквы/цифры. */}
                   <div><label>{t('comp.f.regnum_req')}</label>
-                    <input required pattern={vehicleManual.transportType === '4' ? '\\d{3,4}[A-Za-z]{2}\\d{2}' : '[A-Za-zА-Яа-я0-9]{4,20}'}
+                    <input required pattern={vehicleManual.transportType === '4' ? '\\d{3,4}[A-Za-z]{2}\\d{2}' : '[A-Za-zА-Яа-яЁёҒғӢӣҚқӮӯҲҳҶҷ0-9 \\-]{2,20}'}
                       placeholder={vehicleManual.transportType === '4' ? '1234AB01' : '0101TJ01'}
                       title={vehicleManual.transportType === '4' ? t('comp.f.regnum_car_hint') : ''} {...vm('registrationNumber')} />
                     {vehicleManual.transportType === '4' && <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>{t('comp.f.regnum_car_hint')}</div>}

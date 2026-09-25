@@ -96,7 +96,7 @@ export const FORM_FIELDS: Record<string, FormFieldDef[]> = {
     { key: 'fuelType', labelKey: 'fleet.f.fueltype', type: 'select', numeric: true, options: opts('fuel.type.', 5) },
     num('enginePower', 'fleet.f.enginepower', { min: 0, max: 3000 }),
     num('yearManufacture', 'comp.f.year', { min: 1950, max: 2100 }),
-    { key: 'parkingNumber', labelKey: 'comp.f.parking', pattern: '\\d{4}' },
+    { key: 'parkingNumber', labelKey: 'comp.f.parking', pattern: '[0-9A-Za-zА-Яа-я\\/\\-]{1,20}' },
     num('capacity', 'comp.f.capacity', { min: 0 }),
     num('carrying', 'comp.f.carrying', { min: 0, step: '0.01' }),
     num('odometer', 'comp.f.odometerkm', { min: 0 }),
