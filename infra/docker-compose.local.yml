@@ -12,6 +12,9 @@ services:
   master-data:
     ports:
       - "8081:8081"
+    environment:
+      # Демо- и QA-учётки из экспорта realm — только на локальном стенде (в prod по умолчанию выкл.).
+      AUTH_BOOTSTRAP_REALM_FILE: /opt/epd/auth-import/epd-realm.json
   waybill:
     ports:
       - "8082:8082"

@@ -121,9 +121,13 @@ services:
       # Аутентификация платформы (с 23.09.2026, вместо Keycloak). Издатель токена — эта
       # служба; служба путевых листов сверяет с ним claim iss и берёт ключи подписи.
       AUTH_ISSUER: ${AUTH_ISSUER:-http://master-data:8081/api/v1/auth}
-      # Разовый перенос учётных записей из экспорта realm при первом запуске с пустой
-      # таблицей. Файл монтируется только для чтения; после перехода его можно убрать.
-      AUTH_BOOTSTRAP_REALM_FILE: ${AUTH_BOOTSTRAP_REALM_FILE:-/opt/epd/auth-import/epd-realm.json}
+      # Разовый перенос учётных записей из экспорта realm при первом запуске с пустой таблицей.
+      # По умолчанию ВЫКЛЮЧЕН: в файле — демо- и QA-учётки с паролями из репозитория (в т. ч.
+      # admin: кто первым войдёт, тот и привяжет свой телефон как второй фактор). Боевая
+      # установка стартует с одним администратором из EPD_AUTH_ADMIN_*; демо-стенд включает
+      # перенос явно: AUTH_BOOTSTRAP_REALM_FILE=/opt/epd/auth-import/epd-realm.json в infra/.env
+      # (локальный стенд — в docker-compose.local.yml).
+      AUTH_BOOTSTRAP_REALM_FILE: ${AUTH_BOOTSTRAP_REALM_FILE:-}
       # Начальный администратор платформы для установки с нуля (когда переносить неоткуда).
       EPD_AUTH_ADMIN_USERNAME: ${EPD_AUTH_ADMIN_USERNAME:-}
       EPD_AUTH_ADMIN_PASSWORD: ${EPD_AUTH_ADMIN_PASSWORD:-}

@@ -53,6 +53,15 @@ else
     esac
     sp=$(envval SERVICE_ACCOUNT_PASSWORD)
     if [ -n "$sp" ] && [ ${#sp} -lt 16 ]; then warn "SERVICE_ACCOUNT_PASSWORD короче 16 символов"; fi
+    # Учётные записи: боевая установка — один администратор из .env, без демо-учёток из репозитория.
+    if [ -n "$(envval AUTH_BOOTSTRAP_REALM_FILE)" ]; then
+        warn "AUTH_BOOTSTRAP_REALM_FILE задан — при пустой базе будут созданы демо/QA-учётки с паролями из репозитория. На боевом сервере — оставить пустым"
+    fi
+    if [ -n "$(envval EPD_AUTH_ADMIN_USERNAME)" ] && [ -n "$(envval EPD_AUTH_ADMIN_PASSWORD)" ]; then
+        ok "начальный администратор (EPD_AUTH_ADMIN_*) задан"
+    elif [ -z "$(envval AUTH_BOOTSTRAP_REALM_FILE)" ]; then
+        warn "EPD_AUTH_ADMIN_USERNAME/PASSWORD не заданы: на установке с нуля войти в платформу будет некому"
+    fi
     mk=$(envval MEDDATA_ENCRYPTION_KEY)
     if [ -n "$mk" ]; then
         n=$(printf '%s' "$mk" | base64 -d 2>/dev/null | wc -c | tr -d ' ')

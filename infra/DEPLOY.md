@@ -124,11 +124,18 @@ docker compose -f docker-compose.prod.yml exec proxy wget -qO- http://waybill:80
   покажет QR-код — отсканировать приложением Google Authenticator / Microsoft Authenticator /
   FreeOTP на телефоне и ввести 6-значный код.
 - Сотрудникам второй фактор включается в «Доступах» кнопкой «Требовать 2FA».
-- **Промышленная эксплуатация:** отключить учётки автопроверок (у них нет второго фактора):
+- **Промышленная эксплуатация — учётные записи.** С 25.09.2026 боевая установка с нуля создаёт
+  ОДНОГО администратора из `EPD_AUTH_ADMIN_USERNAME` / `EPD_AUTH_ADMIN_PASSWORD` (`infra/.env`);
+  демо- и QA-учётки из `infra/keycloak/epd-realm.json` (их пароли лежат в репозитории) не
+  создаются, пока не задан `AUTH_BOOTSTRAP_REALM_FILE` (только для демо-стенда). Остальных
+  пользователей администратор заводит в «Управление → Пользователи» и «Доступы».
+- Если стенд раньше работал как демо (учётки уже перенесены) и переводится в промышленную
+  эксплуатацию — отключить все демо-учётки. Проще всего в «Пользователи» (фильтр по роли,
+  «Действие → Отключить»); разом, до заведения настоящих пользователей:
 
   ```bash
-  docker compose -f docker-compose.prod.yml exec postgres \
-    psql -U epd -d masterdata -c "update app_user set enabled=false where username like '%-automation';"
+  docker compose -f docker-compose.prod.yml exec postgres psql -U epd -d masterdata -c \
+    "update app_user set enabled=false where username not in ('<логин администратора>', 'epd-service', 'epd-aggregator');"
   ```
 
 ## 7. Восстановление доступа
