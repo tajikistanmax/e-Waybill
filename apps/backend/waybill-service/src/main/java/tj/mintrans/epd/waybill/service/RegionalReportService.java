@@ -95,8 +95,12 @@ public class RegionalReportService {
         // Выдано ПЛ данного вида за период — по organization_rma.
         Map<String, Long> issuedByOrg = new LinkedHashMap<>();
         // Потоком по периоду (WaybillPeriodScan, счётный — без лимита), а не findAll() — после Ф5 2,3 млн ПЛ.
+        // 3-С в legacy — одна форма (waybill3c): «такси» и «легковой» считаются вместе (сверка 25.09, D9).
+        java.util.Set<WaybillType> types = (type == WaybillType.WB_TAXI || type == WaybillType.WB_CAR)
+                ? java.util.EnumSet.of(WaybillType.WB_TAXI, WaybillType.WB_CAR) : java.util.EnumSet.of(type);
         scan.forEachAll(from, to, null, wb -> {
-            if (wb.getWaybillType() != type || wb.getNumber() == null) {
+            if (!types.contains(wb.getWaybillType()) || wb.getNumber() == null
+                    || wb.getStatus() == WaybillStatus.CANCELLED) {
                 return;
             }
             issuedByOrg.merge(wb.getOrganizationRma(), 1L, Long::sum);
@@ -395,10 +399,10 @@ public class RegionalReportService {
         int year = to.getYear();
         int prevYear = year - 1;
 
-        // Начало года; если отчётный месяц — январь, сдвигаем на месяц назад (особенность §6.3).
-        LocalDate startOfYear = to.getMonthValue() == 1
-                ? LocalDate.of(year, 1, 1).minusMonths(1)
-                : LocalDate.of(year, 1, 1);
+        // «Аз аввали сол» — строго с 1 января года начала периода (legacy AbstractCalcCountTotal:
+        // exit_dateY == currYear && month ≤ currYearMonth). Прежний сдвиг на декабрь в январе
+        // (записанный как «особенность §6.3») в legacy не подтвердился — сверка 25.09, D8.
+        LocalDate startOfYear = LocalDate.of(from.getYear(), 1, 1);
         // Предыдущий месяц: полный месяц → предыдущий календарный; иначе — сдвиг периода на месяц назад.
         boolean fullMonth = from.getDayOfMonth() == 1 && to.equals(to.withDayOfMonth(to.lengthOfMonth()));
         LocalDate prevFrom;
@@ -431,8 +435,13 @@ public class RegionalReportService {
             if (d == null) {
                 return;
             }
+            // Legacy: аннулированные (soft delete) не считаются вовсе; «коркардшуда» = есть возврат
+            // (entry_date). Просроченный без возврата — «фарогирифта», но не обработан.
+            if (wb.getStatus() == WaybillStatus.CANCELLED) {
+                return;
+            }
             boolean issued = wb.getNumber() != null;
-            boolean processed = wb.getOdometerEntry() != null || WaybillStatus.FINISHED.contains(wb.getStatus());
+            boolean processed = wb.getOdometerEntry() != null;
             Acc a = byOrg.computeIfAbsent(wb.getOrganizationRma(), k -> new Acc(wb));
             a.absorb(wb);
             String veh = wb.getVehicleRegNumber();
@@ -735,12 +744,16 @@ public class RegionalReportService {
         if (regionId == null) {
             return "Без региона";
         }
+        // Коды регионов — как в legacy `regions` (id 1..7) и справочнике региона master-data (V62).
+        // До 25.09 подписи 2/3/5 были перепутаны («Согдийская» = ГБАО и т.д.), 6 и 7 — «Регион N».
         return switch (regionId) {
             case 1 -> "г. Душанбе";
-            case 2 -> "Согдийская область";
-            case 3 -> "Хатлонская область";
-            case 4 -> "РРП";
-            case 5 -> "ГБАО";
+            case 2 -> "ГБАО";
+            case 3 -> "Согдийская область";
+            case 4 -> "Раштская зона (РРП)";
+            case 5 -> "Хатлонская область (Бохтарская зона)";
+            case 6 -> "Хатлонская область (Кулябская зона)";
+            case 7 -> "Гиссарская зона (РРП)";
             default -> "Регион " + regionId;
         };
     }

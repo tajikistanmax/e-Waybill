@@ -108,9 +108,14 @@ public class WaybillCalcAssembler {
      * пассажирского ПЛ (B10, MIGRATION.md 5.4), пусто для однодневных/грузовых.
      */
     public record View(String kind, PassengerCalcResult passenger, CargoCalcResult cargo, List<String> notes,
-                       List<DailyFuelCalc.DayResult> dailyFuel) {
+                       List<DailyFuelCalc.DayResult> dailyFuel, int workDays, int workMinutes) {
         public View(String kind, PassengerCalcResult passenger, CargoCalcResult cargo, List<String> notes) {
-            this(kind, passenger, cargo, notes, List.of());
+            this(kind, passenger, cargo, notes, List.of(), 0, 0);
+        }
+
+        public View(String kind, PassengerCalcResult passenger, CargoCalcResult cargo, List<String> notes,
+                    List<DailyFuelCalc.DayResult> dailyFuel) {
+            this(kind, passenger, cargo, notes, dailyFuel, 0, 0);
         }
     }
 
@@ -155,7 +160,8 @@ public class WaybillCalcAssembler {
 
         if (cargo) {
             CargoCalcResult r = engine.cargo(buildCargo(wb, s, brandName, year, exitOdo, entryOdo, revenue, fuels, calcDate));
-            return new View("CARGO", null, r, notes);
+            // Рабочие дни и часы грузового листа — для колонок «рӯзи корӣ» / «соат» грузовых отчётов.
+            return new View("CARGO", null, r, notes, List.of(), Math.max(1, days.size()), workMinutes);
         }
         if (capacity == null || capacity <= 0) {
             // Снимок архивного (перенесённого из legacy) листа не несёт вместимость ТС. Legacy считает
@@ -221,7 +227,7 @@ public class WaybillCalcAssembler {
                 notes.add("Топливо рассчитано посуточно по строкам рабочих дней: дней " + dailyFuel.size());
             }
         }
-        return new View("PASSENGER", r, null, notes, dailyFuel);
+        return new View("PASSENGER", r, null, notes, dailyFuel, Math.max(1, days.size()), workMinutes);
     }
 
     /**

@@ -16,10 +16,15 @@ import java.math.BigDecimal;
  * @param passengerCount        Σ перевезённых пассажиров
  * @param fuelNormLiters        Σ нормативного расхода топлива, л
  * @param fuelGivenLiters       Σ выданного топлива, л
- * @param fuelDeviationLiters   Σ отклонения «выдано − норма», л (перерасход > 0)
+ * @param fuelDeviationLiters   Σ «фарқият» = норма − выдано, л (как в legacy «фаркият = меъёр − асл»:
+ *                              экономия > 0, перерасход < 0; до 25.09.2026 знак был обратный)
  * @param revenue               Σ выручки
  * @param kassa                 Σ кассы
  * @param driverSalary          Σ заработка водителей
+ * @param workDays              Σ рабочих дней (legacy «рӯзи корӣ»)
+ * @param workHours             Σ отработанных часов (legacy «соат»)
+ * @param transportWork         Σ транспортной работы P (грузооборот), т·км (legacy «гардиши бор»)
+ * @param trips                 Σ ездок Z (legacy «рейсҳо» грузовых)
  */
 public record ReportRow(
         String key,
@@ -35,18 +40,31 @@ public record ReportRow(
         double fuelDeviationLiters,
         BigDecimal revenue,
         BigDecimal kassa,
-        BigDecimal driverSalary
+        BigDecimal driverSalary,
+        int workDays,
+        double workHours,
+        double transportWork,
+        double trips
 ) {
 
     public static ReportRow zero(String key, String label) {
         return new ReportRow(key, label, 0, 0L, 0d, 0d, 0d, 0d, 0d, 0d, 0d,
-                BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO);
+                BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, 0, 0d, 0d, 0d);
     }
 
-    /** Прибавить показатели одного путевого листа. */
+    /** Прибавить показатели одного путевого листа (без грузовых величин). */
     public ReportRow plus(long addLaps, double addDistance, double addRouteDistance,
                           double addTurnover, double addPax, double addNorm, double addGiven,
                           BigDecimal addRevenue, BigDecimal addKassa, BigDecimal addSalary) {
+        return plus(addLaps, addDistance, addRouteDistance, addTurnover, addPax, addNorm, addGiven,
+                addRevenue, addKassa, addSalary, 0, 0d, 0d, 0d);
+    }
+
+    /** Прибавить показатели одного путевого листа, включая рабочие дни, часы и грузовые P / Z. */
+    public ReportRow plus(long addLaps, double addDistance, double addRouteDistance,
+                          double addTurnover, double addPax, double addNorm, double addGiven,
+                          BigDecimal addRevenue, BigDecimal addKassa, BigDecimal addSalary,
+                          int addWorkDays, double addWorkHours, double addTransportWork, double addTrips) {
         return new ReportRow(key, label,
                 waybills + 1,
                 laps + addLaps,
@@ -56,10 +74,14 @@ public record ReportRow(
                 passengerCount + addPax,
                 fuelNormLiters + addNorm,
                 fuelGivenLiters + addGiven,
-                fuelDeviationLiters + (addGiven - addNorm),
+                fuelDeviationLiters + (addNorm - addGiven),
                 revenue.add(nz(addRevenue)),
                 kassa.add(nz(addKassa)),
-                driverSalary.add(nz(addSalary)));
+                driverSalary.add(nz(addSalary)),
+                workDays + addWorkDays,
+                workHours + addWorkHours,
+                transportWork + addTransportWork,
+                trips + addTrips);
     }
 
     /** Слить две строки (для строки «ИТОГО»). */
@@ -76,7 +98,11 @@ public record ReportRow(
                 fuelDeviationLiters + other.fuelDeviationLiters,
                 revenue.add(other.revenue),
                 kassa.add(other.kassa),
-                driverSalary.add(other.driverSalary));
+                driverSalary.add(other.driverSalary),
+                workDays + other.workDays,
+                workHours + other.workHours,
+                transportWork + other.transportWork,
+                trips + other.trips);
     }
 
     private static BigDecimal nz(BigDecimal v) {

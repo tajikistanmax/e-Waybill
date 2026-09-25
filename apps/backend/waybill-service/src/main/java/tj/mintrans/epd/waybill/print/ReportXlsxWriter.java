@@ -42,7 +42,8 @@ public class ReportXlsxWriter {
     private static final String[] HEADERS = {
             "Группа", "Наименование", "ПЛ", "Рейсы", "Пробег, км", "Пробег по маршруту, км",
             "Пассажирооборот, пасс-км", "Пассажиры", "Норма топлива, л", "Выдано топлива, л",
-            "Отклонение (выд.−норма), л", "Выручка", "Касса", "Заработок водителей"
+            "Фарқият (норма − выдано), л", "Выручка", "Касса", "Заработок водителей",
+            "Рабочие дни", "Часы", "Грузооборот P, т·км", "Ездки Z"
     };
 
     public byte[] write(WaybillReport report) {
@@ -518,6 +519,10 @@ public class ReportXlsxWriter {
         num(row, 11, bd(d.revenue()), style);
         num(row, 12, bd(d.kassa()), style);
         num(row, 13, bd(d.driverSalary()), style);
+        num(row, 14, d.workDays(), style);
+        num(row, 15, round(d.workHours()), style);
+        num(row, 16, round(d.transportWork()), style);
+        num(row, 17, round(d.trips()), style);
     }
 
     private static double round(double v) {

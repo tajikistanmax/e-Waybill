@@ -36,7 +36,26 @@ type TypedRow = {
   distanceKm: number; routeDistanceKm: number; passengerTurnover: number; passengerCount: number;
   fuelNormLiters: number; fuelGivenLiters: number; fuelDeviationLiters: number;
   revenue: number; kassa: number; driverSalary: number;
+  workDays: number; workHours: number; transportWork: number; trips: number;
 };
+
+/**
+ * Бланк типового отчёта — как legacy report_bill: отчёт строится по одной форме ПЛ, а не по всем
+ * пассажирским / грузовым вместе (сверка 25.09, D1). Значение уходит параметром ?bill= в API.
+ */
+const TYPED_BILLS: Record<'passenger' | 'cargo', { v: string; k: string }[]> = {
+  passenger: [
+    { v: 'bus', k: 'rep.bill.bus' }, { v: 'ebus', k: 'rep.bill.ebus' }, { v: 'mbus', k: 'rep.bill.mbus' },
+    { v: 'taxi', k: 'rep.bill.taxi' }, { v: 'pax_intl', k: 'rep.bill.paxintl' }, { v: 'all', k: 'rep.bill.all' },
+  ],
+  cargo: [
+    { v: 'cargo2b', k: 'rep.bill.cargo2b' }, { v: 'cargo5bbm', k: 'rep.bill.cargo5bbm' },
+    { v: 'special', k: 'rep.bill.special' }, { v: 'all', k: 'rep.bill.all' },
+  ],
+};
+/** Колонки только пассажирских / только грузовых отчётов (legacy cargo2b/type_1 — свои графы). */
+const PAX_ONLY_COLS = new Set<keyof TypedRow>(['laps', 'routeDistanceKm', 'passengerTurnover', 'passengerCount', 'revenue', 'kassa']);
+const CARGO_ONLY_COLS = new Set<keyof TypedRow>(['transportWork', 'trips']);
 type TypedReport = {
   type: string; typeLabel: string; from: string; to: string;
   organizationRma: string | null; rows: TypedRow[]; totals: TypedRow | null;
@@ -104,6 +123,10 @@ const TYPED_COLS: { key: keyof TypedRow; label: string }[] = [
   { key: 'revenue', label: 'Выручка' },
   { key: 'kassa', label: 'Касса' },
   { key: 'driverSalary', label: 'Зарплата вод.' },
+  { key: 'workDays', label: 'Рабочие дни' },
+  { key: 'workHours', label: 'Часы' },
+  { key: 'transportWork', label: 'Грузооборот P, т·км' },
+  { key: 'trips', label: 'Ездки Z' },
 ];
 
 const FUEL_NAMES: Record<number, string> = { 1: 'Бензин', 2: 'Дизель', 3: 'Газ сжиженный', 4: 'Газ природный', 5: 'Электро' };
@@ -167,6 +190,7 @@ export default function ReportsView({ tab, kind = 'passenger', mode = 'trans' }:
   const [error, setError] = useState('');
   // Типовые разрезы движка «Роҳхат» (11 типов); пассажирский / грузовой — по адресу страницы.
   const typedKind = kind;
+  const [typedBill, setTypedBill] = useState(TYPED_BILLS[kind][0].v);
   const [typedType, setTypedType] = useState('BY_VEHICLE');
   const [typedTypes, setTypedTypes] = useState<ReportTypeMeta[]>([]);
   const [typedReport, setTypedReport] = useState<TypedReport | null>(null);
@@ -183,7 +207,8 @@ export default function ReportsView({ tab, kind = 'passenger', mode = 'trans' }:
         .sort((a, b) => a.name.localeCompare(b.name, 'ru'))))
       .catch(() => setOrgs([]));
   }, []);
-  const typedFilterQs = (typedVehicle.trim() ? `&vehicleRegNumber=${encodeURIComponent(typedVehicle.trim())}` : '')
+  const typedFilterQs = `&bill=${typedBill}`
+    + (typedVehicle.trim() ? `&vehicleRegNumber=${encodeURIComponent(typedVehicle.trim())}` : '')
     + (typedDriver.trim() ? `&driverRma=${encodeURIComponent(typedDriver.trim())}` : '')
     + (typedOrg ? `&organizationRma=${encodeURIComponent(typedOrg)}` : '');
   const [regional, setRegional] = useState<RegionalReport | null>(null);
@@ -204,8 +229,10 @@ export default function ReportsView({ tab, kind = 'passenger', mode = 'trans' }:
       .then(list => setReportCfg(Object.fromEntries(list.map(s => [s.settingKey, s.settingValue ?? '']))))
       .catch(() => { /* настройки недоступны — колонки по умолчанию */ });
   }, []);
-  const typedCols = useMemo(() => applyColumnConfig(TYPED_COLS.map(c => ({ ...c, label: t('rep.typed.' + c.key) })),
-    reportCfg.typed_columns, reportCfg.typed_labels, 'label'), [reportCfg, t]);
+  const typedCols = useMemo(() => applyColumnConfig(TYPED_COLS
+    .filter(c => (typedKind === 'cargo' ? !PAX_ONLY_COLS.has(c.key) : !CARGO_ONLY_COLS.has(c.key)))
+    .map(c => ({ ...c, label: t('rep.typed.' + c.key) })),
+    reportCfg.typed_columns, reportCfg.typed_labels, 'label'), [reportCfg, t, typedKind]);
   const regCols = useMemo(() => applyColumnConfig(REG_COLS.map(c => ({ ...c, label: t('rep.reg.' + c.key) })),
     reportCfg.regional_columns, reportCfg.regional_labels), [reportCfg, t]);
   const rcCols = useMemo(() => applyColumnConfig(RC_COLS.map(c => ({ ...c, label: t('rep.rc.' + c.key) })),
@@ -440,6 +467,10 @@ export default function ReportsView({ tab, kind = 'passenger', mode = 'trans' }:
 
       {tab === 'typed' && (
         <div className="toolbar">
+          {/* Бланк отчёта (legacy report_bill): автобус / троллейбус / 1-А / 3-С …, 2-Б / 5Б-БМ. */}
+          <select value={typedBill} onChange={e => setTypedBill(e.target.value)} style={{ width: 210 }} title={t('rep.bill.title')} data-testid="rep-bill">
+            {TYPED_BILLS[typedKind].map(b => <option key={b.v} value={b.v}>{t(b.k)}</option>)}
+          </select>
           <select value={typedType} onChange={e => setTypedType(e.target.value)} style={{ width: 280 }}>
             {typedTypes.map(rt => <option key={rt.code} value={rt.code}>{rt.label}</option>)}
           </select>

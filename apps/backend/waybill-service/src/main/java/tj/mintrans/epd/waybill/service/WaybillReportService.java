@@ -52,16 +52,28 @@ public class WaybillReportService {
      * @param vehicleRegNumber госномер ТС (без учёта регистра/пробелов), {@code null} — все
      * @param driverRma        РМА водителя, {@code null} — все
      */
-    public record Filter(String vehicleRegNumber, String driverRma) {
-        public static final Filter NONE = new Filter(null, null);
+    public record Filter(String vehicleRegNumber, String driverRma, Set<WaybillType> forms) {
+        public static final Filter NONE = new Filter(null, null, null);
 
         public static Filter of(String vehicleRegNumber, String driverRma) {
+            return of(vehicleRegNumber, driverRma, null);
+        }
+
+        /**
+         * @param forms бланк отчёта (legacy {@code report_bill}: bus / ebus / mbus / taxi, 2-Б / 5Б-БМ) —
+         *              набор видов ПЛ; {@code null} или пусто — все виды своей группы (пасс./груз.)
+         */
+        public static Filter of(String vehicleRegNumber, String driverRma, Set<WaybillType> forms) {
             String v = norm(vehicleRegNumber);
             String d = norm(driverRma);
-            return v == null && d == null ? NONE : new Filter(v, d);
+            Set<WaybillType> f = forms == null || forms.isEmpty() ? null : Set.copyOf(forms);
+            return v == null && d == null && f == null ? NONE : new Filter(v, d, f);
         }
 
         boolean matches(Waybill wb) {
+            if (forms != null && !forms.contains(wb.getWaybillType())) {
+                return false;
+            }
             if (vehicleRegNumber != null && !vehicleRegNumber.equals(norm(wb.getVehicleRegNumber()))) {
                 return false;
             }
@@ -128,7 +140,8 @@ public class WaybillReportService {
             String label = groupLabel(type.grouping(), wb, c, key);
             ReportRow row = rows.computeIfAbsent(key, k -> ReportRow.zero(k, label));
             rows.put(key, row.plus(c.laps, c.distanceKm, c.routeDistanceKm, c.turnover, c.passengers,
-                    c.normLiters, c.givenLiters, c.revenue, c.kassa, c.salary));
+                    c.normLiters, c.givenLiters, c.revenue, c.kassa, c.salary,
+                    c.workDays, c.workHours, c.transportWork, c.trips));
         });
 
         List<ReportRow> ordered = new ArrayList<>(rows.values());
@@ -141,17 +154,21 @@ public class WaybillReportService {
     private record Contribution(long laps, double distanceKm, double routeDistanceKm, double turnover,
                                 double passengers, double normLiters, double givenLiters,
                                 BigDecimal revenue, BigDecimal kassa, BigDecimal salary,
-                                String brand) {
+                                String brand, int workDays, double workHours,
+                                double transportWork, double trips) {
     }
 
     private Contribution contribution(Waybill wb, boolean cargo) {
         WaybillCalcAssembler.View view = assembler.calculate(wb, WaybillCalcAssembler.Supplement.empty());
         String brand = brandOf(wb);
+        double hours = view.workMinutes() / 60d;
         if (cargo && view.cargo() != null) {
+            // Грузовые колонки legacy cargo2b/type_1: рӯзи корӣ, соат, гардиши бор (P), рейсҳо (Z).
             CargoCalcResult r = view.cargo();
             double given = r.fuels().stream().mapToDouble(FuelConsumption::given).sum();
             return new Contribution(0L, r.distanceKm(), 0d, 0d, 0d, r.totalNormLiters(), given,
-                    BigDecimal.ZERO, BigDecimal.ZERO, r.salary().salary(), brand);
+                    BigDecimal.ZERO, BigDecimal.ZERO, r.salary().salary(), brand,
+                    view.workDays(), hours, r.transportWork(), r.trips());
         }
         if (view.passenger() != null) {
             PassengerCalcResult r = view.passenger();
@@ -159,10 +176,11 @@ public class WaybillReportService {
             double given = r.fuels().stream().mapToDouble(FuelConsumption::given).sum();
             return new Contribution(m.laps(), m.totalDistanceKm(), m.routeDistanceKm(),
                     m.passengerTurnover(), m.passengerCount(), r.totalNormLiters(), given,
-                    m.earning(), m.kassa(), r.salary().salary(), brand);
+                    m.earning(), m.kassa(), r.salary().salary(), brand,
+                    Math.max(1, m.workDays()), m.workTimeMinutes() / 60d, 0d, 0d);
         }
         return new Contribution(0L, r0(wb), 0d, 0d, 0d, 0d, 0d,
-                BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, brand);
+                BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, brand, 1, 0d, 0d, 0d);
     }
 
     private static double r0(Waybill wb) {
@@ -239,7 +257,15 @@ public class WaybillReportService {
     private Set<String> resolveScope(String requested) {
         if (tenantScope.isBounded()) {
             Set<String> s = tenantScope.rmas();
-            return s == null || s.contains("__none__") ? Set.of() : s;
+            if (s == null || s.contains("__none__")) {
+                return Set.of();
+            }
+            // Перевозчик с филиалами выбирает одну из СВОИХ организаций (legacy waybillcargo/form: «Корхона»);
+            // раньше выбор игнорировался и отчёт всегда шёл по всей области.
+            if (requested != null && !requested.isBlank() && s.contains(requested.trim())) {
+                return Set.of(requested.trim());
+            }
+            return s;
         }
         return requested == null || requested.isBlank() ? null : Set.of(requested.trim());
     }

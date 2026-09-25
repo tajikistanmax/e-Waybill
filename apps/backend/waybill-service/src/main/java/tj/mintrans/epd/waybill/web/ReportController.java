@@ -137,9 +137,10 @@ public class ReportController {
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
             @RequestParam(required = false) String organizationRma,
             @RequestParam(required = false) String vehicleRegNumber,
-            @RequestParam(required = false) String driverRma) {
+            @RequestParam(required = false) String driverRma,
+            @RequestParam(required = false) String bill) {
         return typedReports.passenger(type, from, to, organizationRma,
-                WaybillReportService.Filter.of(vehicleRegNumber, driverRma));
+                WaybillReportService.Filter.of(vehicleRegNumber, driverRma, billForms(bill)));
     }
 
     /** Грузовой отчёт (формы 2-Б, 5Б-БМ), тип разреза — {@code ?type=}; отбор по ТС / водителю — как у пассажирского. */
@@ -150,9 +151,10 @@ public class ReportController {
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
             @RequestParam(required = false) String organizationRma,
             @RequestParam(required = false) String vehicleRegNumber,
-            @RequestParam(required = false) String driverRma) {
+            @RequestParam(required = false) String driverRma,
+            @RequestParam(required = false) String bill) {
         return typedReports.cargo(type, from, to, organizationRma,
-                WaybillReportService.Filter.of(vehicleRegNumber, driverRma));
+                WaybillReportService.Filter.of(vehicleRegNumber, driverRma, billForms(bill)));
     }
 
     /** Пассажирский отчёт в XLSX. */
@@ -163,9 +165,10 @@ public class ReportController {
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
             @RequestParam(required = false) String organizationRma,
             @RequestParam(required = false) String vehicleRegNumber,
-            @RequestParam(required = false) String driverRma) {
+            @RequestParam(required = false) String driverRma,
+            @RequestParam(required = false) String bill) {
         return xlsxResponse(typedReports.passenger(type, from, to, organizationRma,
-                WaybillReportService.Filter.of(vehicleRegNumber, driverRma)));
+                WaybillReportService.Filter.of(vehicleRegNumber, driverRma, billForms(bill))));
     }
 
     /** Грузовой отчёт в XLSX. */
@@ -176,9 +179,10 @@ public class ReportController {
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
             @RequestParam(required = false) String organizationRma,
             @RequestParam(required = false) String vehicleRegNumber,
-            @RequestParam(required = false) String driverRma) {
+            @RequestParam(required = false) String driverRma,
+            @RequestParam(required = false) String bill) {
         return xlsxResponse(typedReports.cargo(type, from, to, organizationRma,
-                WaybillReportService.Filter.of(vehicleRegNumber, driverRma)));
+                WaybillReportService.Filter.of(vehicleRegNumber, driverRma, billForms(bill))));
     }
 
     /**
@@ -349,5 +353,32 @@ public class ReportController {
         return java.util.Arrays.stream(ReportType.values())
                 .map(t -> Map.of("code", t.name(), "label", t.label(), "grouping", t.grouping().name()))
                 .toList();
+    }
+
+    /**
+     * Бланк отчёта — legacy {@code report_bill} формы отчёта (Report1Crud / ReportWaybillCargo):
+     * отчёт строится по одному бланку, а не по всем пассажирским/грузовым вместе (сверка 25.09, D1).
+     * {@code bus} 1-АД, {@code ebus} троллейбус, {@code mbus} 1-А, {@code taxi} 3-С (легковой и такси),
+     * {@code pax_intl} 4-МБМ; {@code cargo2b} 2-Б, {@code cargo5bbm} 5Б-БМ, {@code special}, {@code dangerous}.
+     * Пусто / {@code all} — все виды группы; неизвестное значение — 400.
+     */
+    static java.util.Set<tj.mintrans.epd.waybill.domain.WaybillType> billForms(String bill) {
+        if (bill == null || bill.isBlank() || "all".equalsIgnoreCase(bill.trim())) {
+            return null;
+        }
+        return switch (bill.trim().toLowerCase()) {
+            case "bus" -> java.util.EnumSet.of(tj.mintrans.epd.waybill.domain.WaybillType.WB_BUS);
+            case "ebus" -> java.util.EnumSet.of(tj.mintrans.epd.waybill.domain.WaybillType.WB_TROLLEYBUS);
+            case "mbus" -> java.util.EnumSet.of(tj.mintrans.epd.waybill.domain.WaybillType.WB_MINIBUS);
+            case "taxi" -> java.util.EnumSet.of(tj.mintrans.epd.waybill.domain.WaybillType.WB_CAR,
+                    tj.mintrans.epd.waybill.domain.WaybillType.WB_TAXI);
+            case "pax_intl" -> java.util.EnumSet.of(tj.mintrans.epd.waybill.domain.WaybillType.WB_PAX_INTL);
+            case "cargo2b" -> java.util.EnumSet.of(tj.mintrans.epd.waybill.domain.WaybillType.WB_TRUCK);
+            case "cargo5bbm" -> java.util.EnumSet.of(tj.mintrans.epd.waybill.domain.WaybillType.WB_TRUCK_INTL);
+            case "special" -> java.util.EnumSet.of(tj.mintrans.epd.waybill.domain.WaybillType.WB_SPECIAL);
+            case "dangerous" -> java.util.EnumSet.of(tj.mintrans.epd.waybill.domain.WaybillType.WB_DANGEROUS);
+            default -> throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.BAD_REQUEST, "Неизвестный бланк отчёта: " + bill);
+        };
     }
 }
