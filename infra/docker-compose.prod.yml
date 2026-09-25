@@ -160,6 +160,9 @@ services:
       # Ограничение кучи JVM: на небольших узлах (≤6 ГБ RAM) не даём сервису забрать
       # слишком много и уронить соседей/себя в OOM. При переносе на крупный узел — убрать.
       JAVA_TOOL_OPTIONS: ${MD_JAVA_OPTS:--Xmx384m}
+      # Часовой пояс служб — как у старой платформы (MySQL в Asia/Dushanbe): иначе листы 00:00–05:00
+      # по местному времени относятся к прошлым суткам/месяцу в отчётах и сроках.
+      TZ: ${TZ:-Asia/Dushanbe}
     volumes:
       # Источник разового переноса учётных записей (экспорт realm). Только чтение.
       - ./keycloak:/opt/epd/auth-import:ro
@@ -220,6 +223,10 @@ services:
       KAFKA_BOOTSTRAP_SERVERS: kafka:29092
       # Ограничение кучи JVM на небольших узлах (см. master-data). Убрать на крупном узле.
       JAVA_TOOL_OPTIONS: ${WB_JAVA_OPTS:--Xmx384m}
+      TZ: ${TZ:-Asia/Dushanbe}
+      # Адрес публичного портала проверки для QR на печатных бланках (ПЛ, борхат, СМР, справка).
+      # Без него QR на всех PDF вёл на http://localhost:3000/verify/… (умолчание application.yml).
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-https://${EPD_TLS_HOST:-localhost}:8443}
     depends_on:
       postgres:
         condition: service_healthy

@@ -49,7 +49,10 @@ docker logs --tail 20 epd-prod-backup          # дождаться «backup don
 
 Необязательные: `EPD_HSTS` (только с настоящим сертификатом: `max-age=31536000`),
 `EPD_CSP_IMG_EXTRA` (внешний сервер тайлов карты, если задан `NEXT_PUBLIC_MAP_TILES_URL`),
-`NEXT_PUBLIC_VERIFY_BASE_URL` (по умолчанию `https://<EPD_TLS_HOST>:8443`).
+`NEXT_PUBLIC_VERIFY_BASE_URL` (по умолчанию `https://<EPD_TLS_HOST>:8443`),
+`PUBLIC_BASE_URL` — адрес портала в QR печатных PDF-бланков (по умолчанию тот же
+`https://<EPD_TLS_HOST>:8443`; до 25.09 не передавался, и QR бланков вели на `localhost:3000`),
+`TZ` — часовой пояс служб (по умолчанию `Asia/Dushanbe`, как у старой платформы).
 
 Переменные Keycloak (`KC_*`, `NEXT_PUBLIC_KEYCLOAK_URL`, `KEYCLOAK_*`) больше не используются —
 их можно удалить из `.env`.
