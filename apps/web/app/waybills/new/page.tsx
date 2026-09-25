@@ -132,7 +132,12 @@ export default function NewWaybillPage() {
     communicationType: 'URBAN',
     route: '',
     schedule: '',
+    // «Қайдҳои махсус» — особые отметки листа (legacy special_mark), печатаются на бланке.
+    specialMark: '',
   });
+  // Маршруты организации из справочника: маршрут листа выбирается из них (legacy route_id из
+  // маршрутов компании), а не пишется от руки — опечатка обнуляла показатели и коэффициенты.
+  const [routeList, setRouteList] = useState<{ id: string; organizationRma: string; number: string; name: string }[]>([]);
   // Типовая специфика
   const [serviceKind, setServiceKind] = useState('TAXI');           // 3-С
   const [shipmentKind, setShipmentKind] = useState('PIECEWORK');    // 2-Б
@@ -299,6 +304,13 @@ export default function NewWaybillPage() {
     return list.map(d => ({ value: String(d.rma), label: String(d.fullName), sub: `ИНН ${d.rma}` }));
   }, [orgRma]);
 
+  useEffect(() => {
+    if (!orgRma) { setRouteList([]); return; }
+    md.routes().then(list => setRouteList(list.filter(r => String(r.organizationRma) === orgRma)
+      .sort((a, b) => String(a.number).localeCompare(String(b.number), 'ru', { numeric: true }))))
+      .catch(() => setRouteList([]));
+  }, [orgRma]);
+
   // Классификаторы для форм международных/опасных ПЛ (значение = наименование/код).
   useEffect(() => {
     md.classifiers('COUNTRY')
@@ -444,8 +456,12 @@ export default function NewWaybillPage() {
   const trailersValid = trailers.every(tr => tr.registrationNumber.trim() && tr.brand.trim());
   const customValid = customDefs.filter(d => d.required)
     .every(d => (customValues[d.fieldKey] ?? '').toString().trim() !== '');
+  // Маршрутные формы: 1-АД (автобус/троллейбус), 1-А, 3-С «маршрутное такси» — маршрут обязателен.
+  const routeForm = isBus || t === 'WB_MINIBUS' || (isCar && serviceKind === 'ROUTE');
   const canStep3 = (isIntl ? intlValid : true)
-    && (isCar && serviceKind === 'ROUTE' ? !!form.route.trim() : true)
+    && (routeForm ? !!form.route.trim() : true)
+    // 2-Б: «Самт» и «Заказчик» обязательны (legacy Waybill2bRequest; в боевой базе — 100 %).
+    && (isTruck ? !!directionId && !!client : true)
     && (isTruck ? trailersValid : true)
     && (isTruck && dangerous.on ? !!dangerous.adrClass : true)
     && (isSpecial ? (!!special.workType && special.motorHoursExit.trim() !== '') : true)
@@ -768,9 +784,21 @@ export default function NewWaybillPage() {
                   (анализ боевой базы 24.09.2026: столбца маршрута у 2-Б в старой платформе нет). */}
               {!isTruck && (
                 <div>
-                  <label>{tt('wb.f.route')}{isCar && serviceKind === 'ROUTE' ? tt('wb.required.suffix') : ''}</label>
-                  <input required={isCar && serviceKind === 'ROUTE'} value={form.route}
-                    onChange={e => setForm({ ...form, route: e.target.value })} placeholder={tt('wb.ph.route')} />
+                  <label>{tt('wb.f.route')}{routeForm ? tt('wb.required.suffix') : ''}</label>
+                  {routeForm && routeList.length > 0 ? (
+                    <select required value={form.route} onChange={e => setForm({ ...form, route: e.target.value })} data-testid="wb-route">
+                      <option value="">{tt('wb.route.pick')}</option>
+                      {/* Значение — номер маршрута справочника: расчёт находит его точным совпадением. */}
+                      {form.route && !routeList.some(r => r.number === form.route) && <option value={form.route}>{form.route}</option>}
+                      {routeList.map(r => <option key={r.id} value={r.number}>{r.number} — {r.name}</option>)}
+                    </select>
+                  ) : (
+                    <>
+                      <input required={routeForm} value={form.route}
+                        onChange={e => setForm({ ...form, route: e.target.value })} placeholder={tt('wb.ph.route')} />
+                      {routeForm && orgRma && <div style={{ fontSize: 11.5, color: 'var(--amber)', marginTop: 3 }}>{tt('wb.route.nodict')}</div>}
+                    </>
+                  )}
                 </div>
               )}
               {/* «Тип маршрута» убран из мастера (24.09.2026): в старой платформе на листе такого поля не
@@ -808,8 +836,8 @@ export default function NewWaybillPage() {
               {/* --- 2-Б: Самт (направление, справочник Direction) --- */}
               {isTruck && (
                 <div>
-                  <label>{tt('wbf.samt')}</label>
-                  <select value={directionId} onChange={e => setDirectionId(e.target.value)}>
+                  <label>{tt('wbf.samt')}{tt('wb.required.suffix')}</label>
+                  <select required value={directionId} onChange={e => setDirectionId(e.target.value)}>
                     <option value="">{tt('wbf.selectdir')}</option>
                     {directions.map(d => <option key={d.id} value={d.id}>{d.title}</option>)}
                   </select>
@@ -819,7 +847,7 @@ export default function NewWaybillPage() {
               {/* --- 2-Б: Заказчик (справочник Client) --- */}
               {isTruck && (
                 <div>
-                  <label>{tt('wbf.client')}</label>
+                  <label>{tt('wbf.client')}{tt('wb.required.suffix')}</label>
                   <SearchSelect
                     value={client?.id ?? ''}
                     selectedLabel={client?.name ?? ''}
@@ -998,6 +1026,14 @@ export default function NewWaybillPage() {
                   <div style={{ gridColumn: '1 / -1' }} className="hint">{tt('wb.spec.note')}</div>
                 </>
               )}
+
+              {/* «Қайдҳои махсус» — особые отметки листа (legacy special_mark всех форм), печатаются на бланке.
+                  Бэкенд и печать поле поддерживали, но в мастере его не было (сверка 25.09, A17). */}
+              <div style={{ gridColumn: '1 / -1' }}>
+                <label>{tt('wb.specialmark')}</label>
+                <textarea rows={2} maxLength={1000} value={form.specialMark ?? ''}
+                  onChange={e => setForm({ ...form, specialMark: e.target.value })} placeholder={tt('wb.ph.specialmark')} />
+              </div>
 
               {/* --- Доп.поля типа (конструктор полей) --- */}
               {customDefs.length > 0 && (

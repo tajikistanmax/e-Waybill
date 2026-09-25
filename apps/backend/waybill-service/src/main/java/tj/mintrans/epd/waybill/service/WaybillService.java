@@ -159,6 +159,11 @@ public class WaybillService {
                     throw new UnprocessableException("Недопустимый вид перевозки «%s»: ожидается PIECEWORK (корбайъ) или HOURLY (соатбайъ)".formatted(shipmentKind));
                 }
                 validateTrailers(data.get("trailers"));
+                // «Самт» обязателен (legacy Waybill2bRequest: direction_id required; в боевой базе — 100 %):
+                // из направления берутся коэффициенты K нормы топлива 2-Б. Без него K молча = только износ.
+                if (str(data.get("directionId")).isBlank()) {
+                    throw new UnprocessableException("Укажите «Самт» — направление перевозки (directionId): от него зависят коэффициенты нормы топлива");
+                }
                 // Ходуди фаъолият (зоны работы, 1=Душанбе..7=Ҳисор) — как в легаси, необязательный
                 // многозначный признак; если указан — каждое значение должно быть в диапазоне 1–7.
                 validateWorkRegions(data.get("workRegions"));
@@ -259,6 +264,13 @@ public class WaybillService {
                     throw new UnprocessableException("Для маршрутной услуги укажите маршрут");
                 }
                 validateWorkRegions(data.get("workRegions"));
+            }
+            case WB_BUS, WB_TROLLEYBUS, WB_MINIBUS -> { // 1-АД / 1-А — маршрутные формы
+                // Маршрут обязателен (legacy Waybill1adRequest/Waybill1aRequest: route_id required — выбор из
+                // маршрутов компании): от него — длины, нулевые пробеги, коэффициенты, пассажирооборот.
+                if (wb.getRoute() == null || wb.getRoute().isBlank()) {
+                    throw new UnprocessableException("Укажите маршрут из справочника маршрутов организации");
+                }
             }
             case WB_DANGEROUS -> { // опасные грузы (ADR)
                 String adrClass = str(data.get("adrClass"));

@@ -493,6 +493,9 @@ export const md = {
   ops: () => fetch('/md-api/api/v1/ops/overview', { headers: authHeaders() }).then(r => handle<MdOps>(r)),
   // Заказчики (контрагенты) — для «Заказчик» бланка 2-Б и накладной (стороны/груз).
   clients: () => fetch('/md-api/api/v1/dictionaries/clients', { headers: authHeaders() }).then(r => handle<Client[]>(r)),
+  // Маршруты справочника (тенант — свои, платформа — все) — выбор маршрута листа в мастере.
+  routes: () => fetch('/md-api/api/v1/dictionaries/routes', { headers: authHeaders() })
+    .then(r => handle<{ id: string; organizationRma: string; number: string; name: string }[]>(r)),
   saveClient: (body: Record<string, unknown>) => mdPost('dictionaries/clients', body) as Promise<Client>,
   // Грузы — новый справочник (см. контракт GET/POST /api/v1/dictionaries/cargos).
   cargos: () => fetch('/md-api/api/v1/dictionaries/cargos', { headers: authHeaders() }).then(r => handle<Cargo[]>(r)),

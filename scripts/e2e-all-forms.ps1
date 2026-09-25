@@ -452,9 +452,9 @@ function Run-Negative {
     if ($r.Status -eq 201) {
         $id = $r.Body.id
         $w = ToReady $id $form (VehicleOdometer $n.plate)
-        $r2 = Api 'dispatcher' 'POST' "$Wb/api/v1/waybills" @{ waybillType = 'WB_BUS'; organizationRma = $ORG; vehicleRegNumber = $n.plate; driverRma = $neg['cancel'].driverRma; communicationType = 'URBAN' }
+        $r2 = Api 'dispatcher' 'POST' "$Wb/api/v1/waybills" @{ waybillType = 'WB_BUS'; organizationRma = $ORG; vehicleRegNumber = $n.plate; driverRma = $neg['cancel'].driverRma; communicationType = 'URBAN'; route = 'QA1' }
         Check $form 'second waybill on busy vehicle -> 409' ($r2.Status -eq 409) (Detail $r2)
-        $r2 = Api 'dispatcher' 'POST' "$Wb/api/v1/waybills" @{ waybillType = 'WB_BUS'; organizationRma = $ORG; vehicleRegNumber = $neg['cancel'].plate; driverRma = $n.driverRma; communicationType = 'URBAN' }
+        $r2 = Api 'dispatcher' 'POST' "$Wb/api/v1/waybills" @{ waybillType = 'WB_BUS'; organizationRma = $ORG; vehicleRegNumber = $neg['cancel'].plate; driverRma = $n.driverRma; communicationType = 'URBAN'; route = 'QA1' }
         Check $form 'second waybill on busy driver -> 409' ($r2.Status -eq 409) (Detail $r2)
         [void](Api 'dispatcher' 'POST' "$Wb/api/v1/waybills/$id/issue" @{ driverConfirmation = 'PIN' })
         [void](Api 'dispatcher' 'POST' "$Wb/api/v1/waybills/$id/activate" @{ dispatcherRma = $DISP })
@@ -479,7 +479,7 @@ function Run-Negative {
 
     # cancel a fresh DRAFT/CREATED
     $n = $neg['cancel']
-    $r = Api 'dispatcher' 'POST' "$Wb/api/v1/waybills" @{ waybillType = 'WB_BUS'; organizationRma = $ORG; vehicleRegNumber = $n.plate; driverRma = $n.driverRma; communicationType = 'URBAN' }
+    $r = Api 'dispatcher' 'POST' "$Wb/api/v1/waybills" @{ waybillType = 'WB_BUS'; organizationRma = $ORG; vehicleRegNumber = $n.plate; driverRma = $n.driverRma; communicationType = 'URBAN'; route = 'QA1' }
     if ($r.Status -eq 201) {
         $id = $r.Body.id
         [void](Api 'dispatcher' 'POST' "$Wb/api/v1/waybills/$id/titles/t1" @{ dispatcherRma = $DISP; validityDays = 1 })
@@ -493,7 +493,7 @@ function Run-Negative {
 
     # expired technical inspection -> 422
     $n = $neg['expired']
-    $r = Api 'dispatcher' 'POST' "$Wb/api/v1/waybills" @{ waybillType = 'WB_BUS'; organizationRma = $ORG; vehicleRegNumber = $n.plate; driverRma = $n.driverRma; communicationType = 'URBAN' }
+    $r = Api 'dispatcher' 'POST' "$Wb/api/v1/waybills" @{ waybillType = 'WB_BUS'; organizationRma = $ORG; vehicleRegNumber = $n.plate; driverRma = $n.driverRma; communicationType = 'URBAN'; route = 'QA1' }
     Check $form 'expired tech inspection -> 422' ($r.Status -eq 422) (Detail $r)
     $pre = Api 'dispatcher' 'GET' "$Wb/api/v1/waybills/preflight?type=WB_BUS&organizationRma=$ORG&vehicleRegNumber=$($n.plate)&driverRma=$($n.driverRma)"
     Check $form 'preflight shows expired' ($pre.Status -eq 200 -and -not $pre.Body.eligible) ((@($pre.Body.checks) | ForEach-Object { $_.code }) -join ',')

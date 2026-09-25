@@ -448,7 +448,10 @@ public class MasterDataClient {
         String q = text.trim();
         List<Map<String, Object>> own = organizationRma == null ? List.of()
                 : routes.stream().filter(r -> organizationRma.equals(str(r.get("organizationRma")))).toList();
-        var exact = java.util.stream.Stream.concat(own.stream(), routes.stream())
+        // Маршрут листа — маршрут СВОЕЙ организации (legacy route_id из маршрутов компании). Раньше при
+        // отсутствии своего совпадения бралось точное совпадение номера у ЧУЖОГО перевозчика — и лист
+        // считался с чужими длинами и коэффициентами (сверка 25.09, 1-АД п.9). Без организации — по всем.
+        var exact = (organizationRma == null ? routes : own).stream()
                 .filter(r -> q.equalsIgnoreCase(str(r.get("number")).trim()) || q.equalsIgnoreCase(str(r.get("name")).trim()))
                 .findFirst();
         if (exact.isPresent() || own.isEmpty()) {
