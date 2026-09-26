@@ -30,8 +30,14 @@ public class ActivityReportService {
     /** По какому ключу считать. */
     public enum By { VEHICLE, DRIVER }
 
-    /** Ключ (госномер / РМА водителя) и число ПЛ за период. */
-    public record Row(String key, long waybills) {
+    /**
+     * Ключ (госномер / РМА водителя), число ПЛ за период и организация листов (при смене перевозчика
+     * в периоде — одна из них) — для реестра надзора по всем организациям (сверка 25.09, F5).
+     */
+    public record Row(String key, long waybills, String organizationRma) {
+        public Row(String key, long waybills) {
+            this(key, waybills, null);
+        }
     }
 
     private final WaybillRepository waybills;
@@ -75,7 +81,8 @@ public class ActivityReportService {
             if (r[0] == null) {
                 continue;
             }
-            result.add(new Row(r[0].toString(), ((Number) r[1]).longValue()));
+            result.add(new Row(r[0].toString(), ((Number) r[1]).longValue(),
+                    r.length > 2 && r[2] != null ? r[2].toString() : null));
         }
         result.sort((a, b) -> a.key().compareToIgnoreCase(b.key()));
         return result;

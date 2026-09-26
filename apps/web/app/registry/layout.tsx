@@ -7,9 +7,11 @@ import { md } from '@/lib/api';
 import { Icon, P } from '../icons';
 import { useT } from '@/lib/i18n';
 
-type CountKey = 'vehicles' | 'drivers' | 'employees' | 'devices';
+type CountKey = 'organizations' | 'vehicles' | 'drivers' | 'employees' | 'devices';
 
 const TABS: { href: string; labelKey: string; icon: string; key: CountKey }[] = [
+  // Организации — реестр перевозчиков для надзора (сверка 25.09, F10), только просмотр.
+  { href: '/registry/organizations', labelKey: 'regorg.h', icon: P.building, key: 'organizations' },
   { href: '/registry/vehicles', labelKey: 'col.transport', icon: P.car, key: 'vehicles' },
   { href: '/registry/drivers', labelKey: 'col.drivers', icon: P.users, key: 'drivers' },
   { href: '/registry/employees', labelKey: 'col.employees', icon: P.building, key: 'employees' },
@@ -36,7 +38,7 @@ export default function RegistryLayout({ children }: { children: React.ReactNode
       .then(rows => {
         if (!alive) return;
         const sum = (f: 'vehicles' | 'drivers' | 'employees') => rows.reduce((acc, r) => acc + Number(r[f] ?? 0), 0);
-        setCounts(c => ({ ...c, vehicles: sum('vehicles'), drivers: sum('drivers'), employees: sum('employees') }));
+        setCounts(c => ({ ...c, organizations: rows.length, vehicles: sum('vehicles'), drivers: sum('drivers'), employees: sum('employees') }));
       })
       .catch(() => { /* счётчик не критичен — карточка просто без числа */ });
     md.mobileDevices()
@@ -54,7 +56,7 @@ export default function RegistryLayout({ children }: { children: React.ReactNode
         </div>
       </div>
 
-      <div className="kpi-row" style={{ gridTemplateColumns: 'repeat(4, 1fr)' }}>
+      <div className="kpi-row" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))' }}>
         {TABS.map(s => {
           const sel = s.href === active.href;
           return (

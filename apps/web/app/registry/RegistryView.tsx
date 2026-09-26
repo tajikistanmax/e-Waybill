@@ -5,6 +5,7 @@ import { md } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 import { downloadCsv } from '@/lib/csv';
 import { Icon, P } from '../icons';
+import ActivityPanel from './ActivityPanel';
 
 type Row = Record<string, unknown>;
 export type RegistryKind = 'vehicles' | 'drivers' | 'employees';
@@ -226,6 +227,7 @@ export default function RegistryView({ kind }: { kind: RegistryKind }) {
   }
 
   return (
+    <>
     <div className="card">
       <div className="card-h">
         {/* Счётчик «показано N из M» убран из заголовка (решение владельца 22.09):
@@ -373,5 +375,8 @@ export default function RegistryView({ kind }: { kind: RegistryKind }) {
 
       {detail && <DetailModal kind={kind} row={detail} orgName={orgName(detail)} assignedVeh={assignedVehReg(detail)} onClose={() => setDetail(null)} t={t} />}
     </div>
+    {/* Активность за период (legacy active_trans / inactive_trans / «4 роҳхат» …) — сверка 25.09, F5. */}
+    {(kind === 'vehicles' || kind === 'drivers') && <ActivityPanel kind={kind} orgs={orgs} orgFilter={orgFilter} />}
+    </>
   );
 }

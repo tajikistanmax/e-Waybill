@@ -1038,7 +1038,7 @@ export const wb = {
   // фильтры legacy-реестров «активные / без ПЛ / ровно N за период»).
   activity: (by: 'VEHICLE' | 'DRIVER', from: string, to: string, types?: string[], organizationRma?: string) => fetch(
     `/wb-api/api/v1/reports/activity?by=${by}&from=${from}&to=${to}${types && types.length ? `&types=${types.join(',')}` : ''}${organizationRma ? `&organizationRma=${organizationRma}` : ''}`,
-    { headers: authHeaders() }).then(r => handle<{ key: string; waybills: number }[]>(r)),
+    { headers: authHeaders() }).then(r => handle<{ key: string; waybills: number; organizationRma: string | null }[]>(r)),
   // type — WB_BUS | WB_TROLLEYBUS (пусто = оба); каждая точка несёт и число выписанных ПЛ (legacy BillCountsController).
   passengerVolumeTrend: (months = 7, type?: string) => fetch(
     `/wb-api/api/v1/reports/passenger-volume-trend?months=${months}${type ? `&type=${type}` : ''}`, { headers: authHeaders() })
