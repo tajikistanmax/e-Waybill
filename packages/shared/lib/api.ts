@@ -876,6 +876,15 @@ export const wb = {
   // Борхаты (замимаи 1/2) листа 2-Б — N на лист, с итогами P/Z/L1 для расчёта.
   consignmentNotes: (id: string) => fetch(`/wb-api/api/v1/waybills/${id}/consignment-notes`, { headers: authHeaders() })
     .then(r => handle<ConsignmentNotesResponse>(r)),
+  // Реестр борхатов (все листы области видимости) и печать борхата из реестра.
+  noteRegistry: (params: Record<string, string>) =>
+    fetch(`/wb-api/api/v1/consignment-notes?${new URLSearchParams(params)}`, { headers: authHeaders() })
+      .then(r => handle<ConsignmentNoteRegistryPage>(r)),
+  printRegistryNotePdf: async (noteId: string) => {
+    const r = await fetch(`/wb-api/api/v1/consignment-notes/${noteId}/print.pdf`, { headers: authHeaders() });
+    if (!r.ok) throw new Error(`Ошибка ${r.status}`);
+    return r.blob();
+  },
   printNotePdf: async (id: string, noteId: string) => {
     const r = await fetch(`/wb-api/api/v1/waybills/${id}/consignment-notes/${noteId}/print.pdf`, { headers: authHeaders() });
     if (!r.ok) throw new Error(`Ошибка ${r.status}`);
@@ -1125,6 +1134,19 @@ export type ConsignmentNoteRow = {
   cargoAmount: number | null; cargoWeight: number | null; distance: number | null;
   trips: number; specialDistance: number | null; entryTime: string | null; invoiceNumber: string | null;
   createdAt: string; createdBy: string | null;
+};
+/** Строка реестра борхатов (GET /api/v1/consignment-notes). */
+export type ConsignmentNoteRegistryRow = {
+  id: string; number: number | null; noteDate: string; kind: number;
+  payerName: string | null; senderName: string | null; receiverName: string | null; forwarderName: string | null;
+  cargoName: string | null; cargoAmount: number | null; cargoWeight: number | null; distance: number | null;
+  trips: number; transportWork: number;
+  waybillId: string; waybillNumber: string | null; waybillStatus: string | null;
+  organizationRma: string; organizationName: string | null; vehicleRegNumber: string | null;
+};
+export type ConsignmentNoteRegistryPage = {
+  content: ConsignmentNoteRegistryRow[]; page: number; size: number; totalElements: number; totalPages: number;
+  totals: { count: number; transportWork: number; trips: number; weight: number }; scope: string;
 };
 export type ConsignmentNotesResponse = {
   notes: ConsignmentNoteRow[];

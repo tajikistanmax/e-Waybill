@@ -76,6 +76,12 @@ export function canCreateWaybill(roles: string[]): boolean {
   return roles.includes('DISPATCHER') || roles.includes('SYSTEM_ADMIN');
 }
 
+/** Реестр борхатов 2-Б (GET /api/v1/consignment-notes) — те же роли, что в @PreAuthorize контроллера. */
+export function canSeeConsignmentNotes(roles: string[]): boolean {
+  return ['SYSTEM_ADMIN', 'MINTRANS_ANALYST', 'DISPATCHER', 'COMPANY_ADMIN', 'BRANCH_ADMIN', 'ACCOUNTANT',
+    'CLIENT_SENDER', 'CLIENT_FORWARDER'].some(r => roles.includes(r));
+}
+
 /** Сводные отчёты Минтранса (/reports/regional*, /waybill-norm*) — надзор и админ платформы. */
 export function canSeeMintransReports(roles: string[]): boolean {
   return roles.includes('SYSTEM_ADMIN') || roles.includes('MINTRANS_ANALYST');

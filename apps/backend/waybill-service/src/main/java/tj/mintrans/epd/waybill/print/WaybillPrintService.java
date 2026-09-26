@@ -176,7 +176,12 @@ public class WaybillPrintService {
      */
     @Transactional(readOnly = true)
     public byte[] renderNotePdf(java.util.UUID waybillId, tj.mintrans.epd.waybill.domain.ConsignmentNote note) {
-        Waybill wb = waybills.get(waybillId);
+        return renderNotePdf(waybills.get(waybillId), note);
+    }
+
+    /** Борхат по уже проверенному листу (реестр борхатов: область видимости проверил вызывающий). */
+    @Transactional(readOnly = true)
+    public byte[] renderNotePdf(Waybill wb, tj.mintrans.epd.waybill.domain.ConsignmentNote note) {
         requireType(wb, "борхат (приложение к 2-Б)", WaybillType.WB_TRUCK, WaybillType.WB_DANGEROUS);
         Map<String, Object> m = model(wb);
         m.put("noteKind", (int) note.getKind());

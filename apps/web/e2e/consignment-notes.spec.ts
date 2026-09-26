@@ -71,6 +71,15 @@ test('диспетчер: несколько борхатов 2-Б, итоги P
     await expect(rows.nth(1)).toContainText('Замимаи 2');
     await expect(rows.nth(1).locator('td').nth(9)).toHaveText('—');   // рейсы у замимаи 2 не ведутся
     await expect(page.locator('.error')).toHaveCount(0);
+
+    // Реестр борхатов (меню «Путевые листы → Реестр борхатов»): оба борхата листа, поиск по заказчику.
+    await page.locator('.sidebar').getByRole('link', { name: 'Реестр борхатов' }).click();
+    await expect(page).toHaveURL(/\/consignment-notes$/);
+    await page.locator('main').getByLabel('Поиск', { exact: true }).fill('Мизоҷ E2E');
+    const reg = page.locator('main table tbody tr');
+    await expect(reg).toHaveCount(2);
+    await expect(page.getByTestId('cnr-totals')).toContainText(/P, т·км: 1\s?400/);
+    await expect(page.locator('.error')).toHaveCount(0);
   } finally {
     await request.post(`/wb-api/api/v1/waybills/${id}/cancel`, { headers: auth, data: { reason: 'e2e consignment notes' } });
   }

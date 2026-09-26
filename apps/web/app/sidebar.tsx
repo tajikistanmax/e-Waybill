@@ -8,7 +8,7 @@ import { useAuth } from '@/lib/auth';
 import { useT } from '@/lib/i18n';
 import { useBrand, BrandLogo } from '@/lib/brand';
 import { useRoleAccess } from '@/lib/roleaccess';
-import { canCreateWaybill } from '@/lib/roles';
+import { canCreateWaybill, canSeeConsignmentNotes } from '@/lib/roles';
 import { carrierReportsFor, generalReportsFor, isGeneralPath, isLinkActive, type ReportLink } from './reports/nav';
 
 /**
@@ -47,7 +47,7 @@ export function Sidebar() {
   const { t } = useT();
   const brand = useBrand();
   const { navFor } = useRoleAccess();
-  const [open, setOpen] = useState(pathname.startsWith('/waybills'));
+  const [open, setOpen] = useState(pathname.startsWith('/waybills') || pathname.startsWith('/consignment-notes'));
   // Сворачивание бокового меню (только значки) — выбор пользователя запоминается в браузере.
   // Чтение только после монтирования: при SSR localStorage нет, иначе разъезжается разметка.
   const [collapsed, setCollapsed] = useState(false);
@@ -75,6 +75,7 @@ export function Sidebar() {
   const fleetIcon = !manages && roles.includes('DOCTOR') ? P.user : P.car;
   const showManagement = nav.has('company') || nav.has('access') || nav.has('registry') || nav.has('violations') || nav.has('reports') || nav.has('dictionaries') || nav.has('monitoring') || nav.has('settings');
   const canCreate = canCreateWaybill(roles);
+  const canSeeNotes = canSeeConsignmentNotes(roles);
   const carrierLinks = carrierReportsFor(roles);
   const generalLinks = generalReportsFor(roles);
   const inReports = pathname === '/reports' || pathname.startsWith('/reports/');
@@ -131,6 +132,8 @@ export function Sidebar() {
                     сервер всё равно вернёт 403 на создании (см. canCreateWaybill). */}
                 {canCreate && <Link href="/waybills/new" className={pathname === '/waybills/new' ? 'active' : ''}>{t('nav.waybill.new')}</Link>}
                 <Link href="/waybills" className={wbActive ? 'active' : ''}>{t('nav.waybill.registry')}</Link>
+                {/* Реестр борхатов 2-Б — роли, которым сервер его отдаёт (ConsignmentNoteRegistryController). */}
+                {canSeeNotes && <Link href="/consignment-notes" className={active('/consignment-notes') ? 'active' : ''}>{t('nav.notes')}</Link>}
               </div>
             )}
           </>
@@ -151,6 +154,10 @@ export function Sidebar() {
         {nav.has('inspector') && <Link href="/inspector" className={`snav ${active('/inspector') ? 'active' : ''}`}><Icon d={P.shield} /> {t('nav.inspector')}</Link>}
         {nav.has('fleet') && <Link href="/fleet/vehicles" className={`snav ${active('/fleet') ? 'active' : ''}`}><Icon d={fleetIcon} /> {fleetLabel}</Link>}
         {nav.has('consignments') && <Link href="/consignments" className={`snav ${active('/consignments') ? 'active' : ''}`}><Icon d={P.doc} /> {t('nav.consignments')}</Link>}
+        {/* Аналитик Минтранса (без раздела «Путевые листы») и грузоотправитель/экспедитор — отдельным пунктом. */}
+        {canSeeNotes && !nav.has('waybills') && (
+          <Link href="/consignment-notes" className={`snav ${active('/consignment-notes') ? 'active' : ''}`}><Icon d={P.doc} /> {t('nav.notes')}</Link>
+        )}
 
         {showManagement && <div className="group-label">{t('nav.group.management')}</div>}
         {nav.has('company') && <Link href="/company" className={`snav ${active('/company') && !active('/company/access') ? 'active' : ''}`}><Icon d={P.building} /> {t('nav.company')}</Link>}
