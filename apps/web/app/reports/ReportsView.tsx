@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { authHeaders, md, STATUS_LABELS } from '@/lib/api';
 import { applyColumnConfig } from '@/lib/reportColumns';
 import type { RegionalCount, RegionalCounts } from '@/lib/api';
@@ -41,6 +41,8 @@ type TypedRow = {
   fuelGivenPetrol: number; fuelGivenDiesel: number; fuelGivenGas: number;
   // Фарқият по видам = норма − выдано (вычисляется на клиенте, сверка 25.09, D6).
   fuelDevPetrol?: number; fuelDevDiesel?: number; fuelDevGas?: number;
+  // Сверка 25.09, D13: план рейсов, число ТС, время по заказу, вторая подпись группы.
+  plannedLaps: number; vehicles: number; clientHours: number; groupName?: string | null; groupType?: string | null;
 };
 
 /** Колонки топлива по видам Б/С/Г — только у топливных отчётов (legacy bus/type_10, cargo2b/type_12). */
@@ -89,11 +91,11 @@ const TYPED_BILLS: Record<'passenger' | 'cargo', { v: string; k: string }[]> = {
   ],
 };
 /** Колонки только пассажирских / только грузовых отчётов (legacy cargo2b/type_1 — свои графы). */
-const PAX_ONLY_COLS = new Set<keyof TypedRow>(['laps', 'routeDistanceKm', 'passengerTurnover', 'passengerCount', 'revenue', 'kassa']);
+const PAX_ONLY_COLS = new Set<keyof TypedRow>(['laps', 'plannedLaps', 'routeDistanceKm', 'passengerTurnover', 'passengerCount', 'revenue', 'kassa']);
 const CARGO_ONLY_COLS = new Set<keyof TypedRow>(['transportWork', 'trips']);
 type TypedReport = {
   type: string; typeLabel: string; from: string; to: string;
-  organizationRma: string | null; rows: TypedRow[]; totals: TypedRow | null;
+  organizationRma: string | null; rows: TypedRow[]; totals: TypedRow | null; subtotals?: TypedRow[];
 };
 type ReportTypeMeta = { code: string; label: string; grouping: string };
 
@@ -146,8 +148,12 @@ const TYPE_COMPANY_OPTIONS = [
 
 const TYPED_COLS: { key: keyof TypedRow; label: string }[] = [
   { key: 'label', label: 'Наименование' },
+  { key: 'groupName', label: '' },
+  { key: 'groupType', label: '' },
   { key: 'waybills', label: 'ПЛ' },
+  { key: 'vehicles', label: 'ТС' },
   { key: 'laps', label: 'Рейсы' },
+  { key: 'plannedLaps', label: 'Рейсы план' },
   { key: 'distanceKm', label: 'Пробег, км' },
   { key: 'routeDistanceKm', label: 'По маршруту, км' },
   { key: 'passengerTurnover', label: 'Пасс-км' },
@@ -160,12 +166,36 @@ const TYPED_COLS: { key: keyof TypedRow; label: string }[] = [
   { key: 'driverSalary', label: 'Зарплата вод.' },
   { key: 'workDays', label: 'Рабочие дни' },
   { key: 'workHours', label: 'Часы' },
+  { key: 'clientHours', label: 'По заказу, ч' },
   { key: 'transportWork', label: 'Грузооборот P, т·км' },
   { key: 'trips', label: 'Ездки Z' },
   { key: 'fuelNormPetrol', label: 'Норма Б, л' }, { key: 'fuelNormDiesel', label: 'Норма С, л' }, { key: 'fuelNormGas', label: 'Норма Г, л' },
   { key: 'fuelGivenPetrol', label: 'Выдано Б, л' }, { key: 'fuelGivenDiesel', label: 'Выдано С, л' }, { key: 'fuelGivenGas', label: 'Выдано Г, л' },
   { key: 'fuelDevPetrol', label: 'Откл. Б, л' }, { key: 'fuelDevDiesel', label: 'Откл. С, л' }, { key: 'fuelDevGas', label: 'Откл. Г, л' },
 ];
+
+/**
+ * Титул печатного отчёта — как заголовок отчёта «Роҳхат» (lang/tj/report.php, report-table-head; сверка 25.09, D13):
+ * {bill} — бланк, {company} — предприятие, {period} — период.
+ */
+const PRINT_TITLE: Record<string, string> = {
+  BY_VEHICLE: 'Ҳисоботи нишондиҳандаҳои истифодабарӣ-техникии {bill} нисбат бо рақамҳои автомобили {company}, {period}',
+  BY_DRIVER: 'Ҳисоботи нишондиҳандаҳои истифодабарӣ-техникии {bill} нисбат бо рақамҳои табели ронандагони {company}, {period}',
+  BY_ROUTE: 'Ҳисоботи нишондиҳандаҳои истифодабарӣ-техникии {bill} нисбат бо хатсайрҳои {company}, {period}',
+  BY_BRAND: 'Ҳисоботи нишондиҳандаҳои истифодабарӣ-техникии {bill} нисбат бо тамғаҳои {company}, {period}',
+  STAT_1AUTO: 'Ҳисоботи омории шакли тасдиқшудаи 1-авто, {company}, {period}',
+  DRIVER_SALARY: 'Музди меҳнати ронандагони {company}, {period}',
+  TRIP_INFO: 'Ҳисобот оид ба гашти {bill} {company}, {period}',
+  REGISTRY_JOURNAL: 'Дафтари қайди танзимгари {company}, {period}',
+  FUEL_GENERAL: 'Ҳисобот оид ба сӯзишвории {bill} {company}, {period}',
+};
+
+/** Вторая подпись группы по типу разреза (legacy: гар. №, наименование маршрута, рамз марки, табель; D13). */
+const GROUP_NAME_LABEL: Record<string, string> = {
+  BY_VEHICLE: 'rep.typed.groupName.vehicle', FUEL_BY_VEHICLE: 'rep.typed.groupName.vehicle',
+  BY_ROUTE: 'rep.typed.groupName.route', BY_BRAND: 'rep.typed.groupName.brand',
+  BY_DRIVER: 'rep.typed.groupName.driver', DRIVER_SALARY: 'rep.typed.groupName.driver', FUEL_BY_DRIVER: 'rep.typed.groupName.driver',
+};
 
 const FUEL_NAMES: Record<number, string> = { 1: 'Бензин', 2: 'Дизель', 3: 'Газ сжиженный', 4: 'Газ природный', 5: 'Электро' };
 
@@ -240,6 +270,17 @@ export default function ReportsView({ tab, kind = 'passenger', mode = 'trans' }:
   const [typedTypes, setTypedTypes] = useState<ReportTypeMeta[]>([]);
   const [typedReport, setTypedReport] = useState<TypedReport | null>(null);
   const [stat, setStat] = useState<Stat1Auto | null>(null);
+  // Печать отчёта: все строки (без постраничности) и титул; после печати — обратно (D13).
+  const [printAll, setPrintAll] = useState(false);
+  useEffect(() => {
+    const after = () => setPrintAll(false);
+    window.addEventListener('afterprint', after);
+    return () => window.removeEventListener('afterprint', after);
+  }, []);
+  function printReport() {
+    setPrintAll(true);
+    setTimeout(() => window.print(), 100);
+  }
   // «С начала года» — отдельный проход с 1 января, у крупного перевозчика в разы дольше; по флажку.
   const [statYtd, setStatYtd] = useState(false);
   const statQs = `from=${from}&to=${to}${statYtd ? '&ytd=true' : ''}`;
@@ -283,43 +324,70 @@ export default function ReportsView({ tab, kind = 'passenger', mode = 'trans' }:
     .filter(c => (typedKind === 'cargo' ? !PAX_ONLY_COLS.has(c.key) : !CARGO_ONLY_COLS.has(c.key)))
     // Б/С/Г — только у топливных отчётов (FUEL_*), в остальных — общая норма/выдано/отклонение.
     .filter(c => !FUEL_TYPE_COLS.has(c.key) || typedType.startsWith('FUEL'))
-    .map(c => ({ ...c, label: t('rep.typed.' + c.key) })),
+    .filter(c => c.key !== 'groupName' || !!GROUP_NAME_LABEL[typedType])
+    .filter(c => c.key !== 'groupType' || typedType === 'BY_ROUTE')
+    .filter(c => c.key !== 'clientHours' || typedType === 'DRIVER_SALARY')
+    .map(c => ({ ...c, label: c.key === 'groupName' ? t(GROUP_NAME_LABEL[typedType])
+      : c.key === 'groupType' ? t('rep.typed.groupType.route') : t('rep.typed.' + c.key) })),
     reportCfg.typed_columns, reportCfg.typed_labels, 'label'), [reportCfg, t, typedKind, typedType]);
   // Колонки таблицы: у построчных типов (D5) — реквизиты листа, иначе — сводные показатели.
   const viewCols: Col[] = useMemo(() => DETAIL_COLS[typedType]
     ? DETAIL_COLS[typedType].map(k => ({ key: k, label: t(k.startsWith('d_') ? 'rep.d.' + k.slice(2) : 'rep.typed.' + k) }))
     : typedCols, [typedType, typedCols, t]);
+  const printTitle = (() => {
+    const company = typedOrg ? (orgs.find(o => o.rma === typedOrg)?.name ?? typedOrg)
+      : orgs.length === 1 ? orgs[0].name : t('rep.print.allorgs');
+    const billKey = TYPED_BILLS[kind].find(b => b.v === typedBill)?.k;
+    const d = (iso: string) => iso.split('-').reverse().join('.');
+    return (PRINT_TITLE[typedType] ?? '{report}, {company}, {period}')
+      .replace('{bill}', billKey ? t(billKey).toLowerCase() : '')
+      .replace('{company}', company)
+      .replace('{period}', `${t('rep.print.period')} ${d(from)} — ${d(to)}`)
+      .replace('{report}', typedReport?.typeLabel ?? '');
+  })();
   const regCols = useMemo(() => applyColumnConfig(REG_COLS.map(c => ({ ...c, label: t('rep.reg.' + c.key) })),
     reportCfg.regional_columns, reportCfg.regional_labels), [reportCfg, t]);
   const rcCols = useMemo(() => applyColumnConfig(RC_COLS.map(c => ({ ...c, label: t('rep.rc.' + c.key) })),
     reportCfg.regional_count_columns, reportCfg.regional_count_labels), [reportCfg, t]);
 
+  // Отчёты тяжёлые: пока идёт медленный запрос, пользователь меняет разрез/период/организацию. Учитываем только
+  // ответ ПОСЛЕДНЕГО запроса — иначе опоздавший старый ответ затирал новый отчёт (находка 26.09).
+  const loadSeq = useRef(0);
   const load = useCallback(async () => {
+    const my = ++loadSeq.current;
+    const fresh = () => my === loadSeq.current;
+    const get = async <T,>(url: string): Promise<T | undefined> => {
+      const v = await getJson<T>(url);
+      return fresh() ? v : undefined;
+    };
     setError('');
     try {
-      if (tab === 'summary') setSummary(await getJson(`/wb-api/api/v1/reports/summary?from=${from}&to=${to}`));
-      if (tab === 'journal') setJournal(await getJson(`/wb-api/api/v1/reports/dispatcher-journal?date=${journalDate}`));
-      if (tab === 'driver') setByDriver(await getJson(`/wb-api/api/v1/reports/by-driver?from=${from}&to=${to}`));
-      if (tab === 'vehicle') setByVehicle(await getJson(`/wb-api/api/v1/reports/by-vehicle?from=${from}&to=${to}`));
-      if (tab === 'fuel') setFuel(await getJson(`/wb-api/api/v1/reports/fuel?from=${from}&to=${to}`));
+      if (tab === 'summary') { const v = await get<Summary>(`/wb-api/api/v1/reports/summary?from=${from}&to=${to}`); if (v) setSummary(v); }
+      if (tab === 'journal') { const v = await get<JournalRow[]>(`/wb-api/api/v1/reports/dispatcher-journal?date=${journalDate}`); if (v) setJournal(v); }
+      if (tab === 'driver') { const v = await get<GroupRow[]>(`/wb-api/api/v1/reports/by-driver?from=${from}&to=${to}`); if (v) setByDriver(v); }
+      if (tab === 'vehicle') { const v = await get<GroupRow[]>(`/wb-api/api/v1/reports/by-vehicle?from=${from}&to=${to}`); if (v) setByVehicle(v); }
+      if (tab === 'fuel') { const v = await get<FuelRow[]>(`/wb-api/api/v1/reports/fuel?from=${from}&to=${to}`); if (v) setFuel(v); }
       if (tab === 'typed' && isStat) {
-        setStat(await getJson<Stat1Auto>(`/wb-api/api/v1/reports/stat-1auto?${statQs}`
-          + (typedOrg ? `&organizationRma=${encodeURIComponent(typedOrg)}` : '')));
+        setStat(null);
+        const v = await get<Stat1Auto>(`/wb-api/api/v1/reports/stat-1auto?${statQs}`
+          + (typedOrg ? `&organizationRma=${encodeURIComponent(typedOrg)}` : ''));
+        if (v) setStat(v);
       } else if (tab === 'typed') {
-        const rep = await getJson<TypedReport>(`/wb-api/api/v1/reports/${typedKind}?type=${typedType}&from=${from}&to=${to}${typedFilterQs}`);
-        setTypedReport({ ...rep, rows: rep.rows.map(r => flatDetail(withFuelDev(r))), totals: rep.totals ? withFuelDev(rep.totals) : null });
+        // Старые строки под колонками нового разреза не показываем (подписи колонок зависят от разреза).
+        setTypedReport(null);
+        const rep = await get<TypedReport>(`/wb-api/api/v1/reports/${typedKind}?type=${typedType}&from=${from}&to=${to}${typedFilterQs}`);
+        if (rep) setTypedReport({ ...rep, rows: rep.rows.map(r => flatDetail(withFuelDev(r))), totals: rep.totals ? withFuelDev(rep.totals) : null });
       }
       if (tab === 'regional') {
         const tc = typeCompany ? `&typeCompany=${typeCompany}` : '';
         const fm = regionalForm ? `&type=${regionalForm}` : '';
-        if (regionalMode === 'trans') setRegional(await getJson(`/wb-api/api/v1/reports/regional?bill=${regionalBill}&from=${from}&to=${to}${tc}${fm}`));
-        else if (regionalMode === 'count') setRegionalCount(await getJson(`/wb-api/api/v1/reports/regional-count?bill=${regionalForm || 'ALL'}&from=${from}&to=${to}${tc}`));
-        else setNorm(await getJson(`/wb-api/api/v1/reports/waybill-norm?type=${normType}&from=${from}&to=${to}${tc}`));
+        if (regionalMode === 'trans') { const v = await get<RegionalReport>(`/wb-api/api/v1/reports/regional?bill=${regionalBill}&from=${from}&to=${to}${tc}${fm}`); if (v) setRegional(v); }
+        else if (regionalMode === 'count') { const v = await get<RegionalCount>(`/wb-api/api/v1/reports/regional-count?bill=${regionalForm || 'ALL'}&from=${from}&to=${to}${tc}`); if (v) setRegionalCount(v); }
+        else { const v = await get<WaybillNorm>(`/wb-api/api/v1/reports/waybill-norm?type=${normType}&from=${from}&to=${to}${tc}`); if (v) setNorm(v); }
       }
     } catch (e) {
-      setError((e as Error).message);
-    }
-  }, [tab, from, to, journalDate, typedKind, typedType, typedFilterQs, typedOrg, isStat, statQs, regionalMode, regionalBill, regionalForm, normType, typeCompany]);
+      if (fresh()) setError((e as Error).message);
+    }  }, [tab, from, to, journalDate, typedKind, typedType, typedFilterQs, typedOrg, isStat, statQs, regionalMode, regionalBill, regionalForm, normType, typeCompany]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -423,6 +491,7 @@ export default function ReportsView({ tab, kind = 'passenger', mode = 'trans' }:
         return typeof v === 'number' ? Math.round(v * 100) / 100 : v;
       });
       typedReport.rows.forEach(r => rows.push(line(r)));
+      (typedReport.subtotals ?? []).forEach(s => rows.push(line({ ...s, label: `Итого: ${s.label}`, groupName: '' })));
       if (typedReport.totals) rows.push(line({ ...typedReport.totals, label: 'ИТОГО' }));
       downloadCsv(`отчёт-${typedType.toLowerCase()}-${from}_${to}.csv`, rows);
     } else if (tab === 'regional' && regionalMode === 'count' && regionalCount) {
@@ -470,7 +539,7 @@ export default function ReportsView({ tab, kind = 'passenger', mode = 'trans' }:
   return (
     <>
       {tab !== 'malum' && tab !== 'journals' && (
-      <div className="toolbar">
+      <div className="toolbar no-print">
         <span className="spacer" style={{ flex: 1 }} />
         {tab === 'journal' ? (
           <input type="date" style={{ width: 170 }} value={journalDate} onChange={e => setJournalDate(e.target.value)} />
@@ -489,6 +558,9 @@ export default function ReportsView({ tab, kind = 'passenger', mode = 'trans' }:
             <Icon d={P.chart} cls="" style={{ width: 15, height: 15 }} /> XLSX
           </button>
         )}
+        {tab === 'typed' && (
+          <button className="btn secondary" onClick={printReport} disabled={!hasData} data-testid="rep-print">🖨 {t('rep.print')}</button>
+        )}
         {tab === 'regional' && (
           <button className="btn secondary" onClick={downloadRegionalXlsx} disabled={!hasData} title={t('rep.downloadxlsx')}>
             <Icon d={P.chart} cls="" style={{ width: 15, height: 15 }} /> XLSX
@@ -498,7 +570,7 @@ export default function ReportsView({ tab, kind = 'passenger', mode = 'trans' }:
       )}
 
       {tab === 'regional' && (
-        <div className="toolbar">
+        <div className="toolbar no-print">
           {regionalMode === 'trans' && (
             <select value={regionalBill} onChange={e => { setRegionalBill(e.target.value as 'PASSENGER' | 'CARGO'); setRegionalForm(''); }} style={{ width: 160 }}>
               <option value="PASSENGER">{t('rep.opt.passenger')}</option>
@@ -533,7 +605,7 @@ export default function ReportsView({ tab, kind = 'passenger', mode = 'trans' }:
       )}
 
       {tab === 'typed' && (
-        <div className="toolbar">
+        <div className="toolbar no-print">
           {/* Бланк отчёта (legacy report_bill): автобус / троллейбус / 1-А / 3-С …, 2-Б / 5Б-БМ. */}
           {!isStat && (
             <select value={typedBill} onChange={e => setTypedBill(e.target.value)} style={{ width: 210 }} title={t('rep.bill.title')} data-testid="rep-bill">
@@ -679,6 +751,13 @@ export default function ReportsView({ tab, kind = 'passenger', mode = 'trans' }:
         </div>
       )}
 
+      {tab === 'typed' && (
+        <div className="print-only" style={{ textAlign: 'center', fontWeight: 700, fontSize: 14, margin: '0 0 10px' }} data-testid="rep-print-title">
+          {printTitle}
+          <div style={{ fontWeight: 400, fontSize: 10, marginTop: 4 }}>{t('rep.print.generated')}: {new Date().toLocaleString('ru-RU')}</div>
+        </div>
+      )}
+
       {isStat && (
         <div className="card" style={{ overflowX: 'auto' }} data-testid="stat-1auto">
           <h2>{t('rep.stat1auto')} · {from} — {to}</h2>
@@ -705,18 +784,27 @@ export default function ReportsView({ tab, kind = 'passenger', mode = 'trans' }:
       )}
 
       {tab === 'typed' && !isStat && (
-        <div className="card" style={{ overflowX: 'auto' }}>
+        <div className="card report-print" style={{ overflowX: 'auto' }}>
           <h2>{typedReport?.typeLabel ?? t('rep.crosscut')} · {typedKind === 'passenger' ? t('rep.pax') : t('rep.cargo')} · {from} — {to}</h2>
           <table>
             <thead><tr>{viewCols.map(c => <th key={c.key}>{c.label}</th>)}</tr></thead>
             <tbody>
-              {typedPage.view.map((r, i) => (
+              {(printAll ? typedReport?.rows ?? [] : typedPage.view).map((r, i) => (
                 <tr key={i} data-testid="typed-row">
                   {viewCols.map(c => {
                     const v = cellOf(r, c.key);
                     return <td key={c.key} style={c.key === 'label' || c.key === 'd_number' ? { fontWeight: 600, color: 'var(--ink)' } : undefined}>
                       {typeof v === 'number' ? (Math.round(v * 100) / 100).toLocaleString('ru-RU') : v == null ? '' : String(v)}
                     </td>;
+                  })}
+                </tr>
+              ))}
+              {/* Промежуточные итоги: виды маршрутов, депо троллейбуса (legacy «Хатсайр», ebus; D13). */}
+              {(typedReport?.subtotals ?? []).map(s => (
+                <tr key={'sub-' + s.key} data-testid="typed-subtotal" style={{ fontWeight: 600, background: 'var(--amber-050, #fef9e7)' }}>
+                  {viewCols.map((c, i) => {
+                    const v = i === 0 ? `${t('rep.subtotal')}: ${s.label}` : (c.key.startsWith('d_') || c.key === 'groupName' || c.key === 'groupType') ? undefined : cellOf(s, c.key);
+                    return <td key={c.key}>{typeof v === 'number' ? (Math.round(v * 100) / 100).toLocaleString('ru-RU') : v == null ? '' : String(v)}</td>;
                   })}
                 </tr>
               ))}
@@ -731,7 +819,7 @@ export default function ReportsView({ tab, kind = 'passenger', mode = 'trans' }:
               {(!typedReport || typedReport.rows.length === 0) && <tr><td colSpan={viewCols.length} style={{ textAlign: 'center', color: 'var(--muted)', padding: 20 }}>{t('common.norecords')}</td></tr>}
             </tbody>
           </table>
-          <Pager {...typedPage} />
+          <div className="no-print"><Pager {...typedPage} /></div>
         </div>
       )}
 

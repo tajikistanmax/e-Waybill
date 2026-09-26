@@ -46,7 +46,10 @@ public class ReportXlsxWriter {
             "Рабочие дни", "Часы", "Грузооборот P, т·км", "Ездки Z",
             // Топливо по видам legacy «меъёр / асл / фарқият Б/С/Г» (сверка 25.09, D6).
             "Норма Б, л", "Норма С, л", "Норма Г, л", "Выдано Б, л", "Выдано С, л", "Выдано Г, л",
-            "Фарқият Б, л", "Фарқият С, л", "Фарқият Г, л"
+            "Фарқият Б, л", "Фарқият С, л", "Фарқият Г, л",
+            // Сверка 25.09, D13: план рейсов, число ТС, время по заказу, вторая подпись группы (legacy «нақша»,
+            // «миқдори автомобил», «вақти фармоишӣ», рамз марки / номи хатсайр / гар. № / табель).
+            "Рейсы план", "Кол-во ТС", "Время по заказу, ч", "Доп. подпись"
     };
 
     private static final String[] DETAIL_HEADERS = {
@@ -131,6 +134,12 @@ public class ReportXlsxWriter {
                 if (hasDetail && row.detail() != null) {
                     writeDetail(x, HEADERS.length, row.detail());
                 }
+            }
+            // Промежуточные итоги (виды маршрутов, депо троллейбуса; сверка 25.09, D13).
+            for (ReportRow s : report.subtotals() == null ? List.<ReportRow>of() : report.subtotals()) {
+                Row sr = sheet.createRow(r++);
+                writeRow(sr, s, totalStyle);
+                sr.getCell(1).setCellValue("Итого: " + s.label());
             }
             if (report.totals() != null) {
                 Row totals = sheet.createRow(r++);
@@ -332,13 +341,18 @@ public class ReportXlsxWriter {
                     r.date(), r.number(), r.vehicle(), r.driver(),
                     r.odometerExit() == null ? "" : String.valueOf(r.odometerExit()),
                     r.control().verdict(), r.control().employeeName(), r.control().employeeRma(),
-                    PrintZone.isoToLocal(r.control().signedAt()), r.control().fingerprint(), r.control().details()
+                    PrintZone.isoToLocal(r.control().signedAt()), r.control().fingerprint(), r.control().details(),
+                    r.exitAt() == null ? "" : PrintZone.isoToLocal(r.exitAt()),
+                    r.entryAt() == null ? "" : PrintZone.isoToLocal(r.entryAt()),
+                    r.odometerEntry() == null ? "" : String.valueOf(r.odometerEntry()),
+                    r.entryCondition() == null ? "" : r.entryCondition()
             });
         }
         return simpleSheet("Журнал механика",
                 "Дафтари қайди механик · " + D2(j.from()) + " — " + D2(j.to()),
                 new String[]{"Дата", "№ ПЛ", "ТС", "Водитель", "Одометр выезд",
-                        "Заключение", "Механик", "РМА", "Подписано", "Отпечаток ЭП", "Показатели"},
+                        "Заключение", "Механик", "РМА", "Подписано", "Отпечаток ЭП", "Показатели",
+                        "Выезд (Т4)", "Возврат (Т5)", "Одометр возврат", "Техсостояние при возврате"},
                 rows);
     }
 
@@ -628,6 +642,10 @@ public class ReportXlsxWriter {
         num(row, 24, round(d.fuelNormPetrol() - d.fuelGivenPetrol()), style);
         num(row, 25, round(d.fuelNormDiesel() - d.fuelGivenDiesel()), style);
         num(row, 26, round(d.fuelNormGas() - d.fuelGivenGas()), style);
+        num(row, 27, round(d.plannedLaps()), style);
+        num(row, 28, d.vehicles(), style);
+        num(row, 29, round(d.clientHours()), style);
+        cell(row, 30, d.groupName(), style);
     }
 
     private static double round(double v) {

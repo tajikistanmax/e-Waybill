@@ -344,6 +344,15 @@ public class MasterDataClient {
         return brandsCache.get(callerKey(), () -> list("/api/v1/legacy-ref/brands"));
     }
 
+    /** Виды маршрутов (для промежуточных итогов «Хатсайр» по виду; сверка 25.09, D13). Недоступно — пусто. */
+    public List<Map<String, Object>> listRouteTypes() {
+        try {
+            return list("/api/v1/route-types");
+        } catch (RuntimeException e) {
+            return List.of();
+        }
+    }
+
     public List<Map<String, Object>> listDirections() {
         return list("/api/v1/legacy-ref/directions");
     }

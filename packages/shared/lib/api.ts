@@ -1133,7 +1133,9 @@ type InspMark = {
 };
 export type MechanicJournal = {
   from: string; to: string; organizationRma: string | null;
-  rows: { number: string; date: string; vehicle: string; driver: string; odometerExit: number | null; control: InspMark }[];
+  rows: { number: string; date: string; vehicle: string; driver: string; odometerExit: number | null; control: InspMark;
+    // Сторона возврата (сверка 25.09, D13): выезд Т4, возврат Т5, одометр возврата, техсостояние при возврате.
+    exitAt: string | null; entryAt: string | null; odometerEntry: number | null; entryCondition: string | null }[];
 };
 export type DoctorJournal = {
   from: string; to: string; organizationRma: string | null;

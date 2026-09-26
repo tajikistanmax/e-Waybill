@@ -52,9 +52,11 @@ export default function JournalsTab() {
 
   function csv() {
     if (kind === 'mechanic' && mech) {
-      const rows: unknown[][] = [['Дата', '№ ПЛ', 'ТС', 'Водитель', 'Одометр выезд', 'Заключение', 'Механик', 'РМА', 'Подписано', 'Показатели']];
+      const rows: unknown[][] = [['Дата', '№ ПЛ', 'ТС', 'Водитель', 'Одометр выезд', 'Заключение', 'Механик', 'РМА', 'Подписано', 'Показатели',
+        'Выезд (Т4)', 'Возврат (Т5)', 'Одометр возврат', 'Техсостояние при возврате']];
       mech.rows.forEach(r => rows.push([r.date, r.number, r.vehicle, r.driver, r.odometerExit ?? '',
-        r.control.verdict, r.control.employeeName, r.control.employeeRma, r.control.signedAt, r.control.details]));
+        r.control.verdict, r.control.employeeName, r.control.employeeRma, r.control.signedAt, r.control.details,
+        r.exitAt ?? '', r.entryAt ?? '', r.odometerEntry ?? '', r.entryCondition ?? '']));
       downloadCsv(`журнал-механика-${from}_${to}.csv`, rows);
     } else if (kind === 'doctor' && doc) {
       const rows: unknown[][] = [['Дата', '№ ПЛ', 'ТС', 'Водитель', 'Предрейсовый (Т2)', 'Послерейсовый (Т6)']];
@@ -87,7 +89,7 @@ export default function JournalsTab() {
         <h2>{kind === 'mechanic' ? t('rj.h.mech') : t('rj.h.doc')} · {from} — {to} · {t('rj.rows')}: {rows.length}</h2>
         {kind === 'mechanic' ? (
           <table>
-            <thead><tr><th>{t('rj.date')}</th><th>{t('rj.wbnum')}</th><th>{t('rj.vehicle')}</th><th>{t('rj.driver')}</th><th>{t('rj.odometer')}</th><th>{t('rj.conclusion')}</th><th>{t('rj.mechanicname')}</th><th>{t('rj.signed')}</th><th>{t('rj.indicators')}</th></tr></thead>
+            <thead><tr><th>{t('rj.date')}</th><th>{t('rj.wbnum')}</th><th>{t('rj.vehicle')}</th><th>{t('rj.driver')}</th><th>{t('rj.odometer')}</th><th>{t('rj.conclusion')}</th><th>{t('rj.mechanicname')}</th><th>{t('rj.signed')}</th><th>{t('rj.indicators')}</th><th>{t('rj.exitat')}</th><th>{t('rj.entryat')}</th><th>{t('rj.odometerentry')}</th><th>{t('rj.entrycondition')}</th></tr></thead>
             <tbody>
               {mechPage.view.map((r, i) => (
                 <tr key={i}>
@@ -96,9 +98,12 @@ export default function JournalsTab() {
                   <td>{r.control.verdict}</td><td>{r.control.employeeName}<br /><span style={{ color: '#64748b', fontSize: 10 }}>РМА {r.control.employeeRma}</span></td>
                   <td>{r.control.signedAt !== '—' ? new Date(r.control.signedAt).toLocaleString('ru-RU') : '—'}</td>
                   <td style={{ fontSize: 11 }}>{r.control.details || '—'}</td>
+                  <td>{r.exitAt ? new Date(r.exitAt).toLocaleString('ru-RU') : '—'}</td>
+                  <td>{r.entryAt ? new Date(r.entryAt).toLocaleString('ru-RU') : '—'}</td>
+                  <td>{r.odometerEntry ?? '—'}</td><td>{r.entryCondition ?? '—'}</td>
                 </tr>
               ))}
-              {rows.length === 0 && <tr><td colSpan={9} style={{ textAlign: 'center', color: 'var(--muted)', padding: 20 }}>{t('rj.nodata')}</td></tr>}
+              {rows.length === 0 && <tr><td colSpan={13} style={{ textAlign: 'center', color: 'var(--muted)', padding: 20 }}>{t('rj.nodata')}</td></tr>}
             </tbody>
           </table>
         ) : (

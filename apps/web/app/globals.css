@@ -481,6 +481,11 @@ input:focus, select:focus { outline: none; border-color: var(--blue-500); box-sh
   .side-nav { display: flex; flex-wrap: wrap; } .kpi-row, .qstat { grid-template-columns: 1fr 1fr; }
   .page { padding: 18px; } form.grid { grid-template-columns: 1fr; }
 }
-@media print { .sidebar, .topbar, .no-print { display: none !important; } .page { max-width: none; padding: 0; } body { background: #fff; } }
+/* Титул печатного отчёта (сверка 25.09, D13) — только на бумаге. */
+.print-only { display: none; }
+@media print { .sidebar, .topbar, .no-print { display: none !important; } .page { max-width: none; padding: 0; } body { background: #fff; }
+  .print-only { display: block !important; } .card { box-shadow: none; }
+  .report-print { overflow: visible !important; padding: 0; border: none; } .report-print table { font-size: 8pt; }
+  .report-print th, .report-print td { padding: 2px 4px; } }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 :focus-visible { outline: 2px solid var(--blue-500); outline-offset: 2px; border-radius: 4px; }

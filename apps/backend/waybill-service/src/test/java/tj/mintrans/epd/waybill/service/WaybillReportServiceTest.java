@@ -148,6 +148,36 @@ class WaybillReportServiceTest {
     }
 
     @Test
+    @DisplayName("D13: число разных ТС (госномер без пробелов/регистра) и итоги троллейбусов по депо (1-я цифра гаражного №)")
+    void vehiclesAndDepots() {
+        WaybillReport r = service.passenger(ReportType.BY_VEHICLE, FROM, TO, null);
+        assertThat(r.totals().vehicles()).isEqualTo(2);                 // 0114TJ01 (два написания) и 2222TJ01
+        assertThat(r.subtotals()).isEmpty();                             // автобусы — без депо
+
+        WaybillPeriodScan scan = mock(WaybillPeriodScan.class);
+        WaybillCalcAssembler assembler = mock(WaybillCalcAssembler.class);
+        TenantScope tenant = mock(TenantScope.class);
+        lenient().when(assembler.calculate(any(), any(), any()))
+                .thenReturn(new WaybillCalcAssembler.View("PASSENGER", null, null, List.of()));
+        Waybill t1 = wb(WaybillType.WB_TROLLEYBUS, "T-101", "1", 10);
+        t1.setVehicleSnapshot(java.util.Map.of("parkingNumber", "1101"));
+        Waybill t2 = wb(WaybillType.WB_TROLLEYBUS, "T-102", "2", 20);
+        t2.setVehicleSnapshot(java.util.Map.of("parkingNumber", "1102"));
+        Waybill t3 = wb(WaybillType.WB_TROLLEYBUS, "T-201", "3", 40);
+        t3.setVehicleSnapshot(java.util.Map.of("parkingNumber", "2201"));
+        doAnswer(inv -> {
+            Consumer<Waybill> c = inv.getArgument(3);
+            List.of(t1, t2, t3).forEach(c);
+            return null;
+        }).when(scan).forEach(any(), any(), any(), any());
+        WaybillReport ebus = new WaybillReportService(scan, assembler, tenant).passenger(ReportType.BY_VEHICLE, FROM, TO, null);
+        assertThat(ebus.subtotals()).extracting(ReportRow::key).containsExactly("Депо 1", "Депо 2");
+        assertThat(ebus.subtotals().get(0).distanceKm()).isEqualTo(30d);
+        assertThat(ebus.subtotals().get(0).vehicles()).isEqualTo(2);
+        assertThat(ebus.rows()).extracting(ReportRow::groupName).containsExactly("1101", "1102", "2201");
+    }
+
+    @Test
     @DisplayName("пустые/пробельные значения отбора = без отбора (Filter.NONE)")
     void blankFilterIsNone() {
         assertThat(WaybillReportService.Filter.of("  ", "")).isSameAs(WaybillReportService.Filter.NONE);

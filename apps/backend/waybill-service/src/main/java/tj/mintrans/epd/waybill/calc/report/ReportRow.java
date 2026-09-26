@@ -31,6 +31,11 @@ import java.math.BigDecimal;
  * @param fuelGivenPetrol       выдано по видам legacy «асл Б/С/Г»; фарқият по виду = норма − выдано
  * @param fuelGivenDiesel       …
  * @param fuelGivenGas          …
+ * @param plannedLaps           Σ плановых кругов маршрута (legacy «давр нақша»; сверка 25.09, D13)
+ * @param vehicles              число разных ТС в группе (legacy «миқдори автомобил»)
+ * @param clientHours           Σ времени по заказу, ч (legacy «вақти фармоишӣ» в «Музди меҳнат»)
+ * @param groupName             вторая подпись группы: наименование маршрута, рамз марки, гаражный номер, табель
+ * @param groupType             группа промежуточного итога: вид маршрута, депо троллейбуса; иначе {@code null}
  * @param detail                реквизиты одного листа (legacy типы 6 / 7 / 9 — построчно; сверка 25.09, D5):
  *                              у строки «по листу» — этот лист, у «Сузишвори» — последний лист ТС; иначе {@code null}
  */
@@ -59,6 +64,11 @@ public record ReportRow(
         double fuelGivenPetrol,
         double fuelGivenDiesel,
         double fuelGivenGas,
+        double plannedLaps,
+        int vehicles,
+        double clientHours,
+        String groupName,
+        String groupType,
         Detail detail
 ) {
 
@@ -85,12 +95,37 @@ public record ReportRow(
         return new ReportRow(key, label, waybills, laps, distanceKm, routeDistanceKm, passengerTurnover,
                 passengerCount, fuelNormLiters, fuelGivenLiters, fuelDeviationLiters, revenue, kassa, driverSalary,
                 workDays, workHours, transportWork, trips, fuelNormPetrol, fuelNormDiesel, fuelNormGas,
-                fuelGivenPetrol, fuelGivenDiesel, fuelGivenGas, d);
+                fuelGivenPetrol, fuelGivenDiesel, fuelGivenGas, plannedLaps, vehicles, clientHours, groupName, groupType, d);
+    }
+
+    /** Прибавить плановые круги и время по заказу одного листа (сверка 25.09, D13). */
+    public ReportRow plusExtra(double addPlannedLaps, double addClientHours) {
+        return new ReportRow(key, label, waybills, laps, distanceKm, routeDistanceKm, passengerTurnover,
+                passengerCount, fuelNormLiters, fuelGivenLiters, fuelDeviationLiters, revenue, kassa, driverSalary,
+                workDays, workHours, transportWork, trips, fuelNormPetrol, fuelNormDiesel, fuelNormGas,
+                fuelGivenPetrol, fuelGivenDiesel, fuelGivenGas, plannedLaps + addPlannedLaps, vehicles,
+                clientHours + addClientHours, groupName, groupType, detail);
+    }
+
+    /** Число разных ТС, подпись и группа промежуточного итога. */
+    public ReportRow withGroup(int vehicleCount, String name, String type) {
+        return new ReportRow(key, label, waybills, laps, distanceKm, routeDistanceKm, passengerTurnover,
+                passengerCount, fuelNormLiters, fuelGivenLiters, fuelDeviationLiters, revenue, kassa, driverSalary,
+                workDays, workHours, transportWork, trips, fuelNormPetrol, fuelNormDiesel, fuelNormGas,
+                fuelGivenPetrol, fuelGivenDiesel, fuelGivenGas, plannedLaps, vehicleCount, clientHours, name, type, detail);
+    }
+
+    /** Строка с другими ключом и подписью (промежуточный итог). */
+    public ReportRow relabel(String newKey, String newLabel) {
+        return new ReportRow(newKey, newLabel, waybills, laps, distanceKm, routeDistanceKm, passengerTurnover,
+                passengerCount, fuelNormLiters, fuelGivenLiters, fuelDeviationLiters, revenue, kassa, driverSalary,
+                workDays, workHours, transportWork, trips, fuelNormPetrol, fuelNormDiesel, fuelNormGas,
+                fuelGivenPetrol, fuelGivenDiesel, fuelGivenGas, plannedLaps, vehicles, clientHours, null, null, null);
     }
 
     public static ReportRow zero(String key, String label) {
         return new ReportRow(key, label, 0, 0L, 0d, 0d, 0d, 0d, 0d, 0d, 0d,
-                BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, 0, 0d, 0d, 0d, 0d, 0d, 0d, 0d, 0d, 0d, null);
+                BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, 0, 0d, 0d, 0d, 0d, 0d, 0d, 0d, 0d, 0d, 0d, 0, 0d, null, null, null);
     }
 
     /** Прибавить показатели одного путевого листа (без грузовых величин). */
@@ -140,6 +175,7 @@ public record ReportRow(
                 fuelGivenPetrol + s.givenPetrol(),
                 fuelGivenDiesel + s.givenDiesel(),
                 fuelGivenGas + s.givenGas(),
+                plannedLaps, vehicles, clientHours, groupName, groupType,
                 detail);
     }
 
@@ -168,6 +204,8 @@ public record ReportRow(
                 fuelGivenPetrol + other.fuelGivenPetrol,
                 fuelGivenDiesel + other.fuelGivenDiesel,
                 fuelGivenGas + other.fuelGivenGas,
+                plannedLaps + other.plannedLaps, vehicles + other.vehicles, clientHours + other.clientHours,
+                groupName, groupType,
                 null);
     }
 

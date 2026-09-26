@@ -38,6 +38,13 @@ public class WaybillReportService {
     private final WaybillCalcAssembler assembler;
     private final TenantScope tenantScope;
     private tj.mintrans.epd.waybill.repository.WorkDayRepository workDays;
+    private tj.mintrans.epd.waybill.client.MasterDataClient masterData;
+
+    /** Справочники маршрутов и марок — подписи групп «Хатсайр» / «Тамға» (сверка 25.09, D13). */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setMasterData(tj.mintrans.epd.waybill.client.MasterDataClient masterData) {
+        this.masterData = masterData;
+    }
 
     /** Рабочие дни — для выезда/возврата в построчных отчётах (сверка 25.09, D5). */
     @org.springframework.beans.factory.annotation.Autowired(required = false)
@@ -138,6 +145,12 @@ public class WaybillReportService {
 
         // Потоком по периоду (WaybillPeriodScan), а не findAll(): агрегируем строки, сущности не копим.
         Map<String, ReportRow> rows = new LinkedHashMap<>();
+        // Число разных ТС и подписи групп (legacy «миқдори автомобил», рамз марки, вид маршрута, депо; D13).
+        Map<String, Set<String>> vehiclesByKey = new java.util.HashMap<>();
+        Set<String> allVehicles = new java.util.HashSet<>();
+        Map<String, String[]> groupInfo = new java.util.HashMap<>();
+        Map<String, String> routeTypeNames = type.grouping() == ReportGrouping.ROUTE ? routeTypeNames() : Map.of();
+        Map<String, Map<String, String>> garageByOrg = new java.util.HashMap<>();
         java.util.function.Consumer<Waybill> handle = wb -> {
             if (!(cargo ? isCargo(wb.getWaybillType()) : isPassenger(wb.getWaybillType()))) {
                 return;
@@ -157,7 +170,12 @@ public class WaybillReportService {
             ReportRow row = rows.computeIfAbsent(key, k -> ReportRow.zero(k, label));
             ReportRow next = row.plus(c.laps, c.distanceKm, c.routeDistanceKm, c.turnover, c.passengers,
                     c.normLiters, c.givenLiters, c.revenue, c.kassa, c.salary,
-                    c.workDays, c.workHours, c.transportWork, c.trips, c.fuelSplit);
+                    c.workDays, c.workHours, c.transportWork, c.trips, c.fuelSplit)
+                    .plusExtra(c.plannedLaps, type == ReportType.DRIVER_SALARY ? clientHours(wb, period) : 0d);
+            String vehicle = normPlate(wb.getVehicleRegNumber());
+            vehiclesByKey.computeIfAbsent(key, k -> new java.util.HashSet<>()).add(vehicle);
+            allVehicles.add(vehicle);
+            groupInfo.computeIfAbsent(key, k -> groupInfo(type.grouping(), wb, c, routeTypeNames, garageByOrg));
             // Построчные отчёты legacy (сверка 25.09, D5): реквизиты листа; «Сузишвори» — последний лист ТС.
             if (type.grouping() == ReportGrouping.PER_WAYBILL) {
                 next = next.withDetail(detail(wb, c));
@@ -180,11 +198,130 @@ public class WaybillReportService {
             scan.forEachCarryOver(from, to, scope, types, handle);
         }
 
-        List<ReportRow> ordered = new ArrayList<>(rows.values());
+        List<ReportRow> ordered = new ArrayList<>();
+        for (ReportRow r : rows.values()) {
+            String[] gi = groupInfo.getOrDefault(r.key(), new String[2]);
+            ordered.add(r.withGroup(vehiclesByKey.getOrDefault(r.key(), Set.of()).size(), gi[0], gi[1]));
+        }
         ordered.sort((a, b) -> a.key().compareToIgnoreCase(b.key()));
-        ReportRow totals = ordered.stream().reduce(ReportRow.zero("TOTAL", "ИТОГО"), ReportRow::merge);
+        ReportRow totals = ordered.stream().reduce(ReportRow.zero("TOTAL", "ИТОГО"), ReportRow::merge)
+                .withGroup(allVehicles.size(), null, null);
 
-        return new WaybillReport(type, type.label(), from, to, org, ordered, totals);
+        // Промежуточные итоги (legacy: «Хатсайр» — по видам маршрутов, «Автомобил» троллейбусов — по депо).
+        Map<String, ReportRow> sub = new java.util.TreeMap<>();
+        Map<String, Set<String>> subVehicles = new java.util.HashMap<>();
+        for (ReportRow r : ordered) {
+            if (r.groupType() == null) {
+                continue;
+            }
+            sub.merge(r.groupType(), ReportRow.zero(r.groupType(), r.groupType()).merge(r), ReportRow::merge);
+            subVehicles.computeIfAbsent(r.groupType(), k -> new java.util.HashSet<>())
+                    .addAll(vehiclesByKey.getOrDefault(r.key(), Set.of()));
+        }
+        List<ReportRow> subtotals = new ArrayList<>();
+        sub.forEach((k, r) -> subtotals.add(r.withGroup(subVehicles.getOrDefault(k, Set.of()).size(), null, null)));
+
+        return new WaybillReport(type, type.label(), from, to, org, ordered, totals, subtotals);
+    }
+
+    /** Подпись группы и группа промежуточного итога (сверка 25.09, D13). */
+    private String[] groupInfo(ReportGrouping g, Waybill wb, Contribution c, Map<String, String> routeTypeNames,
+                               Map<String, Map<String, String>> garageByOrg) {
+        return switch (g) {
+            case VEHICLE -> {
+                String garage = snapshotString(wb.getVehicleSnapshot(), "parkingNumber");
+                if (garage == null && masterData != null && wb.getOrganizationRma() != null) {
+                    // Снимок архивного листа без гаражного номера — из реестра ТС (один запрос на организацию).
+                    garage = garageByOrg.computeIfAbsent(wb.getOrganizationRma(), this::garageNumbers)
+                            .get(normPlate(wb.getVehicleRegNumber()));
+                }
+                // Депо троллейбуса — первая цифра гаражного номера (legacy BusCalc::type1, bill ebus).
+                String depot = wb.getWaybillType() == WaybillType.WB_TROLLEYBUS && garage != null
+                        && !garage.isBlank() && Character.isDigit(garage.trim().charAt(0))
+                        ? "Депо " + garage.trim().charAt(0) : null;
+                yield new String[]{garage, depot};
+            }
+            case DRIVER -> new String[]{snapshotString(wb.getDriverSnapshot(), "tabNumber"), null};
+            case BRAND -> {
+                String number = null;
+                if (masterData != null && c.brand() != null) {
+                    number = masterData.findBrandByName(c.brand()).map(b -> b.get("number"))
+                            .map(String::valueOf).orElse(null);
+                }
+                yield new String[]{number, null};
+            }
+            case ROUTE -> {
+                if (masterData == null || wb.getRoute() == null) {
+                    yield new String[2];
+                }
+                var route = masterData.findRoute(wb.getRoute(), wb.getOrganizationRma()).orElse(null);
+                if (route == null) {
+                    yield new String[2];
+                }
+                // Строка группы — маршрут из листа (обычно наименование); вторая подпись — № маршрута, как «Рақами хатсайр».
+                String name = route.get("number") == null ? null : String.valueOf(route.get("number"));
+                Object code = route.get("routeTypeCode");
+                String typeName = code == null ? null : routeTypeNames.getOrDefault(String.valueOf(code), String.valueOf(code));
+                yield new String[]{name, typeName};
+            }
+            default -> new String[2];
+        };
+    }
+
+    /** Госномер → гаражный номер ТС организации (реестр master-data). */
+    private Map<String, String> garageNumbers(String organizationRma) {
+        Map<String, String> m = new java.util.HashMap<>();
+        try {
+            for (Map<String, Object> v : masterData.listVehicles(organizationRma)) {
+                Object reg = v.get("registrationNumber");
+                Object garage = v.get("parkingNumber");
+                if (reg != null && garage != null && !String.valueOf(garage).isBlank()) {
+                    m.put(normPlate(String.valueOf(reg)), String.valueOf(garage).trim());
+                }
+            }
+        } catch (RuntimeException e) {
+            // реестр недоступен — без гаражных номеров
+        }
+        return m;
+    }
+
+    private Map<String, String> routeTypeNames() {
+        if (masterData == null) {
+            return Map.of();
+        }
+        Map<String, String> m = new java.util.HashMap<>();
+        for (Map<String, Object> rt : masterData.listRouteTypes()) {
+            Object code = rt.get("code");
+            Object name = rt.get("nameRu");
+            if (code != null && name != null) {
+                m.put(String.valueOf(code), String.valueOf(name));
+            }
+        }
+        return m;
+    }
+
+    /** Время по заказу за лист, ч (legacy «вақти фармоишӣ» — client_time рабочих дней). */
+    private double clientHours(Waybill wb, WaybillCalcAssembler.Period period) {
+        if (workDays == null || wb.getId() == null) {
+            return 0d;
+        }
+        boolean dayScoped = period != null && WaybillCalcAssembler.DAY_SCOPED_TYPES.contains(wb.getWaybillType());
+        double minutes = 0;
+        for (var d : workDays.findByWaybillIdOrderByWorkDate(wb.getId())) {
+            if (d.getClientTime() == null) {
+                continue;
+            }
+            if (dayScoped && (d.getWorkDate() == null || d.getWorkDate().isBefore(period.from())
+                    || d.getWorkDate().isAfter(period.to()))) {
+                continue;
+            }
+            minutes += d.getClientTime().getHour() * 60 + d.getClientTime().getMinute();
+        }
+        return minutes / 60d;
+    }
+
+    private static String normPlate(String s) {
+        return s == null ? "—" : s.replace(" ", "").trim().toUpperCase();
     }
 
     private record Contribution(long laps, double distanceKm, double routeDistanceKm, double turnover,
@@ -192,7 +329,7 @@ public class WaybillReportService {
                                 BigDecimal revenue, BigDecimal kassa, BigDecimal salary,
                                 String brand, int workDays, double workHours,
                                 double transportWork, double trips, ReportRow.FuelSplit fuelSplit,
-                                List<FuelConsumption> fuels) {
+                                List<FuelConsumption> fuels, double plannedLaps) {
     }
 
     private static final java.time.format.DateTimeFormatter DT = java.time.format.DateTimeFormatter.ofPattern("dd.MM.yyyy HH:mm");
@@ -268,7 +405,7 @@ public class WaybillReportService {
             double given = r.fuels().stream().mapToDouble(FuelConsumption::given).sum();
             return new Contribution(0L, r.distanceKm(), 0d, 0d, 0d, r.totalNormLiters(), given,
                     BigDecimal.ZERO, BigDecimal.ZERO, r.salary().salary(), brand,
-                    view.workDays(), hours, r.transportWork(), r.trips(), fuelSplit(r.fuels()), r.fuels());
+                    view.workDays(), hours, r.transportWork(), r.trips(), fuelSplit(r.fuels()), r.fuels(), 0d);
         }
         if (view.passenger() != null) {
             PassengerCalcResult r = view.passenger();
@@ -277,10 +414,11 @@ public class WaybillReportService {
             return new Contribution(m.laps(), m.totalDistanceKm(), m.routeDistanceKm(),
                     m.passengerTurnover(), m.passengerCount(), r.totalNormLiters(), given,
                     m.earning(), m.kassa(), r.salary().salary(), brand,
-                    Math.max(1, m.workDays()), m.workTimeMinutes() / 60d, 0d, 0d, fuelSplit(r.fuels()), r.fuels());
+                    Math.max(1, m.workDays()), m.workTimeMinutes() / 60d, 0d, 0d, fuelSplit(r.fuels()), r.fuels(),
+                    m.plannedLaps());
         }
         return new Contribution(0L, r0(wb), 0d, 0d, 0d, 0d, 0d,
-                BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, brand, 1, 0d, 0d, 0d, ReportRow.FuelSplit.ZERO, List.of());
+                BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, brand, 1, 0d, 0d, 0d, ReportRow.FuelSplit.ZERO, List.of(), 0d);
     }
 
     private static double r0(Waybill wb) {

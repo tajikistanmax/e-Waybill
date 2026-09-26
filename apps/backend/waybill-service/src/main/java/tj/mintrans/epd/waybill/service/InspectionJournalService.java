@@ -44,8 +44,14 @@ public class InspectionJournalService {
                        String signedAt, String fingerprint, String details) {
     }
 
+    /**
+     * Строка журнала механика. Сторона возврата — как в legacy «Дафтари қайди механик» (сверка 25.09, D13):
+     * {@code exitAt}/{@code entryAt} — выезд (Т4) и возврат (Т5), {@code odometerEntry} — одометр возврата,
+     * {@code entryCondition} — техсостояние при возврате (legacy «Коршоям», если лист возвращён после допуска).
+     */
     public record MechanicRow(String number, String date, String vehicle, String driver,
-                              Integer odometerExit, Mark control) {
+                              Integer odometerExit, Mark control,
+                              String exitAt, String entryAt, Integer odometerEntry, String entryCondition) {
     }
 
     public record DoctorRow(String number, String date, String vehicle, String driver,
@@ -72,8 +78,15 @@ public class InspectionJournalService {
             if (control == null) {
                 return;
             }
+            WaybillTitle exit = find(ts, "T4");
+            WaybillTitle entry = find(ts, "T5");
+            boolean passed = wb.isTechPassed();
             rows.add(new MechanicRow(number(wb), date(wb), vehicle(wb), driver(wb),
-                    wb.getOdometerExit(), control));
+                    wb.getOdometerExit(), control,
+                    exit == null || exit.getSignedAt() == null ? null : exit.getSignedAt().toString(),
+                    entry == null || entry.getSignedAt() == null ? null : entry.getSignedAt().toString(),
+                    wb.getOdometerEntry(),
+                    entry != null && passed ? "исправен (Коршоям)" : null));
         });
         return new MechanicJournal(from, to, org, rows);
     }

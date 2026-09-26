@@ -13,6 +13,8 @@ import java.util.List;
  * @param organizationRma организация (или {@code null} — по всем, для платформенных ролей)
  * @param rows            строки отчёта
  * @param totals          строка «ИТОГО»
+ * @param subtotals       промежуточные итоги (legacy: по видам маршрутов у «Хатсайр», по депо у троллейбусов;
+ *                        сверка 25.09, D13); пусто — нет
  */
 public record WaybillReport(
         ReportType type,
@@ -21,6 +23,11 @@ public record WaybillReport(
         LocalDate to,
         String organizationRma,
         List<ReportRow> rows,
-        ReportRow totals
+        ReportRow totals,
+        List<ReportRow> subtotals
 ) {
+    public WaybillReport(ReportType type, String typeLabel, LocalDate from, LocalDate to, String organizationRma,
+                         List<ReportRow> rows, ReportRow totals) {
+        this(type, typeLabel, from, to, organizationRma, rows, totals, List.of());
+    }
 }
