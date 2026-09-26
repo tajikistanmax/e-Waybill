@@ -541,6 +541,8 @@ export default function NewWaybillPage() {
         ...(t === 'WB_TRUCK_INTL' ? { cargoName: intl.cargoName } : {}),
         permitNumber: intl.permitNumber,
         ...(intl.bbaNumber ? { bbaNumber: intl.bbaNumber } : {}),
+        // «Мизоҷ» 5Б-БМ — необязательный заказчик, как client_id legacy Waybill5bbm (сверка 25.09, C5).
+        ...(t === 'WB_TRUCK_INTL' && client ? { ...(client.id ? { clientId: client.id } : {}), clientName: client.name } : {}),
         // У международных из карточки груза — только масса (см. форму).
         ...(cargo.weight.trim() && Number.isFinite(Number(cargo.weight)) ? { cargo: { weight: Number(cargo.weight) } } : {}),
       };
@@ -857,10 +859,10 @@ export default function NewWaybillPage() {
                 </div>
               )}
 
-              {/* --- 2-Б: Заказчик (справочник Client) --- */}
-              {isTruck && (
-                <div>
-                  <label>{tt('wbf.client')}{tt('wb.required.suffix')}</label>
+              {/* --- 2-Б: Заказчик (справочник Client); 5Б-БМ — «Мизоҷ», необязательно (сверка 25.09, C5) --- */}
+              {(isTruck || t === 'WB_TRUCK_INTL') && (
+                <div data-testid="wb-client">
+                  <label>{tt('wbf.client')}{isTruck ? tt('wb.required.suffix') : ''}</label>
                   <SearchSelect
                     value={client ? (client.id || client.name) : ''}
                     selectedLabel={client?.name ?? ''}
@@ -1101,6 +1103,7 @@ export default function NewWaybillPage() {
                 <dt>{tt('wb.schedule')}</dt><dd>{form.schedule || '—'}</dd>
                 {isCar && (<><dt>{tt('wb.svc.label')}</dt><dd>{tt(({ TAXI: 'wb.svc.taxi', ROUTE: 'wb.svc.route', HOURLY: 'wb.svc.hourly' } as Record<string, string>)[serviceKind])}</dd></>)}
                 {isTruck && (<><dt>{tt('wb.ship.label')}</dt><dd>{shipmentKind === 'HOURLY' ? tt('wb.ship.hourly') : tt('wb.ship.piecework')}{trailers.length ? ` · ${tt('wb.trailerscount')}: ${trailers.length}` : ''}</dd></>)}
+                {t === 'WB_TRUCK_INTL' && client && (<><dt>{tt('wbf.client')}</dt><dd>{client.name}</dd></>)}
                 {isTruck && (directionId || client) && (<><dt>{tt('wbf.samt')} / {tt('wbf.client')}</dt><dd>{directions.find(d => String(d.id) === directionId)?.title || '—'} · {client?.name || '—'}</dd></>)}
                 {isCar && workRegions.length > 0 && (<><dt>{tt('wbf.workzones')}</dt><dd>{workRegions.join(', ')}</dd></>)}
                 {isBus && (bus.columnNumber || bus.brigadeNumber) && (<><dt>{tt('wbf.column')} / {tt('wbf.brigade')}</dt><dd>{bus.columnNumber || '—'} / {bus.brigadeNumber || '—'}</dd></>)}

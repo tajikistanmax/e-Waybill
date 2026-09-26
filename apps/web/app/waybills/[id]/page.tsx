@@ -729,6 +729,9 @@ export default function WaybillCard({ params }: { params: Promise<{ id: string }
             {'loadCountry' in td && <><dt>{t('wb.triproute')}</dt><dd>{String(td.loadCountry)} → {Array.isArray(td.transitCountries) && td.transitCountries.length ? `${(td.transitCountries as string[]).join(', ')} → ` : ''}{String(td.unloadCountry)}</dd></>}
             {'cargoName' in td && <><dt>{t('wb.cargo')}</dt><dd>{String(td.cargoName)}</dd></>}
             {'bbaNumber' in td && <><dt>{t('wb.bba')}</dt><dd>{String(td.bbaNumber)}</dd></>}
+            {/* Заказчик 2-Б / «Мизоҷ» 5Б-БМ (сверка 25.09, C5) — раньше на карточке не показывался. */}
+            {'clientName' in td && (w.waybillType === 'WB_TRUCK' || w.waybillType === 'WB_TRUCK_INTL' || w.waybillType === 'WB_DANGEROUS')
+              && <><dt>{t('wbf.client')}</dt><dd data-testid="wb-client-name">{String(td.clientName)}</dd></>}
             {'arrivalTime' in td && <><dt>{t('wb.dt.arrival')}</dt><dd>{String(td.arrivalTime).replace('T', ' ')}</dd></>}
             {'passengersCount' in td && <><dt>{t('wb.dt.passengers')}</dt><dd>{String(td.passengersCount)}</dd></>}
           </dl>

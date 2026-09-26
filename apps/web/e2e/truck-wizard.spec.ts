@@ -48,7 +48,27 @@ test('диспетчер: 2-Б через мастер с заказчиком �
     expect(wb.typeData.clientName).toBe('Заказчик E2E');
     expect(wb.typeData.clientId).toBeUndefined();
     expect(wb.typeData.directionId).toBeTruthy();
+    // Заказчик виден на карточке (вкладка «Маршрут»; сверка 25.09, C5).
+    await page.getByRole('button', { name: 'Маршрут', exact: true }).first().click();
+    await expect(page.getByTestId('wb-client-name')).toHaveText('Заказчик E2E');
   } finally {
     await page.request.post(`/wb-api/api/v1/waybills/${id}/cancel`, { headers, data: { reason: 'e2e: уборка', actor: 'e2e' } });
   }
+});
+
+// Сверка 25.09, C5: «Мизоҷ» у 5Б-БМ — необязательный заказчик (legacy Waybill5bbm.client_id).
+test('диспетчер: в мастере 5Б-БМ есть необязательный «Заказчик»', async ({ page }) => {
+  const intl = fx.forms.find((f: { type: string }) => f.type === 'WB_TRUCK_INTL');
+  await loginAs(page, 'dispatcher');
+  await page.goto('/waybills/new');
+  await page.getByRole('button', { name: /5Б-БМ/ }).first().click();
+  await page.getByRole('button', { name: 'Далее' }).click();
+  await page.getByPlaceholder(/Введите госномер ТС/).fill(intl.plate);
+  await page.getByText(intl.plate, { exact: true }).first().click();
+  await page.getByPlaceholder(/Введите ИНН или Ф\.И\.О/).fill(intl.driverRma);
+  await page.getByText(new RegExp(intl.driverRma)).first().click();
+  await page.getByRole('button', { name: 'Далее' }).click();
+  const client = page.getByTestId('wb-client');
+  await expect(client).toBeVisible({ timeout: 15_000 });
+  await expect(client.locator('label')).not.toContainText('*');
 });
