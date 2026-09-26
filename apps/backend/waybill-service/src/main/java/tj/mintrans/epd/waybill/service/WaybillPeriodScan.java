@@ -114,6 +114,36 @@ public class WaybillPeriodScan {
         run(from, to, scope, WaybillStatus.FINISHED, true, consumer);
     }
 
+    /**
+     * «Переходящие» многодневные ПЛ видов {@code types}: созданы вне периода, но рабочие дни есть в периоде
+     * (сверка 25.09, D3 — legacy относит 1-А/3-С к периоду по датам дней). Без предохранителя: таких листов
+     * единицы процентов от периода.
+     */
+    @Transactional(readOnly = true)
+    public void forEachCarryOver(LocalDate from, LocalDate to, Set<String> scope,
+                                 java.util.Collection<tj.mintrans.epd.waybill.domain.WaybillType> types,
+                                 Consumer<Waybill> consumer) {
+        if (from == null || to == null || to.isBefore(from) || types == null || types.isEmpty()) {
+            return;
+        }
+        if (scope != null && scope.isEmpty()) {
+            return;
+        }
+        OffsetDateTime lo = lower(from);
+        OffsetDateTime hi = upper(to);
+        try (Stream<Waybill> stream = scope == null
+                ? waybills.streamCarryOver(types, lo, hi, from, to)
+                : waybills.streamCarryOverForOrganizations(scope, types, lo, hi, from, to)) {
+            int[] seen = {0};
+            stream.forEach(wb -> {
+                consumer.accept(wb);
+                if (++seen[0] % CLEAR_EVERY == 0) {
+                    entityManager.clear();
+                }
+            });
+        }
+    }
+
     private void run(LocalDate from, LocalDate to, Set<String> scope, java.util.Collection<WaybillStatus> statuses,
                      boolean capped, Consumer<Waybill> consumer) {
         if (from == null || to == null || to.isBefore(from)) {

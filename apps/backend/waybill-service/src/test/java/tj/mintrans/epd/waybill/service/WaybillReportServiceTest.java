@@ -42,6 +42,8 @@ class WaybillReportServiceTest {
         lenient().when(tenant.isBounded()).thenReturn(false);
         lenient().when(assembler.calculate(any(), any()))
                 .thenReturn(new WaybillCalcAssembler.View("PASSENGER", null, null, List.of()));
+        lenient().when(assembler.calculate(any(), any(), any()))
+                .thenReturn(new WaybillCalcAssembler.View("PASSENGER", null, null, List.of()));
 
         List<Waybill> period = List.of(
                 wb(WaybillType.WB_BUS, "0114TJ01", "461930031", 100),

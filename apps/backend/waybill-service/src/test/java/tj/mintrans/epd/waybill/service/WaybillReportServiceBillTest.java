@@ -57,6 +57,7 @@ class WaybillReportServiceBillTest {
         WaybillPeriodScan scan = mock(WaybillPeriodScan.class);
         WaybillCalcAssembler assembler = mock(WaybillCalcAssembler.class);
         lenient().when(assembler.calculate(any(), any())).thenReturn(view);
+        lenient().when(assembler.calculate(any(), any(), any())).thenReturn(view);
         doAnswer(inv -> {
             scopes.add(inv.getArgument(2));
             Consumer<Waybill> c = inv.getArgument(3);

@@ -123,9 +123,15 @@ public class WaybillReportService {
         String org = scope == null ? null : String.join(",", scope);
         Filter f = filter == null ? Filter.NONE : filter;
 
+        // Многодневные 1-А / 3-С относятся к периоду по датам рабочих дней, как в legacy (Report1CrudController:
+        // mbus / taxi — whereJsonContains work_days по датам периода; сверка 25.09, D3). Исключение — «Дафтари
+        // қайди в/н» (реестр), он и в legacy по дате создания.
+        boolean byDays = !cargo && type != ReportType.REGISTRY_JOURNAL;
+        WaybillCalcAssembler.Period period = byDays ? new WaybillCalcAssembler.Period(from, to) : null;
+
         // Потоком по периоду (WaybillPeriodScan), а не findAll(): агрегируем строки, сущности не копим.
         Map<String, ReportRow> rows = new LinkedHashMap<>();
-        scan.forEach(from, to, scope, wb -> {
+        java.util.function.Consumer<Waybill> handle = wb -> {
             if (!(cargo ? isCargo(wb.getWaybillType()) : isPassenger(wb.getWaybillType()))) {
                 return;
             }
@@ -135,14 +141,26 @@ public class WaybillReportService {
             if (!f.matches(wb)) {
                 return;
             }
-            Contribution c = contribution(wb, cargo);
+            Contribution c = contribution(wb, cargo, period);
+            if (c == null) {
+                return;   // ни одного рабочего дня в периоде
+            }
             String key = groupKey(type.grouping(), wb, c);
             String label = groupLabel(type.grouping(), wb, c, key);
             ReportRow row = rows.computeIfAbsent(key, k -> ReportRow.zero(k, label));
             rows.put(key, row.plus(c.laps, c.distanceKm, c.routeDistanceKm, c.turnover, c.passengers,
                     c.normLiters, c.givenLiters, c.revenue, c.kassa, c.salary,
                     c.workDays, c.workHours, c.transportWork, c.trips, c.fuelSplit));
-        });
+        };
+        scan.forEach(from, to, scope, handle);
+        if (byDays) {
+            // «Переходящие» листы: созданы раньше, а рабочие дни — в этом периоде.
+            java.util.Set<WaybillType> types = java.util.EnumSet.copyOf(WaybillCalcAssembler.DAY_SCOPED_TYPES);
+            if (f.forms() != null) {
+                types.retainAll(f.forms());
+            }
+            scan.forEachCarryOver(from, to, scope, types, handle);
+        }
 
         List<ReportRow> ordered = new ArrayList<>(rows.values());
         ordered.sort((a, b) -> a.key().compareToIgnoreCase(b.key()));
@@ -172,8 +190,13 @@ public class WaybillReportService {
         return new ReportRow.FuelSplit(nb, ns, ng, gb, gs, gg);
     }
 
-    private Contribution contribution(Waybill wb, boolean cargo) {
-        WaybillCalcAssembler.View view = assembler.calculate(wb, WaybillCalcAssembler.Supplement.empty());
+    private Contribution contribution(Waybill wb, boolean cargo, WaybillCalcAssembler.Period period) {
+        WaybillCalcAssembler.View view = period == null
+                ? assembler.calculate(wb, WaybillCalcAssembler.Supplement.empty())
+                : assembler.calculate(wb, WaybillCalcAssembler.Supplement.empty(), period);
+        if (view.outOfPeriod()) {
+            return null;
+        }
         String brand = brandOf(wb);
         double hours = view.workMinutes() / 60d;
         if (cargo && view.cargo() != null) {

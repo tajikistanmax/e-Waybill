@@ -6,6 +6,7 @@ import org.springframework.stereotype.Service;
 import tj.mintrans.epd.waybill.calc.model.CalcFuelLine;
 import tj.mintrans.epd.waybill.calc.model.CargoCalcInput;
 import tj.mintrans.epd.waybill.calc.model.CargoCalcResult;
+import tj.mintrans.epd.waybill.calc.model.DriverSalary;
 import tj.mintrans.epd.waybill.calc.model.FuelConsumption;
 import tj.mintrans.epd.waybill.calc.model.PassengerCalcInput;
 import tj.mintrans.epd.waybill.calc.model.PassengerCalcResult;
@@ -116,18 +117,43 @@ public class WaybillCalcAssembler {
      * пассажирского ПЛ (B10, MIGRATION.md 5.4), пусто для однодневных/грузовых.
      */
     public record View(String kind, PassengerCalcResult passenger, CargoCalcResult cargo, List<String> notes,
-                       List<DailyFuelCalc.DayResult> dailyFuel, int workDays, int workMinutes) {
+                       List<DailyFuelCalc.DayResult> dailyFuel, int workDays, int workMinutes, boolean outOfPeriod) {
         public View(String kind, PassengerCalcResult passenger, CargoCalcResult cargo, List<String> notes) {
-            this(kind, passenger, cargo, notes, List.of(), 0, 0);
+            this(kind, passenger, cargo, notes, List.of(), 0, 0, false);
         }
 
         public View(String kind, PassengerCalcResult passenger, CargoCalcResult cargo, List<String> notes,
                     List<DailyFuelCalc.DayResult> dailyFuel) {
-            this(kind, passenger, cargo, notes, dailyFuel, 0, 0);
+            this(kind, passenger, cargo, notes, dailyFuel, 0, 0, false);
+        }
+
+        public View(String kind, PassengerCalcResult passenger, CargoCalcResult cargo, List<String> notes,
+                    List<DailyFuelCalc.DayResult> dailyFuel, int workDays, int workMinutes) {
+            this(kind, passenger, cargo, notes, dailyFuel, workDays, workMinutes, false);
         }
     }
 
+    /**
+     * Отчётный период для многодневных листов 1-А / 3-С (сверка 25.09, D3): legacy относит такой лист к периоду
+     * по датам рабочих дней, а не по дате создания. Показатели перевозки, посуточное топливо и выручка дней
+     * считаются только за дни периода; величины листа целиком (топливо без привязки к дням, надбавки водителю,
+     * касса без выручки по дням) — в периоде, где лежит ПЕРВЫЙ рабочий день, чтобы не считаться дважды.
+     */
+    public record Period(LocalDate from, LocalDate to) {
+        boolean contains(LocalDate d) {
+            return d != null && !d.isBefore(from) && !d.isAfter(to);
+        }
+    }
+
+    /** Виды ПЛ, которые отчёт относит к периоду по датам рабочих дней (legacy mbus / taxi). */
+    public static final java.util.Set<WaybillType> DAY_SCOPED_TYPES =
+            java.util.EnumSet.of(WaybillType.WB_MINIBUS, WaybillType.WB_CAR, WaybillType.WB_TAXI);
+
     public View calculate(Waybill wb, Supplement sup) {
+        return calculate(wb, sup, null);
+    }
+
+    public View calculate(Waybill wb, Supplement sup, Period period) {
         List<String> notes = new ArrayList<>();
         Supplement s = mergeTypeData(wb, fromConsignmentNotes(wb, sup == null ? Supplement.empty() : sup, notes));
 
@@ -185,6 +211,24 @@ public class WaybillCalcAssembler {
                 exitOdo, entryOdo, workMinutes, laps, revenue, fuels, calcDate, route, days);
         PassengerCalcResult r = engine.passenger(passengerInput);
 
+        // D3: многодневный 1-А / 3-С в отчёте за период — дни периода; величины листа целиком — в периоде
+        // первого рабочего дня (Period).
+        boolean dayScoped = period != null && !days.isEmpty() && DAY_SCOPED_TYPES.contains(type);
+        boolean waybillLevel = !dayScoped || period.contains(days.getFirst().getWorkDate());
+        List<WorkDay> periodDays = dayScoped
+                ? days.stream().filter(d -> period.contains(d.getWorkDate())).toList() : days;
+        LocalDate pf = dayScoped ? period.from() : null;
+        LocalDate pt = dayScoped ? period.to() : null;
+        BigDecimal periodRevenue = revenue;
+        if (dayScoped) {
+            periodRevenue = periodDays.stream().map(WorkDay::getRevenue).filter(java.util.Objects::nonNull)
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+            if (periodRevenue.signum() == 0 && waybillLevel && s.earning() != null) {
+                periodRevenue = s.earning();
+            }
+        }
+        boolean metricsScoped = false;
+
         // Показатели «свободного» такси (METER, type_service=1) и почасовой аренды (HOURLY=3)
         // маршрутный движок НЕ считает (нет маршрута → нули). Считаем их спец-формулой оригинала
         // (Calc.php::taxi_type/hourly_type) через уже протестированный MultiDayPassengerCalc — для
@@ -200,7 +244,8 @@ public class WaybillCalcAssembler {
                                 workMinutes > 0 ? workMinutes : null, null, null, null))
                         : passengerDays(days);
                 PassengerMetrics taxiMetrics = MultiDayPassengerCalc.forTaxi(
-                        svc, null, capacity, capacity, taxiDays, null, null, revenue);
+                        svc, null, capacity, capacity, taxiDays, pf, pt, periodRevenue);
+                metricsScoped = true;
                 r = new PassengerCalcResult(r.distanceKm(), r.workTimeMinutes(), r.workHours(),
                         r.coefficients(), r.fuels(), r.totalNormLiters(), r.salary(), taxiMetrics, r.tariff());
                 notes.add("Показатели рассчитаны спец-формулой такси (тип обслуживания "
@@ -214,8 +259,9 @@ public class WaybillCalcAssembler {
         // трогаем (массовый случай остаётся байт-в-байт прежним). Замещаются ТОЛЬКО показатели
         // перевозки; топливо/зарплата/коэффициенты/тариф остаются из движка.
         if (multidayEnabled && days.size() > 1) {
-            PassengerMetrics multiDay = multiDayPassengerMetrics(wb, type, days, capacity, revenue, route);
+            PassengerMetrics multiDay = multiDayPassengerMetrics(wb, type, days, capacity, periodRevenue, route, pf, pt);
             if (multiDay != null) {
+                metricsScoped = true;
                 r = new PassengerCalcResult(r.distanceKm(), r.workTimeMinutes(), r.workHours(),
                         r.coefficients(), r.fuels(), r.totalNormLiters(), r.salary(), multiDay, r.tariff());
                 notes.add("Показатели перевозки рассчитаны посуточно: форма " + type.legacyForm()
@@ -229,11 +275,28 @@ public class WaybillCalcAssembler {
                 && (type == WaybillType.WB_MINIBUS || type == WaybillType.WB_CAR || type == WaybillType.WB_TAXI)) {
             dailyFuel = dailyFuel(wb, days, records, passengerInput, route == null);
             if (!dailyFuel.isEmpty()) {
-                List<FuelConsumption> agg = DailyFuelCalc.aggregate(dailyFuel);
+                // Остатки по дням считаются по всему листу (цепочка «остаток → выезд»), в период — только его дни.
+                List<DailyFuelCalc.DayResult> counted = dayScoped
+                        ? dailyFuel.stream().filter(d -> period.contains(d.date())).toList() : dailyFuel;
+                List<FuelConsumption> agg = DailyFuelCalc.aggregate(counted);
                 r = new PassengerCalcResult(r.distanceKm(), r.workTimeMinutes(), r.workHours(),
                         r.coefficients(), agg, DailyFuelCalc.totalNorm(agg), r.salary(), r.passengerMetrics(), r.tariff());
                 notes.add("Топливо рассчитано посуточно по строкам рабочих дней: дней " + dailyFuel.size());
             }
+        }
+        if (dayScoped && !waybillLevel) {
+            // Лист начат в прошлом периоде: сюда — только его дни. Показатели без посуточного расчёта, топливо
+            // без привязки к дням и надбавки водителю уже учтены в периоде первого рабочего дня.
+            PassengerMetrics m = metricsScoped ? r.passengerMetrics() : PassengerMetrics.empty();
+            boolean dayFuel = !dailyFuel.isEmpty();
+            r = new PassengerCalcResult(r.distanceKm(), r.workTimeMinutes(), r.workHours(), r.coefficients(),
+                    dayFuel ? r.fuels() : List.of(), dayFuel ? r.totalNormLiters() : 0d,
+                    new DriverSalary(BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO),
+                    m, r.tariff());
+        }
+        if (dayScoped) {
+            return new View("PASSENGER", r, null, notes, dailyFuel, periodDays.size(), totalWorkMinutes(periodDays),
+                    periodDays.isEmpty() && !waybillLevel);
         }
         return new View("PASSENGER", r, null, notes, dailyFuel, Math.max(1, days.size()), workMinutes);
     }
@@ -464,13 +527,12 @@ public class WaybillCalcAssembler {
      * к посуточным (автобус/троллейбус/междугородний) либо у 3-С не определён вид услуги
      * ({@code typeData.serviceKind}) — консервативно не затираем расчёт движка.</p>
      *
-     * <p>Период не сужается ({@code from=to=null}): {@code days} — это ровно рабочие дни
-     * данного листа, считаем по всему листу. Посуточная нарезка на отчётные периоды —
-     * задача уровня отчётов, а не расчёта одного ПЛ.</p>
+     * <p>{@code from/to} — отчётный период (сверка 25.09, D3): в отчёте лист даёт только дни периода;
+     * {@code null} — весь лист (карточка ПЛ, возврат).</p>
      */
     private PassengerMetrics multiDayPassengerMetrics(Waybill wb, WaybillType type, List<WorkDay> days,
                                                       Integer capacity, BigDecimal kassa,
-                                                      Map<String, Object> route) {
+                                                      Map<String, Object> route, LocalDate from, LocalDate to) {
         RoutePassengerRef ref = routePassengerRef(route);
         if (ref == null) {
             // Без маршрута посуточный движок даёт нули (нет длины/вместимости маршрута) — оставляем
@@ -479,13 +541,13 @@ public class WaybillCalcAssembler {
         }
         List<PassengerDay> passengerDays = passengerDays(days);
         return switch (type) {
-            case WB_MINIBUS -> MultiDayPassengerCalc.forMinibus(ref, capacity, passengerDays, null, null, kassa);
+            case WB_MINIBUS -> MultiDayPassengerCalc.forMinibus(ref, capacity, passengerDays, from, to, kassa);
             case WB_CAR, WB_TAXI -> {
                 Short typeService = taxiServiceType(wb);
                 // brandCapacity и vehicleCapacity: в модели одна вместимость — передаём её в обе роли.
                 yield typeService == null ? null
                         : MultiDayPassengerCalc.forTaxi(typeService, ref, capacity, capacity,
-                                passengerDays, null, null, kassa);
+                                passengerDays, from, to, kassa);
             }
             default -> null;
         };

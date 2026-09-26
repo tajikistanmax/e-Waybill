@@ -126,6 +126,30 @@ public interface WaybillRepository extends JpaRepository<Waybill, UUID>,
                                                    @Param("from") OffsetDateTime from,
                                                    @Param("to") OffsetDateTime to);
 
+    /**
+     * «Переходящие» многодневные ПЛ (сверка 25.09, D3): созданы ВНЕ периода [lo, hi), но рабочие дни
+     * есть в периоде [dayFrom, dayTo] — legacy относит 1-А/3-С к периоду по датам рабочих дней.
+     */
+    @Query("select w from Waybill w where w.waybillType in :types and (w.createdAt < :lo or w.createdAt >= :hi) "
+            + "and w.id in (select d.waybillId from WorkDay d where d.workDate between :dayFrom and :dayTo) "
+            + "order by w.createdAt")
+    @QueryHints(@QueryHint(name = org.hibernate.jpa.HibernateHints.HINT_FETCH_SIZE, value = "500"))
+    Stream<Waybill> streamCarryOver(@Param("types") Collection<WaybillType> types,
+                                    @Param("lo") OffsetDateTime lo, @Param("hi") OffsetDateTime hi,
+                                    @Param("dayFrom") java.time.LocalDate dayFrom,
+                                    @Param("dayTo") java.time.LocalDate dayTo);
+
+    @Query("select w from Waybill w where w.organizationRma in :rmas and w.waybillType in :types "
+            + "and (w.createdAt < :lo or w.createdAt >= :hi) "
+            + "and w.id in (select d.waybillId from WorkDay d where d.workDate between :dayFrom and :dayTo) "
+            + "order by w.createdAt")
+    @QueryHints(@QueryHint(name = org.hibernate.jpa.HibernateHints.HINT_FETCH_SIZE, value = "500"))
+    Stream<Waybill> streamCarryOverForOrganizations(@Param("rmas") Collection<String> organizationRmas,
+                                                    @Param("types") Collection<WaybillType> types,
+                                                    @Param("lo") OffsetDateTime lo, @Param("hi") OffsetDateTime hi,
+                                                    @Param("dayFrom") java.time.LocalDate dayFrom,
+                                                    @Param("dayTo") java.time.LocalDate dayTo);
+
     // Те же выборки, но только по НАБОРУ статусов (отчёты по отработанным ПЛ: сводный перевозок,
     // тренд) — фильтр в SQL, чтобы не тянуть через приложение лишние строки. Набор, а не один
     // статус: отработанный лист может лежать и в COMPLETED, и в ARCHIVED (WaybillStatus.FINISHED).
