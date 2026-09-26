@@ -130,6 +130,24 @@ class WaybillReportServiceTest {
     }
 
     @Test
+    @DisplayName("D5: «Сведения о рейсах» — по каждому листу № ПЛ, ТС и одометр; «Сузишвори» — по ТС, реквизиты последнего листа")
+    void perWaybillDetails() {
+        WaybillReport trips = service.passenger(ReportType.TRIP_INFO, FROM, TO, null);
+        assertThat(trips.rows()).hasSize(3);
+        ReportRow.Detail d = trips.rows().stream().filter(r -> "2222TJ01".equals(r.detail().vehicle()))
+                .findFirst().orElseThrow().detail();
+        assertThat(d.odometerExit()).isEqualTo(1000);
+        assertThat(d.odometerEntry()).isEqualTo(1300);
+        assertThat(d.odometerDiff()).isEqualTo(300);
+        assertThat(d.number()).startsWith("01-26-");
+        assertThat(trips.totals().detail()).isNull();
+
+        WaybillReport fuel = service.passenger(ReportType.FUEL_GENERAL, FROM, TO, null);
+        assertThat(fuel.rows()).extracting(ReportRow::key).containsExactly("0114 tj 01", "0114TJ01", "2222TJ01");
+        assertThat(fuel.rows()).allMatch(r -> r.detail() != null);
+    }
+
+    @Test
     @DisplayName("пустые/пробельные значения отбора = без отбора (Filter.NONE)")
     void blankFilterIsNone() {
         assertThat(WaybillReportService.Filter.of("  ", "")).isSameAs(WaybillReportService.Filter.NONE);

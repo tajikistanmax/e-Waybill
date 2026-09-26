@@ -31,6 +31,8 @@ import java.math.BigDecimal;
  * @param fuelGivenPetrol       выдано по видам legacy «асл Б/С/Г»; фарқият по виду = норма − выдано
  * @param fuelGivenDiesel       …
  * @param fuelGivenGas          …
+ * @param detail                реквизиты одного листа (legacy типы 6 / 7 / 9 — построчно; сверка 25.09, D5):
+ *                              у строки «по листу» — этот лист, у «Сузишвори» — последний лист ТС; иначе {@code null}
  */
 public record ReportRow(
         String key,
@@ -56,7 +58,8 @@ public record ReportRow(
         double fuelNormGas,
         double fuelGivenPetrol,
         double fuelGivenDiesel,
-        double fuelGivenGas
+        double fuelGivenGas,
+        Detail detail
 ) {
 
     /** Норма и выдано по видам топлива Б/С/Г одного листа. */
@@ -65,9 +68,29 @@ public record ReportRow(
         public static final FuelSplit ZERO = new FuelSplit(0, 0, 0, 0, 0, 0);
     }
 
+    /**
+     * Реквизиты одного путевого листа для построчных отчётов legacy (сверка 25.09, D5): тип 6 «Маълумот оид ба
+     * гашт» (№, ТС, одометр), тип 7 «Дафтари қайди в/н» (+ водитель, табель, маршрут, выезд/возврат), тип 9
+     * «Сузишвори» (топливо последнего листа ТС: выдано, остаток до выезда, норма, остаток при возврате).
+     */
+    public record Detail(String number, java.time.OffsetDateTime createdAt, String vehicle, String garageNumber,
+                         String driverName, String driverTab, String route, String exitAt, String entryAt,
+                         Integer odometerExit, Integer odometerEntry, Integer odometerDiff,
+                         String fuelTypes, double fuelGiven, double fuelRemainBeforeExit, double fuelNorm,
+                         double fuelRemainEntry) {
+    }
+
+    /** Та же строка с реквизитами листа. */
+    public ReportRow withDetail(Detail d) {
+        return new ReportRow(key, label, waybills, laps, distanceKm, routeDistanceKm, passengerTurnover,
+                passengerCount, fuelNormLiters, fuelGivenLiters, fuelDeviationLiters, revenue, kassa, driverSalary,
+                workDays, workHours, transportWork, trips, fuelNormPetrol, fuelNormDiesel, fuelNormGas,
+                fuelGivenPetrol, fuelGivenDiesel, fuelGivenGas, d);
+    }
+
     public static ReportRow zero(String key, String label) {
         return new ReportRow(key, label, 0, 0L, 0d, 0d, 0d, 0d, 0d, 0d, 0d,
-                BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, 0, 0d, 0d, 0d, 0d, 0d, 0d, 0d, 0d, 0d);
+                BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, 0, 0d, 0d, 0d, 0d, 0d, 0d, 0d, 0d, 0d, null);
     }
 
     /** Прибавить показатели одного путевого листа (без грузовых величин). */
@@ -116,7 +139,8 @@ public record ReportRow(
                 fuelNormGas + s.normGas(),
                 fuelGivenPetrol + s.givenPetrol(),
                 fuelGivenDiesel + s.givenDiesel(),
-                fuelGivenGas + s.givenGas());
+                fuelGivenGas + s.givenGas(),
+                detail);
     }
 
     /** Слить две строки (для строки «ИТОГО»). */
@@ -143,7 +167,8 @@ public record ReportRow(
                 fuelNormGas + other.fuelNormGas,
                 fuelGivenPetrol + other.fuelGivenPetrol,
                 fuelGivenDiesel + other.fuelGivenDiesel,
-                fuelGivenGas + other.fuelGivenGas);
+                fuelGivenGas + other.fuelGivenGas,
+                null);
     }
 
     private static BigDecimal nz(BigDecimal v) {

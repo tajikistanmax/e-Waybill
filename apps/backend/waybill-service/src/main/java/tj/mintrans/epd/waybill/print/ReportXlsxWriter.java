@@ -49,6 +49,36 @@ public class ReportXlsxWriter {
             "Фарқият Б, л", "Фарқият С, л", "Фарқият Г, л"
     };
 
+    private static final String[] DETAIL_HEADERS = {
+            "№ ПЛ", "Дата", "ТС", "Гар. №", "Водитель", "Таб. №", "Маршрут", "Выезд", "Возврат",
+            "Одометр выезд", "Одометр возврат", "Разница, км", "Топливо", "Выдано, л",
+            "Остаток до выезда, л", "Норма, л", "Остаток при возврате, л"
+    };
+
+    private static void writeDetail(Row x, int c0, ReportRow.Detail d) {
+        int c = c0;
+        cell(x, c++, d.number(), null);
+        cell(x, c++, d.createdAt() == null ? "" : PrintZone.dateTime(d.createdAt()), null);
+        cell(x, c++, d.vehicle(), null);
+        cell(x, c++, d.garageNumber(), null);
+        cell(x, c++, d.driverName(), null);
+        cell(x, c++, d.driverTab(), null);
+        cell(x, c++, d.route(), null);
+        cell(x, c++, d.exitAt(), null);
+        cell(x, c++, d.entryAt(), null);
+        if (d.odometerExit() != null) num(x, c, d.odometerExit(), null);
+        c++;
+        if (d.odometerEntry() != null) num(x, c, d.odometerEntry(), null);
+        c++;
+        if (d.odometerDiff() != null) num(x, c, d.odometerDiff(), null);
+        c++;
+        cell(x, c++, d.fuelTypes(), null);
+        num(x, c++, d.fuelGiven(), null);
+        num(x, c++, d.fuelRemainBeforeExit(), null);
+        num(x, c++, d.fuelNorm(), null);
+        num(x, c, d.fuelRemainEntry(), null);
+    }
+
     public byte[] write(WaybillReport report) {
         try (Workbook wb = new XSSFWorkbook(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
             Sheet sheet = wb.createSheet("Отчёт");
@@ -83,13 +113,24 @@ public class ReportXlsxWriter {
                     + (report.organizationRma() != null ? "   Организация (РМА): " + report.organizationRma() : "   По всем организациям"), null);
             r++; // пустая строка
 
+            // Построчные отчёты (legacy типы 6 / 7 / 9; сверка 25.09, D5) — реквизиты листа правее показателей.
+            boolean hasDetail = report.rows().stream().anyMatch(x -> x.detail() != null);
             Row head = sheet.createRow(r++);
             for (int c = 0; c < HEADERS.length; c++) {
                 cell(head, c, HEADERS[c], headStyle);
             }
+            if (hasDetail) {
+                for (int c = 0; c < DETAIL_HEADERS.length; c++) {
+                    cell(head, HEADERS.length + c, DETAIL_HEADERS[c], headStyle);
+                }
+            }
 
             for (ReportRow row : report.rows()) {
-                writeRow(sheet.createRow(r++), row, null);
+                Row x = sheet.createRow(r++);
+                writeRow(x, row, null);
+                if (hasDetail && row.detail() != null) {
+                    writeDetail(x, HEADERS.length, row.detail());
+                }
             }
             if (report.totals() != null) {
                 Row totals = sheet.createRow(r++);

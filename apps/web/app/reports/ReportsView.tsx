@@ -52,6 +52,29 @@ const withFuelDev = (r: TypedRow): TypedRow => ({ ...r,
   fuelDevGas: (r.fuelNormGas ?? 0) - (r.fuelGivenGas ?? 0) });
 
 /**
+ * Построчные отчёты legacy (сверка 25.09, D5): тип 6 «Маълумот оид ба гашт» (№, ТС, одометр), тип 7 «Дафтари
+ * қайди в/н» (+ водитель, табель, маршрут, выезд/возврат), тип 9 «Сузишвори» (топливо последнего листа ТС) —
+ * вместо сводных колонок реквизиты листа ({@code detail} строки → поля d_*).
+ */
+const DETAIL_COLS: Record<string, string[]> = {
+  TRIP_INFO: ['d_number', 'd_vehicle', 'd_garageNumber', 'd_odometerExit', 'd_odometerEntry', 'd_odometerDiff'],
+  REGISTRY_JOURNAL: ['d_number', 'd_date', 'd_vehicle', 'd_garageNumber', 'd_driverName', 'd_driverTab',
+    'd_odometerExit', 'd_odometerEntry', 'd_route', 'd_exitAt', 'd_entryAt', 'distanceKm'],
+  FUEL_GENERAL: ['d_garageNumber', 'd_vehicle', 'd_driverTab', 'd_driverName', 'd_fuelTypes', 'd_fuelGiven',
+    'd_fuelRemainBeforeExit', 'd_fuelNorm', 'd_fuelRemainEntry', 'd_number'],
+};
+type Col = { key: string; label: string };
+const flatDetail = (r: TypedRow): TypedRow => {
+  const d = (r as unknown as { detail?: Record<string, unknown> | null }).detail;
+  if (!d) return r;
+  const out: Record<string, unknown> = { ...r };
+  Object.entries(d).forEach(([k, v]) => { out['d_' + k] = v; });
+  out.d_date = d.createdAt ? new Date(String(d.createdAt)).toLocaleDateString('ru-RU') : '';
+  return out as unknown as TypedRow;
+};
+const cellOf = (r: TypedRow, key: string) => (r as unknown as Record<string, unknown>)[key];
+
+/**
  * Бланк типового отчёта — как legacy report_bill: отчёт строится по одной форме ПЛ, а не по всем
  * пассажирским / грузовым вместе (сверка 25.09, D1). Значение уходит параметром ?bill= в API.
  */
@@ -262,6 +285,10 @@ export default function ReportsView({ tab, kind = 'passenger', mode = 'trans' }:
     .filter(c => !FUEL_TYPE_COLS.has(c.key) || typedType.startsWith('FUEL'))
     .map(c => ({ ...c, label: t('rep.typed.' + c.key) })),
     reportCfg.typed_columns, reportCfg.typed_labels, 'label'), [reportCfg, t, typedKind, typedType]);
+  // Колонки таблицы: у построчных типов (D5) — реквизиты листа, иначе — сводные показатели.
+  const viewCols: Col[] = useMemo(() => DETAIL_COLS[typedType]
+    ? DETAIL_COLS[typedType].map(k => ({ key: k, label: t(k.startsWith('d_') ? 'rep.d.' + k.slice(2) : 'rep.typed.' + k) }))
+    : typedCols, [typedType, typedCols, t]);
   const regCols = useMemo(() => applyColumnConfig(REG_COLS.map(c => ({ ...c, label: t('rep.reg.' + c.key) })),
     reportCfg.regional_columns, reportCfg.regional_labels), [reportCfg, t]);
   const rcCols = useMemo(() => applyColumnConfig(RC_COLS.map(c => ({ ...c, label: t('rep.rc.' + c.key) })),
@@ -280,7 +307,7 @@ export default function ReportsView({ tab, kind = 'passenger', mode = 'trans' }:
           + (typedOrg ? `&organizationRma=${encodeURIComponent(typedOrg)}` : '')));
       } else if (tab === 'typed') {
         const rep = await getJson<TypedReport>(`/wb-api/api/v1/reports/${typedKind}?type=${typedType}&from=${from}&to=${to}${typedFilterQs}`);
-        setTypedReport({ ...rep, rows: rep.rows.map(withFuelDev), totals: rep.totals ? withFuelDev(rep.totals) : null });
+        setTypedReport({ ...rep, rows: rep.rows.map(r => flatDetail(withFuelDev(r))), totals: rep.totals ? withFuelDev(rep.totals) : null });
       }
       if (tab === 'regional') {
         const tc = typeCompany ? `&typeCompany=${typeCompany}` : '';
@@ -390,9 +417,9 @@ export default function ReportsView({ tab, kind = 'passenger', mode = 'trans' }:
       stat.rows.forEach(r => rows.push([r.label, r.unit ?? '', r.code ?? '', r.month ?? '', r.ytd ?? '']));
       downloadCsv(`1-авто-${from}_${to}.csv`, rows);
     } else if (tab === 'typed' && typedReport) {
-      const rows: unknown[][] = [typedCols.map(c => c.label)];
-      const line = (r: TypedRow) => typedCols.map(c => {
-        const v = r[c.key];
+      const rows: unknown[][] = [viewCols.map(c => c.label)];
+      const line = (r: TypedRow) => viewCols.map(c => {
+        const v = cellOf(r, c.key);
         return typeof v === 'number' ? Math.round(v * 100) / 100 : v;
       });
       typedReport.rows.forEach(r => rows.push(line(r)));
@@ -681,27 +708,27 @@ export default function ReportsView({ tab, kind = 'passenger', mode = 'trans' }:
         <div className="card" style={{ overflowX: 'auto' }}>
           <h2>{typedReport?.typeLabel ?? t('rep.crosscut')} · {typedKind === 'passenger' ? t('rep.pax') : t('rep.cargo')} · {from} — {to}</h2>
           <table>
-            <thead><tr>{typedCols.map(c => <th key={c.key}>{c.label}</th>)}</tr></thead>
+            <thead><tr>{viewCols.map(c => <th key={c.key}>{c.label}</th>)}</tr></thead>
             <tbody>
               {typedPage.view.map((r, i) => (
-                <tr key={i}>
-                  {typedCols.map(c => {
-                    const v = r[c.key];
-                    return <td key={c.key} style={c.key === 'label' ? { fontWeight: 600, color: 'var(--ink)' } : undefined}>
-                      {typeof v === 'number' ? (Math.round(v * 100) / 100).toLocaleString('ru-RU') : v}
+                <tr key={i} data-testid="typed-row">
+                  {viewCols.map(c => {
+                    const v = cellOf(r, c.key);
+                    return <td key={c.key} style={c.key === 'label' || c.key === 'd_number' ? { fontWeight: 600, color: 'var(--ink)' } : undefined}>
+                      {typeof v === 'number' ? (Math.round(v * 100) / 100).toLocaleString('ru-RU') : v == null ? '' : String(v)}
                     </td>;
                   })}
                 </tr>
               ))}
               {typedReport?.totals && (
                 <tr style={{ fontWeight: 700, borderTop: '2px solid var(--line)' }}>
-                  {typedCols.map(c => {
-                    const v = c.key === 'label' ? t('rep.total') : typedReport.totals![c.key];
-                    return <td key={c.key}>{typeof v === 'number' ? (Math.round(v * 100) / 100).toLocaleString('ru-RU') : v}</td>;
+                  {viewCols.map((c, i) => {
+                    const v = i === 0 ? t('rep.total') : c.key.startsWith('d_') ? undefined : cellOf(typedReport.totals!, c.key);
+                    return <td key={c.key}>{typeof v === 'number' ? (Math.round(v * 100) / 100).toLocaleString('ru-RU') : v == null ? '' : String(v)}</td>;
                   })}
                 </tr>
               )}
-              {(!typedReport || typedReport.rows.length === 0) && <tr><td colSpan={typedCols.length} style={{ textAlign: 'center', color: 'var(--muted)', padding: 20 }}>{t('common.norecords')}</td></tr>}
+              {(!typedReport || typedReport.rows.length === 0) && <tr><td colSpan={viewCols.length} style={{ textAlign: 'center', color: 'var(--muted)', padding: 20 }}>{t('common.norecords')}</td></tr>}
             </tbody>
           </table>
           <Pager {...typedPage} />

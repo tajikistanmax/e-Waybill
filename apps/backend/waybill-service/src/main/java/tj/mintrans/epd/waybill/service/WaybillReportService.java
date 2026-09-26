@@ -37,6 +37,13 @@ public class WaybillReportService {
     private final WaybillPeriodScan scan;
     private final WaybillCalcAssembler assembler;
     private final TenantScope tenantScope;
+    private tj.mintrans.epd.waybill.repository.WorkDayRepository workDays;
+
+    /** Рабочие дни — для выезда/возврата в построчных отчётах (сверка 25.09, D5). */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setWorkDays(tj.mintrans.epd.waybill.repository.WorkDayRepository workDays) {
+        this.workDays = workDays;
+    }
 
     public WaybillReportService(WaybillPeriodScan scan, WaybillCalcAssembler assembler,
                                 TenantScope tenantScope) {
@@ -148,9 +155,20 @@ public class WaybillReportService {
             String key = groupKey(type.grouping(), wb, c);
             String label = groupLabel(type.grouping(), wb, c, key);
             ReportRow row = rows.computeIfAbsent(key, k -> ReportRow.zero(k, label));
-            rows.put(key, row.plus(c.laps, c.distanceKm, c.routeDistanceKm, c.turnover, c.passengers,
+            ReportRow next = row.plus(c.laps, c.distanceKm, c.routeDistanceKm, c.turnover, c.passengers,
                     c.normLiters, c.givenLiters, c.revenue, c.kassa, c.salary,
-                    c.workDays, c.workHours, c.transportWork, c.trips, c.fuelSplit));
+                    c.workDays, c.workHours, c.transportWork, c.trips, c.fuelSplit);
+            // Построчные отчёты legacy (сверка 25.09, D5): реквизиты листа; «Сузишвори» — последний лист ТС.
+            if (type.grouping() == ReportGrouping.PER_WAYBILL) {
+                next = next.withDetail(detail(wb, c));
+            } else if (type == ReportType.FUEL_GENERAL) {
+                ReportRow.Detail cur = row.detail();
+                if (cur == null || cur.createdAt() == null
+                        || (wb.getCreatedAt() != null && !wb.getCreatedAt().isBefore(cur.createdAt()))) {
+                    next = next.withDetail(detail(wb, c));
+                }
+            }
+            rows.put(key, next);
         };
         scan.forEach(from, to, scope, handle);
         if (byDays) {
@@ -173,7 +191,52 @@ public class WaybillReportService {
                                 double passengers, double normLiters, double givenLiters,
                                 BigDecimal revenue, BigDecimal kassa, BigDecimal salary,
                                 String brand, int workDays, double workHours,
-                                double transportWork, double trips, ReportRow.FuelSplit fuelSplit) {
+                                double transportWork, double trips, ReportRow.FuelSplit fuelSplit,
+                                List<FuelConsumption> fuels) {
+    }
+
+    private static final java.time.format.DateTimeFormatter DT = java.time.format.DateTimeFormatter.ofPattern("dd.MM.yyyy HH:mm");
+    private static final Map<Long, String> FUEL_NAME = Map.of(1L, "Б", 2L, "С", 3L, "Г", 4L, "Г", 5L, "Э");
+
+    /** Реквизиты листа для построчных отчётов (№, ТС, водитель, одометр, выезд/возврат, топливо). */
+    private ReportRow.Detail detail(Waybill wb, Contribution c) {
+        List<tj.mintrans.epd.waybill.domain.WorkDay> days = workDays == null || wb.getId() == null
+                ? List.of() : workDays.findByWaybillIdOrderByWorkDate(wb.getId());
+        Integer odoExit = wb.getOdometerExit() != null ? wb.getOdometerExit()
+                : (days.isEmpty() ? null : days.getFirst().getOdometerExit());
+        Integer odoEntry = wb.getOdometerEntry() != null ? wb.getOdometerEntry()
+                : (days.isEmpty() ? null : days.getLast().getOdometerEntry());
+        String exitAt = null;
+        String entryAt = null;
+        if (!days.isEmpty()) {
+            var first = days.getFirst();
+            var last = days.getLast();
+            exitAt = first.getExitTime() == null ? first.getWorkDate().toString()
+                    : DT.format(first.getWorkDate().atTime(first.getExitTime()));
+            entryAt = last.getEntryTime() == null ? last.getWorkDate().toString()
+                    : DT.format(last.getWorkDate().atTime(last.getEntryTime()));
+        }
+        double given = 0, before = 0, norm = 0, after = 0;
+        java.util.Set<String> types = new java.util.LinkedHashSet<>();
+        for (FuelConsumption f : c.fuels() == null ? List.<FuelConsumption>of() : c.fuels()) {
+            given += f.given();
+            before += f.remainBeforeExit();
+            norm += f.normLiters();
+            after += f.remainEntry();
+            types.add(FUEL_NAME.getOrDefault(f.fuelId(), String.valueOf(f.fuelId())));
+        }
+        return new ReportRow.Detail(wb.getNumber(), wb.getCreatedAt(), wb.getVehicleRegNumber(),
+                snapshotString(wb.getVehicleSnapshot(), "parkingNumber"),
+                snapshotString(wb.getDriverSnapshot(), "fullName"),
+                snapshotString(wb.getDriverSnapshot(), "tabNumber"),
+                wb.getRoute(), exitAt, entryAt, odoExit, odoEntry,
+                odoExit != null && odoEntry != null ? odoEntry - odoExit : null,
+                types.isEmpty() ? null : String.join("/", types),
+                round3(given), round3(before), round3(norm), round3(after));
+    }
+
+    private static double round3(double v) {
+        return Math.round(v * 1000d) / 1000d;
     }
 
     /**
@@ -205,7 +268,7 @@ public class WaybillReportService {
             double given = r.fuels().stream().mapToDouble(FuelConsumption::given).sum();
             return new Contribution(0L, r.distanceKm(), 0d, 0d, 0d, r.totalNormLiters(), given,
                     BigDecimal.ZERO, BigDecimal.ZERO, r.salary().salary(), brand,
-                    view.workDays(), hours, r.transportWork(), r.trips(), fuelSplit(r.fuels()));
+                    view.workDays(), hours, r.transportWork(), r.trips(), fuelSplit(r.fuels()), r.fuels());
         }
         if (view.passenger() != null) {
             PassengerCalcResult r = view.passenger();
@@ -214,10 +277,10 @@ public class WaybillReportService {
             return new Contribution(m.laps(), m.totalDistanceKm(), m.routeDistanceKm(),
                     m.passengerTurnover(), m.passengerCount(), r.totalNormLiters(), given,
                     m.earning(), m.kassa(), r.salary().salary(), brand,
-                    Math.max(1, m.workDays()), m.workTimeMinutes() / 60d, 0d, 0d, fuelSplit(r.fuels()));
+                    Math.max(1, m.workDays()), m.workTimeMinutes() / 60d, 0d, 0d, fuelSplit(r.fuels()), r.fuels());
         }
         return new Contribution(0L, r0(wb), 0d, 0d, 0d, 0d, 0d,
-                BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, brand, 1, 0d, 0d, 0d, ReportRow.FuelSplit.ZERO);
+                BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, brand, 1, 0d, 0d, 0d, ReportRow.FuelSplit.ZERO, List.of());
     }
 
     private static double r0(Waybill wb) {
