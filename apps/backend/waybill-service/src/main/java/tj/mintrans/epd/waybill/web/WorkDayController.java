@@ -56,7 +56,9 @@ public class WorkDayController {
             LocalTime clientTime,
             // «Гашти ибтидоӣ» начала/конца смены: 'begin_path_a' | 'begin_path_b' | null.
             String beginPathA,
-            String beginPathB) {
+            String beginPathB,
+            // Время работы спецоборудования за день, ЧЧ:ММ (2-Б / 5Б-БМ / спецтехника; сверка 25.09, B4).
+            LocalTime specialWorkTime) {
     }
 
     public record FuelRequest(
@@ -89,6 +91,9 @@ public class WorkDayController {
         var day = service.addWorkDay(id, req.workDate(), req.exitTime(), req.entryTime(),
                 req.odometerExit(), req.odometerEntry(), req.laps(), req.revenue(),
                 req.conditionerHours(), req.clientId(), req.clientTime(), req.beginPathA(), req.beginPathB());
+        if (req.specialWorkTime() != null) {
+            day = service.setSpecialWorkTime(id, day.getId(), req.specialWorkTime());
+        }
         fuelBalance.recompute(id);
         return ResponseEntity.status(HttpStatus.CREATED).body(day);
     }
@@ -100,6 +105,9 @@ public class WorkDayController {
         var day = service.updateWorkDay(id, dayId, req.workDate(), req.exitTime(), req.entryTime(),
                 req.odometerExit(), req.odometerEntry(), req.laps(), req.revenue(),
                 req.conditionerHours(), req.clientId(), req.clientTime(), req.beginPathA(), req.beginPathB());
+        if (req.specialWorkTime() != null || day.getSpecialWorkTime() != null) {
+            day = service.setSpecialWorkTime(id, dayId, req.specialWorkTime());
+        }
         fuelBalance.recompute(id);
         return day;
     }

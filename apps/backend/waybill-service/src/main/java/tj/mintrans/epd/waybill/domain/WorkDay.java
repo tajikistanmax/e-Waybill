@@ -68,6 +68,10 @@ public class WorkDay {
     @Column(name = "begin_path_b")
     private String beginPathB;
 
+    /** Время работы спецоборудования за день (legacy 2-Б / 5Б-БМ work_time; сверка 25.09, B4). */
+    @Column(name = "special_work_time")
+    private LocalTime specialWorkTime;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private OffsetDateTime createdAt;
 
@@ -104,5 +108,7 @@ public class WorkDay {
     public void setBeginPathA(String beginPathA) { this.beginPathA = beginPathA; }
     public String getBeginPathB() { return beginPathB; }
     public void setBeginPathB(String beginPathB) { this.beginPathB = beginPathB; }
+    public LocalTime getSpecialWorkTime() { return specialWorkTime; }
+    public void setSpecialWorkTime(LocalTime specialWorkTime) { this.specialWorkTime = specialWorkTime; }
     public OffsetDateTime getCreatedAt() { return createdAt; }
 }

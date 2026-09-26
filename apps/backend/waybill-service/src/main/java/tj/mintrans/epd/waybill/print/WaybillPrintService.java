@@ -588,6 +588,8 @@ public class WaybillPrintService {
                 }
             }
             r.put("workTime", wmin > 0 ? (wmin / 60) + ":" + String.format("%02d", wmin % 60) : "");
+            // Время спецоборудования за день (legacy 2-Б work_time; сверка 25.09, B4).
+            r.put("specialTime", wd.getSpecialWorkTime() != null ? wd.getSpecialWorkTime().format(TM) : "");
             r.put("fuelGiven", "");
             r.put("remainBeforeExit", "");
             r.put("remainEntry", "");
@@ -602,6 +604,13 @@ public class WaybillPrintService {
         m.put("totalLaps", totalLaps);
         m.put("totalDistance", totalDistance);
         m.put("totalWorkTime", totalMinutes > 0 ? (totalMinutes / 60) + ":" + String.format("%02d", totalMinutes % 60) : "");
+        int specialMinutes = (int) Math.round(tj.mintrans.epd.waybill.calc.WaybillCalcAssembler.specialWorkHours(days) * 60);
+        m.put("totalSpecialTime", specialMinutes > 0 ? (specialMinutes / 60) + ":" + String.format("%02d", specialMinutes % 60) : "");
+        m.put("hasSpecialTime", specialMinutes > 0);
+        if (specialMinutes > 0 && "—".equals(m.get("specialDeviceTime"))) {
+            // На листе время не задано — итог по рабочим дням.
+            m.put("specialDeviceTime", m.get("totalSpecialTime"));
+        }
         m.put("laps", totalLaps > 0 ? totalLaps : orDash(""));
         java.math.BigDecimal totalRevenue = days.stream().map(WorkDay::getRevenue).filter(java.util.Objects::nonNull)
                 .reduce(java.math.BigDecimal.ZERO, java.math.BigDecimal::add);

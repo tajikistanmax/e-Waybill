@@ -132,6 +132,35 @@ class WaybillCalcAssemblerCargoTest {
     }
 
     @Test
+    @DisplayName("B4: спецтехника (код марки 5) — время спецоборудования суммируется по рабочим дням и входит в норму")
+    void specialWorkTimeFromWorkDays() {
+        BrandNormsProvider brandNorms = mock(BrandNormsProvider.class);
+        lenient().when(brandNorms.forName(any())).thenReturn(new BrandNorms(1L,
+                "[{\"fuel_id\":2,\"consumption\":20,\"work_for_hour\":6}]", null, null, 0d));
+        CoefficientDictionaries dict = mock(CoefficientDictionaries.class);
+        lenient().when(dict.usedCoefRows()).thenReturn(List.of());
+        lenient().when(dict.driveClasses()).thenReturn(List.of());
+        lenient().when(masterData.findBrandByName(any())).thenReturn(Optional.of(Map.of("number", "50000")));
+        tj.mintrans.epd.waybill.domain.WorkDay d1 = new tj.mintrans.epd.waybill.domain.WorkDay();
+        d1.setWorkDate(LocalDate.of(2026, 7, 10));
+        d1.setSpecialWorkTime(java.time.LocalTime.of(1, 30));
+        tj.mintrans.epd.waybill.domain.WorkDay d2 = new tj.mintrans.epd.waybill.domain.WorkDay();
+        d2.setWorkDate(LocalDate.of(2026, 7, 11));
+        d2.setSpecialWorkTime(java.time.LocalTime.of(1, 30));
+        lenient().when(workDays.findByWaybillIdOrderByWorkDate(any())).thenReturn(List.of(d1, d2));
+        WaybillCalcAssembler special = new WaybillCalcAssembler(
+                new WaybillCalcEngine(new CoefficientCalculator(dict), new FuelNormCalculator(), brandNorms),
+                masterData, workDays, fuelRecords);
+
+        Waybill wb = truck(false, false);
+        wb.setValidFrom(OffsetDateTime.of(2026, 7, 10, 8, 0, 0, 0, ZoneOffset.UTC));  // лето — без зимнего K
+        var c = special.calculate(wb, WaybillCalcAssembler.Supplement.empty()).cargo();
+        // SpecialFuel: (0.01·20·100 + 6·3 ч)·1.0 = 20 + 18 = 38 л
+        assertThat(c.totalNormLiters()).isCloseTo(38d, within(1e-6));
+        assertThat(WaybillCalcAssembler.specialWorkHours(List.of(d1, d2))).isCloseTo(3d, within(1e-9));
+    }
+
+    @Test
     @DisplayName("Supplement переопределяет направление и прицеп (обратная совместимость /calculation с телом)")
     void supplementOverrides() {
         WaybillCalcAssembler.Supplement s = new WaybillCalcAssembler.Supplement(null, null, null, null, null, null, null,

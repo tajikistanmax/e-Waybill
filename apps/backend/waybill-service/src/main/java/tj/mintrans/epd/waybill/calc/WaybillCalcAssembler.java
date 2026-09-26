@@ -163,6 +163,13 @@ public class WaybillCalcAssembler {
         Integer capacity = intOf(veh == null ? null : veh.get("capacity"));
 
         List<WorkDay> days = workDays.findByWaybillIdOrderByWorkDate(wb.getId());
+        if (s.specialWorkHours() == null) {
+            // Время спецоборудования по рабочим дням (legacy 2-Б SpecialFuel: work_time каждого дня; B4).
+            double h = specialWorkHours(days);
+            if (h > 0) {
+                s = withSpecialWorkHours(s, h);
+            }
+        }
         long exitOdo = wb.getOdometerExit() != null ? wb.getOdometerExit()
                 : (!days.isEmpty() && days.getFirst().getOdometerExit() != null ? days.getFirst().getOdometerExit() : 0L);
         long distance = tripDistance(wb, days, notes);
@@ -299,6 +306,27 @@ public class WaybillCalcAssembler {
                     periodDays.isEmpty() && !waybillLevel);
         }
         return new View("PASSENGER", r, null, notes, dailyFuel, Math.max(1, days.size()), workMinutes);
+    }
+
+    /** Σ времени работы спецоборудования по рабочим дням, ч (сверка 25.09, B4). */
+    public static double specialWorkHours(List<WorkDay> days) {
+        double minutes = 0;
+        for (WorkDay d : days) {
+            if (d.getSpecialWorkTime() != null) {
+                minutes += d.getSpecialWorkTime().getHour() * 60 + d.getSpecialWorkTime().getMinute();
+            }
+        }
+        return minutes / 60d;
+    }
+
+    private static Supplement withSpecialWorkHours(Supplement s, double hours) {
+        return new Supplement(s.airConditionerPercent(), s.conditionerHours(), s.numberLap(),
+                s.transportWork(), s.trips(), hours, s.specialDistance(),
+                s.directionWinterCoefId(), s.directionMountainCoefId(), s.directionInCityCoefId(),
+                s.trailerWeight(), s.trailerCarrying(), s.trailerWeight2(),
+                s.earning(), s.companyPercentIncome(), s.driverDegree(),
+                s.companyCat1(), s.companyCat2(), s.companyCat3(),
+                s.tariffPricePer1Mkm(), s.tariffPriceOneTime(), s.speedometerTotalDistance(), s.calcDate());
     }
 
     /**

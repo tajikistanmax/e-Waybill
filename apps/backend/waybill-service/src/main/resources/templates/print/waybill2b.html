@@ -109,6 +109,10 @@
             <td class="center" th:text="${counterEntry}"></td><td></td></tr>
         <tr><td class="bold">Ҳамагӣ гашт (км)</td><td colspan="2"></td>
             <td class="center bold" th:text="${cargoDistance}"></td><td></td></tr>
+        <!-- Графа legacy bill2b «Вақти кори таҷҳизоти махсус» (сверка 25.09, B4): часы работы спецоборудования,
+             введённые при возврате (typeData.specialWorkHours; по ним считается расход топлива на спецработу). -->
+        <tr><td class="bold">Вақти кори таҷҳизоти махсус (соат)</td><td colspan="2"></td>
+            <td class="center" th:text="${specialDeviceTime}"></td><td></td></tr>
     </table>
 </div>
 
@@ -119,7 +123,7 @@
         <tr>
             <th style="width: 14%">Сана</th><th style="width: 11%">Баромад</th><th style="width: 11%">Даромад</th>
             <th style="width: 15%">Суръатнигор баромад</th><th style="width: 15%">Суръатнигор даромад</th>
-            <th style="width: 10%">Гашт (км)</th><th style="width: 10%">Вақти корӣ</th><th>Имзо</th>
+            <th style="width: 9%">Гашт (км)</th><th style="width: 9%">Вақти корӣ</th><th style="width: 9%">Таҷҳ. махсус</th><th>Имзо</th>
         </tr>
         <tr th:each="d : ${days}">
             <td class="center" th:text="${d.date}"></td>
@@ -129,12 +133,14 @@
             <td class="center" th:text="${d.counterEntry}"></td>
             <td class="center" th:text="${d.distance}"></td>
             <td class="center" th:text="${d.workTime}"></td>
+            <td class="center" th:text="${d.specialTime}"></td>
             <td></td>
         </tr>
         <tr>
             <td class="bold" colspan="5">Ҳамагӣ</td>
             <td class="center bold" th:text="${totalDistance}"></td>
             <td class="center bold" th:text="${totalWorkTime}"></td>
+            <td class="center bold" th:text="${totalSpecialTime}"></td>
             <td></td>
         </tr>
     </table>

@@ -170,6 +170,28 @@ public class WorkDayService {
         return workDays.save(day);
     }
 
+    /**
+     * Время работы спецоборудования за день (legacy 2-Б / 5Б-БМ work_time; сверка 25.09, B4) — только у грузовых
+     * листов; {@code null} очищает. Входит в норму топлива на спецработу и печатается на бланке.
+     */
+    @Transactional
+    public WorkDay setSpecialWorkTime(UUID waybillId, UUID dayId, LocalTime time) {
+        var wb = waybillService.get(waybillId);
+        var day = ownDay(waybillId, dayId);
+        if (time != null) {
+            var t = wb.getWaybillType();
+            boolean cargo = t == tj.mintrans.epd.waybill.domain.WaybillType.WB_TRUCK
+                    || t == tj.mintrans.epd.waybill.domain.WaybillType.WB_TRUCK_INTL
+                    || t == tj.mintrans.epd.waybill.domain.WaybillType.WB_SPECIAL
+                    || t == tj.mintrans.epd.waybill.domain.WaybillType.WB_DANGEROUS;
+            if (!cargo) {
+                throw new UnprocessableException("Время спецоборудования указывается только в грузовых листах");
+            }
+        }
+        day.setSpecialWorkTime(time);
+        return workDays.save(day);
+    }
+
     /** Удаление рабочего дня вместе с привязанными к нему строками топлива. */
     @Transactional
     public void deleteWorkDay(UUID waybillId, UUID dayId) {

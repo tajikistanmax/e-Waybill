@@ -1163,6 +1163,8 @@ export type WorkDayRow = {
   odometerExit: number | null; odometerEntry: number | null; laps: number | null; revenue: number | null;
   conditionerHours: number | null; clientId: string | null; clientTime: string | null;
   beginPathA: string | null; beginPathB: string | null;
+  /** Время работы спецоборудования за день, ЧЧ:ММ:СС (грузовые формы; сверка 25.09, B4). */
+  specialWorkTime?: string | null;
 };
 export type WorkDaysResponse = {
   workDays: { workDay: WorkDayRow; fuel: FuelRecordRow[] }[];

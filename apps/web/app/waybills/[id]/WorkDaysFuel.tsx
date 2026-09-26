@@ -25,7 +25,7 @@ type Props = {
 };
 
 const EMPTY_DAY = { workDate: '', exitTime: '06:00', entryTime: '', odometerExit: '', odometerEntry: '', laps: '', revenue: '',
-  clientTime: '', conditionerHours: '', beginPathA: '', beginPathB: '' };
+  clientTime: '', conditionerHours: '', beginPathA: '', beginPathB: '', specialWorkTime: '' };
 const EMPTY_FUEL = { fuelType: '', fuelGiven: '', remainBeforeExit: '', additionalGiven: '', returned: '', coefBelow0: '', workDayId: '' };
 
 const num = (v: string) => (v.trim() === '' ? null : Number(v));
@@ -40,6 +40,8 @@ export default function WorkDaysFuel({ id, w, data, overdue, canDispatch, canFue
   const isTaxi = w.waybillType === 'WB_CAR' || w.waybillType === 'WB_TAXI';
   // «Гашти ибтидоӣ» есть у маршрутных пассажирских форм: 1-АД, 1-А, 3-С «маршрутное такси».
   const routeForm = ['WB_BUS', 'WB_TROLLEYBUS', 'WB_MINIBUS'].includes(w.waybillType) || (isTaxi && td.serviceKind === 'ROUTE');
+  // Время работы спецоборудования за день — грузовые формы (legacy 2-Б / 5Б-БМ work_time; сверка 25.09, B4).
+  const cargoForm = ['WB_TRUCK', 'WB_TRUCK_INTL', 'WB_SPECIAL', 'WB_DANGEROUS'].includes(w.waybillType);
   const vehicleFuel = Number((w.vehicleSnapshot as Record<string, unknown> | undefined)?.fuelType ?? 0);
   const defaultFuel = w.waybillType === 'WB_TROLLEYBUS' ? '5' : vehicleFuel >= 1 && vehicleFuel <= 5 ? String(vehicleFuel) : '2';
 
@@ -77,6 +79,7 @@ export default function WorkDaysFuel({ id, w, data, overdue, canDispatch, canFue
       laps: d.laps != null ? String(d.laps) : '', revenue: d.revenue != null ? String(d.revenue) : '',
       clientTime: d.clientTime?.slice(0, 5) ?? '', conditionerHours: d.conditionerHours != null ? String(d.conditionerHours) : '',
       beginPathA: d.beginPathA ?? '', beginPathB: d.beginPathB ?? '',
+      specialWorkTime: d.specialWorkTime?.slice(0, 5) ?? '',
     });
   }
 
@@ -98,6 +101,7 @@ export default function WorkDaysFuel({ id, w, data, overdue, canDispatch, canFue
       conditionerHours: hasConditioner ? num(dayForm.conditionerHours) : null,
       beginPathA: routeForm ? dayForm.beginPathA || null : null,
       beginPathB: routeForm ? dayForm.beginPathB || null : null,
+      specialWorkTime: cargoForm && dayForm.specialWorkTime ? dayForm.specialWorkTime : null,
     };
     if (editDay) {
       await act(t('wb.act.daysaved'), () => wb.put(`/${id}/work-days/${editDay}`, body));
@@ -163,6 +167,7 @@ export default function WorkDaysFuel({ id, w, data, overdue, canDispatch, canFue
                   <th>{t('wb.th.laps')}</th><th>{t('rep.revenue')}</th>
                   {isTaxi && <th>{t('wb.f.clienttime')}</th>}
                   {routeForm && <th>{t('wb.f.beginpath')}</th>}
+                  {cargoForm && <th>{t('wb.f.specialtime')}</th>}
                   <th>{t('col.fuel')}</th>
                   {daysEditable && <th />}
                 </tr></thead>
@@ -177,6 +182,7 @@ export default function WorkDaysFuel({ id, w, data, overdue, canDispatch, canFue
                       <td>{fmt(d.revenue)}</td>
                       {isTaxi && <td>{d.clientTime?.slice(0, 5) ?? '—'}</td>}
                       {routeForm && <td>{pathLabel(d.beginPathA)} + {pathLabel(d.beginPathB)}</td>}
+                      {cargoForm && <td>{d.specialWorkTime?.slice(0, 5) ?? '—'}</td>}
                       <td>{d.fuel.length ? d.fuel.map(f => `${fuelName(f.fuelType)} ${fmt(f.fuelGiven)} л`).join('; ') : '—'}</td>
                       {daysEditable && (
                         <td style={{ whiteSpace: 'nowrap' }}>
@@ -214,6 +220,9 @@ export default function WorkDaysFuel({ id, w, data, overdue, canDispatch, canFue
               </div>
               {isTaxi && (
                 <div><label>{t('wb.f.clienttime')}</label><input type="time" value={dayForm.clientTime} onChange={e => setDayForm({ ...dayForm, clientTime: e.target.value })} /></div>
+              )}
+              {cargoForm && (
+                <div><label>{t('wb.f.specialtime')}</label><input type="time" value={dayForm.specialWorkTime} data-testid="wd-special" onChange={e => setDayForm({ ...dayForm, specialWorkTime: e.target.value })} /></div>
               )}
               {hasConditioner && (
                 <div><label>{t('wb.f.condhours')}</label><input type="number" min={0} step="0.1" value={dayForm.conditionerHours} onChange={e => setDayForm({ ...dayForm, conditionerHours: e.target.value })} /></div>
