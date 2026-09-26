@@ -299,10 +299,13 @@ public class WaybillController {
     @PostMapping("/{id}/consignment")
     @PreAuthorize("hasAnyRole('DISPATCHER','COMPANY_ADMIN','SYSTEM_ADMIN')")
     public Waybill updateConsignment(@PathVariable UUID id, @RequestBody ConsignmentRequest req) {
+        // Таможенник и момент подтверждения перевозчиком не пишутся: их ставит только таможня в своём
+        // кабинете (POST /consignments/{id}/customs-confirm, legacy validatecmr). Раньше диспетчер мог
+        // «подтвердить за таможню», передав эти поля (сверка 25.09, C3).
         return service.updateConsignment(id, new WaybillService.ConsignmentUpdate(
                 req.senderName(), req.senderAddress(), req.receiverName(), req.receiverAddress(),
                 req.forwarderName(), req.cargoVolume(), req.cargoStatCode(), req.submittedDocuments(),
-                req.customsOfficerName(), req.customsConfirmedAt(), req.cargoOperations(),
+                null, null, req.cargoOperations(),
                 req.senderId(), req.receiverId(), req.forwarderId(), req.cargoId(), req.cargoName(),
                 req.cargoNumber(), req.tripsCount()));
     }

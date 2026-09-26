@@ -69,16 +69,23 @@ export function Consignment({
 
   // Поиск по уже загруженным справочникам (короткие, org-скоуп на бэкенде) — без отдельного
   // серверного полнотекстового эндпоинта, тот же приём, что и «Заказчик» в мастере создания.
+  // Нет в справочнике (архивные контрагенты не перенесены) — последней строкой «записать как введено»:
+  // сохраняется только снимок имени, без id.
+  const withFreeText = useCallback((q: string, opts: SSOption[]): SSOption[] => {
+    const v = q.trim();
+    if (!v || opts.some(o => o.label.toLowerCase() === v.toLowerCase())) return opts;
+    return [...opts, { value: `free:${v}`, label: v, sub: t('cnn.freetext') }];
+  }, [t]);
   const searchClients = useCallback(async (q: string): Promise<SSOption[]> => {
     const ql = q.trim().toLowerCase();
-    return clients.filter(c => !ql || c.name.toLowerCase().includes(ql))
-      .slice(0, 25).map(c => ({ value: c.id, label: c.name, sub: c.address ?? '' }));
-  }, [clients]);
+    return withFreeText(q, clients.filter(c => !ql || c.name.toLowerCase().includes(ql))
+      .slice(0, 25).map(c => ({ value: c.id, label: c.name, sub: c.address ?? '' })));
+  }, [clients, withFreeText]);
   const searchCargos = useCallback(async (q: string): Promise<SSOption[]> => {
     const ql = q.trim().toLowerCase();
-    return cargos.filter(c => !ql || c.name.toLowerCase().includes(ql) || String(c.number ?? '').includes(ql))
-      .slice(0, 25).map(c => ({ value: c.id, label: c.name, sub: c.number != null ? `${t('col.cargonumber')} ${c.number}` : '' }));
-  }, [cargos, t]);
+    return withFreeText(q, cargos.filter(c => !ql || c.name.toLowerCase().includes(ql) || String(c.number ?? '').includes(ql))
+      .slice(0, 25).map(c => ({ value: c.id, label: c.name, sub: c.number != null ? `${t('col.cargonumber')} ${c.number}` : '' })));
+  }, [cargos, t, withFreeText]);
 
   async function save() {
     setBusy(true); setError(''); setOk('');
@@ -157,7 +164,7 @@ export function Consignment({
           selectedLabel={form[nameKey] || ''}
           placeholder={`${t('cn.searchph')}: ${label.toLowerCase()}…`}
           onSearch={onSearch}
-          onSelect={o => { setId(o.value); setForm(f => ({ ...f, [nameKey]: o.label })); }}
+          onSelect={o => { setId(o.value.startsWith('free:') ? '' : o.value); setForm(f => ({ ...f, [nameKey]: o.label })); }}
           onClear={() => { setId(''); setForm(f => ({ ...f, [nameKey]: '' })); }}
           loadingText={t('cn.searching')} emptyText={t('cn.notfound')} hintText={t('wbf.clientsearchhint')} />
       ) : (

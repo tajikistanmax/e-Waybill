@@ -168,6 +168,19 @@ class WaybillControllerSecurityTest {
         postJson(ID + "/unblock", role, "{\"reason\":\"x\"}").andExpect(status().isForbidden());
     }
 
+    // --- Накладная: таможенное подтверждение перевозчик не пишет (только кабинет таможни, сверка 25.09 C3).
+    @Test
+    void dispatcherCannotConfirmCustoms() throws Exception {
+        postJson(ID + "/consignment", "DISPATCHER", """
+                {"senderName":"S","customsOfficerName":"Fake","customsConfirmedAt":"2026-09-26T10:00:00Z"}""")
+                .andExpect(status().isOk());
+        var captor = org.mockito.ArgumentCaptor.forClass(WaybillService.ConsignmentUpdate.class);
+        org.mockito.Mockito.verify(service).updateConsignment(org.mockito.ArgumentMatchers.any(), captor.capture());
+        org.assertj.core.api.Assertions.assertThat(captor.getValue().senderName()).isEqualTo("S");
+        org.assertj.core.api.Assertions.assertThat(captor.getValue().customsOfficerName()).isNull();
+        org.assertj.core.api.Assertions.assertThat(captor.getValue().customsConfirmedAt()).isNull();
+    }
+
     // --- Аноним — 401.
     @Test
     void anonymousUnauthorized() throws Exception {

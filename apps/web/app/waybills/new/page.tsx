@@ -434,11 +434,17 @@ export default function NewWaybillPage() {
   // Заказчик (2-Б): поиск по уже загруженному справочнику Client — без отдельного серверного эндпоинта.
   const searchClients = useCallback(async (q: string): Promise<SSOption[]> => {
     const ql = q.trim().toLowerCase();
-    return clients
+    const found = clients
       .filter(c => !ql || c.name.toLowerCase().includes(ql))
       .slice(0, 25)
       .map(c => ({ value: c.id, label: c.name, sub: c.address ?? '' }));
-  }, [clients]);
+    // Справочник контрагентов организации может быть пуст (архивные клиенты не перенесены) —
+    // тогда «Заказчик» записывается как введено, снимком без id; иначе 2-Б нельзя было выписать.
+    const v = q.trim();
+    return v && !found.some(o => o.label.toLowerCase() === v.toLowerCase())
+      ? [...found, { value: `free:${v}`, label: v, sub: tt('cnn.freetext') }]
+      : found;
+  }, [clients, tt]);
 
   function toggleWorkRegion(code: number) {
     setWorkRegions(prev => prev.includes(code) ? prev.filter(r => r !== code) : [...prev, code].sort((a, b) => a - b));
@@ -452,7 +458,10 @@ export default function NewWaybillPage() {
   // ---- Валидация шагов ----
   const canStep2 = !!orgRma && !!form.vehicleRegNumber && !!form.driverRma;
   const intlValid = !!intl.permitNumber && !!intl.visaValidTo && !!intl.visaCountry
-    && !!intl.loadCountry && !!intl.unloadCountry && (t !== 'WB_TRUCK_INTL' || !!intl.cargoName);
+    && !!intl.loadCountry && !!intl.unloadCountry
+    // 5Б-БМ: груз, города погрузки/разгрузки и номер ББА обязательны (legacy StoreWaybill5bbmRequest;
+    // сервер проверяет то же — раньше диспетчер узнавал об этом только по ошибке 422 в конце мастера).
+    && (t !== 'WB_TRUCK_INTL' || (!!intl.cargoName && !!intl.loadCity.trim() && !!intl.unloadCity.trim() && !!intl.bbaNumber.trim()));
   const trailersValid = trailers.every(tr => tr.registrationNumber.trim() && tr.brand.trim());
   const customValid = customDefs.filter(d => d.required)
     .every(d => (customValues[d.fieldKey] ?? '').toString().trim() !== '');
@@ -505,7 +514,7 @@ export default function NewWaybillPage() {
       ...(dangerous.on ? { dangerous: true, adrClass: dangerous.adrClass, ...(dangerous.unNumber ? { unNumber: dangerous.unNumber } : {}) } : {}),
       ...(cargoCard() ? { cargo: cargoCard() } : {}),
       ...(directionId ? { directionId: Number(directionId) } : {}),
-      ...(client ? { clientId: client.id, clientName: client.name } : {}),
+      ...(client ? { ...(client.id ? { clientId: client.id } : {}), clientName: client.name } : {}),
     };
     if (isBus) return {
       ...(bus.columnNumber.trim() ? { columnNumber: bus.columnNumber.trim() } : {}),
@@ -849,11 +858,11 @@ export default function NewWaybillPage() {
                 <div>
                   <label>{tt('wbf.client')}{tt('wb.required.suffix')}</label>
                   <SearchSelect
-                    value={client?.id ?? ''}
+                    value={client ? (client.id || client.name) : ''}
                     selectedLabel={client?.name ?? ''}
                     placeholder={tt('wbf.clientsearch')}
                     onSearch={searchClients}
-                    onSelect={o => setClient({ id: o.value, name: o.label })}
+                    onSelect={o => setClient({ id: o.value.startsWith('free:') ? '' : o.value, name: o.label })}
                     onClear={() => setClient(null)}
                     loadingText={tt('wb.search.loading')} emptyText={tt('wb.search.empty')} hintText={tt('wbf.clientsearchhint')} />
                 </div>
@@ -957,8 +966,8 @@ export default function NewWaybillPage() {
                     </select>
                   </div>
                   <div>
-                    <label>{tt('wb.f.loadcity')}</label>
-                    <input list="loadCities" value={intl.loadCity} placeholder={tt('wb.ph.city')}
+                    <label>{tt('wb.f.loadcity')}{t === 'WB_TRUCK_INTL' ? tt('wb.required.suffix') : ''}</label>
+                    <input list="loadCities" required={t === 'WB_TRUCK_INTL'} value={intl.loadCity} placeholder={tt('wb.ph.city')}
                       onChange={e => setIntl({ ...intl, loadCity: e.target.value })} />
                     <datalist id="loadCities">
                       {loadCities.map(c => <option key={c} value={c} />)}
@@ -972,8 +981,8 @@ export default function NewWaybillPage() {
                     </select>
                   </div>
                   <div>
-                    <label>{tt('wb.f.unloadcity')}</label>
-                    <input list="unloadCities" value={intl.unloadCity} placeholder={tt('wb.ph.city')}
+                    <label>{tt('wb.f.unloadcity')}{t === 'WB_TRUCK_INTL' ? tt('wb.required.suffix') : ''}</label>
+                    <input list="unloadCities" required={t === 'WB_TRUCK_INTL'} value={intl.unloadCity} placeholder={tt('wb.ph.city')}
                       onChange={e => setIntl({ ...intl, unloadCity: e.target.value })} />
                     <datalist id="unloadCities">
                       {unloadCities.map(c => <option key={c} value={c} />)}
@@ -995,8 +1004,8 @@ export default function NewWaybillPage() {
                         <input required placeholder={tt('wb.ph.cotton')} value={intl.cargoName} onChange={e => setIntl({ ...intl, cargoName: e.target.value })} />
                       </div>
                       <div>
-                        <label>{tt('wb.f.bba')}</label>
-                        <input placeholder="XB 1234567" value={intl.bbaNumber} onChange={e => setIntl({ ...intl, bbaNumber: e.target.value })} />
+                        <label>{tt('wb.f.bba')}{tt('wb.required.suffix')}</label>
+                        <input required placeholder="XB 1234567" value={intl.bbaNumber} onChange={e => setIntl({ ...intl, bbaNumber: e.target.value })} />
                       </div>
                     </>
                   )}
