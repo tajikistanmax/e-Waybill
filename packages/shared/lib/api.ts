@@ -321,6 +321,12 @@ export type Cargo = {
   [key: string]: unknown;
 };
 
+// Марка ТС (legacy-справочник Brand): код, модель, вместимость/грузоподъёмность — для выбора в карточке ТС.
+export type BrandRef = {
+  id: number; number: string | null; name: string; model: string | null;
+  typeId: number | null; capacity: number | null; carrying: number | null;
+};
+
 // Направление грузовой перевозки (legacy-справочник Direction) — «Самт» бланка 2-Б.
 export type Direction = {
   id: number;
@@ -502,6 +508,8 @@ export const md = {
   saveCargo: (body: Record<string, unknown>) => mdPost('dictionaries/cargos', body) as Promise<Cargo>,
   // Направления грузовых перевозок (legacy-справочник) — «Самт» бланка 2-Б.
   directions: () => fetch('/md-api/api/v1/legacy-ref/directions', { headers: authHeaders() }).then(r => handle<Direction[]>(r)),
+  // Марки ТС (legacy brands, ≈500 записей) — выбор марки в карточке ТС: расчёт ищет нормы по имени марки.
+  brands: () => fetch('/md-api/api/v1/legacy-ref/brands', { headers: authHeaders() }).then(r => handle<BrandRef[]>(r)),
   // Конструктор полей: доп.поля по типу ПЛ.
   fieldDefinitions: (waybillType: string, all = false) => fetch(
     `/md-api/api/v1/field-definitions?waybillType=${waybillType}${all ? '&all=true' : ''}`,

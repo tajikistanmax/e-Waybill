@@ -8,6 +8,7 @@ import { FORM_FIELDS, fieldLabel, useDataSource, useFormFieldModes } from '@/lib
 import { useT } from '@/lib/i18n';
 import { Icon, P } from '../icons';
 import SubjectDocuments from './SubjectDocuments';
+import { BrandPicker } from '../BrandPicker';
 
 type Row = Record<string, unknown>;
 export type FleetKind = 'vehicles' | 'drivers' | 'employees';
@@ -317,7 +318,16 @@ export default function FleetView({ kind }: { kind: FleetKind }) {
             {shown.map(f => (
               <div key={f.key}>
                 <label htmlFor={`fleet-${f.key}`} style={{ fontSize: 12.5, color: 'var(--muted)' }}>{f.label}{f.req ? ' *' : ''}</label>
-                {f.type === 'select' ? (
+                {kind === 'vehicles' && f.key === 'brand' ? (
+                  // Марка — из справочника марок (сверка 25.09, F4): нормы расхода ищутся по имени марки.
+                  <div style={{ marginTop: 4 }} id={`fleet-${f.key}`}>
+                    <BrandPicker value={form.brand ?? ''} disabled={editing && lockedField('brand')}
+                      onChange={v => setForm(s => ({ ...s!, brand: v }))}
+                      onPick={b => setForm(s => ({ ...s!,
+                        capacity: s!.capacity || (b.capacity != null ? String(b.capacity) : ''),
+                        carrying: s!.carrying || (b.carrying != null ? String(b.carrying) : '') }))} />
+                  </div>
+                ) : f.type === 'select' ? (
                   <select id={`fleet-${f.key}`} value={form[f.key] ?? ''} disabled={editing && lockedField(f.key)}
                     onChange={e => setForm(s => ({ ...s!, [f.key]: e.target.value }))} style={{ width: '100%', marginTop: 4 }}>
                     <option value="">—</option>

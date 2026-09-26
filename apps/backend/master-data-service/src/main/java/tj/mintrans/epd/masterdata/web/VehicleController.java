@@ -51,13 +51,16 @@ public class VehicleController {
     private final tj.mintrans.epd.masterdata.service.RegistryQuery registryQuery;
     private final FormFieldPolicy formFields;
     private final tj.mintrans.epd.masterdata.service.MasterDataSourcePolicy sourcePolicy;
+    private final tj.mintrans.epd.masterdata.repository.BrandRepository brands;
 
     public VehicleController(VehicleRepository vehicles, OrganizationRepository organizations,
                              CurrentUser currentUser, TenantScope tenantScope, AuditService audit,
                              tj.mintrans.epd.masterdata.service.VehicleCardRules cardRules,
                              tj.mintrans.epd.masterdata.service.RegistryQuery registryQuery,
                              FormFieldPolicy formFields,
-                             tj.mintrans.epd.masterdata.service.MasterDataSourcePolicy sourcePolicy) {
+                             tj.mintrans.epd.masterdata.service.MasterDataSourcePolicy sourcePolicy,
+                             tj.mintrans.epd.masterdata.repository.BrandRepository brands) {
+        this.brands = brands;
         this.sourcePolicy = sourcePolicy;
         this.vehicles = vehicles;
         this.organizations = organizations;
@@ -115,6 +118,27 @@ public class VehicleController {
     }
 
     /**
+     * Марка ТС при ручном вводе — только из справочника марок (legacy parkings.brand_id, сверка 25.09 F4):
+     * расчёт ищет нормы по имени марки, и опечатка давала норму 0. Проверяется лишь смена марки —
+     * у перенесённой записи со старым написанием остальные поля правятся без выбора марки заново.
+     * Написание приводится к справочному (регистр, пробелы).
+     */
+    String dictionaryBrand(String requested, String current) {
+        if (requested == null || requested.isBlank()) {
+            return null;
+        }
+        String name = requested.trim();
+        if (current != null && current.trim().equalsIgnoreCase(name)) {
+            return current;
+        }
+        return brands.findFirstByNameIgnoreCase(name)
+                .map(tj.mintrans.epd.masterdata.domain.Brand::getName)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                        "Марка «" + name + "» не найдена в справочнике марок — выберите марку из списка "
+                                + "(новую марку добавляет Минтранс в «Справочники → Марки»)"));
+    }
+
+    /**
      * Нативное управление ТС внутри платформы: перевозчик (COMPANY_ADMIN/DISPATCHER) ведёт ТС
      * СВОЕЙ организации; push-канал единой платформы (API_INTEGRATOR) и сисадмин — любые.
      * Тенант не пишет в чужую организацию (403) и не «захватывает» ТС по госномеру (409).
@@ -144,11 +168,12 @@ public class VehicleController {
             formFields.requireFilled(FormFieldPolicy.VEHICLE, req, sourcePolicy.skipRequired(FormFieldPolicy.VEHICLE, ex, src));
         }
         String oldBrand = existing.map(Vehicle::getBrand).orElse(null); // до мутации (existing и vehicle — один объект)
+        String brand = integrator ? req.brand() : dictionaryBrand(req.brand(), oldBrand);
         var vehicle = existing.orElseGet(Vehicle::new);
         vehicle.setRegistrationNumber(canonicalNumber);
         vehicle.setOrganizationId(org.getId());
         vehicle.setTransportType(req.transportType());
-        vehicle.setBrand(req.brand());
+        vehicle.setBrand(brand);
         // Номер стоянки уникален в организации (legacy ParkingRequest, MIGRATION.md 12.13) — 409 до save.
         cardRules.assertParkingNumberUnique(org.getId(), req.parkingNumber(), vehicle);
         vehicle.setParkingNumber(req.parkingNumber());

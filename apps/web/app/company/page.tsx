@@ -5,6 +5,7 @@ import { authHeaders, md, type SubjectKind, type SubjectRef } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { formKeys, numericKeys, useDataSource, useFormFieldModes } from '@/lib/formFields';
 import { ConfigurableFields } from '../ConfigurableFields';
+import { BrandPicker } from '../BrandPicker';
 import { useT, WAYBILL_TYPE_CODES } from '@/lib/i18n';
 import { Icon, P } from '../icons';
 import { ExpiryAlert } from '../ExpiryAlert';
@@ -872,7 +873,18 @@ function OrgRegistry() {
                   </div>
                   {/* Остальные поля — по Настройки → Поля транспорта (скрыть / обязательное). */}
                   <ConfigurableFields form="vehicle" modes={vehicleModes} readOnly={vehicleRo}
-                    value={k => vehicleManual[k] ?? ''} onChange={(k, v) => setVehicleManual({ ...vehicleManual, [k]: v })} />
+                    value={k => vehicleManual[k] ?? ''} onChange={(k, v) => setVehicleManual({ ...vehicleManual, [k]: v })}
+                    overrides={{
+                      // Марка — из справочника марок (нормы расхода ищутся по имени марки).
+                      brand: ({ label }) => (<>
+                        <label>{label}</label>
+                        <BrandPicker value={vehicleManual.brand ?? ''} disabled={vehicleRo('brand')}
+                          onChange={v => setVehicleManual(s => ({ ...s, brand: v }))}
+                          onPick={b => setVehicleManual(s => ({ ...s,
+                            capacity: s.capacity || (b.capacity != null ? String(b.capacity) : ''),
+                            carrying: s.carrying || (b.carrying != null ? String(b.carrying) : '') }))} />
+                      </>),
+                    }} />
                   <div className="full" style={{ display: 'flex', gap: 8 }}>
                     <button className="btn" type="submit">{t('comp.btn.savevehicle')}</button>
                     <button className="btn secondary" type="button" onClick={() => setShowForm(false)}>{t('btn.cancel')}</button>
