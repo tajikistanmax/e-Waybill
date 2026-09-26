@@ -31,6 +31,9 @@ const SECTIONS: { href: string; labelKey: string; descKey: string; icon: string;
   // Города и районы (CityController, /api/v1/cities) — подсказки для «Город» организации и маршрута;
   // в старой платформе велись в админке, у нас раздел был только для чтения (владелец, 22.09).
   { href: '/dictionaries/cities', labelKey: 'dict.sec.cities', descKey: 'dict.sec.cities.d', icon: P.building, cls: 'ic-green' },
+  // Регионы (RegionController, /api/v1/regions) — в «Роҳхат» раздел «Минтақаҳо» (код, рамз, название);
+  // у нас справочник был только в API (сверка 25.09, E6). Правит SYSTEM_ADMIN.
+  { href: '/dictionaries/regions', labelKey: 'dict.sec.regions', descKey: 'dict.sec.regions.d', icon: P.globe, cls: 'ic-amber' },
 ];
 
 /** Каркас справочников: заголовок + карточки-ссылки. У каждого справочника свой адрес. */

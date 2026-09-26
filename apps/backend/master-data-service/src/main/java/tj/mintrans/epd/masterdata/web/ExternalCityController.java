@@ -51,12 +51,28 @@ public class ExternalCityController {
             Boolean active) {
     }
 
-    /** Список внешних городов; при указании country — только выбранной страны (ISO alpha-2). */
+    /**
+     * Список внешних городов; при указании country — только выбранной страны (ISO alpha-2).
+     * {@code q} — поиск по названию (рус./тадж.): без страны — по всем странам, не более 200 строк.
+     */
     @GetMapping
-    public List<ExternalCity> list(@RequestParam(required = false) String country) {
-        return country != null && !country.isBlank()
+    public List<ExternalCity> list(@RequestParam(required = false) String country,
+                                   @RequestParam(required = false) String q) {
+        String needle = q == null ? "" : q.trim();
+        boolean byCountry = country != null && !country.isBlank();
+        if (!needle.isEmpty() && !byCountry) {
+            return cities.findTop200ByNameRuContainingIgnoreCaseOrNameTjContainingIgnoreCaseOrderByNameRuAsc(
+                    needle, needle);
+        }
+        List<ExternalCity> list = byCountry
                 ? cities.findByCountryCodeOrderBySortOrderAscNameRuAsc(country.trim().toUpperCase())
                 : cities.findAllByOrderByCountryCodeAscSortOrderAscNameRuAsc();
+        if (needle.isEmpty()) {
+            return list;
+        }
+        String n = needle.toLowerCase();
+        return list.stream().filter(c -> c.getNameRu().toLowerCase().contains(n)
+                || (c.getNameTj() != null && c.getNameTj().toLowerCase().contains(n))).toList();
     }
 
     /** Upsert по естественному ключу (country_code, name_ru); при существующей записи — обновление. */

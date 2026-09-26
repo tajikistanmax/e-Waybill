@@ -338,7 +338,8 @@ public class LegacyReferenceController {
     public record DirectionRequest(
             Long id,
             @NotBlank String title,
-            Integer number,
+            // Номер направления обязателен, как в «Роҳхат» (DirectionRequest: number required; сверка 25.09, E6).
+            @NotNull(message = "Укажите номер направления") Integer number,
             Long winterCoefId,
             Long mountainCoefId,
             Long inCityCoefId,

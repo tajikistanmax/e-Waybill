@@ -5,6 +5,7 @@ import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -15,7 +16,10 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.server.ResponseStatusException;
 import tj.mintrans.epd.masterdata.domain.Region;
+import tj.mintrans.epd.masterdata.repository.CityRepository;
+import tj.mintrans.epd.masterdata.repository.OrganizationRepository;
 import tj.mintrans.epd.masterdata.repository.RegionRepository;
 import tj.mintrans.epd.masterdata.service.AuditService;
 import tj.mintrans.epd.masterdata.web.error.NotFoundException;
@@ -38,10 +42,15 @@ import java.util.UUID;
 public class RegionController {
 
     private final RegionRepository regions;
+    private final CityRepository cities;
+    private final OrganizationRepository organizations;
     private final AuditService audit;
 
-    public RegionController(RegionRepository regions, AuditService audit) {
+    public RegionController(RegionRepository regions, CityRepository cities, OrganizationRepository organizations,
+                            AuditService audit) {
         this.regions = regions;
+        this.cities = cities;
+        this.organizations = organizations;
         this.audit = audit;
     }
 
@@ -50,6 +59,8 @@ public class RegionController {
             @Max(value = 7, message = "Код региона: 1–7") Short code,
             @NotBlank String nameRu,
             String nameTj,
+            /* «Рамз» — статистический код зоны, как в «Роҳхат» (сверка 25.09, E6). */
+            @Size(max = 10, message = "Рамз — не длиннее 10 символов") String statCode,
             Short sortOrder,
             Boolean active) {
     }
@@ -70,6 +81,7 @@ public class RegionController {
         region.setCode(req.code());
         region.setNameRu(req.nameRu().trim());
         region.setNameTj(req.nameTj());
+        region.setStatCode(req.statCode() == null || req.statCode().isBlank() ? null : req.statCode().trim());
         if (req.sortOrder() != null) region.setSortOrder(req.sortOrder());
         region.setActive(req.active() == null || req.active());
         var saved = regions.save(region);
@@ -83,6 +95,13 @@ public class RegionController {
     public ResponseEntity<Void> delete(@PathVariable UUID id) {
         var region = regions.findById(id)
                 .orElseThrow(() -> new NotFoundException("Регион не найден"));
+        // На код региона ссылаются города и организации (region_id без FK) — удаление оставило бы их
+        // без региона в отчётах. Такой регион можно только отключить.
+        long used = cities.countByRegionId(region.getCode()) + organizations.countByRegionId(region.getCode());
+        if (used > 0) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                    "Регион используется (" + used + " городов и организаций) — удалить нельзя, отключите его");
+        }
         regions.delete(region);
         audit.record(AuditService.DELETE, "REGION",
                 String.valueOf(region.getCode()), region.getNameRu(), null);

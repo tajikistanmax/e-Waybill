@@ -47,6 +47,8 @@ public interface OrganizationRepository extends JpaRepository<Organization, UUID
     @Query("select o.id from Organization o where o.regionId = :region")
     List<UUID> findIdsByRegion(@Param("region") Short region);
 
+    long countByRegionId(Short regionId);
+
     @Query("select o.id from Organization o where lower(o.cityName) = lower(:city)")
     List<UUID> findIdsByCityName(@Param("city") String city);
 

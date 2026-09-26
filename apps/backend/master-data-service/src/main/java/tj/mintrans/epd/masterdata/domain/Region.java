@@ -41,6 +41,10 @@ public class Region {
     @Column(name = "name_tj")
     private String nameTj;
 
+    /** «Рамз» — статистический код зоны из «Роҳхат» (3501 Душанбе … 3590 ВМКБ), V85. */
+    @Column(name = "stat_code")
+    private String statCode;
+
     @Column(name = "sort_order", nullable = false)
     private short sortOrder;
 
@@ -72,6 +76,8 @@ public class Region {
     public void setNameRu(String nameRu) { this.nameRu = nameRu; }
     public String getNameTj() { return nameTj; }
     public void setNameTj(String nameTj) { this.nameTj = nameTj; }
+    public String getStatCode() { return statCode; }
+    public void setStatCode(String statCode) { this.statCode = statCode; }
     public short getSortOrder() { return sortOrder; }
     public void setSortOrder(short sortOrder) { this.sortOrder = sortOrder; }
     public boolean isActive() { return active; }

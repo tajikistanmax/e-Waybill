@@ -444,9 +444,15 @@ export const md = {
   cities: (region?: number) => fetch(`/md-api/api/v1/cities${region ? `?region=${region}` : ''}`, { headers: authHeaders() }).then(r => handle<Record<string, unknown>[]>(r)),
   // Справочник внешних (зарубежных) городов (V60). Опц. фильтр по стране (ISO alpha-2).
   // Чтение — любой авторизованный; upsert/удаление — SYSTEM_ADMIN.
-  externalCities: (country?: string) => fetch(
-    `/md-api/api/v1/external-cities${country ? `?country=${encodeURIComponent(country)}` : ''}`,
-    { headers: authHeaders() }).then(r => handle<ExternalCity[]>(r)),
+  // q — поиск по названию; без страны — по всем странам, до 200 строк (сверка 25.09, E6).
+  externalCities: (country?: string, q?: string) => {
+    const qs = new URLSearchParams();
+    if (country) qs.set('country', country);
+    if (q) qs.set('q', q);
+    const s = qs.toString();
+    return fetch(`/md-api/api/v1/external-cities${s ? `?${s}` : ''}`, { headers: authHeaders() })
+      .then(r => handle<ExternalCity[]>(r));
+  },
   saveExternalCity: (body: Record<string, unknown>) => mdPost('external-cities', body) as Promise<ExternalCity>,
   deleteExternalCity: (id: string) => mdDelete(`external-cities/${id}`),
   // Справочник типов маршрутов (V63). Чтение — любой авторизованный; upsert/удаление — SYSTEM_ADMIN.

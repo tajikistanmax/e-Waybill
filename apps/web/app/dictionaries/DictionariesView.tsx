@@ -11,7 +11,7 @@ import { Icon, P } from '../icons';
 type Row = Record<string, unknown>;
 export type DictTab = 'routes' | 'clients' | 'fuel-norms' | 'coefficients' | 'tariffs' | 'cargos'
   | 'brands' | 'winter-coefs' | 'mountain-coefs' | 'city-coefs' | 'used-coefs' | 'drive-classes'
-  | 'directions' | 'route-tariffs' | 'cities';
+  | 'directions' | 'route-tariffs' | 'cities' | 'regions';
 
 const LABEL_KEY: Record<DictTab, string> = {
   routes: 'dict.sec.routes', clients: 'dict.sec.clients', 'fuel-norms': 'dict.sec.fuelnorms',
@@ -19,7 +19,7 @@ const LABEL_KEY: Record<DictTab, string> = {
   brands: 'dict.sec.brands', 'winter-coefs': 'dict.sec.wintercoefs', 'mountain-coefs': 'dict.sec.mountaincoefs',
   'city-coefs': 'dict.sec.citycoefs', 'used-coefs': 'dict.sec.usedcoefs', 'drive-classes': 'dict.sec.driveclasses',
   directions: 'dict.sec.directions', 'route-tariffs': 'dict.sec.routetariffs',
-  cities: 'dict.sec.cities',
+  cities: 'dict.sec.cities', regions: 'dict.sec.regions',
 };
 
 const TT: Record<number, string> = { 1: 'Автобус', 2: 'Троллейбус', 3: 'Микроавтобус', 4: 'Легковой', 5: 'Грузовой', 6: 'Грузовой международный' };
@@ -37,8 +37,8 @@ const ORG_TABS: DictTab[] = ['routes', 'clients'];
 const PER_PAGE = 20;
 
 function apiBase(tab: DictTab): string {
-  // Города живут своим контроллером (/api/v1/cities), остальные — под dictionaries/legacy-ref.
-  if (tab === 'cities') return '';
+  // Города и регионы живут своими контроллерами (/api/v1/cities, /api/v1/regions), остальные — под dictionaries/legacy-ref.
+  if (tab === 'cities' || tab === 'regions') return '';
   return LEGACY_REF_TABS.includes(tab) ? 'legacy-ref' : 'dictionaries';
 }
 
@@ -73,7 +73,7 @@ async function apiDelete(tab: DictTab, id: string): Promise<void> {
 }
 
 /** Нац. справочники (правит только SYSTEM_ADMIN): нормы/коэфф./тарифы + весь расчётный блок. */
-const NATIONAL_TABS: DictTab[] = ['fuel-norms', 'coefficients', 'tariffs', 'cities', ...LEGACY_REF_TABS];
+const NATIONAL_TABS: DictTab[] = ['fuel-norms', 'coefficients', 'tariffs', 'cities', 'regions', ...LEGACY_REF_TABS];
 
 const s = (v: unknown) => (v == null || v === '' ? '—' : String(v));
 
@@ -199,6 +199,11 @@ export default function DictionariesView({ tab }: { tab: DictTab }) {
       if (tab === 'clients') {
         body.type = form.clientType ? Number(form.clientType) : 1;
         delete body.clientType;
+      }
+      if (tab === 'regions') {
+        body.code = Number(form.code);
+        body.sortOrder = form.sortOrder ? Number(form.sortOrder) : null;
+        body.active = form.active !== 'false';
       }
       // Правка существующей записи — по её идентификатору (иначе апсерт по ключу создал бы вторую).
       body.id = editing?.id ?? null;
@@ -440,7 +445,8 @@ export default function DictionariesView({ tab }: { tab: DictTab }) {
       </>}
       {tab === 'directions' && <>
         <div><label>{t('col.title')}</label><input required {...f('title')} placeholder="Душанбе - Худжанд" /></div>
-        <div><label>{t('col.number')}</label><input type="number" {...f('dirNumber')} /></div>
+        {/* Номер направления обязателен, как в «Роҳхат» (сверка 25.09, E6). */}
+        <div><label>{t('col.number')}</label><input type="number" required {...f('dirNumber')} /></div>
         {/* Коэффициенты выбираются по названию, а не вводом числового идентификатора. */}
         <div><label>{t('dict.f.winterCoefId')}</label>{refSelect('winterCoefId', winterList, r => `${String(r.name)} (${s(r.coef)})`)}</div>
         <div><label>{t('dict.f.mountainCoefId')}</label>{refSelect('mountainCoefId', mountainList, r => `${String(r.name)} (${s(r.coef)})`)}</div>
@@ -458,6 +464,18 @@ export default function DictionariesView({ tab }: { tab: DictTab }) {
         </div>
         <div><label>{t('col.code')}</label><input maxLength={20} {...f('code')} placeholder="01" /></div>
         <div><label>{t('col.name')}</label><input required {...f('name')} placeholder="Душанбе" /></div>
+      </>}
+      {tab === 'regions' && <>
+        {/* Код 1..7 — ключ region_id городов/организаций/маршрутов: у существующего региона не меняется. */}
+        <div><label>{t('col.code')}</label><input type="number" min={1} max={7} required disabled={!!editing} {...f('code')} /></div>
+        <div><label>{t('col.statcode')}</label><input maxLength={10} {...f('statCode')} placeholder="3501" /></div>
+        <div><label>{t('cls.name.ru')}</label><input required {...f('nameRu')} /></div>
+        <div><label>{t('cls.name.tj')}</label><input {...f('nameTj')} /></div>
+        <div><label>{t('col.sortorder')}</label><input type="number" min={0} {...f('sortOrder')} /></div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <label>{t('cls.active')}</label>
+          <input type="checkbox" checked={form.active !== 'false'} onChange={e => setForm({ ...form, active: e.target.checked ? 'true' : 'false' })} />
+        </div>
       </>}
       {tab === 'route-tariffs' && <>
         <div><label>{t('col.routeid')}</label>
@@ -521,6 +539,7 @@ export default function DictionariesView({ tab }: { tab: DictTab }) {
             {tab === 'directions' && <tr><th>{t('col.title')}</th><th>{t('col.number')}</th><th>{t('col.checked')}</th><th>{t('col.actions')}</th></tr>}
             {tab === 'route-tariffs' && <tr><th>{t('col.routeid')}</th><th>{t('col.fuel')}</th><th>{t('dict.f.pricepermkm')}</th><th>{t('dict.f.priceonetime')}</th><th>{t('dict.f.advcoe')}</th><th>{t('col.actions')}</th></tr>}
             {tab === 'cities' && <tr><th>{t('col.region')}</th><th>{t('col.code')}</th><th>{t('col.name')}</th><th>{t('col.actions')}</th></tr>}
+            {tab === 'regions' && <tr><th>{t('col.code')}</th><th>{t('col.statcode')}</th><th>{t('cls.name.ru')}</th><th>{t('cls.name.tj')}</th><th>{t('cls.active')}</th><th>{t('col.actions')}</th></tr>}
           </thead>
           <tbody>
             {view.map((r, i) => (
@@ -538,6 +557,7 @@ export default function DictionariesView({ tab }: { tab: DictTab }) {
                 {tab === 'drive-classes' && <><td style={{ fontWeight: 600, color: 'var(--ink)' }}>{String(r.driveClass)}</td><td><b>{String(r.coef ?? '—')}</b></td></>}
                 {tab === 'directions' && <><td style={{ fontWeight: 600, color: 'var(--ink)' }}>{String(r.title)}</td><td>{String(r.number ?? '—')}</td><td>{r.checked ? t('st.yes') : '—'}</td></>}
                 {tab === 'cities' && <><td>{r.regionId != null ? t('region.' + Number(r.regionId)) : '—'}</td><td><span className="number">{s(r.code)}</span></td><td style={{ fontWeight: 600, color: 'var(--ink)' }}>{String(r.name)}</td></>}
+                {tab === 'regions' && <><td><span className="number">{s(r.code)}</span></td><td><span className="number">{s(r.statCode)}</span></td><td style={{ fontWeight: 600, color: 'var(--ink)' }}>{String(r.nameRu)}</td><td>{s(r.nameTj)}</td><td>{r.active ? t('st.yes') : '—'}</td></>}
                 {tab === 'route-tariffs' && <><td>{(() => { const rt = routeList.find(x => String(x.id) === String(r.routeId)); return rt ? `${String(rt.number)} — ${String(rt.name)}` : String(r.routeId); })()}</td><td>{r.fuelId != null ? String(r.fuelId) : t('dict.any')}</td><td><b>{String(r.pricePer1Mkm)}</b></td><td>{String(r.priceOneTime)}</td><td>{r.advCoe != null ? String(r.advCoe) : '—'}</td></>}
                 {actionsCell(r)}
               </tr>
@@ -576,7 +596,7 @@ export default function DictionariesView({ tab }: { tab: DictTab }) {
       {confirmDel && (
         <Modal title={t('dict.delete.title')} onClose={() => setConfirmDel(null)}>
           <p style={{ marginBottom: 14 }}>
-            {t('dict.delete.q')} <b>{String(confirmDel.name ?? confirmDel.title ?? confirmDel.driveClass ?? confirmDel.number ?? confirmDel.id)}</b>?
+            {t('dict.delete.q')} <b>{String(confirmDel.name ?? confirmDel.nameRu ?? confirmDel.title ?? confirmDel.driveClass ?? confirmDel.number ?? confirmDel.id)}</b>?
           </p>
           <div className="hint" style={{ marginBottom: 14 }}>{t('dict.delete.note')}</div>
           <div style={{ display: 'flex', gap: 10 }}>

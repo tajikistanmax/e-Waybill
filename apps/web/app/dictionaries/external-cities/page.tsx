@@ -26,6 +26,9 @@ export default function ExternalCitiesPage() {
   const [busy, setBusy] = useState(false);
   const [form, setForm] = useState({ nameRu: '', nameTj: '' });
   const [page, setPage] = useState(1);
+  // Поиск по названию во всех странах (сверка 25.09, E6): городов 18 тыс., страну не всегда знают.
+  const [q, setQ] = useState('');
+  const searching = q.trim().length >= 2;
 
   // Страны (классификатор COUNTRY, только активные) — для фильтра и привязки нового города.
   useEffect(() => {
@@ -35,12 +38,17 @@ export default function ExternalCitiesPage() {
   }, []);
 
   const reload = useCallback(async () => {
+    if (searching) {
+      try { setRows(await md.externalCities(undefined, q.trim())); setError(''); }
+      catch (e) { setError(e instanceof Error ? e.message : String(e)); }
+      return;
+    }
     if (!country) { setRows([]); return; }
     try { setRows(await md.externalCities(country)); setError(''); }
     catch (e) { setError(e instanceof Error ? e.message : String(e)); }
-  }, [country]);
+  }, [country, q, searching]);
 
-  useEffect(() => { setForm({ nameRu: '', nameTj: '' }); reload(); }, [reload]);
+  useEffect(() => { setForm({ nameRu: '', nameTj: '' }); setPage(1); const h = setTimeout(reload, 250); return () => clearTimeout(h); }, [reload]);
 
   async function save(body: Record<string, unknown>) {
     setBusy(true); setError('');
@@ -67,19 +75,22 @@ export default function ExternalCitiesPage() {
 
       <div style={{ display: 'flex', gap: 10, marginBottom: 16, alignItems: 'center', flexWrap: 'wrap' }}>
         <label style={{ fontSize: 13, color: 'var(--muted)' }}>{t('extcity.country')}</label>
-        <select value={country} onChange={e => { setCountry(e.target.value); setPage(1); }} style={{ minWidth: 220 }}>
+        <select value={country} onChange={e => { setCountry(e.target.value); setPage(1); }} style={{ minWidth: 220 }} disabled={searching}>
           {countries.map(c => <option key={c.code} value={c.code}>{c.nameRu}</option>)}
         </select>
+        <input value={q} onChange={e => setQ(e.target.value)} placeholder={t('extcity.search')} style={{ width: 260 }}
+          data-testid="extcity-q" />
       </div>
 
       <div className="card">
         <div className="card-h">
-          <h2>{t('extcity.title')}: {country ? countryName(country) : '—'}</h2>
+          <h2>{t('extcity.title')}: {searching ? t('extcity.allcountries') : (country ? countryName(country) : '—')}</h2>
           <span style={{ marginLeft: 'auto', color: 'var(--muted)', fontSize: 12.5 }}>{t('dict.totalrecords')}: {rows.length}</span>
         </div>
         <table>
           <thead>
             <tr>
+              {searching && <th>{t('extcity.country')}</th>}
               <th>{t('cls.name.ru')}</th>
               <th>{t('cls.name.tj')}</th>
               <th style={{ width: 90 }}>{t('cls.active')}</th>
@@ -87,9 +98,10 @@ export default function ExternalCitiesPage() {
             </tr>
           </thead>
           <tbody>
-            {rows.length === 0 && <tr><td colSpan={4} style={{ color: 'var(--muted)', textAlign: 'center', padding: 20 }}>{t('common.norecords')}</td></tr>}
+            {rows.length === 0 && <tr><td colSpan={5} style={{ color: 'var(--muted)', textAlign: 'center', padding: 20 }}>{t('common.norecords')}</td></tr>}
             {view.map(r => (
-              <tr key={r.id} style={{ opacity: r.active ? 1 : 0.5 }}>
+              <tr key={r.id} style={{ opacity: r.active ? 1 : 0.5 }} data-testid="extcity-row">
+                {searching && <td>{countryName(r.countryCode)}</td>}
                 <td style={{ fontWeight: 600, color: 'var(--ink)' }}>{r.nameRu}</td>
                 <td>{r.nameTj ?? '—'}</td>
                 <td>
@@ -126,7 +138,7 @@ export default function ExternalCitiesPage() {
           <div style={{ color: 'var(--muted)', fontSize: 13, marginTop: 12 }}>{t('extcity.readonly')}</div>
         )}
 
-        {isSysAdmin && country && (
+        {isSysAdmin && country && !searching && (
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end', marginTop: 14, paddingTop: 14, borderTop: '1px solid var(--line)' }}>
             <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12.5 }}>
               {t('cls.name.ru')}

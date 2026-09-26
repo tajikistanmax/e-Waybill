@@ -9,4 +9,5 @@ import java.util.UUID;
 public interface CityRepository extends JpaRepository<City, UUID> {
     List<City> findAllByOrderByRegionIdAscNameAsc();
     List<City> findByRegionIdOrderByNameAsc(short regionId);
+    long countByRegionId(short regionId);
 }
