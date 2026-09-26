@@ -380,6 +380,58 @@ public class ReportXlsxWriter {
     };
 
     /** Сводный отчёт «Количество путевых листов» (§6.3) → XLSX. */
+    /** Статформа «1-авто» (сверка 25.09, D4): нишондиҳандаҳо, воҳиди ченак, рамз, за период, с начала года. */
+    public byte[] writeStat1Auto(tj.mintrans.epd.waybill.service.Stat1AutoService.Report report) {
+        try (Workbook wb = new XSSFWorkbook(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+            Sheet sheet = wb.createSheet("1-авто");
+            CellStyle headStyle = wb.createCellStyle();
+            Font headFont = wb.createFont();
+            headFont.setBold(true);
+            headStyle.setFont(headFont);
+            headStyle.setFillForegroundColor(IndexedColors.GREY_25_PERCENT.getIndex());
+            headStyle.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+            headStyle.setWrapText(true);
+            CellStyle groupStyle = wb.createCellStyle();
+            Font gf = wb.createFont();
+            gf.setBold(true);
+            groupStyle.setFont(gf);
+
+            int r = 0;
+            cell(sheet.createRow(r++), 0, "Шакли 1-авто · " + D.format(report.from()) + " — " + D.format(report.to())
+                    + (report.organizationRma() == null ? "" : " · " + report.organizationRma()), null);
+            if (report.note() != null) {
+                cell(sheet.createRow(r++), 0, report.note(), null);
+            }
+            r++;
+            Row head = sheet.createRow(r++);
+            String[] headers = {"Нишондиҳандаҳо", "Воҳиди ченак", "Рамзи сатрҳо",
+                    "За период " + D.format(report.from()) + " — " + D.format(report.to()),
+                    "С начала года (с " + D.format(report.yearFrom()) + ")"};
+            for (int c = 0; c < headers.length; c++) {
+                cell(head, c, headers[c], headStyle);
+            }
+            for (var row : report.rows()) {
+                Row x = sheet.createRow(r++);
+                boolean group = row.unit() == null;
+                cell(x, 0, (row.level() > 0 ? "    " : "") + row.label(), group || row.level() == 0 ? groupStyle : null);
+                cell(x, 1, row.unit(), null);
+                cell(x, 2, row.code(), null);
+                if (row.month() != null) {
+                    num(x, 3, row.month(), null);
+                }
+                if (row.ytd() != null) {
+                    num(x, 4, row.ytd(), null);
+                }
+            }
+            for (int c = 0; c < headers.length; c++) {
+                sheet.autoSizeColumn(c);
+            }
+            return finish(wb, out);
+        } catch (IOException e) {
+            throw new UnprocessableException("Не удалось сформировать XLSX формы 1-авто");
+        }
+    }
+
     public byte[] writeRegionalCount(RegionalCountReport report) {
         try (Workbook wb = new XSSFWorkbook(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
             Sheet sheet = wb.createSheet("Количество ПЛ");

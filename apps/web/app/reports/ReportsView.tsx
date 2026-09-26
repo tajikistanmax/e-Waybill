@@ -185,6 +185,13 @@ function BarRow({ label, value, max, color }: { label: string; value: number; ma
 
 export type ReportTab = 'summary' | 'journal' | 'driver' | 'vehicle' | 'fuel' | 'typed' | 'regional' | 'malum' | 'journals';
 
+/** Статформа «1-авто» (legacy тип 4 «Авто», строки 01–44; сверка 25.09, D4) — отдельный API, своя таблица. */
+const STAT_1AUTO = 'STAT_1AUTO';
+type Stat1Auto = {
+  from: string; to: string; yearFrom: string; organizationRma: string | null; note: string | null;
+  rows: { code: string | null; label: string; unit: string | null; month: number | null; ytd: number | null; level: number }[];
+};
+
 /**
  * Один раздел отчётов; вкладка задаётся маршрутом (/reports/<...>), а не состоянием.
  * `kind` — Мусофирбарӣ / Боркашонӣ для типовых (/reports/passenger|cargo),
@@ -209,6 +216,11 @@ export default function ReportsView({ tab, kind = 'passenger', mode = 'trans' }:
   const [typedType, setTypedType] = useState('BY_VEHICLE');
   const [typedTypes, setTypedTypes] = useState<ReportTypeMeta[]>([]);
   const [typedReport, setTypedReport] = useState<TypedReport | null>(null);
+  const [stat, setStat] = useState<Stat1Auto | null>(null);
+  // «С начала года» — отдельный проход с 1 января, у крупного перевозчика в разы дольше; по флажку.
+  const [statYtd, setStatYtd] = useState(false);
+  const statQs = `from=${from}&to=${to}${statYtd ? '&ytd=true' : ''}`;
+  const isStat = tab === 'typed' && kind === 'passenger' && typedType === STAT_1AUTO;
   // Отбор типового отчёта по одному ТС / водителю (legacy report_details, MIGRATION.md 6.7).
   const [typedVehicle, setTypedVehicle] = useState('');
   const [typedDriver, setTypedDriver] = useState('');
@@ -263,7 +275,10 @@ export default function ReportsView({ tab, kind = 'passenger', mode = 'trans' }:
       if (tab === 'driver') setByDriver(await getJson(`/wb-api/api/v1/reports/by-driver?from=${from}&to=${to}`));
       if (tab === 'vehicle') setByVehicle(await getJson(`/wb-api/api/v1/reports/by-vehicle?from=${from}&to=${to}`));
       if (tab === 'fuel') setFuel(await getJson(`/wb-api/api/v1/reports/fuel?from=${from}&to=${to}`));
-      if (tab === 'typed') {
+      if (tab === 'typed' && isStat) {
+        setStat(await getJson<Stat1Auto>(`/wb-api/api/v1/reports/stat-1auto?${statQs}`
+          + (typedOrg ? `&organizationRma=${encodeURIComponent(typedOrg)}` : '')));
+      } else if (tab === 'typed') {
         const rep = await getJson<TypedReport>(`/wb-api/api/v1/reports/${typedKind}?type=${typedType}&from=${from}&to=${to}${typedFilterQs}`);
         setTypedReport({ ...rep, rows: rep.rows.map(withFuelDev), totals: rep.totals ? withFuelDev(rep.totals) : null });
       }
@@ -277,7 +292,7 @@ export default function ReportsView({ tab, kind = 'passenger', mode = 'trans' }:
     } catch (e) {
       setError((e as Error).message);
     }
-  }, [tab, from, to, journalDate, typedKind, typedType, typedFilterQs, regionalMode, regionalBill, regionalForm, normType, typeCompany]);
+  }, [tab, from, to, journalDate, typedKind, typedType, typedFilterQs, typedOrg, isStat, statQs, regionalMode, regionalBill, regionalForm, normType, typeCompany]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -315,9 +330,12 @@ export default function ReportsView({ tab, kind = 'passenger', mode = 'trans' }:
       setError((e as Error).message);
     }
   }
-  const downloadTypedXlsx = () => downloadXlsx(
-    `/wb-api/api/v1/reports/${typedKind}.xlsx?type=${typedType}&from=${from}&to=${to}${typedFilterQs}`,
-    `отчёт-${typedType.toLowerCase()}-${from}_${to}.xlsx`);
+  const downloadTypedXlsx = () => isStat
+    ? downloadXlsx(`/wb-api/api/v1/reports/stat-1auto.xlsx?${statQs}`
+        + (typedOrg ? `&organizationRma=${encodeURIComponent(typedOrg)}` : ''), `1-авто-${from}_${to}.xlsx`)
+    : downloadXlsx(
+      `/wb-api/api/v1/reports/${typedKind}.xlsx?type=${typedType}&from=${from}&to=${to}${typedFilterQs}`,
+      `отчёт-${typedType.toLowerCase()}-${from}_${to}.xlsx`);
   const downloadRegionalXlsx = () => {
     const tc = typeCompany ? `&typeCompany=${typeCompany}` : '';
     const fm = regionalForm ? `&type=${regionalForm}` : '';
@@ -332,7 +350,7 @@ export default function ReportsView({ tab, kind = 'passenger', mode = 'trans' }:
     : tab === 'journal' ? journal.length > 0
     : tab === 'driver' ? byDriver.length > 0
     : tab === 'vehicle' ? byVehicle.length > 0
-    : tab === 'typed' ? !!typedReport && typedReport.rows.length > 0
+    : tab === 'typed' ? (isStat ? !!stat : !!typedReport && typedReport.rows.length > 0)
     : tab === 'regional' ? (regionalMode === 'trans' ? !!regional && regional.regions.length > 0
         : regionalMode === 'count' ? !!regionalCount && regionalCount.regions.length > 0
         : !!norm && norm.rows.length > 0)
@@ -367,6 +385,10 @@ export default function ReportsView({ tab, kind = 'passenger', mode = 'trans' }:
       const rows: unknown[][] = [['Топливо', 'Выдано, л', 'Остаток, л']];
       fuel.forEach(r => rows.push([r.fuelName ?? FUEL_NAMES[r.fuelType] ?? r.fuelType, r.given, r.remainEnd]));
       downloadCsv(`отчёт-топливо-${from}_${to}.csv`, rows);
+    } else if (isStat && stat) {
+      const rows: unknown[][] = [['Нишондиҳандаҳо', 'Воҳиди ченак', 'Рамз', `${from} — ${to}`, `с ${stat.yearFrom}`]];
+      stat.rows.forEach(r => rows.push([r.label, r.unit ?? '', r.code ?? '', r.month ?? '', r.ytd ?? '']));
+      downloadCsv(`1-авто-${from}_${to}.csv`, rows);
     } else if (tab === 'typed' && typedReport) {
       const rows: unknown[][] = [typedCols.map(c => c.label)];
       const line = (r: TypedRow) => typedCols.map(c => {
@@ -486,11 +508,14 @@ export default function ReportsView({ tab, kind = 'passenger', mode = 'trans' }:
       {tab === 'typed' && (
         <div className="toolbar">
           {/* Бланк отчёта (legacy report_bill): автобус / троллейбус / 1-А / 3-С …, 2-Б / 5Б-БМ. */}
-          <select value={typedBill} onChange={e => setTypedBill(e.target.value)} style={{ width: 210 }} title={t('rep.bill.title')} data-testid="rep-bill">
-            {TYPED_BILLS[typedKind].map(b => <option key={b.v} value={b.v}>{t(b.k)}</option>)}
-          </select>
-          <select value={typedType} onChange={e => setTypedType(e.target.value)} style={{ width: 280 }}>
+          {!isStat && (
+            <select value={typedBill} onChange={e => setTypedBill(e.target.value)} style={{ width: 210 }} title={t('rep.bill.title')} data-testid="rep-bill">
+              {TYPED_BILLS[typedKind].map(b => <option key={b.v} value={b.v}>{t(b.k)}</option>)}
+            </select>
+          )}
+          <select value={typedType} onChange={e => setTypedType(e.target.value)} style={{ width: 280 }} data-testid="rep-type">
             {typedTypes.map(rt => <option key={rt.code} value={rt.code}>{rt.label}</option>)}
+            {typedKind === 'passenger' && <option value={STAT_1AUTO}>{t('rep.stat1auto')}</option>}
           </select>
           <span className="spacer" style={{ flex: 1 }} />
           {/* Отбор по предприятию — как фильтр «Корхона» в старой платформе. */}
@@ -500,10 +525,18 @@ export default function ReportsView({ tab, kind = 'passenger', mode = 'trans' }:
               {orgs.map(o => <option key={o.rma} value={o.rma}>{o.name}</option>)}
             </select>
           )}
-          <input type="text" style={{ width: 150 }} value={typedVehicle} onChange={e => setTypedVehicle(e.target.value)}
-            placeholder={t('rep.typed.filter.vehicle')} title={t('rep.typed.filter.vehicle')} />
-          <input type="text" style={{ width: 150 }} value={typedDriver} onChange={e => setTypedDriver(e.target.value)}
-            placeholder={t('rep.typed.filter.driver')} title={t('rep.typed.filter.driver')} />
+          {isStat && (
+            <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13 }} title={t('rep.stat1auto.ytdhint')}>
+              <input type="checkbox" checked={statYtd} onChange={e => setStatYtd(e.target.checked)} data-testid="stat-ytd" />
+              {t('rep.stat1auto.ytdcheck')}
+            </label>
+          )}
+          {!isStat && <>
+            <input type="text" style={{ width: 150 }} value={typedVehicle} onChange={e => setTypedVehicle(e.target.value)}
+              placeholder={t('rep.typed.filter.vehicle')} title={t('rep.typed.filter.vehicle')} />
+            <input type="text" style={{ width: 150 }} value={typedDriver} onChange={e => setTypedDriver(e.target.value)}
+              placeholder={t('rep.typed.filter.driver')} title={t('rep.typed.filter.driver')} />
+          </>}
         </div>
       )}
       {error && <div className="error">{error}</div>}
@@ -619,7 +652,32 @@ export default function ReportsView({ tab, kind = 'passenger', mode = 'trans' }:
         </div>
       )}
 
-      {tab === 'typed' && (
+      {isStat && (
+        <div className="card" style={{ overflowX: 'auto' }} data-testid="stat-1auto">
+          <h2>{t('rep.stat1auto')} · {from} — {to}</h2>
+          <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: 0 }}>{t('rep.stat1auto.note')}</p>
+          {stat?.note && <div className="hint" style={{ marginBottom: 10 }}>{stat.note}</div>}
+          <table>
+            <thead><tr>
+              <th>Нишондиҳандаҳо</th><th>Воҳиди ченак</th><th>Рамзи сатрҳо</th>
+              <th>{from} — {to}</th><th>{t('rep.stat1auto.ytd')} {stat?.yearFrom ?? ''}</th>
+            </tr></thead>
+            <tbody>
+              {(stat?.rows ?? []).map((r, i) => (
+                <tr key={i} style={r.unit == null ? { background: 'var(--amber-050, #fef9e7)', fontWeight: 700 } : r.level === 0 ? { fontWeight: 600 } : undefined}>
+                  <td style={{ paddingLeft: r.level > 0 ? 28 : undefined }}>{r.label}</td>
+                  <td>{r.unit ?? ''}</td>
+                  <td className="number">{r.code ?? ''}</td>
+                  <td>{r.month == null ? '' : r.month.toLocaleString('ru-RU')}</td>
+                  <td>{r.ytd == null ? (r.unit == null ? '' : '—') : r.ytd.toLocaleString('ru-RU')}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {tab === 'typed' && !isStat && (
         <div className="card" style={{ overflowX: 'auto' }}>
           <h2>{typedReport?.typeLabel ?? t('rep.crosscut')} · {typedKind === 'passenger' ? t('rep.pax') : t('rep.cargo')} · {from} — {to}</h2>
           <table>

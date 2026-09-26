@@ -110,6 +110,8 @@ Check 'journal/doctor.xlsx' (Api 'accountant' 'GET' "$Wb/api/v1/reports/journal/
 Check 'journal/mechanic' (Api 'accountant' 'GET' "$Wb/api/v1/reports/journal/mechanic?$p") 'json' 'accountant'
 Check 'journal/mechanic.xlsx' (Api 'accountant' 'GET' "$Wb/api/v1/reports/journal/mechanic.xlsx?$p") 'xlsx' 'accountant'
 Check 'passenger-volume-trend' (Api 'accountant' 'GET' "$Wb/api/v1/reports/passenger-volume-trend?months=7") 'json' 'accountant'
+Check 'stat-1auto' (Api 'accountant' 'GET' "$Wb/api/v1/reports/stat-1auto?$p") 'json' 'accountant'
+Check 'stat-1auto.xlsx (ytd)' (Api 'accountant' 'GET' "$Wb/api/v1/reports/stat-1auto.xlsx?$p&ytd=true") 'xlsx' 'accountant'
 Check 'malumotnomas list' (Api 'accountant' 'GET' "$Wb/api/v1/malumotnomas") 'json' 'accountant'
 Check 'malumotnomas/report' (Api 'accountant' 'GET' "$Wb/api/v1/malumotnomas/report?$p") 'json' 'accountant'
 Check 'malumotnomas/report.xlsx' (Api 'accountant' 'GET' "$Wb/api/v1/malumotnomas/report.xlsx?$p") 'xlsx' 'accountant'
