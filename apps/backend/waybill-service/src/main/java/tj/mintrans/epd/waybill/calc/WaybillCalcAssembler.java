@@ -336,9 +336,22 @@ public class WaybillCalcAssembler {
                 s.specialDistance() != null ? s.specialDistance() : tdDouble(td, "specialDistance"),
                 s.directionWinterCoefId(), s.directionMountainCoefId(), s.directionInCityCoefId(),
                 s.trailerWeight(), s.trailerCarrying(), s.trailerWeight2(),
-                s.earning(), s.companyPercentIncome(), s.driverDegree(),
+                s.earning() != null ? s.earning() : tdEarning(td), s.companyPercentIncome(), s.driverDegree(),
                 s.companyCat1(), s.companyCat2(), s.companyCat3(),
                 s.tariffPricePer1Mkm(), s.tariffPriceOneTime(), s.speedometerTotalDistance(), s.calcDate());
+    }
+
+    /**
+     * Выручка листа из данных B2B-канала КВД (сверка 25.09, A23): 1-АД присылает {@code earning}, 1-А/3-С —
+     * {@code kassa} («сдано в кассу»; legacy MBusCalc/BusCalc берут выручку именно из kassa). Используется,
+     * только если у рабочих дней листа выручки нет (см. {@link #calculate}).
+     */
+    static BigDecimal tdEarning(Map<String, Object> td) {
+        Double v = tdDouble(td, "earning");
+        if (v == null) {
+            v = tdDouble(td, "kassa");
+        }
+        return v == null ? null : BigDecimal.valueOf(v);
     }
 
     private static Double tdDouble(Map<String, Object> td, String key) {

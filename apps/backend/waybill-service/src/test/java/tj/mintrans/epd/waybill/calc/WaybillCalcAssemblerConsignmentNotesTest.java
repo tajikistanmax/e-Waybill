@@ -84,6 +84,15 @@ class WaybillCalcAssemblerConsignmentNotesTest {
     }
 
     @Test
+    @DisplayName("выручка B2B-канала: earning (1-АД), иначе kassa (1-А/3-С) — сверка 25.09, A23")
+    void b2bEarning() {
+        assertThat(WaybillCalcAssembler.tdEarning(Map.of("earning", "420.5"))).isEqualByComparingTo("420.5");
+        assertThat(WaybillCalcAssembler.tdEarning(Map.of("kassa", 150))).isEqualByComparingTo("150");
+        assertThat(WaybillCalcAssembler.tdEarning(Map.of("earning", 10, "kassa", 99))).isEqualByComparingTo("10");
+        assertThat(WaybillCalcAssembler.tdEarning(Map.of())).isNull();
+    }
+
+    @Test
     @DisplayName("явно переданное в запросе расчёта значение P не перезаписывается")
     void explicitWins() {
         var sup = new WaybillCalcAssembler.Supplement(null, null, null, 77d, null, null, null, null, null, null,

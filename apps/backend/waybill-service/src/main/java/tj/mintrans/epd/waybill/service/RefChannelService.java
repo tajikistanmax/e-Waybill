@@ -334,16 +334,21 @@ public class RefChannelService {
         waybills.save(wb);
     }
 
-    private static WaybillService.ReturnMetrics returnMetrics(Form form, Map<String, Object> body) {
-        Double trips = null;
+    static WaybillService.ReturnMetrics returnMetrics(Form form, Map<String, Object> body) {
         Double transportWork = null;
         Double conditioner = null;
         String arrival = null;
         if (form.isPassengerDaily()) {
-            Integer laps = intVal(body, "number_lap");
-            trips = laps == null ? null : laps.doubleValue();
+            // 1-АД: круги, выручка и «гашти ибтидоӣ» — как при возврате диспетчером (сверка 25.09, A23): лист без
+            // рабочих дней сохраняет их рабочим днём, и расчёт/отчёты видят выручку. Раньше круги уходили в
+            // «ездки Z» (грузовой показатель), а earning не доходил до расчёта вовсе.
             BigDecimal h = RefChannelRules.hours(time(body, "conditioner_time"));
             conditioner = h == null ? null : h.doubleValue();
+            String a = str(body, "begin_path_a");
+            String b = str(body, "begin_path_b");
+            return new WaybillService.ReturnMetrics(null, null, conditioner, null, null, null,
+                    intVal(body, "number_lap"), num(body, "earning"),
+                    a.isBlank() ? null : a, b.isBlank() ? null : b);
         }
         if (form == Form.WAYBILL5BBM) {
             BigDecimal cap = num(body, "cargo_capacity");
@@ -354,7 +359,7 @@ public class RefChannelService {
             LocalDateTime at = dateTime(body, "arrival_time");
             arrival = at == null ? null : at.toString();
         }
-        return new WaybillService.ReturnMetrics(transportWork, trips, conditioner, null, arrival, null);
+        return new WaybillService.ReturnMetrics(transportWork, null, conditioner, null, arrival, null);
     }
 
     // ------------------------------------------------------------------ confirm (врач/механик по РМА)
