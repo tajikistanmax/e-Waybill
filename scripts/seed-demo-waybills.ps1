@@ -24,7 +24,7 @@ foreach ($c in 1..4) {
     $pair = $null
     foreach ($v in $vehs) { $req = ReqCat $v.type; foreach ($d in $drvs) { if (HasCat $d.cats $req) { $pair = @{ v = $v; d = $d }; break } }; if ($pair) { break } }
     if (-not $pair) { Write-Output "Компания $c ($org): совместимая пара не найдена"; $fail++; continue }
-    $body = @{ organization_rma = $org; transport_registration_number = $pair.v.plate; driver_rma = $pair.d.rma; employee_rma = $disp; exit_date = (Get-Date -Format 'yyyy-MM-dd HH:mm'); distance = 50 } | ConvertTo-Json
+    $body = @{ organization_rma = $org; transport_registration_number = $pair.v.plate; driver_rma = $pair.d.rma; employee_rma = $disp; exit_date = (Get-Date -Format 'yyyy-MM-dd HH:mm'); entry_date = (Get-Date).AddHours(8).ToString("yyyy-MM-dd HH:mm"); distance = 50 } | ConvertTo-Json
     try {
         $r = Invoke-RestMethod -Method Post -Uri "$wb/api/v1/aggregator/waybills" -Body ([Text.Encoding]::UTF8.GetBytes($body)) -ContentType 'application/json; charset=utf-8'
         Write-Output "Компания ${c}: ПЛ на ТС $($pair.v.plate) (тип $($pair.v.type)) + водитель $($pair.d.rma) [$($pair.d.cats)]  id=$($r.id)"

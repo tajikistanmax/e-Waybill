@@ -15,7 +15,7 @@ import tj.mintrans.epd.waybill.domain.Waybill;
 import tj.mintrans.epd.waybill.domain.WaybillType;
 import tj.mintrans.epd.waybill.repository.GpsEventRepository;
 import tj.mintrans.epd.waybill.repository.WaybillRepository;
-import tj.mintrans.epd.waybill.web.error.ApiErrors.UnprocessableException;
+import tj.mintrans.epd.waybill.web.error.ApiErrors.FieldException;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -86,11 +86,12 @@ public class GpsEventService {
 
     @Transactional
     public Result register(Request req) {
-        GpsEventRules.requestError(req.state(), req.direction(), req.distanceKm())
-                .ifPresent(m -> { throw new UnprocessableException(m); });
+        // Ошибки — с полем запроса: Smart City ждёт legacy-ответ errors: {поле: [...]} (сверка 25.09, G3).
+        GpsEventRules.requestFieldError(req.state(), req.direction(), req.distanceKm())
+                .ifPresent(e -> { throw new FieldException(e.getKey(), e.getValue()); });
         String reg = req.vehicleRegNumber() == null ? "" : req.vehicleRegNumber().trim().toUpperCase();
         if (reg.isEmpty()) {
-            throw new UnprocessableException("Транспортное средство не найдено.");
+            throw new FieldException("transport", "Транспортное средство не найдено.");
         }
         OffsetDateTime now = req.eventTime() != null ? req.eventTime() : OffsetDateTime.now();
         LocalDate day = now.atZoneSameInstant(ZoneId.systemDefault()).toLocalDate();
@@ -98,7 +99,7 @@ public class GpsEventService {
         // ПЛ дня для этого ТС (legacy: последний Waybill1ad с created_at = сегодня).
         Waybill wb = waybills.findFirstByVehicleRegNumberAndWaybillTypeInAndSourceNotAndCreatedAtGreaterThanEqualOrderByCreatedAtDesc(
                         reg, waybillTypes, "MIGRATED", dayStart)
-                .orElseThrow(() -> new UnprocessableException("Путевой лист для данного транспортного средства не найден."));
+                .orElseThrow(() -> new FieldException("waybill", "Путевой лист для данного транспортного средства не найден."));
 
         String direction = req.state().isRoute() ? GpsEventRules.normalizeDirection(req.direction()) : null;
         OffsetDateTime lastSame = (direction != null
@@ -110,7 +111,7 @@ public class GpsEventService {
                         .map(GpsEvent::getEventTime).orElse(null)
                 : null;
         GpsEventRules.cooldownError(req.state(), now, lastSame, lastEnter, cooldownMinutes)
-                .ifPresent(m -> { throw new UnprocessableException(m); });
+                .ifPresent(m -> { throw new FieldException("state", m); });
 
         GpsEvent e = new GpsEvent();
         e.setWaybillId(wb.getId());

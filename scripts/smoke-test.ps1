@@ -132,7 +132,7 @@ try {
 # docker-compose.prod.yml) - обязателен токен учётной записи агрегатора epd-aggregator
 # (роль API_INTEGRATOR, пароль AGGREGATOR_PASSWORD в infra/.env). Пробуем открытый режим,
 # при 401 входим учётной записью агрегатора - так скрипт работает в обоих контурах.
-$aggPayload = @{ organization_rma = "025680800"; transport_registration_number = "0114TJ01"; driver_rma = "461930031"; employee_rma = "333333333"; exit_date = (Get-Date -Format "yyyy-MM-dd HH:mm"); distance = 50 }
+$aggPayload = @{ organization_rma = "025680800"; transport_registration_number = "0114TJ01"; driver_rma = "461930031"; employee_rma = "333333333"; exit_date = (Get-Date -Format "yyyy-MM-dd HH:mm"); entry_date = (Get-Date).AddHours(8).ToString("yyyy-MM-dd HH:mm"); distance = 50 }
 $hagg = @{}
 try {
     $agg = PostJson "$wb/api/v1/aggregator/waybills" $aggPayload $hagg

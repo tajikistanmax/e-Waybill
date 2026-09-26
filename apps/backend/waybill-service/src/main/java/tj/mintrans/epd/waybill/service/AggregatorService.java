@@ -10,10 +10,12 @@ import tj.mintrans.epd.waybill.domain.WaybillType;
 import tj.mintrans.epd.waybill.repository.WaybillRepository;
 import tj.mintrans.epd.waybill.repository.WaybillStatusEventRepository;
 import tj.mintrans.epd.waybill.web.error.ApiErrors.ConflictException;
+import tj.mintrans.epd.waybill.web.error.ApiErrors.FieldException;
 import tj.mintrans.epd.waybill.web.error.ApiErrors.NotFoundException;
-import tj.mintrans.epd.waybill.web.error.ApiErrors.UnprocessableException;
 
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
+import java.time.ZoneId;
 import java.util.EnumSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -60,6 +62,75 @@ public class AggregatorService {
         this.waybillService = waybillService;
     }
 
+    /** Итог запроса агрегатора: действующий лист этой тройки (200) или новая заявка (201). */
+    public record Submission(Waybill waybill, boolean created) {
+    }
+
+    /**
+     * Запрос агрегатора с семантикой legacy {@code Waybill3cController::waybill_neru} (сверка 25.09, G3).
+     *
+     * <ul>
+     *   <li>Есть лист этой организации, ТС и водителя, и сейчас между днём выезда и днём въезда —
+     *       он и возвращается: 409 «Доктор/Механик не подтвердил путёвку», пока нет осмотров,
+     *       затем 200 с листом. Раньше каждый повторный запрос аннулировал заявку и создавал новую,
+     *       и лист, опрашиваемый агрегатором, не доживал до осмотров.</li>
+     *   <li>Иначе дата выезда должна быть сегодняшней (422 {@code exit_date}), и создаётся новая
+     *       заявка — прежние агрегаторские листы на ТС и водителя закрываются.</li>
+     * </ul>
+     */
+    @Transactional
+    public Submission submit(String organizationRma, String transportRegistrationNumber, String driverRma,
+                             String employeeRma, OffsetDateTime exitDate, OffsetDateTime entryDate, int distance) {
+        validateDates(exitDate, entryDate);
+        var org = masterData.findOrganization(organizationRma)
+                .orElseThrow(() -> new NotFoundException("Organization not found"));
+        masterData.findVehicle(transportRegistrationNumber)
+                .orElseThrow(() -> new NotFoundException("Transport not found"));
+        masterData.findDriver(driverRma)
+                .orElseThrow(() -> new NotFoundException("Driver not found"));
+
+        var now = OffsetDateTime.now();
+        var current = waybills.findFirstByOrganizationRmaAndVehicleRegNumberAndDriverRmaAndSourceAndStatusInOrderByCreatedAtDesc(
+                organizationRma, transportRegistrationNumber, driverRma, "AGGREGATOR", WaybillStatus.OPEN_STATUSES);
+        if (current.isPresent() && inForce(current.get(), now)) {
+            return new Submission(requireConfirmed(current.get()), false);
+        }
+        if (!day(exitDate).equals(day(now))) {
+            throw new FieldException("exit_date", "Дата выезда должна быть сегодняшней");
+        }
+        return new Submission(create(organizationRma, transportRegistrationNumber, driverRma, employeeRma,
+                exitDate, entryDate, distance, org), true);
+    }
+
+    /** Лист «в силе», как в legacy: сейчас не раньше дня выезда и не позже дня въезда. */
+    static boolean inForce(Waybill wb, OffsetDateTime now) {
+        if (wb.getValidFrom() == null || wb.getValidTo() == null) {
+            return false;
+        }
+        LocalDate today = day(now);
+        return !today.isBefore(day(wb.getValidFrom())) && !today.isAfter(day(wb.getValidTo()));
+    }
+
+    private static LocalDate day(OffsetDateTime t) {
+        return t.atZoneSameInstant(ZoneId.systemDefault()).toLocalDate();
+    }
+
+    /** Правила дат legacy {@code StoreWaybill3cNeruRequest}; поле ошибки — для ответа {@code errors}. */
+    private static void validateDates(OffsetDateTime exitDate, OffsetDateTime entryDate) {
+        if (exitDate == null) {
+            throw new FieldException("exit_date", "Параметр exit_date обязателен.");
+        }
+        if (entryDate != null) {
+            if (!entryDate.isAfter(exitDate)) {
+                throw new FieldException("entry_date", "Дата въезда должна быть больше даты выезда");
+            }
+            if (day(entryDate).isAfter(day(exitDate).plusDays(MAX_TRIP_DAYS - 1))) {
+                throw new FieldException("entry_date",
+                        "Дата въезда не может превышать дату выезда более чем на %d дней".formatted(MAX_TRIP_DAYS));
+            }
+        }
+    }
+
     /**
      * Заявка агрегатора: аннулирует действующие ПЛ на ТС/водителя и создаёт новый
      * WB_TAXI (source = AGGREGATOR) со статусом CREATED — «Ожидает» подтверждений
@@ -68,21 +139,21 @@ public class AggregatorService {
     @Transactional
     public Waybill create(String organizationRma, String transportRegistrationNumber, String driverRma,
                           String employeeRma, OffsetDateTime exitDate, OffsetDateTime entryDate, int distance) {
-        // Дата выезда в разумном окне (защита от backdating/датирования далёким будущим).
-        var now = OffsetDateTime.now();
-        if (exitDate == null || exitDate.isBefore(now.minusDays(1)) || exitDate.isAfter(now.plusDays(MAX_TRIP_DAYS))) {
-            throw new UnprocessableException("Дата выезда вне допустимого окна (не в далёком прошлом/будущем)");
-        }
-        if (entryDate != null) {
-            if (!entryDate.isAfter(exitDate)) {
-                throw new UnprocessableException("Дата въезда должна быть больше даты выезда");
-            }
-            if (entryDate.isAfter(exitDate.plusDays(MAX_TRIP_DAYS))) {
-                throw new UnprocessableException("Дата въезда не может превышать дату выезда более чем на 7 дней");
-            }
-        }
+        validateDates(exitDate, entryDate);
         var org = masterData.findOrganization(organizationRma)
                 .orElseThrow(() -> new NotFoundException("Organization not found"));
+        return create(organizationRma, transportRegistrationNumber, driverRma, employeeRma, exitDate, entryDate,
+                distance, org);
+    }
+
+    private Waybill create(String organizationRma, String transportRegistrationNumber, String driverRma,
+                           String employeeRma, OffsetDateTime exitDate, OffsetDateTime entryDate, int distance,
+                           Map<String, Object> org) {
+        // Дата выезда в разумном окне (защита от backdating/датирования далёким будущим).
+        var now = OffsetDateTime.now();
+        if (exitDate.isBefore(now.minusDays(1)) || exitDate.isAfter(now.plusDays(MAX_TRIP_DAYS))) {
+            throw new FieldException("exit_date", "Дата выезда вне допустимого окна (не в далёком прошлом/будущем)");
+        }
         var vehicle = masterData.findVehicle(transportRegistrationNumber)
                 .orElseThrow(() -> new NotFoundException("Transport not found"));
         var driver = masterData.findDriver(driverRma)
@@ -139,7 +210,10 @@ public class AggregatorService {
 
     /** Legacy GET: отдаёт только подтверждённый врачом и механиком ПЛ. */
     public Waybill getConfirmed(UUID id) {
-        var wb = waybillService.get(id); // 404 «Путевой лист не найден»
+        return requireConfirmed(waybillService.get(id)); // 404 «Путевой лист не найден»
+    }
+
+    private static Waybill requireConfirmed(Waybill wb) {
         if (!wb.isMedPassed()) {
             throw new ConflictException("Доктор не подтвердил путёвку");
         }

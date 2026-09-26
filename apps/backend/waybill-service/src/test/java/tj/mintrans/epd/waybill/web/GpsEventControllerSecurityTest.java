@@ -27,6 +27,7 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
@@ -55,8 +56,35 @@ class GpsEventControllerSecurityTest {
     @ValueSource(strings = {"API_INTEGRATOR", "SYSTEM_ADMIN"})
     void registerAllowedForIntegration(String role) throws Exception {
         when(gpsEvents.register(any())).thenReturn(new GpsEventService.Result(true, null, null, null, null));
+        // Как legacy GpsDataController::store (G3): 200 и {"success": true}.
         mvc.perform(post("/api/v1/gps/events").with(as(role)).with(csrf()).contentType(MediaType.APPLICATION_JSON).content(BODY))
-                .andExpect(status().isCreated());
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true));
+    }
+
+    /** Выезд из предприятия — маршрут, график и время выезда ПЛ; ошибка — errors по полю (G3). */
+    @ParameterizedTest
+    @ValueSource(strings = {"API_INTEGRATOR"})
+    void legacyBodies(String role) throws Exception {
+        when(gpsEvents.register(any())).thenReturn(new GpsEventService.Result(true, null, "12", "06:00-22:00", "06:10"));
+        mvc.perform(post("/api/v1/gps/events").with(as(role)).with(csrf()).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"registration_number\":\"0114TJ01\",\"state\":\"exit_from_company\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.route_number").value("12"))
+                .andExpect(jsonPath("$.schedule").value("06:00-22:00"))
+                .andExpect(jsonPath("$.exit_time").value("06:10"));
+
+        when(gpsEvents.register(any())).thenThrow(new tj.mintrans.epd.waybill.web.error.ApiErrors.FieldException(
+                "waybill", "Путевой лист для данного транспортного средства не найден."));
+        mvc.perform(post("/api/v1/gps/events").with(as(role)).with(csrf()).contentType(MediaType.APPLICATION_JSON).content(BODY))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.errors.waybill[0]").value("Путевой лист для данного транспортного средства не найден."));
+
+        mvc.perform(post("/api/v1/gps/events").with(as(role)).with(csrf()).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"state\":\"enter_into_company\"}"))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.errors.registration_number").isArray());
     }
 
     @ParameterizedTest

@@ -52,7 +52,7 @@ $aggToken = Get-AggregatorToken
 $jobs = 1..8 | ForEach-Object {
     Start-Job -ScriptBlock {
         param($wb, $exit, $aggToken)
-        $b = @{ organization_rma = '025680800'; transport_registration_number = '0114TJ01'; driver_rma = '461930031'; employee_rma = '333333333'; exit_date = $exit; distance = 50 } | ConvertTo-Json
+        $b = @{ organization_rma = '025680800'; transport_registration_number = '0114TJ01'; driver_rma = '461930031'; employee_rma = '333333333'; exit_date = $exit; entry_date = (Get-Date).AddHours(8).ToString("yyyy-MM-dd HH:mm"); distance = 50 } | ConvertTo-Json
         $h = if ($aggToken) { @{ Authorization = "Bearer $aggToken" } } else { @{} }
         try { [int](Invoke-WebRequest -Method Post -Uri "$wb/api/v1/aggregator/waybills" -Headers $h -Body ([Text.Encoding]::UTF8.GetBytes($b)) -ContentType 'application/json; charset=utf-8' -UseBasicParsing).StatusCode }
         catch { if ($_.Exception.Response) { [int]$_.Exception.Response.StatusCode.value__ } else { -1 } }

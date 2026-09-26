@@ -30,22 +30,31 @@ public final class GpsEventRules {
     private GpsEventRules() {
     }
 
-    /** Нормализованное направление (A/B) или сообщение об ошибке запроса. */
+    /** Сообщение об ошибке запроса, если она есть. */
     public static Optional<String> requestError(GpsEventState state, String direction, BigDecimal distanceKm) {
+        return requestFieldError(state, direction, distanceKm).map(Map.Entry::getValue);
+    }
+
+    /** Ошибка запроса с полем, к которому она относится (для legacy-ответа {@code errors: {поле: […]}}). */
+    public static Optional<Map.Entry<String, String>> requestFieldError(GpsEventState state, String direction,
+                                                                        BigDecimal distanceKm) {
         if (state == null) {
-            return Optional.of("state: допустимые значения enter_into_route, exit_from_route, enter_into_company, exit_from_company");
+            return Optional.of(Map.entry("state",
+                    "state: допустимые значения enter_into_route, exit_from_route, enter_into_company, exit_from_company"));
         }
         if (state.isRoute()) {
             String d = normalizeDirection(direction);
             if (d == null) {
-                return Optional.of("direction обязательно для заполнения (A или B), если статус установлен в enter_into_route или exit_from_route.");
+                return Optional.of(Map.entry("direction",
+                        "direction обязательно для заполнения (A или B), если статус установлен в enter_into_route или exit_from_route."));
             }
         }
         if (state == GpsEventState.ENTER_INTO_COMPANY && distanceKm == null) {
-            return Optional.of("distance обязательно для заполнения, если статус установлен в enter_into_company.");
+            return Optional.of(Map.entry("distance",
+                    "distance обязательно для заполнения, если статус установлен в enter_into_company."));
         }
         if (distanceKm != null && distanceKm.signum() < 0) {
-            return Optional.of("distance не может быть отрицательной.");
+            return Optional.of(Map.entry("distance", "distance не может быть отрицательной."));
         }
         return Optional.empty();
     }

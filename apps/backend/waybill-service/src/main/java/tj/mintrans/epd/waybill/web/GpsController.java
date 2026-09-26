@@ -21,6 +21,7 @@ import tj.mintrans.epd.waybill.domain.GpsEventState;
 import tj.mintrans.epd.waybill.repository.GpsPingRepository;
 import tj.mintrans.epd.waybill.repository.WaybillRepository;
 import tj.mintrans.epd.waybill.service.GpsEventService;
+import tj.mintrans.epd.waybill.web.error.ApiErrors.FieldException;
 import tj.mintrans.epd.waybill.web.error.ApiErrors.NotFoundException;
 import tj.mintrans.epd.waybill.web.error.ApiErrors.UnprocessableException;
 import com.fasterxml.jackson.annotation.JsonAlias;
@@ -65,24 +66,60 @@ public class GpsController {
      * и в legacy-именах ({@code registration_number}, {@code distance}), состояние — snake_case или enum.
      */
     public record GpsEventRequest(
-            @JsonAlias("registration_number") @NotBlank String vehicleRegNumber,
-            @NotBlank String state,
+            @JsonAlias("registration_number") String vehicleRegNumber,
+            String state,
             String direction,
             @JsonAlias("distance") BigDecimal distanceKm,
             OffsetDateTime eventTime) {
     }
 
-    /** Регистрация события заезда/выезда (маршрут / предприятие). Только сервисный аккаунт интеграции. */
+    /**
+     * Регистрация события заезда/выезда (маршрут / предприятие). Только сервисный аккаунт интеграции.
+     *
+     * <p>Ответ — как legacy {@code GpsDataController::store} (сверка 25.09, G3), его разбирает
+     * Smart City: успех — 200 {@code {"success": true}}, а для выезда из предприятия ещё
+     * {@code route_number}, {@code schedule}, {@code exit_time}. Ошибка — 422
+     * {@code {"success": false, "message": …, "errors": {поле: [сообщение]}}}. Для журнала
+     * добавлен {@code event_id}.</p>
+     */
     @PostMapping("/events")
     @PreAuthorize("hasAnyRole('API_INTEGRATOR','SYSTEM_ADMIN')")
-    public ResponseEntity<GpsEventService.Result> registerEvent(@Valid @RequestBody GpsEventRequest req) {
-        GpsEventState state = GpsEventState.parse(req.state());
-        if (state == null) {
-            throw new UnprocessableException("state: допустимые значения enter_into_route, exit_from_route, enter_into_company, exit_from_company");
+    public ResponseEntity<Map<String, Object>> registerEvent(@RequestBody GpsEventRequest req) {
+        try {
+            if (req.vehicleRegNumber() == null || req.vehicleRegNumber().isBlank()) {
+                throw new FieldException("registration_number", "Поле registration_number обязательно для заполнения.");
+            }
+            if (req.state() == null || req.state().isBlank()) {
+                throw new FieldException("state", "Поле state обязательно для заполнения.");
+            }
+            GpsEventState state = GpsEventState.parse(req.state());
+            if (state == null) {
+                throw new FieldException("state",
+                        "state: допустимые значения enter_into_route, exit_from_route, enter_into_company, exit_from_company");
+            }
+            var result = gpsEvents.register(new GpsEventService.Request(
+                    req.vehicleRegNumber(), state, req.direction(), req.distanceKm(), req.eventTime()));
+            var body = new java.util.LinkedHashMap<String, Object>();
+            body.put("success", true);
+            if (state == GpsEventState.EXIT_FROM_COMPANY) {
+                body.put("route_number", result.routeNumber());
+                body.put("schedule", result.schedule());
+                body.put("exit_time", result.exitTime());
+            }
+            if (result.event() != null) {
+                body.put("event_id", result.event().getId());
+            }
+            return ResponseEntity.ok(body);
+        } catch (UnprocessableException e) {
+            String field = e instanceof FieldException f ? f.field() : "state";
+            var body = new java.util.LinkedHashMap<String, Object>();
+            body.put("success", false);
+            body.put("message", "Ошибка валидации");
+            body.put("errors", Map.of(field, List.of(e.getMessage())));
+            // Поле detail — для клиентов платформы, которые читают ошибки в формате RFC 7807.
+            body.put("detail", e.getMessage());
+            return ResponseEntity.unprocessableEntity().body(body);
         }
-        var result = gpsEvents.register(new GpsEventService.Request(
-                req.vehicleRegNumber(), state, req.direction(), req.distanceKm(), req.eventTime()));
-        return ResponseEntity.status(HttpStatus.CREATED).body(result);
     }
 
     /** Журнал GPS-событий (legacy admin/gpsevent, MIGRATION.md 8.9): фильтр по организации/ТС/состоянию/периоду. */

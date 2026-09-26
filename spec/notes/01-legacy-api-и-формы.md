@@ -83,7 +83,7 @@ company_id, parking_id, route_id (req), **два водителя**: first_drive
 
 ## 7. Схема работы с агрегаторами (ЧУРА/Jura, НЕРУ/Neru)
 
-`POST /api/waybill_neru`: organization_rma (req), transport_registration_number (req), driver_rma (req), employee_rma, exit_date (req), entry_date, distance (req, км).
+`POST /api/waybill_neru`: organization_rma (req), transport_registration_number (req), driver_rma (req), employee_rma, exit_date (req), entry_date (req — по коду `StoreWaybill3cNeruRequest`), distance (req, км). Ответы и повторный запрос по действующему листу — см. changelog 2026-09-26 «ответы агрегатора и GPS как в legacy» (G3).
 - При новом запросе **предыдущий ПЛ закрывается**, создаётся новый со статусом «Ожидает».
 - Пока врач и механик не подтвердят — любой повторный запрос возвращает «нужно пройти медосмотр/техосмотр».
 - После подтверждений: 201 → объект ПЛ (id, number, exit_date, entry_date, indication_counter_exit, company{id,rma,name,kpp}, parking{id,registration_number,vincode}, timesheet{id,full_name,rma}) + status «Активный».

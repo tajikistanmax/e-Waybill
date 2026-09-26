@@ -30,6 +30,23 @@ public class ApiErrors {
         public UnprocessableException(String m) { super(m); }
     }
 
+    /**
+     * 422 с указанием поля запроса — для legacy-каналов внешних систем, где ошибка приходит
+     * как {@code errors: {поле: [сообщение]}} (Laravel FormRequest). Остальным клиентам — обычная 422.
+     */
+    public static class FieldException extends UnprocessableException {
+        private final String field;
+
+        public FieldException(String field, String m) {
+            super(m);
+            this.field = field;
+        }
+
+        public String field() {
+            return field;
+        }
+    }
+
     public static class ForbiddenException extends RuntimeException {
         public ForbiddenException(String m) { super(m); }
     }
