@@ -614,15 +614,19 @@ public class WaybillService {
         }
     }
 
-    /** Требуемая категория ВУ по типу ТС (справочник ЭПД 1..6): null — не проверяется. */
-    private static String requiredLicenseCategory(Integer transportType) {
+    /**
+     * Допустимые категории ВУ по типу ТС (справочник ЭПД 1..6): null — не проверяется. Подкатегории: микроавтобус
+     * водит и D1, грузовой — и C1 (масса ТС в карточке не всегда известна, строже не решаем).
+     */
+    static java.util.Set<String> requiredLicenseCategories(Integer transportType) {
         if (transportType == null) {
             return null;
         }
         return switch (transportType) {
-            case 1, 3 -> "D";   // автобус, микроавтобус (пассажирские перевозки)
-            case 4 -> "B";      // легковой
-            case 5, 6 -> "C";   // грузовой, грузовой международный
+            case 1 -> java.util.Set.of("D");           // автобус
+            case 3 -> java.util.Set.of("D", "D1");     // микроавтобус
+            case 4 -> java.util.Set.of("B");           // легковой
+            case 5, 6 -> java.util.Set.of("C", "C1");  // грузовой, грузовой международный
             default -> null;    // 2 = троллейбус (спецдопуск, не категория ВУ), прочее — не сверяем
         };
     }
@@ -637,21 +641,18 @@ public class WaybillService {
         if (driver == null || vehicle == null) {
             return;
         }
-        String required = requiredLicenseCategory(intOrNull(vehicle.get("transportType")));
+        var required = requiredLicenseCategories(intOrNull(vehicle.get("transportType")));
         if (required == null) {
             return;
         }
+        // Текст реестра нормализуется («BCD», «ВСД», «В.С.Д», «ВВ1СС1» → множество категорий); пустое или
+        // неразборчивое поле не проверяется — пробел в реестре не должен блокировать законный рейс.
         String categories = str(driver.get("licenseCategories"));
-        if (categories.isBlank()) {
-            return;
+        if (!LicenseCategories.hasAny(categories, required)) {
+            throw new UnprocessableException(
+                    "Категория водительского удостоверения не соответствует типу ТС: требуется «%s» (в реестре: «%s»)"
+                            .formatted(String.join("» или «", required), categories));
         }
-        for (String token : categories.split("[,;\\s]+")) {
-            if (token.equalsIgnoreCase(required)) {
-                return;
-            }
-        }
-        throw new UnprocessableException(
-                "Категория водительского удостоверения не соответствует типу ТС: требуется «%s»".formatted(required));
     }
 
     // ---------------------------------------------------- пригодность (preflight, read-only)
@@ -869,17 +870,11 @@ public class WaybillService {
         }
         // Категория ВУ ↔ вид ТС (как assertLicenseMatchesVehicle) — если известны и водитель, и ТС.
         if (driver != null && vehicle != null) {
-            String required = requiredLicenseCategory(intOrNull(vehicle.get("transportType")));
-            String categories = str(driver.get("licenseCategories"));
-            if (required != null && !categories.isBlank()) {
-                boolean has = false;
-                for (String token : categories.split("[,;\\s]+")) {
-                    if (token.equalsIgnoreCase(required)) { has = true; break; }
-                }
-                if (!has) {
-                    out.add(new CheckResult("DRIVER_CATEGORY", "ERROR",
-                            "Категория ВУ не соответствует типу ТС: требуется «%s»".formatted(required)));
-                }
+            var required = requiredLicenseCategories(intOrNull(vehicle.get("transportType")));
+            if (required != null && !LicenseCategories.hasAny(str(driver.get("licenseCategories")), required)) {
+                out.add(new CheckResult("DRIVER_CATEGORY", "ERROR",
+                        "Категория ВУ не соответствует типу ТС: требуется «%s» (в реестре: «%s»)"
+                                .formatted(String.join("» или «", required), str(driver.get("licenseCategories")))));
             }
         }
         // Опасные грузы (ADR/ДОПОГ): свидетельство водителя и допуск ТС — предупреждение при отсутствии/истечении.
