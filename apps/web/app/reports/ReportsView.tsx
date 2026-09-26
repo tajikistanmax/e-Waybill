@@ -99,7 +99,7 @@ const RC_COLS: { key: keyof RegionalCounts; label: string }[] = [
   { key: 'processedYtd', label: '10 обр.год' }, { key: 'processedYtdPrev', label: '11 обр.пр.год' }, { key: 'processedYtdDelta', label: '12 Δ' },
   { key: 'unprocessedYtd', label: '13 необр.' }, { key: 'vehiclesYtd', label: '14 ТС год' }, { key: 'vehiclesMonth', label: '15 ТС мес' },
   { key: 'vehiclesPrevMonth', label: '16 ТС пр.мес' }, { key: 'vehiclesMonthPrevYear', label: '17 ТС мес.пр.г' }, { key: 'vehiclesMonthDelta', label: '18 Δ' }, { key: 'vehiclesYoYDelta', label: '19 Δг/г' },
-  { key: 'cargoWaybillsTotal', label: '20 груз.ПЛ' }, { key: 'cargoWaybillsWithConsignment', label: '21 груз.с накл.' },
+  { key: 'cargoWaybillsTotal', label: '20 груз.ПЛ' }, { key: 'cargoWaybillsWithConsignment', label: '21 борхатов' },
 ];
 
 /** Разрез «ведомственный/общий» (Organization.typeCompany): 1 — общего пользования, 2 — ведомственная. */

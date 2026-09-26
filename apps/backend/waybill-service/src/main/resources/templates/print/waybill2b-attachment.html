@@ -33,12 +33,17 @@
         <td style="width: 58%">
             <div class="title" style="text-align:left"
                  th:text="'БОРХАТИ НАҚЛИЁТИ АВТОМОБИЛӢ № ' + ${attachmentNumber}">Борхат</div>
-            <div class="caption" style="text-align:left" th:if="${shipmentKind == 'HOURLY'}">
-                Замима 2 — намуди боркашонӣ: соатбайъ (повременно)
-            </div>
-            <div class="caption" style="text-align:left" th:unless="${shipmentKind == 'HOURLY'}">
-                Замима 1 — намуди боркашонӣ: корбайъ (сдельно)
-            </div>
+            <th:block th:if="${noteKind == null}">
+                <div class="caption" style="text-align:left" th:if="${shipmentKind == 'HOURLY'}">
+                    Замима 2 — намуди боркашонӣ: соатбайъ (повременно)
+                </div>
+                <div class="caption" style="text-align:left" th:unless="${shipmentKind == 'HOURLY'}">
+                    Замима 1 — намуди боркашонӣ: корбайъ (сдельно)
+                </div>
+            </th:block>
+            <!-- Отдельный борхат (строка consignment_note): вид и дата — из самой накладной. -->
+            <div class="caption" style="text-align:left" th:if="${noteKind != null}"
+                 th:text="'Замима ' + ${noteKind} + ' · Сана: ' + ${noteDate}">Замима</div>
             <th:block th:replace="~{print/blocks :: orgSeal}"/>
         </td>
         <td class="form-reference">
@@ -54,18 +59,18 @@
 <div class="section">
     <table class="bordered">
         <tr><th style="width: 25%">Заказчик</th><th style="width: 25%">Отправитель</th>
-            <th style="width: 25%">Получатель</th><th th:if="${shipmentKind == 'HOURLY'}">Экспедитор</th></tr>
+            <th style="width: 25%">Получатель</th><th th:if="${shipmentKind == 'HOURLY' or noteKind == 2}">Экспедитор</th></tr>
         <tr>
             <td th:text="${consignorName}"></td>
             <td th:text="${senderName}"></td>
             <td th:text="${receiverName}"></td>
-            <td th:if="${shipmentKind == 'HOURLY'}" th:text="${forwarderName}"></td>
+            <td th:if="${shipmentKind == 'HOURLY' or noteKind == 2}" th:text="${forwarderName}"></td>
         </tr>
         <tr>
             <td class="caption" th:text="${companyAddress}"></td>
             <td class="caption" th:text="${senderAddress}"></td>
             <td class="caption" th:text="${receiverAddress}"></td>
-            <td class="caption" th:if="${shipmentKind == 'HOURLY'}"></td>
+            <td class="caption" th:if="${shipmentKind == 'HOURLY' or noteKind == 2}"></td>
         </tr>
     </table>
 </div>
@@ -100,6 +105,18 @@
             <td class="center" th:text="${cargoClass}"></td>
             <td class="center" th:text="${cargoWeight}"></td>
             <td class="center" th:text="${adrClass}"></td>
+        </tr>
+    </table>
+    <!-- Количество, расстояние, рейсы — из строки борхата (legacy cargo_amount, distance, reis_amount). -->
+    <table class="bordered" th:if="${noteKind != null}">
+        <tr><th>Миқдори бор</th><th>Масофа (км)</th><th>Шумораи рейс</th>
+            <th>Масофаи кори махсус (км)</th><th>Гардиши бор (т·км)</th></tr>
+        <tr>
+            <td class="center" th:text="${cargoAmount}"></td>
+            <td class="center" th:text="${noteDistance}"></td>
+            <td class="center" th:text="${noteTrips}"></td>
+            <td class="center" th:text="${noteSpecialDistance}"></td>
+            <td class="center" th:text="${noteTransportWork}"></td>
         </tr>
     </table>
 </div>

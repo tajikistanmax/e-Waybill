@@ -71,6 +71,14 @@ public class WaybillCalcAssembler {
         this.multidayEnabled = multidayEnabled;
     }
 
+    /** Борхаты 2-Б (V30); без репозитория (тесты/ручная сборка) P и Z берутся как раньше — из возврата. */
+    private tj.mintrans.epd.waybill.repository.ConsignmentNoteRepository consignmentNotes;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setConsignmentNotes(tj.mintrans.epd.waybill.repository.ConsignmentNoteRepository consignmentNotes) {
+        this.consignmentNotes = consignmentNotes;
+    }
+
     /** Дополнение к данным ПЛ — всё необязательно. */
     public record Supplement(
             Integer airConditionerPercent,
@@ -120,8 +128,8 @@ public class WaybillCalcAssembler {
     }
 
     public View calculate(Waybill wb, Supplement sup) {
-        Supplement s = mergeTypeData(wb, sup == null ? Supplement.empty() : sup);
         List<String> notes = new ArrayList<>();
+        Supplement s = mergeTypeData(wb, fromConsignmentNotes(wb, sup == null ? Supplement.empty() : sup, notes));
 
         Map<String, Object> veh = wb.getVehicleSnapshot();
         String brandName = str(veh, "brand");
@@ -262,6 +270,49 @@ public class WaybillCalcAssembler {
         }
         Long orgRegion = longOf(get(organization(wb), "regionId"));
         return engine.passengerDaily(input, orgRegion != null && orgRegion == 1, routeAbsent, specs);
+    }
+
+    /**
+     * P, Z и пробег со спецработой сдельного листа 2-Б — из его борхатов (legacy CargoFuelBase::calcP/calcZ,
+     * SpecialMoverFuel::calcDistance_special_work: только при {@code type_of_shipment = 1}, корбайъ).
+     * Замимаи 1: P = Σ масса·расстояние·рейсы, Z = Σ рейсов, L1 = Σ спецпробег·рейсы; замимаи 2: P = Σ масса·расстояние,
+     * Z = число борхатов, L1 = Σ спецпробег. Явно переданное в Supplement не трогаем; нет борхатов или лист
+     * повременный — остаются значения, введённые при возврате.
+     */
+    Supplement fromConsignmentNotes(Waybill wb, Supplement s, List<String> notes) {
+        if (consignmentNotes == null || wb.getId() == null
+                || (wb.getWaybillType() != WaybillType.WB_TRUCK && wb.getWaybillType() != WaybillType.WB_DANGEROUS)) {
+            return s;
+        }
+        Map<String, Object> td = wb.getTypeData();
+        if (td != null && "HOURLY".equals(String.valueOf(td.get("shipmentKind")))) {
+            return s;
+        }
+        if (s.transportWork() != null && s.trips() != null && s.specialDistance() != null) {
+            return s;
+        }
+        List<tj.mintrans.epd.waybill.domain.ConsignmentNote> rows =
+                consignmentNotes.findByWaybillIdOrderByNoteDateAscNumberAsc(wb.getId());
+        if (rows.isEmpty()) {
+            return s;
+        }
+        double p = 0, z = 0, l1 = 0;
+        for (var n : rows) {
+            p += n.transportWork();
+            z += n.tripsCount();
+            l1 += n.specialWork();
+        }
+        notes.add("P, Z и спецпробег рассчитаны по борхатам: " + rows.size() + " шт.");
+        return new Supplement(s.airConditionerPercent(), s.conditionerHours(), s.numberLap(),
+                s.transportWork() != null ? s.transportWork() : p,
+                s.trips() != null ? s.trips() : z,
+                s.specialWorkHours(),
+                s.specialDistance() != null ? s.specialDistance() : l1,
+                s.directionWinterCoefId(), s.directionMountainCoefId(), s.directionInCityCoefId(),
+                s.trailerWeight(), s.trailerCarrying(), s.trailerWeight2(),
+                s.earning(), s.companyPercentIncome(), s.driverDegree(),
+                s.companyCat1(), s.companyCat2(), s.companyCat3(),
+                s.tariffPricePer1Mkm(), s.tariffPriceOneTime(), s.speedometerTotalDistance(), s.calcDate());
     }
 
     /**

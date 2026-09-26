@@ -169,6 +169,43 @@ public class WaybillPrintService {
         return pdf.render("print/waybill2b-attachment", model(wb));
     }
 
+    /**
+     * Отдельный борхат (замимаи 1/2) листа 2-Б — legacy {@code bill2b_attachment{1,2}}: номер и дата
+     * борхата, заказчик, стороны, груз, количество, масса, расстояние и рейсы — из строки борхата,
+     * автомобиль, водитель и прицепы — из листа.
+     */
+    @Transactional(readOnly = true)
+    public byte[] renderNotePdf(java.util.UUID waybillId, tj.mintrans.epd.waybill.domain.ConsignmentNote note) {
+        Waybill wb = waybills.get(waybillId);
+        requireType(wb, "борхат (приложение к 2-Б)", WaybillType.WB_TRUCK, WaybillType.WB_DANGEROUS);
+        Map<String, Object> m = model(wb);
+        m.put("noteKind", (int) note.getKind());
+        m.put("attachmentNumber", note.getNumber() == null ? "—" : String.valueOf(note.getNumber()));
+        m.put("noteDate", note.getNoteDate() == null ? "—" : note.getNoteDate().format(D));
+        m.put("consignorName", orDash(note.getPayerName()));
+        m.put("senderName", orDash(note.getSenderName()));
+        m.put("senderAddress", orDash(note.getSenderAddress()));
+        m.put("receiverName", orDash(note.getReceiverName()));
+        m.put("receiverAddress", orDash(note.getReceiverAddress()));
+        m.put("forwarderName", orDash(note.getForwarderName()));
+        m.put("cargoName", orDash(note.getCargoName()));
+        if (note.getCargoNumber() != null) {
+            m.put("cargoNumber", String.valueOf(note.getCargoNumber()));
+        }
+        m.put("cargoWeight", num(note.getCargoWeight()));
+        m.put("cargoAmount", num(note.getCargoAmount()));
+        m.put("noteDistance", num(note.getDistance()));
+        m.put("noteTrips", note.getKind() == 2 ? "—" : String.valueOf(note.getTrips()));
+        m.put("noteSpecialDistance", num(note.getSpecialDistance()));
+        m.put("noteTransportWork", trimNum(note.transportWork()));
+        List<Map<String, Object>> ops = new ArrayList<>();
+        ops.add(cargoOpRow("боркунӣ", note.getSenderName()));
+        ops.add(cargoOpRow("борфарорӣ", note.getReceiverName()));
+        m.put("cargoOperations", ops);
+        m.put("isCopy", false);
+        return pdf.render("print/waybill2b-attachment", m);
+    }
+
     public String attachmentFileName(java.util.UUID id) {
         return "attachment-" + PdfRenderService.fileName(waybills.get(id).getNumber());
     }

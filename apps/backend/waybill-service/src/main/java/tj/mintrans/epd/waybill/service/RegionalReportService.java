@@ -63,6 +63,14 @@ public class RegionalReportService {
         this.waybills = waybills;
     }
 
+    /** Борхаты 2-Б (V30): графа 21 и объём/грузооборот сдельных листов. Без репозитория — прежний счёт. */
+    private tj.mintrans.epd.waybill.repository.ConsignmentNoteRepository consignmentNotes;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setConsignmentNotes(tj.mintrans.epd.waybill.repository.ConsignmentNoteRepository consignmentNotes) {
+        this.consignmentNotes = consignmentNotes;
+    }
+
     /** Транспортный вид ТС + норма листов на стоянку по виду ПЛ (§6.4). */
     private static int[] normSpec(WaybillType type) {
         return switch (type) {
@@ -319,6 +327,16 @@ public class RegionalReportService {
             double dist = Math.max(1, v.cargo().distanceKm());
             volume = (p / dist) / 1000.0;                    // тыс. тонн (средняя загрузка × 1 ходка)
             rotation = p / 1_000_000.0;                      // млн т·км
+            // Сдельный 2-Б с борхатами — объём по строкам борхатов (legacy Waybill2bTransReportService:
+            // Σ cargo_capacity по cargo_waybills), P уже собран из них же в расчёте. Масса замимаи 1
+            // умножается на рейсы: у legacy тоннаж без рейсов расходился с грузооборотом, где рейсы есть.
+            if (consignmentNotes != null && (wb.getWaybillType() == WaybillType.WB_TRUCK
+                    || wb.getWaybillType() == WaybillType.WB_DANGEROUS) && !isHourly(wb)) {
+                var rows = consignmentNotes.findByWaybillIdOrderByNoteDateAscNumberAsc(wb.getId());
+                if (!rows.isEmpty()) {
+                    volume = ConsignmentNoteService.Totals.of(rows).weight() / 1000.0;
+                }
+            }
         } else {
             PassengerMetrics m = metrics(wb);
             if (m == null) {
@@ -336,6 +354,11 @@ public class RegionalReportService {
             f.volumePrev += volume;
             f.rotationPrev += rotation;
         }
+    }
+
+    private static boolean isHourly(Waybill wb) {
+        Map<String, Object> td = wb.getTypeData();
+        return td != null && "HOURLY".equals(String.valueOf(td.get("shipmentKind")));
     }
 
     private static boolean isCargo(WaybillType t) {
@@ -427,6 +450,14 @@ public class RegionalReportService {
             }
         }
         Map<String, Acc> byOrg = new LinkedHashMap<>();
+        // Графа 21 — число БОРХАТОВ периода (legacy CargoAttachWaybillCountReport: count(cargo_waybills)
+        // за период), а не листов с накладной. Одним сгруппированным запросом, без N+1 по листам.
+        Map<java.util.UUID, Long> notesByWaybill = new java.util.HashMap<>();
+        if (consignmentNotes != null) {
+            for (Object[] row : consignmentNotes.countByWaybillInPeriod(from, to)) {
+                notesByWaybill.put((java.util.UUID) row[0], ((Number) row[1]).longValue());
+            }
+        }
         scan.forEachAll(scanFrom, to, null, wb -> {   // счётный отчёт — без лимита строк
             if (!billMatches(kind, wb.getWaybillType())) {
                 return;
@@ -472,8 +503,11 @@ public class RegionalReportService {
             // самый надёжный единичный сигнал «накладная оформлена».
             if (issued && isCargo(wb.getWaybillType()) && inRange(d, from, to)) {
                 a.cargoIssued++;
-                if (hasConsignment(wb)) {
-                    a.cargoWithConsignment++;
+                Long notes = notesByWaybill.get(wb.getId());
+                if (notes != null) {
+                    a.cargoWithConsignment += notes;
+                } else if (hasConsignment(wb)) {
+                    a.cargoWithConsignment++;   // одна накладная в typeData (СМР 5Б-БМ, листы до V30)
                 }
             }
         });

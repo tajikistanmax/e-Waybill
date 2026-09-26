@@ -873,6 +873,14 @@ export const wb = {
   // Рабочие дни и строки топлива листа (с посчитанным остатком после возврата).
   workDays: (id: string) => fetch(`/wb-api/api/v1/waybills/${id}/work-days`, { headers: authHeaders() })
     .then(r => handle<WorkDaysResponse>(r)),
+  // Борхаты (замимаи 1/2) листа 2-Б — N на лист, с итогами P/Z/L1 для расчёта.
+  consignmentNotes: (id: string) => fetch(`/wb-api/api/v1/waybills/${id}/consignment-notes`, { headers: authHeaders() })
+    .then(r => handle<ConsignmentNotesResponse>(r)),
+  printNotePdf: async (id: string, noteId: string) => {
+    const r = await fetch(`/wb-api/api/v1/waybills/${id}/consignment-notes/${noteId}/print.pdf`, { headers: authHeaders() });
+    if (!r.ok) throw new Error(`Ошибка ${r.status}`);
+    return r.blob();
+  },
   // Уведомления организации (waybill-service).
   notifications: () => fetch('/wb-api/api/v1/notifications', { headers: authHeaders() }).then(r => handle<NotificationItem[]>(r)),
   unreadCount: () => fetch('/wb-api/api/v1/notifications/unread-count', { headers: authHeaders() }).then(r => handle<{ count: number }>(r)),
@@ -1105,6 +1113,22 @@ export type WorkDayRow = {
 export type WorkDaysResponse = {
   workDays: { workDay: WorkDayRow; fuel: FuelRecordRow[] }[];
   waybillFuel: FuelRecordRow[];
+};
+/** Борхат листа 2-Б (consignment_note): kind 1 — замимаи 1, 2 — замимаи 2 (с экспедитором). */
+export type ConsignmentNoteRow = {
+  id: string; waybillId: string; workDayId: string | null; kind: number; number: number | null; noteDate: string;
+  payerId: string | null; payerName: string | null;
+  senderId: string | null; senderName: string | null; senderAddress: string | null;
+  receiverId: string | null; receiverName: string | null; receiverAddress: string | null;
+  forwarderId: string | null; forwarderName: string | null;
+  cargoId: string | null; cargoName: string | null; cargoNumber: number | null;
+  cargoAmount: number | null; cargoWeight: number | null; distance: number | null;
+  trips: number; specialDistance: number | null; entryTime: string | null; invoiceNumber: string | null;
+  createdAt: string; createdBy: string | null;
+};
+export type ConsignmentNotesResponse = {
+  notes: ConsignmentNoteRow[];
+  totals: { count: number; transportWork: number; trips: number; specialDistance: number; weight: number };
 };
 export type FuelPrefill = {
   found: boolean; fuelType: number;

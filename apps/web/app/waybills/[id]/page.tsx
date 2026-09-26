@@ -1,13 +1,14 @@
 'use client';
 
 import { use, useCallback, useEffect, useState } from 'react';
-import { md, wb, Waybill, Title, StatusEvent, Payment, STATUS_LABELS, type GpsPing, type FieldDefinition, type Inspection, type WorkDaysResponse } from '@/lib/api';
+import { md, wb, Waybill, Title, StatusEvent, Payment, STATUS_LABELS, type GpsPing, type FieldDefinition, type Inspection, type WorkDaysResponse, type ConsignmentNotesResponse } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 import { useAuth } from '@/lib/auth';
 import { verifyLink } from '@/lib/verify';
 import { ExpensesSection } from './ExpensesSection';
 import { Attachments } from './Attachments';
 import { Consignment } from './Consignment';
+import ConsignmentNotes from './ConsignmentNotes';
 import WorkDaysFuel from './WorkDaysFuel';
 import QRCode from 'qrcode';
 
@@ -70,6 +71,8 @@ export default function WaybillCard({ params }: { params: Promise<{ id: string }
   // Рабочие дни и строки топлива (GET /work-days отдаёт объект {workDays:[{workDay,fuel}], waybillFuel}).
   const [wdData, setWdData] = useState<WorkDaysResponse | null>(null);
   const workDays = wdData?.workDays ?? [];
+  // Борхаты 2-Б (N на лист): при их наличии P и Z сдельного листа считает сервер — при возврате не вводятся.
+  const [notesData, setNotesData] = useState<ConsignmentNotesResponse | null>(null);
   // Показатели листа без рабочих дней при возврате (legacy «коркард» 1-АД): круги, выручка, гашти ибтидоӣ.
   const [retDay, setRetDay] = useState({ numberLap: '', earning: '', beginPathA: 'begin_path_a', beginPathB: '' });
   // Подписант Т1/Т4/Т5 у администратора платформы (у диспетчера — он сам, по РМА из токена).
@@ -110,6 +113,9 @@ export default function WaybillCard({ params }: { params: Promise<{ id: string }
       } catch { /* QR доступен с READY */ }
     }
     wb.workDays(id).then(setWdData).catch(() => setWdData(null));
+    if (data.waybillType === 'WB_TRUCK' || data.waybillType === 'WB_DANGEROUS') {
+      wb.consignmentNotes(id).then(setNotesData).catch(() => setNotesData(null));
+    }
     const list = await md.employees(data.organizationRma);
     setEmp({
       doctors: list.filter(e => e.type === 1).map(e => ({ rma: String(e.rma), name: String(e.name) })),
@@ -191,6 +197,9 @@ export default function WaybillCard({ params }: { params: Promise<{ id: string }
   const isIntlForm = w.waybillType === 'WB_TRUCK_INTL' || w.waybillType === 'WB_PAX_INTL'; // 5Б-БМ / 4-МБМ
   // Накладная (борхат/CMR) — только для форм, где у оригинала есть отдельный документ приложения.
   const hasConsignment = ['WB_TRUCK', 'WB_TRUCK_INTL', 'WB_DANGEROUS'].includes(w.waybillType);
+  // 2-Б ведёт N борхатов (замимаи 1/2); 5Б-БМ — одну СМР в данных листа.
+  const hasNotes = w.waybillType === 'WB_TRUCK' || w.waybillType === 'WB_DANGEROUS';
+  const notesFromBorkhats = hasNotes && (notesData?.totals.count ?? 0) > 0 && td.shipmentKind !== 'HOURLY';
   const showRoute = isIntl || hasServiceInfo || isSpecial || !!w.route || !!w.schedule;
   const trailers = Array.isArray(td.trailers) ? (td.trailers as { registrationNumber: string; brand: string }[]) : [];
   const titlesWithData = titles.filter(t => t.data && Object.keys(t.data).length > 0);
@@ -355,7 +364,11 @@ export default function WaybillCard({ params }: { params: Promise<{ id: string }
               <input type="number" inputMode="numeric" min={0} style={{ width: 180 }}
                 placeholder={isSpecial ? t('wb.ph.odoentry.opt') : t('wb.ph.odoentry')}
                 value={odometerEntry} onChange={e => setOdometerEntry(e.target.value)} />
-              {isCargo ? (
+              {isCargo && notesFromBorkhats ? (
+                <span style={{ fontSize: 12, color: 'var(--muted)' }} data-testid="ret-pz-notes">
+                  {t('cnn.calc')}: P = {notesData!.totals.transportWork.toLocaleString('ru-RU')} т·км, Z = {notesData!.totals.trips}
+                </span>
+              ) : isCargo ? (
                 <>
                   <input type="number" min={0} step="0.1" style={{ width: 150 }} placeholder="Транс. работа P, т·км"
                     value={retMetrics.transportWork} onChange={e => setRetMetrics(m => ({ ...m, transportWork: e.target.value }))} />
@@ -767,8 +780,21 @@ export default function WaybillCard({ params }: { params: Promise<{ id: string }
       )}
 
       {/* Накладная: приложение к 2-Б или CMR к 5Б-БМ — стороны, груз, операции погрузки-разгрузки */}
-      {tab === 'consignment' && hasConsignment && (
+      {tab === 'consignment' && hasConsignment && !hasNotes && (
         <Consignment waybillId={w.id} waybillType={w.waybillType} typeData={td} onSaved={reload} />
+      )}
+      {tab === 'consignment' && hasNotes && (
+        <>
+          <ConsignmentNotes w={w} days={workDays.map(d => d.workDay)} overdue={overdue} canDispatch={canDispatch}
+            act={act} onChanged={setNotesData} />
+          {/* Лист до V30 с одной накладной в данных листа — показываем её, чтобы данные не «пропали». */}
+          {typeof td.senderName === 'string' && td.senderName !== '' && (
+            <details className="card">
+              <summary style={{ cursor: 'pointer' }}>{t('cnn.legacy')}</summary>
+              <Consignment waybillId={w.id} waybillType={w.waybillType} typeData={td} onSaved={reload} />
+            </details>
+          )}
+        </>
       )}
 
       {/* Расходы рейса (§12): суточные/дороги/парковка/ремонт с подтверждением бухгалтером */}

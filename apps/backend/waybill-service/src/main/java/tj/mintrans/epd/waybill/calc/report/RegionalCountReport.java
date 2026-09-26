@@ -52,7 +52,8 @@ public record RegionalCountReport(
      * @param vehiclesMonthDelta    total_18 = total_15 − total_16
      * @param vehiclesYoYDelta      total_19 = total_15 − total_17
      * @param cargoWaybillsTotal          total_20 грузовых ПЛ (2-Б/5Б-БМ/спецтехника/опасные грузы), выдано за период
-     * @param cargoWaybillsWithConsignment total_21 из них — с заполненной накладной
+     * @param cargoWaybillsWithConsignment total_21 число борхатов периода (legacy CargoAttachWaybillCountReport);
+     *                                     у листа без борхатов с накладной в данных листа (СМР 5Б-БМ) — 1
      *        (присутствие определяется по непустому {@code typeData.senderName})
      */
     public record Counts(
