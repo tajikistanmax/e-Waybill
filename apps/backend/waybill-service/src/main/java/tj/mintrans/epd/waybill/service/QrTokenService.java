@@ -146,6 +146,28 @@ public class QrTokenService {
         }
     }
 
+    /**
+     * Подпись борхата (накладной к 2-Б) для его собственного QR (сверка 25.09, B6; legacy {@code qrcode/6/…}):
+     * {@code typ=CONSIGNMENT_NOTE}, без срока — борхат действует, пока не аннулирован лист.
+     */
+    public String sign(tj.mintrans.epd.waybill.domain.ConsignmentNote note, Waybill wb) {
+        try {
+            var claims = new JWTClaimsSet.Builder()
+                    .issuer("epd.tj")
+                    .jwtID(note.getId().toString())
+                    .claim("typ", "CONSIGNMENT_NOTE")
+                    .claim("num", note.getNumber() == null ? null : note.getNumber().toString())
+                    .claim("wbn", wb.getNumber())
+                    .issueTime(new Date())
+                    .build();
+            var jwt = new SignedJWT(new JWSHeader.Builder(JWSAlgorithm.ES256).keyID(key.getKeyID()).build(), claims);
+            jwt.sign(new ECDSASigner(key));
+            return jwt.serialize();
+        } catch (JOSEException e) {
+            throw new IllegalStateException("Не удалось подписать QR-нагрузку борхата", e);
+        }
+    }
+
     /** Офлайн-проверка подписи + срока (то же делает приложение инспектора без сети). */
     public Map<String, Object> verify(String jws) throws ParseException, JOSEException {
         var jwt = SignedJWT.parse(jws);

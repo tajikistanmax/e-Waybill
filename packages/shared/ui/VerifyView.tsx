@@ -6,7 +6,18 @@ import { useT } from '../lib/i18n';
 
 type VerifyResult = {
   signatureValid: boolean;
-  kind?: 'WAYBILL' | 'MALUMOTNOMA';
+  kind?: 'WAYBILL' | 'MALUMOTNOMA' | 'CONSIGNMENT_NOTE';
+  // Борхат (сверка 25.09, B6): свой QR у каждой накладной к 2-Б.
+  noteDate?: string;
+  waybillNumber?: string;
+  vehicle?: string;
+  payerName?: string | null;
+  senderName?: string | null;
+  receiverName?: string | null;
+  receiverAddress?: string | null;
+  cargoName?: string | null;
+  cargoWeight?: number | null;
+  trips?: number | null;
   number?: string;
   onlineStatus?: string;
   validTo?: string;
@@ -83,6 +94,35 @@ export function VerifyView({ jws }: { jws: string }) {
             <dt>{t('verify.malumotnoma.annulledat')}</dt>
             <dd>{result.annulledAt ? new Date(result.annulledAt).toLocaleString('ru-RU') : '—'}</dd>
           </>}
+        </dl>
+        <p style={{ color: 'var(--muted)', fontSize: 12 }}>{t('verify.foot')}</p>
+      </div>
+    );
+  }
+
+  if (result.kind === 'CONSIGNMENT_NOTE') {
+    // Борхат действителен, пока его лист выдан и не аннулирован (как у legacy qr/cargowaybill).
+    const st = result.onlineStatus;
+    const ok = !!st && !['CANCELLED', 'DRAFT', 'CREATED', 'MED_REJECTED', 'TECH_REJECTED'].includes(st);
+    const color = ok ? 'var(--green)' : 'var(--red)';
+    const info = st ? (STATUS_LABELS[st] ?? { label: st, color: 'gray' }) : null;
+    return (
+      <div className="card" style={{ textAlign: 'center', borderColor: color, borderWidth: 2 }} data-testid="verify-note">
+        <div style={{ fontSize: 72 }}>{ok ? '✅' : '❌'}</div>
+        <h1 style={{ color }}>{t(ok ? 'verify.note.h' : 'verify.note.invalid.h')}</h1>
+        <dl className="kv" style={{ textAlign: 'left', maxWidth: 560, margin: '20px auto' }}>
+          <dt>{t('verify.note.number')}</dt><dd className="number">{result.number ?? result.claims?.num ?? '—'}</dd>
+          <dt>{t('verify.note.date')}</dt><dd>{result.noteDate ?? '—'}</dd>
+          <dt>{t('verify.note.waybill')}</dt><dd className="number">{result.waybillNumber ?? '—'}</dd>
+          <dt>{t('verify.onlinestatus')}</dt>
+          <dd>{info ? <span className={`badge ${info.color}`}>{tStatus(st!)}</span> : '—'}</dd>
+          <dt>{t('col.vehiclefull')}</dt><dd>{result.vehicle ?? '—'}</dd>
+          <dt>{t('verify.note.sender')}</dt><dd>{result.senderName ?? '—'}</dd>
+          <dt>{t('verify.note.payer')}</dt><dd>{result.payerName ?? '—'}</dd>
+          <dt>{t('verify.note.receiver')}</dt>
+          <dd>{result.receiverName ?? '—'}{result.receiverAddress ? ` · ${result.receiverAddress}` : ''}</dd>
+          <dt>{t('verify.note.cargo')}</dt>
+          <dd>{result.cargoName ?? '—'}{result.cargoWeight != null ? ` · ${result.cargoWeight} т` : ''}{result.trips != null ? ` · ${result.trips} рейс.` : ''}</dd>
         </dl>
         <p style={{ color: 'var(--muted)', fontSize: 12 }}>{t('verify.foot')}</p>
       </div>

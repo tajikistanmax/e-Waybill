@@ -208,6 +208,10 @@ public class WaybillPrintService {
         ops.add(cargoOpRow("борфарорӣ", note.getReceiverName()));
         m.put("cargoOperations", ops);
         m.put("isCopy", false);
+        // Собственный QR борхата (сверка 25.09, B6): проверка открывает этот борхат, а не лист целиком.
+        if (note.getId() != null && m.get("qr") != null) {
+            m.put("qr", qrImage.dataUri(publicBaseUrl + "/verify/" + qrToken.sign(note, wb)));
+        }
         return pdf.render("print/waybill2b-attachment", m);
     }
 

@@ -2380,6 +2380,16 @@ const DICT: Record<string, { ru: string; tj: string; en?: string }> = {
   'verify.malumotnoma.price': { ru: 'Стоимость', tj: 'Арзиш' },
   'verify.malumotnoma.issuedat': { ru: 'Дата выдачи', tj: 'Санаи додашуда' },
   'verify.malumotnoma.number': { ru: 'Номер справки', tj: 'Рақами маълумотнома' },
+  // Сверка 25.09, B6: проверка борхата по его собственному QR (legacy qr/cargowaybill).
+  'verify.note.h': { ru: 'БОРХАТ ДЕЙСТВИТЕЛЕН', tj: 'БОРХАТ ЭЪТИБОР ДОРАД' },
+  'verify.note.invalid.h': { ru: 'БОРХАТ НЕДЕЙСТВИТЕЛЕН', tj: 'БОРХАТ ЭЪТИБОР НАДОРАД' },
+  'verify.note.number': { ru: 'Номер борхата', tj: 'Рақами борхат' },
+  'verify.note.date': { ru: 'Дата борхата', tj: 'Санаи борхат' },
+  'verify.note.waybill': { ru: 'К путевому листу №', tj: 'Ба роҳхати №' },
+  'verify.note.sender': { ru: 'Отправитель', tj: 'Интиқолдиҳанда' },
+  'verify.note.payer': { ru: 'Заказчик (плательщик)', tj: 'Фармоишгар (пардохткунанда)' },
+  'verify.note.receiver': { ru: 'Получатель, место разгрузки', tj: 'Ҷои борфарорӣ' },
+  'verify.note.cargo': { ru: 'Груз', tj: 'Номгӯи бор' },
   'verify.malumotnoma.annulled.h': { ru: 'СПРАВКА АННУЛИРОВАНА', tj: 'МАЪЛУМОТНОМА БЕКОР КАРДА ШУДААСТ' },
   'verify.malumotnoma.annulledat': { ru: 'Аннулирована', tj: 'Бекор шуд' },
 

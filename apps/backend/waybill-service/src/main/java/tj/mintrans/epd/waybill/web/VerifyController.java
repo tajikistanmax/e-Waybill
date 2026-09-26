@@ -41,6 +41,14 @@ public class VerifyController {
         this.legacyQr = legacyQr;
     }
 
+    private tj.mintrans.epd.waybill.repository.ConsignmentNoteRepository notes;
+
+    /** Борхаты — для проверки собственного QR борхата (сверка 25.09, B6). */
+    @org.springframework.beans.factory.annotation.Autowired
+    void setNotes(tj.mintrans.epd.waybill.repository.ConsignmentNoteRepository notes) {
+        this.notes = notes;
+    }
+
     @GetMapping("/api/v1/verify/{jws}")
     public Map<String, Object> verify(@PathVariable String jws, HttpServletRequest request) {
         // Проверка подписи/срока изолирована: её сбой — это именно «QR недействителен»
@@ -87,6 +95,31 @@ public class VerifyController {
                 result.put("annulled", true);
                 result.put("annulledAt", m.getAnnulledAt());
             }
+        } else if (jti != null && "CONSIGNMENT_NOTE".equals(claims.get("typ"))) {
+            // Борхат (legacy qr/cargowaybill: дата, №, лист, отправитель, плательщик, получатель, груз).
+            result.put("kind", "CONSIGNMENT_NOTE");
+            var n = notes == null ? null : notes.findById(UUID.fromString(jti)).orElse(null);
+            var wbOpt = n == null ? java.util.Optional.<tj.mintrans.epd.waybill.domain.Waybill>empty()
+                    : waybills.findById(n.getWaybillId());
+            if (n == null || wbOpt.isEmpty()) {
+                scanLog.record(jti, number, VerifyScanLog.NOT_FOUND, null, request);
+                throw new tj.mintrans.epd.waybill.web.error.ApiErrors.NotFoundException("Борхат не найден");
+            }
+            var wb = wbOpt.get();
+            onlineStatus = wb.getStatus().name();
+            result.put("onlineStatus", onlineStatus);
+            result.put("number", n.getNumber());
+            result.put("noteDate", n.getNoteDate());
+            result.put("waybillNumber", wb.getNumber());
+            result.put("vehicle", wb.getVehicleRegNumber());
+            result.put("payerName", n.getPayerName());
+            result.put("senderName", n.getSenderName());
+            result.put("receiverName", n.getReceiverName());
+            result.put("receiverAddress", n.getReceiverAddress());
+            result.put("cargoName", n.getCargoName());
+            result.put("cargoWeight", n.getCargoWeight());
+            result.put("trips", n.getKind() == 2 ? null : n.getTrips());
+            number = wb.getNumber();
         } else if (jti != null) {
             result.put("kind", "WAYBILL");
             var wbOpt = waybills.findById(UUID.fromString(jti));
