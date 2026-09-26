@@ -43,6 +43,15 @@ public class RefController {
         return f;
     }
 
+    /**
+     * {@code GET ref/waybills?type=waybill3c} — действующие листы формы (legacy {@code ApiDataController::waybills};
+     * сверка 25.09, G1). Раньше запрос попадал в шаблон {@code /{form}} и отвечал «Unknown form».
+     */
+    @GetMapping("/waybills")
+    public Map<String, Object> activeWaybills(@RequestParam(required = false) String type) {
+        return service.activeWaybills(type);
+    }
+
     /** {@code GET ref/{form}} — список ПЛ формы с фильтрами legacy (organization_rma, driver_rma, transport_registration_number, employee_rma, date_from/date_to, page, per_page). */
     @GetMapping("/{form:waybill[a-z0-9]+}")
     public RefChannelService.PageResult index(@PathVariable String form, @RequestParam Map<String, String> params) {

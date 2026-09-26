@@ -15,6 +15,9 @@ public interface VehicleRepository extends JpaRepository<Vehicle, UUID>,
         org.springframework.data.jpa.repository.JpaSpecificationExecutor<Vehicle> {
     Optional<Vehicle> findByRegistrationNumber(String registrationNumber);
 
+    /** Выгрузка для интеграторов legacy `ref/*` (updated_after, по 100; сверка 25.09, G1). */
+    org.springframework.data.domain.Page<Vehicle> findByUpdatedAtAfter(java.time.OffsetDateTime updatedAfter, org.springframework.data.domain.Pageable pageable);
+
     /** Сколько ТС ссылаются на марку по названию — защита от удаления используемой марки. */
     long countByBrandIgnoreCase(String brand);
 

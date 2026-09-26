@@ -154,6 +154,65 @@ public class RefChannelService {
         return wb;
     }
 
+    // ------------------------------------------------------------------ export: действующие листы
+
+    /**
+     * Выгрузка действующих листов формы для внешних систем — legacy {@code GET ref/waybills?type=}
+     * ({@code ApiDataController::waybills}; сверка 25.09, G1): {@code waybill3c | waybill1a | waybill1ad | waybill1adt
+     * (= waybill1ade) | waybill2b | waybill5bbm}. «Действующий» — выдан (есть номер), не аннулирован, срок не истёк
+     * ({@code date_to} ≥ сегодня); у 5Б-БМ — ещё не закрыт возвратом (legacy {@code entry_date IS NULL}).
+     * Ответ {@code {data: [...]}} без постраничности, как в legacy.
+     */
+    @Transactional(readOnly = true)
+    public Map<String, Object> activeWaybills(String type) {
+        String key = type == null ? "" : type.trim().toLowerCase(java.util.Locale.ROOT);
+        Form form = "waybill1adt".equals(key) ? Form.WAYBILL1ADE : Form.parse(key);
+        if (form == null) {
+            throw new UnprocessableException("type: waybill3c | waybill1a | waybill1ad | waybill1adt | waybill2b | waybill5bbm");
+        }
+        OffsetDateTime today = LocalDate.now().atStartOfDay(java.time.ZoneId.systemDefault()).toOffsetDateTime();
+        Specification<Waybill> spec = (root, query, cb) -> {
+            List<Predicate> ps = new ArrayList<>();
+            ps.add(root.get("waybillType").in(form.types()));
+            ps.add(cb.isNotNull(root.get("number")));
+            ps.add(root.get("status").in(WaybillStatus.CANCELLED, WaybillStatus.DRAFT).not());
+            ps.add(cb.greaterThanOrEqualTo(root.get("validTo"), today));
+            if (form == Form.WAYBILL5BBM) {
+                ps.add(cb.isNull(root.get("odometerEntry")));
+            }
+            return cb.and(ps.toArray(new Predicate[0]));
+        };
+        List<Map<String, Object>> data = new ArrayList<>();
+        for (Waybill wb : waybills.findAll(spec, org.springframework.data.domain.Sort.by("validFrom"))) {
+            Map<String, Object> org = wb.getOrganizationSnapshot();
+            Map<String, Object> driver = wb.getDriverSnapshot();
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("id", wb.getId());
+            row.put("number", wb.getNumber());
+            row.put("status", wb.getStatus() == null ? null : wb.getStatus().name());
+            row.put("exit_date", wb.getValidFrom());
+            row.put("date_to", wb.getValidTo() == null ? null
+                    : wb.getValidTo().atZoneSameInstant(java.time.ZoneId.systemDefault()).toLocalDate().toString());
+            Map<String, Object> drv = new LinkedHashMap<>();
+            drv.put("full_name", snap(driver, "fullName"));
+            drv.put("rma", wb.getDriverRma());
+            drv.put("phone", snap(driver, "phone"));
+            row.put(form == Form.WAYBILL5BBM ? "first_driver" : "driver", drv);
+            if (form == Form.WAYBILL5BBM) {
+                row.put("second_driver", wb.getSecondDriverRma() == null ? null : Map.of("rma", wb.getSecondDriverRma()));
+            }
+            row.put("transport", Map.of("registration_number", s(wb.getVehicleRegNumber())));
+            Map<String, Object> company = new LinkedHashMap<>();
+            company.put("name", snap(org, "name"));
+            company.put("rma", org == null ? wb.getOrganizationRma() : snap(org, "rma"));
+            row.put("company", company);
+            row.put("doctor_confirmed", wb.isMedPassed());
+            row.put("mechanic_confirmed", wb.isTechPassed());
+            data.add(row);
+        }
+        return Map.of("data", data);
+    }
+
     // ------------------------------------------------------------------ index / show
 
     @Transactional(readOnly = true)

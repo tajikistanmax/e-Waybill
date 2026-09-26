@@ -13,6 +13,9 @@ import java.util.UUID;
 public interface OrganizationRepository extends JpaRepository<Organization, UUID> {
     Optional<Organization> findByRma(String rma);
 
+    /** Выгрузка для интеграторов legacy `ref/*` (updated_after, по 100; сверка 25.09, G1). */
+    org.springframework.data.domain.Page<Organization> findByUpdatedAtAfter(java.time.OffsetDateTime updatedAfter, org.springframework.data.domain.Pageable pageable);
+
     /** Филиалы головной компании. */
     List<Organization> findByParentRma(String parentRma);
 

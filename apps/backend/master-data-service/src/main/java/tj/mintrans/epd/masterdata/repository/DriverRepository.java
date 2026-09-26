@@ -15,6 +15,12 @@ public interface DriverRepository extends JpaRepository<Driver, UUID>,
         org.springframework.data.jpa.repository.JpaSpecificationExecutor<Driver> {
     Optional<Driver> findByRma(String rma);
 
+    /** Выгрузка для интеграторов legacy `ref/*` (updated_after, по 100; сверка 25.09, G1). */
+    org.springframework.data.domain.Page<Driver> findByUpdatedAtAfter(java.time.OffsetDateTime updatedAfter, org.springframework.data.domain.Pageable pageable);
+
+    /** Водители, закреплённые за ТС (driver_ids выгрузки ref/transports). */
+    List<Driver> findByAssignedVehicleIdIn(Collection<UUID> vehicleIds);
+
     /** Поиск водителя по части ФИО (перевод парка между организациями: искать можно по ИНН или ФИО). */
     List<Driver> findTop20ByFullNameContainingIgnoreCaseOrderByFullNameAsc(String part);
     List<Driver> findByOrganizationId(UUID organizationId);

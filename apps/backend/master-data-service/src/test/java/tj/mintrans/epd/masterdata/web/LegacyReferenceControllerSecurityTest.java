@@ -74,7 +74,7 @@ class LegacyReferenceControllerSecurityTest {
                 Arguments.of("/api/v1/legacy-ref/city-coefs", "{\"name\":\"Тестовый городской\",\"coef\":5}"),
                 Arguments.of("/api/v1/legacy-ref/used-coefs", "{\"year\":5,\"km\":100000,\"coef\":5}"),
                 Arguments.of("/api/v1/legacy-ref/drive-classes", "{\"driveClass\":\"1\",\"coef\":10}"),
-                Arguments.of("/api/v1/legacy-ref/directions", "{\"title\":\"Тестовое направление\"}"),
+                Arguments.of("/api/v1/legacy-ref/directions", "{\"title\":\"Тестовое направление\",\"number\":1}"),
                 Arguments.of("/api/v1/legacy-ref/route-tariffs",
                         "{\"routeId\":\"" + ROUTE_ID + "\",\"pricePer1Mkm\":1.5,\"priceOneTime\":2.5}")
         );
