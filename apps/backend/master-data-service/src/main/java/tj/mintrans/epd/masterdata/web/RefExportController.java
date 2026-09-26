@@ -71,7 +71,8 @@ public class RefExportController {
                 "updated_at", o.getUpdatedAt()));
     }
 
-    @GetMapping("/employees")
+    /** С {@code organization_rma} — список организации ({@link RefSubjectController}, G4). */
+    @GetMapping(value = "/employees", params = "!organization_rma")
     public Map<String, Object> employees(@RequestParam(required = false) String page,
                                          @RequestParam(name = "updated_after", required = false) String updatedAfter) {
         var p = employees.findByUpdatedAtAfter(since(updatedAfter), pageable(page));
@@ -91,7 +92,8 @@ public class RefExportController {
                 "address", d.getAddress(), "phone", d.getPhone(), "updated_at", d.getUpdatedAt()));
     }
 
-    @GetMapping("/transports")
+    /** С {@code organization_rma} — список организации ({@link RefSubjectController}, G4). */
+    @GetMapping(value = "/transports", params = "!organization_rma")
     public Map<String, Object> transports(@RequestParam(required = false) String page,
                                           @RequestParam(name = "updated_after", required = false) String updatedAfter) {
         Page<Vehicle> p = vehicles.findByUpdatedAtAfter(since(updatedAfter), pageable(page));

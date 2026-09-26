@@ -24,6 +24,10 @@ public interface DriverRepository extends JpaRepository<Driver, UUID>,
     /** Поиск водителя по части ФИО (перевод парка между организациями: искать можно по ИНН или ФИО). */
     List<Driver> findTop20ByFullNameContainingIgnoreCaseOrderByFullNameAsc(String part);
     List<Driver> findByOrganizationId(UUID organizationId);
+
+    /** Водители организации постранично — legacy GET driver?organization_rma (G4). */
+    org.springframework.data.domain.Page<Driver> findByOrganizationId(UUID organizationId,
+                                                                      org.springframework.data.domain.Pageable pageable);
     List<Driver> findByOrganizationIdIn(Collection<UUID> organizationIds);
 
     /** Поиск водителей организации по ИНН(РМА), ФИО (регистронезависимо) или табельному номеру, с лимитом.

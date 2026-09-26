@@ -24,6 +24,10 @@ public interface VehicleRepository extends JpaRepository<Vehicle, UUID>,
     /** Поиск ТС по части госномера (перевод парка между организациями). */
     List<Vehicle> findTop20ByRegistrationNumberContainingIgnoreCaseOrderByRegistrationNumberAsc(String part);
     List<Vehicle> findByOrganizationId(UUID organizationId);
+
+    /** ТС организации постранично — legacy GET transports?organization_rma (G4). */
+    org.springframework.data.domain.Page<Vehicle> findByOrganizationId(UUID organizationId,
+                                                                       org.springframework.data.domain.Pageable pageable);
     List<Vehicle> findByOrganizationIdIn(Collection<UUID> organizationIds);
 
     /** ТС организации с данным номером стоянки — уникальность в пределах организации (legacy ParkingRequest, 12.13). */

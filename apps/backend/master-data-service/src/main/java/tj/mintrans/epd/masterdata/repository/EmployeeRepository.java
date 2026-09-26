@@ -18,5 +18,9 @@ public interface EmployeeRepository extends JpaRepository<Employee, UUID>,
     /** Поиск сотрудника по части ФИО (перевод между организациями: по ИНН или ФИО). */
     List<Employee> findTop20ByNameContainingIgnoreCaseOrderByNameAsc(String part);
     List<Employee> findByOrganizationId(UUID organizationId);
+
+    /** Сотрудники организации постранично — legacy GET employees?organization_rma (G4). */
+    org.springframework.data.domain.Page<Employee> findByOrganizationId(UUID organizationId,
+                                                                        org.springframework.data.domain.Pageable pageable);
     List<Employee> findByOrganizationIdIn(Collection<UUID> organizationIds);
 }
