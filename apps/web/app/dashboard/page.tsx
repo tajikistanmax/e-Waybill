@@ -7,7 +7,7 @@ import {
   ResponsiveContainer, AreaChart, Area, LineChart, ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   PieChart, Pie, Cell,
 } from 'recharts';
-import { wb, md, Waybill, STATUS_LABELS } from '@/lib/api';
+import { wb, md, Waybill, STATUS_LABELS, type DashboardStats } from '@/lib/api';
 import { Icon, P } from '../icons';
 import { useT } from '@/lib/i18n';
 import { useAuth } from '@/lib/auth';
@@ -17,14 +17,10 @@ const TYPE_COLORS = ['#2563eb', '#16a34a', '#ea9615', '#f97316', '#ef4444', '#7c
 
 type Svc = 'up' | 'down' | 'checking';
 
-function isToday(iso: string) {
-  const d = new Date(iso), n = new Date();
-  return d.toDateString() === n.toDateString();
-}
 function dayKey(d: Date) { return d.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' }); }
 
 export default function DashboardPage() {
-  const [items, setItems] = useState<Waybill[]>([]);
+  const [data, setData] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const router = useRouter();
@@ -40,7 +36,8 @@ export default function DashboardPage() {
   const isPlatformWide = ['SYSTEM_ADMIN', 'MINTRANS_ANALYST', 'INSPECTOR'].some(r => roles.includes(r));
   const [scopeName, setScopeName] = useState('');
 
-  useEffect(() => { wb.list().then(setItems).catch((e: Error) => setError(e.message)).finally(() => setLoading(false)); }, []);
+  // Показатели считает сервер по всей области видимости (раньше — в браузере по 1000 последним листам, H4).
+  useEffect(() => { wb.dashboard().then(setData).catch((e: Error) => setError(e.message)).finally(() => setLoading(false)); }, []);
 
   // Пассажирооборот (млн пасс-км) автобус/троллейбус по месяцам — перенос легаси-графика
   // Admin\Charts\Ebus\PassengerVolumeController, единственного содержательного KPI старой панели.
@@ -66,41 +63,25 @@ export default function DashboardPage() {
   }, [isPlatformWide]);
 
   const stats = useMemo(() => {
-    const total = items.length;
-    const today = items.filter(w => isToday(w.createdAt)).length;
-    const onLine = items.filter(w => ['ISSUED', 'ACTIVE', 'RETURNED'].includes(w.status)).length;
-    const completed = items.filter(w => w.status === 'COMPLETED').length;
-    const cancelled = items.filter(w => ['CANCELLED', 'EXPIRED', 'BLOCKED'].includes(w.status)).length;
-
-    // Динамика за 7 дней
-    const days: { d: string; Создано: number; Завершено: number }[] = [];
-    for (let i = 6; i >= 0; i--) {
-      const dt = new Date(); dt.setDate(dt.getDate() - i);
-      const k = dt.toDateString();
-      days.push({
-        d: dayKey(dt),
-        Создано: items.filter(w => new Date(w.createdAt).toDateString() === k).length,
-        Завершено: items.filter(w => w.status === 'COMPLETED' && new Date(w.createdAt).toDateString() === k).length,
-      });
-    }
-
-    // По типам
-    const typeMap = items.reduce<Record<string, number>>((a, w) => { a[w.waybillType] = (a[w.waybillType] ?? 0) + 1; return a; }, {});
-    const byType = Object.entries(typeMap).sort((a, b) => b[1] - a[1]).map(([name, value]) => ({ name, value }));
-
-    const spark = (extract: (w: Waybill) => boolean) => days.map(dd => ({
-      v: items.filter(w => extract(w) && dayKey(new Date(w.createdAt)) === dd.d).length,
-    }));
-
-    return { total, today, onLine, completed, cancelled, days, byType,
-      sparkTotal: days.map(dd => ({ v: dd.Создано })),
-      sparkDone: spark(w => w.status === 'COMPLETED'),
-      sparkActive: spark(w => ['ACTIVE', 'RETURNED'].includes(w.status)),
-      sparkCancel: spark(w => ['CANCELLED', 'EXPIRED'].includes(w.status)),
+    const src = data?.days ?? [];
+    // Динамика за 7 дней (дата — сутки службы, Asia/Dushanbe).
+    const days = src.map(x => {
+      const [y, m, d] = x.date.split('-').map(Number);
+      return { d: dayKey(new Date(y, m - 1, d)), Создано: x.created, Завершено: x.completed };
+    });
+    return {
+      total: data?.total ?? 0, today: data?.today ?? 0, onLine: data?.onLine ?? 0,
+      completed: data?.completed ?? 0, cancelled: data?.cancelled ?? 0,
+      days,
+      byType: (data?.byType ?? []).map(x => ({ name: x.type, value: x.count })),
+      sparkTotal: src.map(x => ({ v: x.created })),
+      sparkDone: src.map(x => ({ v: x.completed })),
+      sparkActive: src.map(x => ({ v: x.active })),
+      sparkCancel: src.map(x => ({ v: x.cancelled })),
     };
-  }, [items]);
+  }, [data]);
 
-  const recent = useMemo(() => [...items].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 6), [items]);
+  const recent: Waybill[] = data?.recent ?? [];
 
   const KPIS = [
     { label: t('kpi.total'), value: stats.total, icon: P.doc, cls: 'ic-blue', spark: stats.sparkTotal, color: '#2563eb' },

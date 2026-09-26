@@ -321,6 +321,14 @@ export type Cargo = {
   [key: string]: unknown;
 };
 
+/** Показатели главной панели (GET /api/v1/dashboard). */
+export type DashboardStats = {
+  total: number; today: number; onLine: number; completed: number; cancelled: number;
+  days: { date: string; created: number; completed: number; active: number; cancelled: number }[];
+  byType: { type: string; count: number }[];
+  recent: Waybill[];
+};
+
 // Марка ТС (legacy-справочник Brand): код, модель, вместимость/грузоподъёмность — для выбора в карточке ТС.
 export type BrandRef = {
   id: number; number: string | null; name: string; model: string | null;
@@ -748,6 +756,8 @@ export type WaybillRequest = {
 
 export const wb = {
   list: () => fetch('/wb-api/api/v1/waybills', { headers: authHeaders() }).then(r => handle<Waybill[]>(r)),
+  // Показатели главной панели — агрегаты сервера по всей области видимости.
+  dashboard: () => fetch('/wb-api/api/v1/dashboard', { headers: authHeaders() }).then(r => handle<DashboardStats>(r)),
   // Серверная пагинация реестра ПЛ (MIGRATION.md 8.4): фильтры в SQL, страница + общее число.
   page: (params: Record<string, string | number | boolean | undefined>) => {
     const qs = Object.entries(params)
