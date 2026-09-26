@@ -109,6 +109,16 @@ public class Driver {
     @Column(nullable = false)
     private boolean suspended;
 
+    /** «Қарздор» — отметка перевозчика (V83): водитель-должник не выбирается при выписке ПЛ. */
+    @Column(nullable = false)
+    private boolean debtor;
+    @Column(name = "debtor_note")
+    private String debtorNote;
+    @Column(name = "debtor_marked_at")
+    private java.time.OffsetDateTime debtorMarkedAt;
+    @Column(name = "debtor_marked_by")
+    private String debtorMarkedBy;
+
     /** MANUAL | UNIFIED (данные субъекта — из единой платформы: налоговая + ВУ из ГАИ). */
     @Column(nullable = false)
     private String source = "MANUAL";
@@ -187,6 +197,14 @@ public class Driver {
     public void setAssignedVehicleId(UUID assignedVehicleId) { this.assignedVehicleId = assignedVehicleId; }
     public boolean isSuspended() { return suspended; }
     public void setSuspended(boolean suspended) { this.suspended = suspended; }
+    public boolean isDebtor() { return debtor; }
+    public void setDebtor(boolean debtor) { this.debtor = debtor; }
+    public String getDebtorNote() { return debtorNote; }
+    public void setDebtorNote(String debtorNote) { this.debtorNote = debtorNote; }
+    public java.time.OffsetDateTime getDebtorMarkedAt() { return debtorMarkedAt; }
+    public void setDebtorMarkedAt(java.time.OffsetDateTime debtorMarkedAt) { this.debtorMarkedAt = debtorMarkedAt; }
+    public String getDebtorMarkedBy() { return debtorMarkedBy; }
+    public void setDebtorMarkedBy(String debtorMarkedBy) { this.debtorMarkedBy = debtorMarkedBy; }
     public String getSource() { return source; }
     public void setSource(String source) { this.source = source; }
     public OffsetDateTime getSyncedAt() { return syncedAt; }

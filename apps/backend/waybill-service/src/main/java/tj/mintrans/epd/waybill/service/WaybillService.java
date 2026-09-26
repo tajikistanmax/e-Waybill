@@ -482,6 +482,10 @@ public class WaybillService {
         if (Boolean.TRUE.equals(driver.get("suspended"))) {
             throw new UnprocessableException("Водитель отстранён");
         }
+        // «Қарздор» — отметка перевозчика (legacy debt = 0 в выборе водителя; сверка 25.09, F6).
+        if (Boolean.TRUE.equals(driver.get("debtor"))) {
+            throw new UnprocessableException("Водитель отмечен как «Қарздор» (должник) — снимите отметку в разделе «Водители»");
+        }
         if (Boolean.TRUE.equals(vehicle.get("blocked"))) {
             throw new UnprocessableException("Транспорт заблокирован");
         }
@@ -846,6 +850,9 @@ public class WaybillService {
             }
             if (Boolean.TRUE.equals(driver.get("suspended"))) {
                 out.add(new CheckResult("DRIVER_SUSPENDED", "ERROR", "Водитель отстранён"));
+            }
+            if (Boolean.TRUE.equals(driver.get("debtor"))) {
+                out.add(new CheckResult("DRIVER_DEBTOR", "ERROR", "Водитель отмечен как «Қарздор» (должник)"));
             }
             var licenseValidTo = dateOrNull(driver.get("licenseValidTo"));
             if (licenseValidTo != null && licenseValidTo.isBefore(today)) {
@@ -1744,6 +1751,9 @@ public class WaybillService {
         }
         if (Boolean.TRUE.equals(driver.get("suspended"))) {
             throw new UnprocessableException("Новый водитель отстранён");
+        }
+        if (Boolean.TRUE.equals(driver.get("debtor"))) {
+            throw new UnprocessableException("Новый водитель отмечен как «Қарздор» (должник)");
         }
         var today = LocalDate.now();
         var licenseValidTo = dateOrNull(driver.get("licenseValidTo"));

@@ -470,6 +470,8 @@ export const md = {
   createEmployee: (body: Record<string, unknown>) => mdPost('employees', body),
   // Удаление (COMPANY_ADMIN/SYSTEM_ADMIN; организация — только SYSTEM_ADMIN). История ПЛ цела (снимки).
   deleteDriver: (id: string) => mdDelete(`drivers/${id}`),
+  // «Қарздор» — отметка перевозчика у своего водителя (должник не выбирается при выписке ПЛ).
+  markDriverDebtor: (id: string, debtor: boolean, note: string | null) => mdPost(`drivers/${id}/debtor`, { debtor, note }),
   deleteVehicle: (id: string) => mdDelete(`vehicles/${id}`),
   deleteEmployee: (id: string) => mdDelete(`employees/${id}`),
   deleteOrganization: (id: string) => mdDelete(`organizations/${id}`),

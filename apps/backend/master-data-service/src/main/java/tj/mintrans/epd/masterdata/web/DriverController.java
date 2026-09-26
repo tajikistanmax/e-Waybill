@@ -284,6 +284,31 @@ public class DriverController {
         return ResponseEntity.noContent().build();
     }
 
+    public record DebtorRequest(@jakarta.validation.constraints.NotNull Boolean debtor,
+                                @Size(max = 300) String note) {
+    }
+
+    /**
+     * «Қарздор» — перевозчик отмечает своего водителя должником или снимает отметку (legacy drivers.debt,
+     * право debt у роли company; сверка 25.09, F6). Водитель-должник не выбирается при выписке ПЛ.
+     * Не путать с отстранением ({@code suspended}) — его ставит и снимает только Минтранс.
+     */
+    @PostMapping("/{id}/debtor")
+    @PreAuthorize("hasAnyRole('SYSTEM_ADMIN','COMPANY_ADMIN','BRANCH_ADMIN','DISPATCHER')")
+    public Driver markDebtor(@PathVariable UUID id, @Valid @RequestBody DebtorRequest req) {
+        var driver = drivers.findById(id).orElseThrow(() -> new NotFoundException("Водитель не найден"));
+        requireOwnEntity(driver.getOrganizationId());
+        boolean was = driver.isDebtor();
+        driver.setDebtor(req.debtor());
+        driver.setDebtorNote(req.debtor() && req.note() != null && !req.note().isBlank() ? req.note().trim() : null);
+        driver.setDebtorMarkedAt(req.debtor() ? java.time.OffsetDateTime.now() : null);
+        driver.setDebtorMarkedBy(req.debtor() ? currentUser.username().orElse(null) : null);
+        var saved = drivers.save(driver);
+        audit.record(AuditService.UPDATE, "DRIVER", driver.getRma(),
+                was ? "Қарздор" : null, req.debtor() ? "Қарздор" + (saved.getDebtorNote() == null ? "" : ": " + saved.getDebtorNote()) : null);
+        return saved;
+    }
+
     // ------------------------------------------------------------ тенант-защита записи
 
     /** Тенант пишет в свою организацию либо (администратор компании) в её филиал; иначе 403. */

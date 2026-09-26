@@ -207,6 +207,23 @@ export default function FleetView({ kind }: { kind: FleetKind }) {
     finally { setBusy(false); }
   }
 
+  async function toggleDebtor(row: Row) {
+    const mark = !row.debtor;
+    let note: string | null = null;
+    if (mark) {
+      note = window.prompt(t('fleet.debtor.prompt').replace('{name}', String(row.fullName ?? row.rma)), '');
+      if (note === null) return;   // отмена
+    } else if (!window.confirm(t('fleet.debtor.unconfirm').replace('{name}', String(row.fullName ?? row.rma)))) {
+      return;
+    }
+    setErr(''); setMsg('');
+    try {
+      await md.markDriverDebtor(String(row.id), mark, note);
+      setMsg(mark ? t('fleet.debtor.marked') : t('fleet.debtor.unmarked'));
+      load(q, kind);
+    } catch (e) { setErr((e as Error).message); }
+  }
+
   async function remove(row: Row) {
     const name = kind === 'vehicles' ? String(row.registrationNumber) : kind === 'drivers' ? String(row.fullName) : String(row.name);
     if (!window.confirm(t('fleet.delete.confirm').replace('{name}', name))) return;
@@ -407,7 +424,9 @@ export default function FleetView({ kind }: { kind: FleetKind }) {
             ))}
             {!loading && kind === 'drivers' && visible.map((d, i) => (
               <tr key={i}>
-                <td style={{ fontWeight: 600 }}>{String(d.fullName ?? '')}{actMap && <span className="badge blue" style={{ marginLeft: 6 }} title={t('fleet.act.count')}>{actMap[String(d.rma)] ?? 0}</span>}</td>
+                <td style={{ fontWeight: 600 }}>{String(d.fullName ?? '')}{actMap && <span className="badge blue" style={{ marginLeft: 6 }} title={t('fleet.act.count')}>{actMap[String(d.rma)] ?? 0}</span>}
+                  {d.debtor ? <span className="badge red" style={{ marginLeft: 6 }} title={d.debtorNote ? String(d.debtorNote) : undefined} data-testid="debtor-badge">{t('fleet.debtor')}</span> : null}
+                  {d.suspended ? <span className="badge red" style={{ marginLeft: 6 }}>{t('fleet.suspended')}</span> : null}</td>
                 <td style={{ fontFamily: 'var(--mono)' }}>{String(d.rma ?? '')}</td>
                 <td>{String(d.licenseCategories ?? '—')}</td>
                 <td>{d.licenseValidTo ? String(d.licenseValidTo) : '—'}</td>
@@ -460,6 +479,14 @@ export default function FleetView({ kind }: { kind: FleetKind }) {
         <button className="btn secondary" style={{ padding: '4px 9px' }} onClick={() => openEdit(row)} title={t('fleet.edit')}>
           <Icon d={P.doc} cls="" style={{ width: 14, height: 14 }} />
         </button>
+        {/* «Қарздор» — отметка перевозчика (legacy debt): должник не выбирается при выписке ПЛ (F6). */}
+        {kind === 'drivers' && (
+          <button className="btn secondary" style={{ padding: '4px 9px', fontSize: 12 }} data-testid="debtor-toggle"
+            title={row.debtor ? t('fleet.debtor.unmark') : t('fleet.debtor.mark')}
+            onClick={() => void toggleDebtor(row)}>
+            {row.debtor ? t('fleet.debtor.unmark') : t('fleet.debtor')}
+          </button>
+        )}
         {/* Запись из единой платформы в режиме «справочник ведёт e-Transport» открепляется там. */}
         {canDelete && !(unifiedHere && String(row.source ?? '').toUpperCase() === 'UNIFIED') && (
           <button className="btn secondary" style={{ padding: '4px 9px', color: 'var(--red)' }} onClick={() => remove(row)} title={t('fleet.delete')}>
