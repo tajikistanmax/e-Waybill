@@ -129,6 +129,7 @@ public class VerifyController {
                 result.put("onlineStatus", onlineStatus);
                 result.put("number", wb.getNumber());
                 result.put("validTo", wb.getValidTo());
+                putDetails(result, wb);
                 if (number == null) number = wb.getNumber();
             } else {
                 verdict = VerifyScanLog.NOT_FOUND;
@@ -139,6 +140,52 @@ public class VerifyController {
         // поэтому ни сорвать, ни изменить ответ проверки оно не может.
         scanLog.record(jti, number, verdict, onlineStatus, request);
         return result;
+    }
+
+    private tj.mintrans.epd.waybill.client.MasterDataClient masterData;
+
+    /** Фото водителя и настройка его показа — из master-data (сверка 25.09, G6). */
+    @org.springframework.beans.factory.annotation.Autowired
+    void setMasterData(tj.mintrans.epd.waybill.client.MasterDataClient masterData) {
+        this.masterData = masterData;
+    }
+
+    /**
+     * Сведения для сверки на месте — как legacy {@code qr/waybill.blade.php} (сверка 25.09, G6): маршрут,
+     * стоянка, карта контроля, водительское удостоверение (категории, срок, номер — последние 4 знака) и
+     * одобренное фото водителя, если его показ не выключен в «Настройки → Безопасность».
+     *
+     * <p>Паспорт водителя и сканы документов, которые legacy показывал на открытой странице, не выводятся:
+     * это персональные данные, а для сверки водителя с документом хватает фото и ВУ.</p>
+     */
+    private void putDetails(Map<String, Object> result, tj.mintrans.epd.waybill.domain.Waybill wb) {
+        var vehicle = wb.getVehicleSnapshot();
+        var driver = wb.getDriverSnapshot();
+        result.put("route", wb.getRoute());
+        result.put("parkingNumber", str(vehicle, "parkingNumber"));
+        result.put("controlCardNumber", str(vehicle, "controlCardNumber"));
+        result.put("controlCardValidTo", str(vehicle, "controlCardValidTo"));
+        result.put("licenseNumber", maskTail(str(driver, "licenseNumber")));
+        result.put("licenseCategories", str(driver, "licenseCategories"));
+        result.put("licenseValidTo", str(driver, "licenseValidTo"));
+        if (masterData != null && !"false".equalsIgnoreCase(
+                masterData.securitySettings().getOrDefault("verify_driver_photo", "true"))) {
+            masterData.findDriverPhotoDataUri(wb.getDriverRma()).ifPresent(p -> result.put("driverPhoto", p));
+        }
+    }
+
+    /** «•••• 0201» — достаточно, чтобы сверить с удостоверением в руках, и не раскрывает номер целиком. */
+    static String maskTail(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        String v = value.trim();
+        return v.length() <= 4 ? "••••" : "•••• " + v.substring(v.length() - 4);
+    }
+
+    private static String str(Map<String, Object> snapshot, String key) {
+        Object v = snapshot == null ? null : snapshot.get(key);
+        return v == null || v.toString().isBlank() ? null : v.toString();
     }
 
     /**

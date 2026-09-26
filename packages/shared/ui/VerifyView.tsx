@@ -27,6 +27,16 @@ type VerifyResult = {
   issuedAt?: string;
   annulled?: boolean;
   annulledAt?: string;
+  // Сведения для сверки на месте (сверка 25.09, G6): номер ВУ приходит замаскированным,
+  // фото — только одобренное и только если его показ не выключен в настройках платформы.
+  route?: string | null;
+  parkingNumber?: string | null;
+  controlCardNumber?: string | null;
+  controlCardValidTo?: string | null;
+  licenseNumber?: string | null;
+  licenseCategories?: string | null;
+  licenseValidTo?: string | null;
+  driverPhoto?: string;
   claims?: {
     num?: string;
     veh?: string;
@@ -141,6 +151,10 @@ export function VerifyView({ jws }: { jws: string }) {
     : !!status && ['ISSUED', 'ACTIVE', 'RETURNED'].includes(status));
   const okColor = 'var(--green)';
   const warnColor = 'var(--amber)';
+  // 2027-09-24 → 24.09.2027
+  const day = (iso?: string | null) => (iso && /^\d{4}-\d{2}-\d{2}/.test(iso) ? iso.slice(0, 10).split('-').reverse().join('.') : iso ?? '');
+  const withUntil = (main: string | null | undefined, until?: string | null) =>
+    [main, until ? `${t('verify.until')} ${day(until)}` : null].filter(Boolean).join(' · ') || '—';
 
   return (
     <div className="card" style={{ textAlign: 'center', borderColor: isValid ? okColor : warnColor, borderWidth: 2 }}>
@@ -148,13 +162,30 @@ export function VerifyView({ jws }: { jws: string }) {
       <h1 style={{ color: isValid ? okColor : warnColor }}>
         {isValid ? t('verify.valid.h') : t('verify.notactive.h')}
       </h1>
+      {result.driverPhoto && (
+        // Фото — чтобы инспектор сверил водителя с документом (как на старой странице QR).
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={result.driverPhoto} alt={t('verify.photo.alt')} data-testid="verify-photo"
+          style={{ maxWidth: 160, maxHeight: 200, borderRadius: 8, border: '1px solid var(--border)', marginTop: 8 }} />
+      )}
       <dl className="kv" style={{ textAlign: 'left', maxWidth: 520, margin: '20px auto' }}>
         <dt>{t('col.number')}</dt><dd className="number">{result.number ?? result.claims?.num ?? '—'}</dd>
         <dt>{t('verify.onlinestatus')}</dt>
         <dd>{statusInfo ? <span className={`badge ${statusInfo.color}`}>{tStatus(status!)}</span> : '—'}</dd>
         <dt>{t('col.vehiclefull')}</dt><dd>{result.claims?.veh ?? '—'}</dd>
         <dt>{t('col.driver')}</dt><dd>{result.claims?.drv ?? '—'}</dd>
+        {(result.licenseNumber || result.licenseCategories) && <>
+          <dt>{t('verify.license')}</dt>
+          <dd data-testid="verify-license">
+            {withUntil([result.licenseNumber, result.licenseCategories].filter(Boolean).join(' · '), result.licenseValidTo)}
+          </dd>
+        </>}
         <dt>{t('col.org')}</dt><dd>{result.claims?.org ?? '—'}</dd>
+        {result.route && <><dt>{t('verify.route')}</dt><dd>{result.route}</dd></>}
+        {result.parkingNumber && <><dt>{t('verify.parking')}</dt><dd>{result.parkingNumber}</dd></>}
+        {result.controlCardNumber && <>
+          <dt>{t('verify.controlcard')}</dt><dd>{withUntil(result.controlCardNumber, result.controlCardValidTo)}</dd>
+        </>}
         <dt>{t('insp.medtech')}</dt>
         <dd>
           <span className={`badge ${result.claims?.med ? 'green' : 'red'}`}>Т2 {result.claims?.med ? '✓' : '✗'}</span>{' '}

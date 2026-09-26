@@ -168,6 +168,22 @@ public class MasterDataClient {
         return latestImage("/api/v1/employees/{key}/documents/latest?docType=" + docType, rma);
     }
 
+    /**
+     * Одобренное фото водителя (PHOTO) для публичной страницы проверки QR — как legacy
+     * {@code qr/waybill.blade.php} (сверка 25.09, G6). Любая ошибка → empty: страница без фото.
+     */
+    public Optional<String> findDriverPhotoDataUri(String rma) {
+        if (rma == null || rma.isBlank()) {
+            return Optional.empty();
+        }
+        return latestImage("/api/v1/drivers/{key}/documents/latest?docType=PHOTO", rma);
+    }
+
+    /** Настройки безопасности (master-data, категория {@code security}); недоступность — пустая карта. */
+    public Map<String, String> securitySettings() {
+        return settingsByCategory("security");
+    }
+
     /** Одобренная печать организации (SEAL) — графа «Ҷои муҳри корхона»; legacy {@code companies.seal_attach}. */
     public Optional<String> findOrganizationSealDataUri(String rma) {
         if (rma == null || rma.isBlank()) {
