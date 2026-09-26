@@ -22,6 +22,7 @@ type VerifyResult = {
     med?: boolean;
     tec?: boolean;
     exp?: number;
+    legacy?: boolean;
   };
 };
 
@@ -83,7 +84,12 @@ export function VerifyView({ jws }: { jws: string }) {
   const statusInfo = status ? (STATUS_LABELS[status] ?? { label: status, color: 'gray' }) : null;
   // Действителен: подпись верна И лист на линии (выдан/активен/возвращён). READY (номер есть,
   // но водителю не выдан) и черновые/терминальные статусы — НЕ действителен. Согласовано с /inspector.
-  const isValid = result.signatureValid && !!status && ['ISSUED', 'ACTIVE', 'RETURNED'].includes(status);
+  // Лист старой системы «Роҳхат» по старому бумажному QR (claims.legacy): перенесён архивом, его статус
+  // в e-Waybill не отражает выдачу на линию — действителен, пока не истёк срок validTo (сверка 25.09, G5).
+  const legacy = !!result.claims?.legacy;
+  const isValid = result.signatureValid && (legacy
+    ? !!result.validTo && new Date(result.validTo).getTime() > Date.now()
+    : !!status && ['ISSUED', 'ACTIVE', 'RETURNED'].includes(status));
   const okColor = 'var(--green)';
   const warnColor = 'var(--amber)';
 
@@ -108,6 +114,7 @@ export function VerifyView({ jws }: { jws: string }) {
         <dt>{t('verify.validto')}</dt>
         <dd>{result.validTo ? new Date(result.validTo).toLocaleString('ru-RU') : '—'}</dd>
       </dl>
+      {legacy && <p style={{ fontSize: 13 }} data-testid="verify-legacy">{t('verify.legacy')}</p>}
       <p style={{ color: 'var(--muted)', fontSize: 12 }}>{t('verify.foot')}</p>
     </div>
   );

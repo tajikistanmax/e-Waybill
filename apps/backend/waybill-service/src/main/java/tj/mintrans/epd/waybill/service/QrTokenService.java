@@ -94,6 +94,33 @@ public class QrTokenService {
     }
 
     /**
+     * Токен проверки перенесённого листа по старому бумажному QR «Роҳхат» (сверка 25.09, G5): без exp/nbf —
+     * срок у архивного листа давно истёк, и обычный токен проверка отвергла бы как «недействительный QR».
+     * Инспектор видит сам документ, его статус и срок действия (validTo) — как на старой странице проверки.
+     * Признак {@code legacy=true} отличает такой токен от QR новых бланков.
+     */
+    public String signLegacy(Waybill wb) {
+        try {
+            var claims = new JWTClaimsSet.Builder()
+                    .issuer("epd.tj")
+                    .jwtID(wb.getId().toString())
+                    .claim("num", wb.getNumber())
+                    .claim("typ", wb.getWaybillType().name())
+                    .claim("veh", wb.getVehicleRegNumber())
+                    .claim("drv", wb.getDriverSnapshot() != null ? wb.getDriverSnapshot().get("fullName") : null)
+                    .claim("org", wb.getOrganizationSnapshot() != null ? wb.getOrganizationSnapshot().get("name") : null)
+                    .claim("legacy", true)
+                    .issueTime(new Date())
+                    .build();
+            var jwt = new SignedJWT(new JWSHeader.Builder(JWSAlgorithm.ES256).keyID(key.getKeyID()).build(), claims);
+            jwt.sign(new ECDSASigner(key));
+            return jwt.serialize();
+        } catch (JOSEException e) {
+            throw new IllegalStateException("Не удалось подписать QR-нагрузку перенесённого листа", e);
+        }
+    }
+
+    /**
      * Подпись справки (маълумотнома) для QR на печатном бланке — тот же ключ/алгоритм,
      * что и у путевых листов, но без exp/nbf (справка не «истекает», в отличие от ПЛ)
      * и с {@code typ=MALUMOTNOMA}, по которому {@code VerifyController} отличает её от ПЛ.

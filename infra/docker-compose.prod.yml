@@ -227,6 +227,9 @@ services:
       # Адрес публичного портала проверки для QR на печатных бланках (ПЛ, борхат, СМР, справка).
       # Без него QR на всех PDF вёл на http://localhost:3000/verify/… (умолчание application.yml).
       PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-https://${EPD_TLS_HOST:-localhost}:8443}
+      # APP_KEY старой системы «Роҳхат» (Laravel) — проверка старых бумажных QR /qrcode/{тип}/{id}
+      # перенесённых листов. Секрет — только в infra/.env; пусто — старые QR «не настроены».
+      LEGACY_APP_KEY: ${LEGACY_APP_KEY:-}
     depends_on:
       postgres:
         condition: service_healthy

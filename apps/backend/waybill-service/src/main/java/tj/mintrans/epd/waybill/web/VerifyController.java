@@ -26,6 +26,7 @@ public class VerifyController {
     private final WaybillRepository waybills;
     private final MalumotnomaRepository malumotnomas;
     private final VerifyScanLogService scanLog;
+    private tj.mintrans.epd.waybill.service.LegacyQrService legacyQr;
 
     public VerifyController(QrTokenService qr, WaybillRepository waybills, MalumotnomaRepository malumotnomas,
                            VerifyScanLogService scanLog) {
@@ -33,6 +34,11 @@ public class VerifyController {
         this.waybills = waybills;
         this.malumotnomas = malumotnomas;
         this.scanLog = scanLog;
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    void setLegacyQr(tj.mintrans.epd.waybill.service.LegacyQrService legacyQr) {
+        this.legacyQr = legacyQr;
     }
 
     @GetMapping("/api/v1/verify/{jws}")
@@ -88,6 +94,15 @@ public class VerifyController {
         // поэтому ни сорвать, ни изменить ответ проверки оно не может.
         scanLog.record(jti, number, verdict, onlineStatus, request);
         return result;
+    }
+
+    /**
+     * Старый бумажный QR «Роҳхат» ({@code /qrcode/{type}/{token}}) → токен проверки перенесённого листа
+     * (сверка 25.09, G5). Портал проверки открывает по нему обычную страницу {@code /verify/{jws}}.
+     */
+    @GetMapping("/api/v1/verify/legacy/{type}/{token}")
+    public Map<String, Object> legacy(@PathVariable String type, @PathVariable String token) {
+        return Map.of("jws", legacyQr.resolve(type, token));
     }
 
     /** Публичные ключи для офлайн-приложений инспекторов. */
