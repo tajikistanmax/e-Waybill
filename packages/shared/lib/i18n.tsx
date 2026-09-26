@@ -1751,6 +1751,16 @@ const DICT: Record<string, { ru: string; tj: string; en?: string }> = {
   'rep.typed.workHours': { ru: 'Часы', tj: 'Соат' },
   'rep.typed.transportWork': { ru: 'Грузооборот P, т·км', tj: 'Гардиши бор, т·км' },
   'rep.typed.trips': { ru: 'Ездки Z', tj: 'Рейсҳо' },
+  // Топливо по видам Б/С/Г (legacy «меъёр / асл / фарқият»; сверка 25.09, D6)
+  'rep.typed.fuelNormPetrol': { ru: 'Норма Б, л', tj: 'Меъёр Б' },
+  'rep.typed.fuelNormDiesel': { ru: 'Норма С, л', tj: 'Меъёр С' },
+  'rep.typed.fuelNormGas': { ru: 'Норма Г, л', tj: 'Меъёр Г' },
+  'rep.typed.fuelGivenPetrol': { ru: 'Выдано Б, л', tj: 'Асл Б' },
+  'rep.typed.fuelGivenDiesel': { ru: 'Выдано С, л', tj: 'Асл С' },
+  'rep.typed.fuelGivenGas': { ru: 'Выдано Г, л', tj: 'Асл Г' },
+  'rep.typed.fuelDevPetrol': { ru: 'Откл. Б, л', tj: 'Фарқият Б' },
+  'rep.typed.fuelDevDiesel': { ru: 'Откл. С, л', tj: 'Фарқият С' },
+  'rep.typed.fuelDevGas': { ru: 'Откл. Г, л', tj: 'Фарқият Г' },
   // Бланк типового отчёта (legacy report_bill) — сверка 25.09, D1.
   'rep.bill.title': { ru: 'Бланк (форма путевого листа)', tj: 'Бланк (шакли роҳхат)' },
   'rep.bill.bus': { ru: 'Автобус (1-АД)', tj: 'Автобус (1-АД)' },

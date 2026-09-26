@@ -141,7 +141,7 @@ public class WaybillReportService {
             ReportRow row = rows.computeIfAbsent(key, k -> ReportRow.zero(k, label));
             rows.put(key, row.plus(c.laps, c.distanceKm, c.routeDistanceKm, c.turnover, c.passengers,
                     c.normLiters, c.givenLiters, c.revenue, c.kassa, c.salary,
-                    c.workDays, c.workHours, c.transportWork, c.trips));
+                    c.workDays, c.workHours, c.transportWork, c.trips, c.fuelSplit));
         });
 
         List<ReportRow> ordered = new ArrayList<>(rows.values());
@@ -155,7 +155,21 @@ public class WaybillReportService {
                                 double passengers, double normLiters, double givenLiters,
                                 BigDecimal revenue, BigDecimal kassa, BigDecimal salary,
                                 String brand, int workDays, double workHours,
-                                double transportWork, double trips) {
+                                double transportWork, double trips, ReportRow.FuelSplit fuelSplit) {
+    }
+
+    /**
+     * Норма и выдано по видам топлива Б/С/Г (legacy «меъёр / асл Б/С/Г»; сверка 25.09, D6): бензин — вид 1,
+     * солярка — 2, газ — 3 и 4. «Выдано» — то же, что в общей колонке (с надбавкой ниже 0 °C).
+     */
+    static ReportRow.FuelSplit fuelSplit(List<FuelConsumption> fuels) {
+        double nb = 0, ns = 0, ng = 0, gb = 0, gs = 0, gg = 0;
+        for (FuelConsumption f : fuels) {
+            if (f.fuelId() == 1) { nb += f.normLiters(); gb += f.given(); }
+            else if (f.fuelId() == 2) { ns += f.normLiters(); gs += f.given(); }
+            else if (f.fuelId() == 3 || f.fuelId() == 4) { ng += f.normLiters(); gg += f.given(); }
+        }
+        return new ReportRow.FuelSplit(nb, ns, ng, gb, gs, gg);
     }
 
     private Contribution contribution(Waybill wb, boolean cargo) {
@@ -168,7 +182,7 @@ public class WaybillReportService {
             double given = r.fuels().stream().mapToDouble(FuelConsumption::given).sum();
             return new Contribution(0L, r.distanceKm(), 0d, 0d, 0d, r.totalNormLiters(), given,
                     BigDecimal.ZERO, BigDecimal.ZERO, r.salary().salary(), brand,
-                    view.workDays(), hours, r.transportWork(), r.trips());
+                    view.workDays(), hours, r.transportWork(), r.trips(), fuelSplit(r.fuels()));
         }
         if (view.passenger() != null) {
             PassengerCalcResult r = view.passenger();
@@ -177,10 +191,10 @@ public class WaybillReportService {
             return new Contribution(m.laps(), m.totalDistanceKm(), m.routeDistanceKm(),
                     m.passengerTurnover(), m.passengerCount(), r.totalNormLiters(), given,
                     m.earning(), m.kassa(), r.salary().salary(), brand,
-                    Math.max(1, m.workDays()), m.workTimeMinutes() / 60d, 0d, 0d);
+                    Math.max(1, m.workDays()), m.workTimeMinutes() / 60d, 0d, 0d, fuelSplit(r.fuels()));
         }
         return new Contribution(0L, r0(wb), 0d, 0d, 0d, 0d, 0d,
-                BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, brand, 1, 0d, 0d, 0d);
+                BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, brand, 1, 0d, 0d, 0d, ReportRow.FuelSplit.ZERO);
     }
 
     private static double r0(Waybill wb) {

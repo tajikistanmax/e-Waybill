@@ -25,6 +25,12 @@ import java.math.BigDecimal;
  * @param workHours             Σ отработанных часов (legacy «соат»)
  * @param transportWork         Σ транспортной работы P (грузооборот), т·км (legacy «гардиши бор»)
  * @param trips                 Σ ездок Z (legacy «рейсҳо» грузовых)
+ * @param fuelNormPetrol        норма по видам топлива legacy «меъёр Б/С/Г» (сверка 25.09, D6): бензин (1),
+ * @param fuelNormDiesel        дизель/солярка (2),
+ * @param fuelNormGas           газ сжиженный и природный (3, 4); электроэнергия троллейбуса в Б/С/Г не входит
+ * @param fuelGivenPetrol       выдано по видам legacy «асл Б/С/Г»; фарқият по виду = норма − выдано
+ * @param fuelGivenDiesel       …
+ * @param fuelGivenGas          …
  */
 public record ReportRow(
         String key,
@@ -44,12 +50,24 @@ public record ReportRow(
         int workDays,
         double workHours,
         double transportWork,
-        double trips
+        double trips,
+        double fuelNormPetrol,
+        double fuelNormDiesel,
+        double fuelNormGas,
+        double fuelGivenPetrol,
+        double fuelGivenDiesel,
+        double fuelGivenGas
 ) {
+
+    /** Норма и выдано по видам топлива Б/С/Г одного листа. */
+    public record FuelSplit(double normPetrol, double normDiesel, double normGas,
+                            double givenPetrol, double givenDiesel, double givenGas) {
+        public static final FuelSplit ZERO = new FuelSplit(0, 0, 0, 0, 0, 0);
+    }
 
     public static ReportRow zero(String key, String label) {
         return new ReportRow(key, label, 0, 0L, 0d, 0d, 0d, 0d, 0d, 0d, 0d,
-                BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, 0, 0d, 0d, 0d);
+                BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, 0, 0d, 0d, 0d, 0d, 0d, 0d, 0d, 0d, 0d);
     }
 
     /** Прибавить показатели одного путевого листа (без грузовых величин). */
@@ -65,6 +83,17 @@ public record ReportRow(
                           double addTurnover, double addPax, double addNorm, double addGiven,
                           BigDecimal addRevenue, BigDecimal addKassa, BigDecimal addSalary,
                           int addWorkDays, double addWorkHours, double addTransportWork, double addTrips) {
+        return plus(addLaps, addDistance, addRouteDistance, addTurnover, addPax, addNorm, addGiven,
+                addRevenue, addKassa, addSalary, addWorkDays, addWorkHours, addTransportWork, addTrips, FuelSplit.ZERO);
+    }
+
+    /** То же с нормой и выданным по видам топлива Б/С/Г (сверка 25.09, D6). */
+    public ReportRow plus(long addLaps, double addDistance, double addRouteDistance,
+                          double addTurnover, double addPax, double addNorm, double addGiven,
+                          BigDecimal addRevenue, BigDecimal addKassa, BigDecimal addSalary,
+                          int addWorkDays, double addWorkHours, double addTransportWork, double addTrips,
+                          FuelSplit f) {
+        FuelSplit s = f == null ? FuelSplit.ZERO : f;
         return new ReportRow(key, label,
                 waybills + 1,
                 laps + addLaps,
@@ -81,7 +110,13 @@ public record ReportRow(
                 workDays + addWorkDays,
                 workHours + addWorkHours,
                 transportWork + addTransportWork,
-                trips + addTrips);
+                trips + addTrips,
+                fuelNormPetrol + s.normPetrol(),
+                fuelNormDiesel + s.normDiesel(),
+                fuelNormGas + s.normGas(),
+                fuelGivenPetrol + s.givenPetrol(),
+                fuelGivenDiesel + s.givenDiesel(),
+                fuelGivenGas + s.givenGas());
     }
 
     /** Слить две строки (для строки «ИТОГО»). */
@@ -102,7 +137,13 @@ public record ReportRow(
                 workDays + other.workDays,
                 workHours + other.workHours,
                 transportWork + other.transportWork,
-                trips + other.trips);
+                trips + other.trips,
+                fuelNormPetrol + other.fuelNormPetrol,
+                fuelNormDiesel + other.fuelNormDiesel,
+                fuelNormGas + other.fuelNormGas,
+                fuelGivenPetrol + other.fuelGivenPetrol,
+                fuelGivenDiesel + other.fuelGivenDiesel,
+                fuelGivenGas + other.fuelGivenGas);
     }
 
     private static BigDecimal nz(BigDecimal v) {

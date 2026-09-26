@@ -43,7 +43,10 @@ public class ReportXlsxWriter {
             "Группа", "Наименование", "ПЛ", "Рейсы", "Пробег, км", "Пробег по маршруту, км",
             "Пассажирооборот, пасс-км", "Пассажиры", "Норма топлива, л", "Выдано топлива, л",
             "Фарқият (норма − выдано), л", "Выручка", "Касса", "Заработок водителей",
-            "Рабочие дни", "Часы", "Грузооборот P, т·км", "Ездки Z"
+            "Рабочие дни", "Часы", "Грузооборот P, т·км", "Ездки Z",
+            // Топливо по видам legacy «меъёр / асл / фарқият Б/С/Г» (сверка 25.09, D6).
+            "Норма Б, л", "Норма С, л", "Норма Г, л", "Выдано Б, л", "Выдано С, л", "Выдано Г, л",
+            "Фарқият Б, л", "Фарқият С, л", "Фарқият Г, л"
     };
 
     public byte[] write(WaybillReport report) {
@@ -523,6 +526,15 @@ public class ReportXlsxWriter {
         num(row, 15, round(d.workHours()), style);
         num(row, 16, round(d.transportWork()), style);
         num(row, 17, round(d.trips()), style);
+        num(row, 18, round(d.fuelNormPetrol()), style);
+        num(row, 19, round(d.fuelNormDiesel()), style);
+        num(row, 20, round(d.fuelNormGas()), style);
+        num(row, 21, round(d.fuelGivenPetrol()), style);
+        num(row, 22, round(d.fuelGivenDiesel()), style);
+        num(row, 23, round(d.fuelGivenGas()), style);
+        num(row, 24, round(d.fuelNormPetrol() - d.fuelGivenPetrol()), style);
+        num(row, 25, round(d.fuelNormDiesel() - d.fuelGivenDiesel()), style);
+        num(row, 26, round(d.fuelNormGas() - d.fuelGivenGas()), style);
     }
 
     private static double round(double v) {

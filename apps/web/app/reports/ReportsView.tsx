@@ -37,7 +37,19 @@ type TypedRow = {
   fuelNormLiters: number; fuelGivenLiters: number; fuelDeviationLiters: number;
   revenue: number; kassa: number; driverSalary: number;
   workDays: number; workHours: number; transportWork: number; trips: number;
+  fuelNormPetrol: number; fuelNormDiesel: number; fuelNormGas: number;
+  fuelGivenPetrol: number; fuelGivenDiesel: number; fuelGivenGas: number;
+  // Фарқият по видам = норма − выдано (вычисляется на клиенте, сверка 25.09, D6).
+  fuelDevPetrol?: number; fuelDevDiesel?: number; fuelDevGas?: number;
 };
+
+/** Колонки топлива по видам Б/С/Г — только у топливных отчётов (legacy bus/type_10, cargo2b/type_12). */
+const FUEL_TYPE_COLS = new Set<keyof TypedRow>(['fuelNormPetrol', 'fuelNormDiesel', 'fuelNormGas',
+  'fuelGivenPetrol', 'fuelGivenDiesel', 'fuelGivenGas', 'fuelDevPetrol', 'fuelDevDiesel', 'fuelDevGas']);
+const withFuelDev = (r: TypedRow): TypedRow => ({ ...r,
+  fuelDevPetrol: (r.fuelNormPetrol ?? 0) - (r.fuelGivenPetrol ?? 0),
+  fuelDevDiesel: (r.fuelNormDiesel ?? 0) - (r.fuelGivenDiesel ?? 0),
+  fuelDevGas: (r.fuelNormGas ?? 0) - (r.fuelGivenGas ?? 0) });
 
 /**
  * Бланк типового отчёта — как legacy report_bill: отчёт строится по одной форме ПЛ, а не по всем
@@ -127,6 +139,9 @@ const TYPED_COLS: { key: keyof TypedRow; label: string }[] = [
   { key: 'workHours', label: 'Часы' },
   { key: 'transportWork', label: 'Грузооборот P, т·км' },
   { key: 'trips', label: 'Ездки Z' },
+  { key: 'fuelNormPetrol', label: 'Норма Б, л' }, { key: 'fuelNormDiesel', label: 'Норма С, л' }, { key: 'fuelNormGas', label: 'Норма Г, л' },
+  { key: 'fuelGivenPetrol', label: 'Выдано Б, л' }, { key: 'fuelGivenDiesel', label: 'Выдано С, л' }, { key: 'fuelGivenGas', label: 'Выдано Г, л' },
+  { key: 'fuelDevPetrol', label: 'Откл. Б, л' }, { key: 'fuelDevDiesel', label: 'Откл. С, л' }, { key: 'fuelDevGas', label: 'Откл. Г, л' },
 ];
 
 const FUEL_NAMES: Record<number, string> = { 1: 'Бензин', 2: 'Дизель', 3: 'Газ сжиженный', 4: 'Газ природный', 5: 'Электро' };
@@ -231,8 +246,10 @@ export default function ReportsView({ tab, kind = 'passenger', mode = 'trans' }:
   }, []);
   const typedCols = useMemo(() => applyColumnConfig(TYPED_COLS
     .filter(c => (typedKind === 'cargo' ? !PAX_ONLY_COLS.has(c.key) : !CARGO_ONLY_COLS.has(c.key)))
+    // Б/С/Г — только у топливных отчётов (FUEL_*), в остальных — общая норма/выдано/отклонение.
+    .filter(c => !FUEL_TYPE_COLS.has(c.key) || typedType.startsWith('FUEL'))
     .map(c => ({ ...c, label: t('rep.typed.' + c.key) })),
-    reportCfg.typed_columns, reportCfg.typed_labels, 'label'), [reportCfg, t, typedKind]);
+    reportCfg.typed_columns, reportCfg.typed_labels, 'label'), [reportCfg, t, typedKind, typedType]);
   const regCols = useMemo(() => applyColumnConfig(REG_COLS.map(c => ({ ...c, label: t('rep.reg.' + c.key) })),
     reportCfg.regional_columns, reportCfg.regional_labels), [reportCfg, t]);
   const rcCols = useMemo(() => applyColumnConfig(RC_COLS.map(c => ({ ...c, label: t('rep.rc.' + c.key) })),
@@ -247,7 +264,8 @@ export default function ReportsView({ tab, kind = 'passenger', mode = 'trans' }:
       if (tab === 'vehicle') setByVehicle(await getJson(`/wb-api/api/v1/reports/by-vehicle?from=${from}&to=${to}`));
       if (tab === 'fuel') setFuel(await getJson(`/wb-api/api/v1/reports/fuel?from=${from}&to=${to}`));
       if (tab === 'typed') {
-        setTypedReport(await getJson(`/wb-api/api/v1/reports/${typedKind}?type=${typedType}&from=${from}&to=${to}${typedFilterQs}`));
+        const rep = await getJson<TypedReport>(`/wb-api/api/v1/reports/${typedKind}?type=${typedType}&from=${from}&to=${to}${typedFilterQs}`);
+        setTypedReport({ ...rep, rows: rep.rows.map(withFuelDev), totals: rep.totals ? withFuelDev(rep.totals) : null });
       }
       if (tab === 'regional') {
         const tc = typeCompany ? `&typeCompany=${typeCompany}` : '';
