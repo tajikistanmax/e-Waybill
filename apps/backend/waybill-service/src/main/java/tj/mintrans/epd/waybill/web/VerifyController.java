@@ -68,13 +68,25 @@ public class VerifyController {
         if (jti != null && isMalumotnoma) {
             result.put("kind", "MALUMOTNOMA");
             var mOpt = malumotnomas.findById(UUID.fromString(jti));
-            mOpt.ifPresent(m -> {
-                result.put("fio", m.getFio());
-                result.put("price", m.getPrice());
-                result.put("routeSummary", m.getRouteSummary());
-                result.put("issuedAt", m.getCreatedAt());
-            });
-            if (mOpt.isEmpty()) verdict = VerifyScanLog.NOT_FOUND;
+            if (mOpt.isEmpty()) {
+                // Подпись верна, но справки нет — не «действительна» с пустыми полями (было).
+                scanLog.record(jti, number, VerifyScanLog.NOT_FOUND, null, request);
+                throw new tj.mintrans.epd.waybill.web.error.ApiErrors.NotFoundException("Справка не найдена");
+            }
+            var m = mOpt.get();
+            number = m.getNumber() == null ? number : m.getNumber().toString();
+            result.put("number", number);
+            result.put("fio", m.getFio());
+            result.put("price", m.getPrice());
+            result.put("routeSummary", m.getRouteSummary());
+            result.put("issuedAt", m.getCreatedAt());
+            result.put("transportTypeId", m.getTransportTypeId());
+            result.put("privileged", m.getAge() == 1);
+            if (m.isAnnulled()) {
+                onlineStatus = "ANNULLED";
+                result.put("annulled", true);
+                result.put("annulledAt", m.getAnnulledAt());
+            }
         } else if (jti != null) {
             result.put("kind", "WAYBILL");
             var wbOpt = waybills.findById(UUID.fromString(jti));

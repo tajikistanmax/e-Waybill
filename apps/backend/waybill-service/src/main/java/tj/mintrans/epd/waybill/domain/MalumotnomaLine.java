@@ -9,6 +9,7 @@ import jakarta.persistence.ManyToOne;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.Table;
 
+import java.math.BigDecimal;
 import java.util.UUID;
 
 /**
@@ -34,6 +35,13 @@ public class MalumotnomaLine {
     @Column(name = "round_trip", nullable = false)
     private boolean roundTrip;
 
+    /** Цена строки на момент выдачи: тариф вида × 2 при «туда и обратно», до льготы. */
+    private BigDecimal price;
+
+    /** Порядок маршрута в справке (строка «самт» на бланке). */
+    @Column(nullable = false)
+    private short position;
+
     @PrePersist
     void prePersist() {
         if (id == null) {
@@ -48,4 +56,8 @@ public class MalumotnomaLine {
     public void setRoute(MalumotnomaRoute route) { this.route = route; }
     public boolean isRoundTrip() { return roundTrip; }
     public void setRoundTrip(boolean roundTrip) { this.roundTrip = roundTrip; }
+    public BigDecimal getPrice() { return price; }
+    public void setPrice(BigDecimal price) { this.price = price; }
+    public short getPosition() { return position; }
+    public void setPosition(short position) { this.position = position; }
 }

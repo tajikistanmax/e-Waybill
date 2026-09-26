@@ -14,6 +14,8 @@ type VerifyResult = {
   price?: number;
   routeSummary?: string;
   issuedAt?: string;
+  annulled?: boolean;
+  annulledAt?: string;
   claims?: {
     num?: string;
     veh?: string;
@@ -63,17 +65,24 @@ export function VerifyView({ jws }: { jws: string }) {
   if (!result) return <p>{t('verify.checking')}</p>;
 
   if (result.kind === 'MALUMOTNOMA') {
-    const okColor = 'var(--green)';
+    // Аннулированная справка (сверка 25.09, E5) — подпись QR верна, но документ недействителен.
+    const annulled = !!result.annulled;
+    const okColor = annulled ? 'var(--red)' : 'var(--green)';
     return (
       <div className="card" style={{ textAlign: 'center', borderColor: okColor, borderWidth: 2 }}>
-        <div style={{ fontSize: 72 }}>✅</div>
-        <h1 style={{ color: okColor }}>{t('verify.malumotnoma.h')}</h1>
+        <div style={{ fontSize: 72 }}>{annulled ? '❌' : '✅'}</div>
+        <h1 style={{ color: okColor }}>{t(annulled ? 'verify.malumotnoma.annulled.h' : 'verify.malumotnoma.h')}</h1>
         <dl className="kv" style={{ textAlign: 'left', maxWidth: 520, margin: '20px auto' }}>
+          <dt>{t('verify.malumotnoma.number')}</dt><dd className="number">{result.number ?? result.claims?.num ?? '—'}</dd>
           <dt>{t('verify.malumotnoma.fio')}</dt><dd>{result.fio ?? '—'}</dd>
           <dt>{t('verify.malumotnoma.route')}</dt><dd>{result.routeSummary ?? '—'}</dd>
           <dt>{t('verify.malumotnoma.price')}</dt><dd>{result.price != null ? `${result.price} сомонӣ` : '—'}</dd>
           <dt>{t('verify.malumotnoma.issuedat')}</dt>
           <dd>{result.issuedAt ? new Date(result.issuedAt).toLocaleString('ru-RU') : '—'}</dd>
+          {annulled && <>
+            <dt>{t('verify.malumotnoma.annulledat')}</dt>
+            <dd>{result.annulledAt ? new Date(result.annulledAt).toLocaleString('ru-RU') : '—'}</dd>
+          </>}
         </dl>
         <p style={{ color: 'var(--muted)', fontSize: 12 }}>{t('verify.foot')}</p>
       </div>

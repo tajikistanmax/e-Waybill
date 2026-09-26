@@ -1,76 +1,95 @@
 <!DOCTYPE html>
-<html xmlns:th="http://www.thymeleaf.org" lang="ru">
+<html xmlns:th="http://www.thymeleaf.org" lang="tg">
+<!--
+  Маълумотнома — справка о стоимости проезда. Форма повторяет письмо «Роҳхат»
+  (resources/views/print/malumotnoma.blade.php, сверка 25.09, B7): A4, герб, шапка ведомства,
+  «аз {сана} № {рақам}», «Ба шаҳрванд …», текст со ссылкой на Нархнома, директор, QR, исполнитель.
+  Реквизиты шапки, приказ о нархнома и директор — настройки категории print (master-data, /settings).
+-->
 <head>
     <meta charset="UTF-8"/>
     <title>Маълумотнома</title>
     <style>
-        @page { size: A5; margin: 12mm; }
+        @page { size: A4 portrait; margin: 15mm 15mm 15mm 30mm; }
         * { font-family: "DejaVu Sans", sans-serif; }
-        body { font-size: 10pt; color: #111; line-height: 1.4; }
-        .head { text-align: center; border-bottom: 2px solid #0a6b3b; padding-bottom: 6px; margin-bottom: 10px; }
-        .head b { font-size: 10.5pt; }
-        h1 { font-size: 14pt; text-align: center; margin: 10px 0 2px; }
-        .sub { text-align: center; font-size: 8.5pt; color: #555; margin-bottom: 12px; }
-        table.kv { width: 100%; border-collapse: collapse; margin-bottom: 10px; }
-        table.kv td { border: 1px solid #bbb; padding: 4px 6px; }
-        table.kv td.k { width: 38%; background: #f3f5f4; font-weight: 700; }
-        table.grid { width: 100%; border-collapse: collapse; margin-bottom: 10px; }
-        table.grid th, table.grid td { border: 1px solid #bbb; padding: 4px 6px; font-size: 9pt; }
-        table.grid th { background: #f3f5f4; }
-        .total { text-align: right; font-size: 12pt; font-weight: 700; margin-top: 6px; }
-        .foot { margin-top: 20px; font-size: 8pt; color: #666; }
-        .badge { display: inline-block; background: #fde68a; padding: 1px 6px; border-radius: 3px; font-size: 8pt; }
-        table.foottbl { width: 100%; border-collapse: collapse; margin-top: 20px; }
-        table.foottbl td { border: none; padding: 0; vertical-align: bottom; }
-        table.foottbl td.qr { width: 80px; text-align: right; }
-        .qr img { width: 70px; height: 70px; }
-        .qr div { font-size: 7pt; color: #888; margin-top: 2px; text-align: center; }
+        body { font-size: 12pt; color: #000; line-height: 1.45; margin: 0; }
+        .emblem { text-align: center; }
+        .emblem img { width: 80px; height: auto; }
+        .title { color: #c00000; font-weight: bold; font-size: 15pt; text-align: center; margin-top: 4px; }
+        .subtitle { color: #c00000; font-weight: bold; font-size: 11.5pt; text-align: center; }
+        .contacts { color: #c00000; font-weight: bold; font-size: 9pt; text-align: center; }
+        .rule { border-top: 2px solid #808080; margin: 5px 0; }
+        table.row { width: 100%; border-collapse: collapse; margin-top: 12px; }
+        table.row td { padding: 0; vertical-align: top; }
+        .doc-h { text-align: center; font-weight: bold; font-size: 15pt; margin: 14px 0 8px; }
+        .body { text-align: justify; text-indent: 28px; }
+        .b { font-weight: bold; }
+        .center { text-align: center; margin-top: 10px; }
+        .sig-line { display: inline-block; width: 150px; border-bottom: 1px solid #000; height: 34px; }
+        .qr img { width: 130px; height: 130px; }
+        .small { font-size: 10pt; }
+        .annulled { border: 3px solid #c00000; color: #c00000; font-weight: bold; text-align: center;
+            font-size: 14pt; padding: 6px; margin: 10px 0; }
+        .wm-mark { position: fixed; top: 42%; left: 0; width: 100%; text-align: center;
+            transform: rotate(-30deg); transform-origin: center; font-size: 54pt; font-weight: bold;
+            color: rgba(0, 0, 0, 0.07); letter-spacing: 8px; white-space: nowrap; z-index: 0; }
+        .print-footer { margin-top: 3mm; font-size: 7pt; color: #555; text-align: left; }
     </style>
 </head>
 <body>
 <th:block th:replace="~{print/blocks :: watermark}"/>
-<div class="head">
-    <b>ВАЗОРАТИ НАҚЛИЁТИ ҶУМҲУРИИ ТОҶИКИСТОН</b><br/>
-    <span class="sub">Единая платформа электронных путевых листов · е-Роҳхат</span>
-</div>
 
-<h1>МАЪЛУМОТНОМА</h1>
-<div class="sub">Справка о стоимости проезда · № <span th:text="${id}">—</span></div>
+<div class="emblem" th:if="${emblem != null}"><img th:src="${emblem}" alt=""/></div>
+<div class="title">ВАЗОРАТИ НАҚЛИЁТИ ҶУМҲУРИИ ТОҶИКИСТОН</div>
+<div class="subtitle" th:if="${!#strings.isEmpty(orgTitle)}" th:text="${orgTitle}">МУАССИСА</div>
+<div class="rule"></div>
+<div class="contacts" th:if="${!#strings.isEmpty(orgContacts)}" th:text="${orgContacts}">Суроға</div>
+<div class="rule"></div>
 
-<table class="kv">
-    <tr><td class="k">Ф.И.О. получателя</td><td th:text="${fio}">—</td></tr>
-    <tr><td class="k">Вид транспорта</td><td><span th:text="${transportType}">—</span>
-        <span class="badge" th:if="${privileged}">льготная (−50%)</span></td></tr>
-    <tr><td class="k">Организация (РМА)</td><td th:text="${orgRma}">—</td></tr>
-    <tr><td class="k">Выдал</td><td th:text="${issuer}">—</td></tr>
-    <tr><td class="k">Дата выдачи</td><td th:text="${issuedAt}">—</td></tr>
-</table>
-
-<table class="grid">
-    <thead><tr><th>Маршрут</th><th>Туда и обратно</th><th>Стоимость</th></tr></thead>
-    <tbody>
-    <tr th:each="l : ${lines}">
-        <td th:text="${l.route}">—</td>
-        <td th:text="${l.roundTrip} ? 'да (сафари рафту баргашт)' : 'нет'">—</td>
-        <td th:text="${#numbers.formatDecimal(l.price, 1, 2)} + ' сомонӣ'">—</td>
-    </tr>
-    </tbody>
-</table>
-
-<div class="total">Итого к оплате: <span th:text="${#numbers.formatDecimal(price, 1, 2)}">0.00</span> сомонӣ</div>
-
-<div class="sub" style="text-align:left; margin-top: 8px" th:if="${tariffOrder != null and tariffOrder != ''}">
-    Тибқи <span th:text="${tariffOrder}"></span>.
-</div>
-
-<table class="foottbl">
+<table class="row">
     <tr>
-        <td class="foot">
-            Документ сформирован системой «е-Роҳхат». Электронная справка, действительна без подписи и печати.
+        <td style="width: 50%">аз <span th:text="${dateText}">01 январи соли 2026</span> № <span class="b" th:text="${number}">53803</span></td>
+        <td style="width: 50%; text-align: right">Ба шаҳрванд <span class="b" th:text="${fio}">—</span></td>
+    </tr>
+</table>
+
+<div class="doc-h">Маълумотнома</div>
+
+<div class="annulled" th:if="${annulled}">
+    БЕКОР КАРДА ШУД · АННУЛИРОВАНА <span th:text="${annulledAt}"></span><br/>
+    <span class="small" th:text="${annulReason}"></span>
+</div>
+
+<div class="body">
+    Бо назардошти дархости шифоҳии Шумо иттилоъ медиҳем, ки<th:block
+        th:if="${!#strings.isEmpty(tariffOrder)}"> тибқи <span th:text="${tariffOrder}"></span>,</th:block>
+    роҳкиро ба воситаи нақлиёти <span class="b" th:text="${transportType}">автомобили сабукрав</span>
+    барои як мусофир<th:block th:if="${privileged}"> (имтиёзнок, 50%)</th:block> дар самти
+    <span class="b" th:text="${routeStr}">—</span>
+    <span class="b" th:text="${price}">0</span> сомониро ташкил медиҳад.
+</div>
+
+<div class="center">Маълумотнома ба ҷойи лозима дода мешавад.</div>
+
+<table class="row" style="margin-top: 16px">
+    <tr>
+        <td style="width: 30%; padding-top: 16px">Директор</td>
+        <td style="width: 40%; text-align: center"><span class="sig-line"></span></td>
+        <td style="width: 30%; text-align: right; padding-top: 16px" th:text="${director}">—</td>
+    </tr>
+</table>
+
+<table class="row" style="margin-top: 16px">
+    <tr>
+        <td>
+            Барои гирифтани маълумоти бештар ва тафтиши Маълумотнома аз QR-code истифода баред.
+            <div class="small" style="margin-top: 10px">
+                <div>Иҷрокунанда:</div>
+                <div th:text="${issuer}">—</div>
+            </div>
         </td>
-        <td class="qr" th:if="${qr != null}">
+        <td class="qr" style="width: 140px; text-align: right" th:if="${qr != null}">
             <img th:src="${qr}" alt="QR"/>
-            <div>Скан — проверка</div>
         </td>
     </tr>
 </table>

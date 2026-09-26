@@ -999,13 +999,24 @@ export const wb = {
 
   // Справки пассажирам (маълумотнома).
   malumotnoma: {
-    list: () => fetch('/wb-api/api/v1/malumotnomas', { headers: authHeaders() }).then(r => handle<Malumotnoma[]>(r)),
+    // Реестр: поиск по номеру / Ф.И.О., период выдачи, постранично (сверка 25.09, E5).
+    list: (p: { q?: string; from?: string; to?: string; page?: number; size?: number } = {}) => {
+      const qs = new URLSearchParams();
+      Object.entries(p).forEach(([k, v]) => { if (v !== undefined && v !== '') qs.set(k, String(v)); });
+      return fetch(`/wb-api/api/v1/malumotnomas?${qs}`, { headers: authHeaders() }).then(r => handle<MalumotnomaPage>(r));
+    },
     routes: () => fetch('/wb-api/api/v1/malumotnomas/routes', { headers: authHeaders() }).then(r => handle<MalumotnomaRoute[]>(r)),
     create: (body: Record<string, unknown>) => fetch('/wb-api/api/v1/malumotnomas', {
       method: 'POST', headers: authHeaders({ 'Content-Type': 'application/json' }), body: JSON.stringify(body),
     }).then(r => handle<Malumotnoma>(r)),
-    remove: (id: string) => fetch(`/wb-api/api/v1/malumotnomas/${id}`, { method: 'DELETE', headers: authHeaders() })
-      .then(async r => { if (!r.ok && r.status !== 204) throw new Error(`Ошибка ${r.status}`); }),
+    // Правка: вид транспорта, льгота, маршруты (Ф.И.О. — нет, как в «Роҳхат»).
+    update: (id: string, body: Record<string, unknown>) => fetch(`/wb-api/api/v1/malumotnomas/${id}`, {
+      method: 'PUT', headers: authHeaders({ 'Content-Type': 'application/json' }), body: JSON.stringify(body),
+    }).then(r => handle<Malumotnoma>(r)),
+    // Удаления нет — администратор аннулирует с причиной; номер остаётся в журнале.
+    annul: (id: string, reason: string) => fetch(`/wb-api/api/v1/malumotnomas/${id}/annul`, {
+      method: 'POST', headers: authHeaders({ 'Content-Type': 'application/json' }), body: JSON.stringify({ reason }),
+    }).then(r => handle<Malumotnoma>(r)),
     report: (from: string, to: string, issuerRma?: string) => fetch(
       `/wb-api/api/v1/malumotnomas/report?from=${from}&to=${to}${issuerRma ? `&issuerRma=${encodeURIComponent(issuerRma)}` : ''}`,
       { headers: authHeaders() }).then(r => handle<MalumotnomaReport>(r)),
@@ -1200,19 +1211,22 @@ export type FuelLine = {
 export type MalumotnomaRoute = {
   id: string; name: string; distanceKm: number;
   carPrice: number; mbusPrice: number; busPrice: number; active: boolean;
+  legacyId: number | null;
 };
 export type Malumotnoma = {
-  id: string; fio: string; transportTypeId: number; age: number;
-  organizationRma: string | null; issuerRma: string | null; issuerName: string | null;
+  id: string; number: number; fio: string; transportTypeId: number; age: number;
+  organizationRma: string | null; issuerRma: string | null; issuerName: string | null; updaterName: string | null;
   price: number; routeSummary: string | null; createdAt: string;
-  lines: { id: string; route: MalumotnomaRoute; roundTrip: boolean }[];
+  legacy: boolean; annulled: boolean; annulledAt: string | null; annulledBy: string | null; annulReason: string | null;
+  lines: { id: string; route: MalumotnomaRoute; roundTrip: boolean; price: number | null; position: number }[];
 };
+export type MalumotnomaPage = { content: Malumotnoma[]; page: number; size: number; totalElements: number; totalPages: number };
 export type MalumotnomaReport = {
   from: string; to: string; count: number; total: number;
   groups: {
     issuerRma: string; issuerName: string | null; count: number; amount: number;
     items: {
-      id: string; fio: string; transportType: string; privileged: boolean;
+      id: string; number: number; fio: string; transportType: string; privileged: boolean;
       issuedAt: string; routes: string; price: number; issuerName: string | null; updaterName: string | null;
     }[];
   }[];

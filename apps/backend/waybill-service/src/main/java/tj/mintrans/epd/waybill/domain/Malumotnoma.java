@@ -28,6 +28,10 @@ public class Malumotnoma {
     @Id
     private UUID id;
 
+    /** Сквозной номер справки («Рақами маълумотнома»), продолжает нумерацию «Роҳхат». */
+    @Column(nullable = false, updatable = false)
+    private Long number;
+
     @Column(nullable = false)
     private String fio;
 
@@ -57,8 +61,21 @@ public class Malumotnoma {
     @Column(name = "route_summary")
     private String routeSummary;
 
+    /** Перенесена из архива «Роҳхат» — правке не подлежит. */
+    @Column(nullable = false, updatable = false)
+    private boolean legacy;
+
+    @Column(name = "annulled_at")
+    private OffsetDateTime annulledAt;
+
+    @Column(name = "annulled_by")
+    private String annulledBy;
+
+    @Column(name = "annul_reason")
+    private String annulReason;
+
     @OneToMany(mappedBy = "malumotnoma", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
-    @OrderBy("id")
+    @OrderBy("position, id")
     private List<MalumotnomaLine> lines = new ArrayList<>();
 
     @Column(name = "created_at", nullable = false, updatable = false)
@@ -83,10 +100,22 @@ public class Malumotnoma {
 
     public void addLine(MalumotnomaLine line) {
         line.setMalumotnoma(this);
+        line.setPosition((short) lines.size());
         lines.add(line);
     }
 
+    public boolean isAnnulled() { return annulledAt != null; }
+
     public UUID getId() { return id; }
+    public Long getNumber() { return number; }
+    public void setNumber(Long number) { this.number = number; }
+    public boolean isLegacy() { return legacy; }
+    public OffsetDateTime getAnnulledAt() { return annulledAt; }
+    public void setAnnulledAt(OffsetDateTime annulledAt) { this.annulledAt = annulledAt; }
+    public String getAnnulledBy() { return annulledBy; }
+    public void setAnnulledBy(String annulledBy) { this.annulledBy = annulledBy; }
+    public String getAnnulReason() { return annulReason; }
+    public void setAnnulReason(String annulReason) { this.annulReason = annulReason; }
     public String getFio() { return fio; }
     public void setFio(String fio) { this.fio = fio; }
     public short getTransportTypeId() { return transportTypeId; }

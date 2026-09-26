@@ -45,9 +45,15 @@ public class MalumotnomaController {
         this.xlsx = xlsx;
     }
 
+    /** Реестр: поиск по номеру / Ф.И.О., период выдачи, постранично (номер по убыванию). */
     @GetMapping
-    public List<Malumotnoma> list() {
-        return service.list();
+    public MalumotnomaService.PageResult list(
+            @RequestParam(required = false) String q,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        return service.list(q, from, to, page, size);
     }
 
     @GetMapping("/{id}")
@@ -61,18 +67,28 @@ public class MalumotnomaController {
         return ResponseEntity.status(HttpStatus.CREATED).body(service.create(req));
     }
 
-    @DeleteMapping("/{id}")
+    /** Правка: вид транспорта, льгота, маршруты (Ф.И.О. — нет, как в «Роҳхат»). */
+    @PutMapping("/{id}")
     @PreAuthorize("hasAnyRole('DISPATCHER','ACCOUNTANT','COMPANY_ADMIN','BRANCH_ADMIN','SYSTEM_ADMIN')")
-    public ResponseEntity<Void> delete(@PathVariable UUID id) {
-        service.delete(id);
-        return ResponseEntity.noContent().build();
+    public Malumotnoma update(@PathVariable UUID id, @RequestBody MalumotnomaService.UpdateRequest req) {
+        return service.update(id, req);
+    }
+
+    /**
+     * Удаления нет (в «Роҳхат» справку удалить нельзя, номер сквозной) — ошибочную справку
+     * администратор аннулирует с причиной.
+     */
+    @PostMapping("/{id}/annul")
+    @PreAuthorize("hasAnyRole('COMPANY_ADMIN','BRANCH_ADMIN','SYSTEM_ADMIN')")
+    public Malumotnoma annul(@PathVariable UUID id, @RequestBody MalumotnomaService.AnnulRequest req) {
+        return service.annul(id, req);
     }
 
     @GetMapping(value = "/{id}/print.pdf", produces = MediaType.APPLICATION_PDF_VALUE)
     public ResponseEntity<byte[]> printPdf(@PathVariable UUID id) {
         byte[] pdf = print.renderPdf(id);
         ContentDisposition cd = ContentDisposition.inline()
-                .filename("malumotnoma-" + id + ".pdf", StandardCharsets.US_ASCII).build();
+                .filename("malumotnoma-" + service.get(id).getNumber() + ".pdf", StandardCharsets.US_ASCII).build();
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION, cd.toString())
                 .contentType(MediaType.APPLICATION_PDF)

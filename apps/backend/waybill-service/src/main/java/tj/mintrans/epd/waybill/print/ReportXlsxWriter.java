@@ -260,7 +260,7 @@ public class ReportXlsxWriter {
                 num(gr, 6, g.amount() == null ? 0 : g.amount().doubleValue(), groupStyle);
                 for (var it : g.items()) {
                     Row row = sheet.createRow(r++);
-                    cell(row, 0, "  " + it.id().toString().substring(0, 8), null);
+                    cell(row, 0, "  № " + it.number(), null);
                     cell(row, 1, it.fio(), null);
                     cell(row, 2, it.transportType(), null);
                     cell(row, 3, it.privileged() ? "да" : "", null);

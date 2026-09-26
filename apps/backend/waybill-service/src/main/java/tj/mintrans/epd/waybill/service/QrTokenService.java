@@ -131,6 +131,7 @@ public class QrTokenService {
                     .issuer("epd.tj")
                     .jwtID(m.getId().toString())
                     .claim("typ", "MALUMOTNOMA")
+                    .claim("num", m.getNumber() == null ? null : m.getNumber().toString())
                     .claim("fio", m.getFio())
                     .claim("price", m.getPrice())
                     .claim("route", m.getRouteSummary())

@@ -43,6 +43,10 @@ public class MalumotnomaRoute {
     @Column(nullable = false)
     private boolean active = true;
 
+    /** id в routemalumotnomas «Роҳхат» — ключ переноса справочника и архива справок. */
+    @Column(name = "legacy_id", updatable = false, insertable = false)
+    private Integer legacyId;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private OffsetDateTime createdAt;
 
@@ -86,6 +90,7 @@ public class MalumotnomaRoute {
     public void setBusPrice(BigDecimal busPrice) { this.busPrice = busPrice; }
     public boolean isActive() { return active; }
     public void setActive(boolean active) { this.active = active; }
+    public Integer getLegacyId() { return legacyId; }
     public OffsetDateTime getCreatedAt() { return createdAt; }
     public OffsetDateTime getUpdatedAt() { return updatedAt; }
 }

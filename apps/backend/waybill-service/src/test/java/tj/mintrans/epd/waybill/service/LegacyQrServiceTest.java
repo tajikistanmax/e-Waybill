@@ -3,7 +3,9 @@ package tj.mintrans.epd.waybill.service;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
+import tj.mintrans.epd.waybill.domain.Malumotnoma;
 import tj.mintrans.epd.waybill.domain.Waybill;
+import tj.mintrans.epd.waybill.repository.MalumotnomaRepository;
 import tj.mintrans.epd.waybill.repository.WaybillRepository;
 import tj.mintrans.epd.waybill.web.error.ApiErrors.NotFoundException;
 import tj.mintrans.epd.waybill.web.error.ApiErrors.UnprocessableException;
@@ -49,8 +51,10 @@ class LegacyQrServiceTest {
         return Base64.getEncoder().encodeToString(payload.getBytes(StandardCharsets.UTF_8));
     }
 
+    private final MalumotnomaRepository malumotnomas = mock(MalumotnomaRepository.class);
+
     private LegacyQrService service(WaybillRepository repo, QrTokenService qr) {
-        return new LegacyQrService(APP_KEY, repo, qr);
+        return new LegacyQrService(APP_KEY, repo, malumotnomas, qr);
     }
 
     @Test
@@ -77,14 +81,33 @@ class LegacyQrServiceTest {
     }
 
     @Test
-    @DisplayName("борхат/СМР/справка (6–8) и неперенесённый лист — 404; без ключа — 422")
+    @DisplayName("тип 8 (справка) → перенесённая справка с номером = legacy id → токен проверки справки")
+    void resolveMalumotnoma() throws Exception {
+        QrTokenService qr = mock(QrTokenService.class);
+        Malumotnoma m = new Malumotnoma();
+        ReflectionTestUtils.setField(m, "legacy", true);
+        when(malumotnomas.findByNumber(53001L)).thenReturn(Optional.of(m));
+        when(qr.sign(any(Malumotnoma.class))).thenReturn("jws-m");
+        assertThat(service(mock(WaybillRepository.class), qr).resolve("8", laravelEncrypt("i:53001;", KEY)))
+                .isEqualTo("jws-m");
+        // Справка, выданная уже в e-Waybill (не архив), по старому QR не открывается.
+        Malumotnoma fresh = new Malumotnoma();
+        when(malumotnomas.findByNumber(53900L)).thenReturn(Optional.of(fresh));
+        assertThatThrownBy(() -> service(mock(WaybillRepository.class), qr).resolve("8", laravelEncrypt("i:53900;", KEY)))
+                .isInstanceOf(NotFoundException.class);
+    }
+
+    @Test
+    @DisplayName("борхат/СМР (6–7), неперенесённые лист и справка — 404; без ключа — 422")
     void notFound() throws Exception {
         WaybillRepository repo = mock(WaybillRepository.class);
         when(repo.findByNumber(any())).thenReturn(Optional.empty());
+        when(malumotnomas.findByNumber(any())).thenReturn(Optional.empty());
         var s = service(repo, mock(QrTokenService.class));
         assertThatThrownBy(() -> s.resolve("6", laravelEncrypt("i:1;", KEY))).isInstanceOf(NotFoundException.class);
         assertThatThrownBy(() -> s.resolve("1", laravelEncrypt("i:1;", KEY))).isInstanceOf(NotFoundException.class);
-        var noKey = new LegacyQrService("", repo, mock(QrTokenService.class));
+        assertThatThrownBy(() -> s.resolve("8", laravelEncrypt("i:1;", KEY))).isInstanceOf(NotFoundException.class);
+        var noKey = new LegacyQrService("", repo, malumotnomas, mock(QrTokenService.class));
         assertThatThrownBy(() -> noKey.resolve("1", "x")).isInstanceOf(UnprocessableException.class);
     }
 }

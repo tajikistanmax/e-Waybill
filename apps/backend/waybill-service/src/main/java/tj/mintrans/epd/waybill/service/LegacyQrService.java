@@ -5,7 +5,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import tj.mintrans.epd.waybill.domain.Malumotnoma;
 import tj.mintrans.epd.waybill.domain.Waybill;
+import tj.mintrans.epd.waybill.repository.MalumotnomaRepository;
 import tj.mintrans.epd.waybill.repository.WaybillRepository;
 import tj.mintrans.epd.waybill.web.error.ApiErrors.NotFoundException;
 import tj.mintrans.epd.waybill.web.error.ApiErrors.UnprocessableException;
@@ -33,19 +35,24 @@ import java.util.regex.Pattern;
 @Service
 public class LegacyQrService {
 
-    /** Тип QR legacy → код таблицы перенесённых листов (typeData.legacyTable). 6–8 (борхат, СМР, справка) не переносились. */
+    /** Тип QR legacy → код таблицы перенесённых листов (typeData.legacyTable). 6–7 (борхат, СМР) не переносились. */
     static final Map<String, String> TYPE_TO_TABLE = Map.of("1", "1D", "2", "1A", "3", "3C", "4", "2B", "5", "5F");
+    /** Тип 8 — справка (маълумотнома): перенесена с номером = legacy id (run_malumotnoma.ps1). */
+    static final String TYPE_MALUMOTNOMA = "8";
     private static final Pattern PHP_INT = Pattern.compile("^i:(\\d+);$");
     private static final Pattern PHP_STR = Pattern.compile("^s:\\d+:\"(\\d+)\";$");
 
     private final byte[] key;
     private final WaybillRepository waybills;
+    private final MalumotnomaRepository malumotnomas;
     private final QrTokenService qr;
     private final ObjectMapper json = new ObjectMapper();
 
-    public LegacyQrService(@Value("${epd.legacy.app-key:}") String appKey, WaybillRepository waybills, QrTokenService qr) {
+    public LegacyQrService(@Value("${epd.legacy.app-key:}") String appKey, WaybillRepository waybills,
+                           MalumotnomaRepository malumotnomas, QrTokenService qr) {
         this.key = parseKey(appKey);
         this.waybills = waybills;
+        this.malumotnomas = malumotnomas;
         this.qr = qr;
     }
 
@@ -67,9 +74,15 @@ public class LegacyQrService {
         if (!configured()) {
             throw new UnprocessableException("Проверка QR-кодов старой системы не настроена (нет ключа LEGACY_APP_KEY)");
         }
+        if (TYPE_MALUMOTNOMA.equals(type)) {
+            long legacyId = decrypt(token).orElseThrow(() -> new UnprocessableException("QR-код старой системы недействителен"));
+            Malumotnoma m = malumotnomas.findByNumber(legacyId).filter(Malumotnoma::isLegacy)
+                    .orElseThrow(() -> new NotFoundException("Справка старой системы не найдена среди перенесённых"));
+            return qr.sign(m);
+        }
         String table = TYPE_TO_TABLE.get(type);
         if (table == null) {
-            throw new NotFoundException("Документы этого вида (борхат, СМР, справка) из старой системы не переносились — "
+            throw new NotFoundException("Документы этого вида (борхат, СМР) из старой системы не переносились — "
                     + "проверьте путевой лист по его номеру");
         }
         long legacyId = decrypt(token).orElseThrow(() -> new UnprocessableException("QR-код старой системы недействителен"));
