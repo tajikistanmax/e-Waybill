@@ -81,9 +81,9 @@ GPS:
 - `scripts/smoke-test.ps1` — 35/35 ✅.
 
 ## Коммиты
-- `<hash>` — feat(интеграции): ответы НЕРУ и GPS Smart City как в legacy (G3)
+- `90d1c68` — feat(интеграции): ответы НЕРУ и GPS Smart City как в legacy (G3)
 
 ## Как откатить
-`git revert <hash>` + пересборка `waybill`.
+`git revert 90d1c68` + пересборка `waybill`.
 
 Внешние системы, уже настроенные на новый формат, после отката снова получат ответы RFC 7807.
