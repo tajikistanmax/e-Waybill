@@ -32,16 +32,16 @@ public interface VehicleRepository extends JpaRepository<Vehicle, UUID>,
     @Query("select v from Vehicle v where upper(trim(v.vincode)) = :vin")
     List<Vehicle> findByCanonicalVincode(@Param("vin") String vin);
 
-    /** Поиск ТС организации по подстроке госномера (регистронезависимо), с лимитом (Pageable).
-     *  Пустой q → первые N (для просмотра автопарка без загрузки тысяч записей). */
+    /** Поиск ТС организации по подстроке госномера или номера стоянки (гаражного — как в legacy-мастере),
+     *  регистронезависимо, с лимитом (Pageable). Пустой q → первые N (без загрузки тысяч записей). */
     @Query("select v from Vehicle v where v.organizationId = :org "
-            + "and upper(v.registrationNumber) like upper(concat('%', :q, '%')) "
+            + "and (upper(v.registrationNumber) like upper(concat('%', :q, '%')) or upper(v.parkingNumber) like upper(concat('%', :q, '%'))) "
             + "order by v.registrationNumber")
     List<Vehicle> searchByOrg(@Param("org") UUID org, @Param("q") String q, Pageable pageable);
 
     /** То же для набора организаций (компания + её филиалы). */
     @Query("select v from Vehicle v where v.organizationId in :orgs "
-            + "and upper(v.registrationNumber) like upper(concat('%', :q, '%')) "
+            + "and (upper(v.registrationNumber) like upper(concat('%', :q, '%')) or upper(v.parkingNumber) like upper(concat('%', :q, '%'))) "
             + "order by v.registrationNumber")
     List<Vehicle> searchByOrgs(@Param("orgs") Collection<UUID> orgs, @Param("q") String q, Pageable pageable);
 

@@ -20,16 +20,16 @@ public interface DriverRepository extends JpaRepository<Driver, UUID>,
     List<Driver> findByOrganizationId(UUID organizationId);
     List<Driver> findByOrganizationIdIn(Collection<UUID> organizationIds);
 
-    /** Поиск водителей организации по ИНН(РМА) или ФИО (регистронезависимо), с лимитом.
+    /** Поиск водителей организации по ИНН(РМА), ФИО (регистронезависимо) или табельному номеру, с лимитом.
      *  Пустой q → первые N (для просмотра списка без загрузки тысяч записей). */
     @Query("select d from Driver d where d.organizationId = :org "
-            + "and (d.rma like concat('%', :q, '%') or upper(d.fullName) like upper(concat('%', :q, '%'))) "
+            + "and (d.rma like concat('%', :q, '%') or upper(d.fullName) like upper(concat('%', :q, '%')) or d.tabNumber like concat('%', :q, '%')) "
             + "order by d.fullName")
     List<Driver> searchByOrg(@Param("org") UUID org, @Param("q") String q, Pageable pageable);
 
     /** То же для набора организаций (компания + её филиалы). */
     @Query("select d from Driver d where d.organizationId in :orgs "
-            + "and (d.rma like concat('%', :q, '%') or upper(d.fullName) like upper(concat('%', :q, '%'))) "
+            + "and (d.rma like concat('%', :q, '%') or upper(d.fullName) like upper(concat('%', :q, '%')) or d.tabNumber like concat('%', :q, '%')) "
             + "order by d.fullName")
     List<Driver> searchByOrgs(@Param("orgs") Collection<UUID> orgs, @Param("q") String q, Pageable pageable);
 

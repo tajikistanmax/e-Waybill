@@ -296,13 +296,17 @@ export default function NewWaybillPage() {
   const searchVehicles = useCallback(async (q: string): Promise<SSOption[]> => {
     if (!orgRma) return [];
     const list = await md.searchVehicles(orgRma, q);
-    return list.map(v => ({ value: String(v.registrationNumber), label: String(v.registrationNumber), sub: String(v.brand ?? '') }));
-  }, [orgRma]);
+    // Поиск и по номеру стоянки (гаражному) — как в legacy-мастере (сверка 25.09, F7).
+    return list.map(v => ({ value: String(v.registrationNumber), label: String(v.registrationNumber),
+      sub: [v.brand, v.parkingNumber ? `${tt('comp.f.parking')} ${v.parkingNumber}` : ''].filter(Boolean).join(' · ') }));
+  }, [orgRma, tt]);
   const searchDrivers = useCallback(async (q: string): Promise<SSOption[]> => {
     if (!orgRma) return [];
     const list = await md.searchDrivers(orgRma, q);
-    return list.map(d => ({ value: String(d.rma), label: String(d.fullName), sub: `ИНН ${d.rma}` }));
-  }, [orgRma]);
+    // … и водителя по табельному номеру.
+    return list.map(d => ({ value: String(d.rma), label: String(d.fullName),
+      sub: `ИНН ${d.rma}${d.tabNumber ? ` · ${tt('f.tab')} ${d.tabNumber}` : ''}` }));
+  }, [orgRma, tt]);
 
   useEffect(() => {
     if (!orgRma) { setRouteList([]); return; }
