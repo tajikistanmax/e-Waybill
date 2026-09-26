@@ -74,13 +74,16 @@ public class OrgUserController {
     private final CurrentUser currentUser;
     private final TenantScope tenantScope;
     private final AuditService audit;
+    private final tj.mintrans.epd.masterdata.auth.IntegratorAccounts integrators;
 
     public OrgUserController(tj.mintrans.epd.masterdata.auth.UserDirectory directory, CurrentUser currentUser,
-                             TenantScope tenantScope, AuditService audit) {
+                             TenantScope tenantScope, AuditService audit,
+                             tj.mintrans.epd.masterdata.auth.IntegratorAccounts integrators) {
         this.directory = directory;
         this.currentUser = currentUser;
         this.tenantScope = tenantScope;
         this.audit = audit;
+        this.integrators = integrators;
     }
 
     public record CreateRequest(
@@ -193,6 +196,10 @@ public class OrgUserController {
     @PreAuthorize("hasAnyRole('SYSTEM_ADMIN','COMPANY_ADMIN','BRANCH_ADMIN')")
     public OrgUserView setSecondFactorRequired(@PathVariable String id, @RequestBody SecondFactorRequest req) {
         UserDirectory.OrgUser user = requireManageable(id);
+        if (req.required() && user.roles() != null && user.roles().contains("API_INTEGRATOR")) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                    "Учётная запись интеграции входит программой — второй фактор к ней не применяется");
+        }
         directory.setSecondFactorRequired(id, req.required());
         audit.record(AuditService.UPDATE, "ORG_USER", user.username(),
                 String.valueOf(user.secondFactorRequired()), "second-factor-required=" + req.required());
@@ -334,9 +341,10 @@ public class OrgUserController {
         }
         // Служебные учётки (межсервисные вызовы epd-service, агрегатор): их блокировка, сброс
         // пароля или удаление из интерфейса остановили бы закрытие путевых листов и обмен с
-        // агрегаторами — пароль и роль задаются только настройками стенда.
+        // агрегаторами — пароль и роль задаются только настройками стенда. Внешние системы,
+        // заведённые на странице «Пользователи» (G2), ведёт только администратор платформы.
         if (user.roles() != null && user.roles().contains("API_INTEGRATOR")) {
-            return false;
+            return !tenantScope.isBounded() && integrators.manageable(user.id());
         }
         if (!tenantScope.isBounded()) {
             return true;

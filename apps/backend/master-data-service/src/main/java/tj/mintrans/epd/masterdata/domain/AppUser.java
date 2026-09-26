@@ -59,6 +59,13 @@ public class AppUser {
     @Column(name = "client_ids")
     private String clientIds;
 
+    /**
+     * Каналы внешней системы-интегратора через запятую (V86): ref, aggregator, gps, neru.
+     * {@code null} — без ограничения (служебная учётка межсервисных вызовов).
+     */
+    @Column(name = "api_channels")
+    private String apiChannels;
+
     @Column(name = "totp_secret")
     private String totpSecret;
 
@@ -122,6 +129,15 @@ public class AppUser {
 
     public void setClientIdList(List<String> list) {
         this.clientIds = (list == null || list.isEmpty()) ? null : String.join(",", list);
+    }
+
+    /** Каналы интегратора списком; {@code null} — учётка без ограничения каналов. */
+    public List<String> apiChannelList() {
+        return apiChannels == null ? null : split(apiChannels);
+    }
+
+    public void setApiChannelList(List<String> list) {
+        this.apiChannels = list == null ? null : String.join(",", list);
     }
 
     private static List<String> split(String raw) {
@@ -238,6 +254,10 @@ public class AppUser {
 
     public void setClientIds(String clientIds) {
         this.clientIds = clientIds;
+    }
+
+    public String getApiChannels() {
+        return apiChannels;
     }
 
     public String getTotpSecret() {

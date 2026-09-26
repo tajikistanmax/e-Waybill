@@ -71,6 +71,8 @@ public class SecurityConfig {
     public SecurityFilterChain securityFilterChain(HttpSecurity http, RateLimitFilter rateLimitFilter) throws Exception {
         http
                 .addFilterBefore(rateLimitFilter, BearerTokenAuthenticationFilter.class)
+                // Внешняя учётка интегратора — только в разделы своих каналов (G2).
+                .addFilterAfter(new IntegratorChannelFilter(), BearerTokenAuthenticationFilter.class)
                 .csrf(csrf -> csrf.disable()) // stateless API — CSRF не нужен
                 .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> {

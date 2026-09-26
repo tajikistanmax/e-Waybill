@@ -39,6 +39,8 @@ public class SecurityConfig {
             @org.springframework.beans.factory.annotation.Value("${epd.security.docs-open:true}") boolean docsOpen) throws Exception {
         http
                 .addFilterBefore(rateLimitFilter, BearerTokenAuthenticationFilter.class)
+                // Внешняя учётка интегратора — только в разделы своих каналов (G2).
+                .addFilterAfter(new IntegratorChannelFilter(), BearerTokenAuthenticationFilter.class)
                 .csrf(csrf -> csrf.disable()) // stateless API — CSRF не нужен
                 .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> {

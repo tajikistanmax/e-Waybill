@@ -77,6 +77,8 @@ epd:
       # замена client-credentials клиента Keycloak epd-aggregator. Без пароля не создаётся.
       aggregator-username: ${AGGREGATOR_USERNAME:epd-aggregator}
       aggregator-password: ${AGGREGATOR_PASSWORD:}
+      # Каналы агрегатора (сверка 25.09, G2): ref, aggregator, gps, neru — только эти разделы API.
+      aggregator-channels: ${AGGREGATOR_CHANNELS:aggregator,ref,gps,neru}
 
 springdoc:
   swagger-ui:

@@ -16,8 +16,10 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
+import tj.mintrans.epd.masterdata.auth.IntegratorAccounts;
 import tj.mintrans.epd.masterdata.auth.UserDirectory;
 import tj.mintrans.epd.masterdata.config.CurrentUser;
+import tj.mintrans.epd.masterdata.config.IntegratorChannelFilter;
 import tj.mintrans.epd.masterdata.domain.AppUser;
 import tj.mintrans.epd.masterdata.repository.AppUserRepository;
 import tj.mintrans.epd.masterdata.repository.OrganizationRepository;
@@ -74,32 +76,42 @@ public class PlatformUserController {
     private final OrganizationRepository organizations;
     private final CurrentUser currentUser;
     private final AuditService audit;
+    private final IntegratorAccounts integrators;
 
     public PlatformUserController(AppUserRepository users, UserDirectory directory, OrganizationRepository organizations,
-                                  CurrentUser currentUser, AuditService audit) {
+                                  CurrentUser currentUser, AuditService audit, IntegratorAccounts integrators) {
         this.users = users;
         this.directory = directory;
         this.organizations = organizations;
         this.currentUser = currentUser;
         this.audit = audit;
+        this.integrators = integrators;
     }
 
-    /** {@code service} — служебная учётка (API_INTEGRATOR): в интерфейсе без действий. */
+    /**
+     * {@code service} — учётка из настроек стенда (служебная, агрегатор): в интерфейсе без действий.
+     * {@code apiChannels} — каналы внешней системы-интегратора (G2), у остальных {@code null}.
+     */
     public record PlatformUserView(String id, String username, String firstName, String lastName,
                                    String organizationRma, List<String> roles, boolean enabled, boolean locked,
                                    OffsetDateTime lastLoginAt, OffsetDateTime createdAt, boolean mustChangePassword,
                                    boolean secondFactorRequired, boolean secondFactorEnrolled, boolean self,
-                                   boolean service, String temporaryPassword) {
+                                   boolean service, List<String> apiChannels, String temporaryPassword) {
     }
 
     public record PageView(List<PlatformUserView> content, long total, int page, int size) {
     }
 
+    /** {@code apiChannels} — только для роли {@code API_INTEGRATOR}: ref, aggregator, gps, neru. */
     public record CreateRequest(@NotBlank String username, String firstName, String lastName, String email,
-                                String personRma, String organizationRma, @NotBlank String role) {
+                                String personRma, String organizationRma, @NotBlank String role,
+                                List<String> apiChannels) {
     }
 
     public record RoleRequest(@NotBlank String role, String organizationRma) {
+    }
+
+    public record ChannelsRequest(List<String> apiChannels) {
     }
 
     /**
@@ -127,6 +139,9 @@ public class PlatformUserController {
     /** Создание учётки с любой ролью, в том числе платформенной (без организации). */
     @PostMapping
     public ResponseEntity<PlatformUserView> create(@Valid @RequestBody CreateRequest req) {
+        if (INTEGRATOR.equalsIgnoreCase(req.role() == null ? "" : req.role().trim())) {
+            return createIntegrator(req);
+        }
         String role = normalizeRole(req.role());
         String org = requireOrganizationFor(role, req.organizationRma());
         String password = randomPassword();
@@ -149,9 +164,9 @@ public class PlatformUserController {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
                     "Свою роль менять нельзя — это делает другой администратор платформы");
         }
-        if (isService(user)) {
+        if (IntegratorAccounts.isIntegrator(user)) {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
-                    "Служебная учётная запись: её роль задаётся настройками стенда");
+                    "Учётная запись интеграции: роль не меняется, меняются её каналы");
         }
         String role = normalizeRole(req.role());
         String org = requireOrganizationFor(role, req.organizationRma());
@@ -166,7 +181,59 @@ public class PlatformUserController {
         return view(entity(id), null);
     }
 
+    /**
+     * Учётная запись внешней системы (КВД, Smart City…; сверка 25.09, G2) — как {@code company_for_api}
+     * в «Роҳхат»: логин, пароль и каналы, куда ей можно. Пароль показывается один раз; временным он
+     * не считается — программа сменить его на странице не может, администратор передаёт его сам.
+     */
+    private ResponseEntity<PlatformUserView> createIntegrator(CreateRequest req) {
+        List<String> channels = normalizeChannels(req.apiChannels());
+        String password = randomPassword();
+        String id = directory.createUser(req.username().trim(), req.firstName(), req.lastName(), req.email(),
+                null, null, password, List.of());
+        directory.configureIntegrator(id, channels);
+        audit.record(AuditService.CREATE, "PLATFORM_USER", req.username().trim(), null,
+                INTEGRATOR + " " + String.join(",", channels));
+        return ResponseEntity.status(HttpStatus.CREATED).body(view(entity(id), password));
+    }
+
+    /** Каналы внешней системы. Учётки из настроек стенда здесь не правятся. */
+    @PatchMapping("/{id}/channels")
+    public PlatformUserView changeChannels(@PathVariable String id, @RequestBody ChannelsRequest req) {
+        AppUser user = entity(id);
+        if (!IntegratorAccounts.isIntegrator(user) || integrators.environmentManaged(user)) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                    "Каналы меняются только у внешних систем, заведённых здесь; учётки стенда — в infra/.env");
+        }
+        List<String> channels = normalizeChannels(req.apiChannels());
+        String before = user.getApiChannels();
+        directory.configureIntegrator(id, channels);
+        audit.record(AuditService.UPDATE, "PLATFORM_USER", user.getUsername(), before, String.join(",", channels));
+        return view(entity(id), null);
+    }
+
     // ------------------------------------------------------------------
+
+    static final String INTEGRATOR = "API_INTEGRATOR";
+
+    static List<String> normalizeChannels(List<String> raw) {
+        List<String> out = new java.util.ArrayList<>();
+        for (String c : raw == null ? List.<String>of() : raw) {
+            String n = c == null ? "" : c.trim().toLowerCase(Locale.ROOT);
+            if (!IntegratorChannelFilter.CHANNELS.contains(n)) {
+                throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                        "Неизвестный канал: " + c + ". Допустимы: ref, aggregator, gps, neru");
+            }
+            if (!out.contains(n)) {
+                out.add(n);
+            }
+        }
+        if (out.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                    "Отметьте хотя бы один канал внешней системы");
+        }
+        return out;
+    }
 
     private String normalizeRole(String raw) {
         String role = raw == null ? "" : raw.trim().toUpperCase(Locale.ROOT);
@@ -211,13 +278,9 @@ public class PlatformUserController {
         boolean locked = u.getLockedUntil() != null && u.getLockedUntil().isAfter(OffsetDateTime.now());
         return new PlatformUserView(u.getId().toString(), u.getUsername(), u.getFirstName(), u.getLastName(),
                 u.getOrganizationRma(), u.roleList(), u.isEnabled(), locked, u.getLastLoginAt(), u.getCreatedAt(),
-                u.isMustChangePassword(), u.isTotpRequired(), u.getTotpSecret() != null, isSelf(u), isService(u),
+                u.isMustChangePassword(), u.isTotpRequired(), u.getTotpSecret() != null, isSelf(u),
+                integrators.environmentManaged(u), IntegratorAccounts.isIntegrator(u) ? u.apiChannelList() : null,
                 temporaryPassword);
-    }
-
-    /** Служебная учётка (межсервисные вызовы, агрегатор) — роль API_INTEGRATOR. */
-    static boolean isService(AppUser u) {
-        return u.roleList().contains("API_INTEGRATOR");
     }
 
     private static String blankToNull(String s) {

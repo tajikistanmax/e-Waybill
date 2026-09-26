@@ -135,9 +135,28 @@ public class UserDirectory {
         var user = entity(userId);
         AuthService.assertPasswordPolicy(password, user.getUsername());
         user.setPasswordHash(passwords.encode(password));
-        user.setMustChangePassword(true);
+        // Внешняя система входит программой: страницы смены пароля у неё нет, новый пароль
+        // администратор передаёт ей сам (как в «Роҳхат», company_for_api). Людям — временный.
+        user.setMustChangePassword(!user.roleList().contains("API_INTEGRATOR"));
         user.setFailedAttempts(0);
         user.setLockedUntil(null);
+        users.save(user);
+        refreshTokens.revokeAllForUser(user.getId());
+    }
+
+    /**
+     * Учётная запись внешней системы-интегратора (сверка 25.09, G2): роль {@code API_INTEGRATOR},
+     * заданные каналы, без временного пароля и второго фактора — входит программа, а не человек.
+     * Выданные токены обновления гасятся: новые каналы действуют со следующего входа.
+     */
+    @Transactional
+    public void configureIntegrator(String userId, List<String> channels) {
+        var user = entity(userId);
+        user.setRoleList(List.of("API_INTEGRATOR"));
+        user.setApiChannelList(channels);
+        user.setOrganizationRma(null);
+        user.setMustChangePassword(false);
+        user.setTotpRequired(false);
         users.save(user);
         refreshTokens.revokeAllForUser(user.getId());
     }

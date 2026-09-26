@@ -144,6 +144,9 @@ services:
       # пароль — запись не создаётся. Пароль — только в infra/.env.
       AGGREGATOR_USERNAME: ${AGGREGATOR_USERNAME:-epd-aggregator}
       AGGREGATOR_PASSWORD: ${AGGREGATOR_PASSWORD:-}
+      # Разделы API агрегатора (G2): ref, aggregator, gps, neru. Остальное ему закрыто (403).
+      # Прочие внешние системы (КВД, Smart City) заводятся на странице «Пользователи» со своими каналами.
+      AGGREGATOR_CHANNELS: ${AGGREGATOR_CHANNELS:-aggregator,ref,gps,neru}
       # OpenAPI/Swagger UI — только вошедшим (как у waybill). Без этой строки действовал
       # дефолт службы (true): схема всего API master-data отдавалась анониму через
       # https://<стенд>/md-api/v3/api-docs (находка 24.09.2026).

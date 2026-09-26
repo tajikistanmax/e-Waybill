@@ -42,6 +42,7 @@ class OrgUserControllerSecurityTest {
     @MockitoBean CurrentUser currentUser;
     @MockitoBean TenantScope tenantScope;
     @MockitoBean AuditService audit;
+    @MockitoBean tj.mintrans.epd.masterdata.auth.IntegratorAccounts integrators;
     @MockitoBean JwtDecoder jwtDecoder;
 
     private static RequestPostProcessor as(String role) {

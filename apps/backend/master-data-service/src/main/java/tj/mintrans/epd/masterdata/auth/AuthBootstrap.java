@@ -45,6 +45,7 @@ public class AuthBootstrap implements ApplicationRunner {
     private final String servicePassword;
     private final String aggregatorUsername;
     private final String aggregatorPassword;
+    private final String aggregatorChannels;
 
     public AuthBootstrap(AppUserRepository users, PasswordEncoder passwords,
                          @Value("${epd.auth.bootstrap.enabled:true}") boolean enabled,
@@ -54,7 +55,8 @@ public class AuthBootstrap implements ApplicationRunner {
                          @Value("${epd.auth.bootstrap.service-username:}") String serviceUsername,
                          @Value("${epd.auth.bootstrap.service-password:}") String servicePassword,
                          @Value("${epd.auth.bootstrap.aggregator-username:}") String aggregatorUsername,
-                         @Value("${epd.auth.bootstrap.aggregator-password:}") String aggregatorPassword) {
+                         @Value("${epd.auth.bootstrap.aggregator-password:}") String aggregatorPassword,
+                         @Value("${epd.auth.bootstrap.aggregator-channels:aggregator,ref,gps,neru}") String aggregatorChannels) {
         this.users = users;
         this.passwords = passwords;
         this.enabled = enabled;
@@ -65,6 +67,7 @@ public class AuthBootstrap implements ApplicationRunner {
         this.servicePassword = servicePassword;
         this.aggregatorUsername = aggregatorUsername;
         this.aggregatorPassword = aggregatorPassword;
+        this.aggregatorChannels = aggregatorChannels;
     }
 
     @Override
@@ -185,7 +188,7 @@ public class AuthBootstrap implements ApplicationRunner {
                     + "и обслужить вызовы без пользователя (агрегатор, планировщик)");
             return 0;
         }
-        return ensureIntegratorAccount(serviceUsername.trim(), servicePassword,
+        return ensureIntegratorAccount(serviceUsername.trim(), servicePassword, null,
                 "Служебная", "учётная запись", "служебная учётная запись межсервисных вызовов");
     }
 
@@ -206,16 +209,32 @@ public class AuthBootstrap implements ApplicationRunner {
                     + "канал /api/v1/aggregator доступен только при AGGREGATOR_OPEN=true");
             return 0;
         }
-        return ensureIntegratorAccount(aggregatorUsername.trim(), aggregatorPassword,
+        return ensureIntegratorAccount(aggregatorUsername.trim(), aggregatorPassword, channels(aggregatorChannels),
                 "Агрегатор", "внешняя система", "учётная запись агрегатора");
     }
 
     /**
-     * Создаёт учётную запись интеграции с ролью {@code API_INTEGRATOR}, если её нет, а у
-     * существующей приводит пароль, роль и признак «включена» к окружению. Возвращает 1, если
-     * запись создана.
+     * Каналы учётки агрегатора из {@code AGGREGATOR_CHANNELS} (сверка 25.09, G2). Внешняя
+     * система не получает доступа служебной учётки: только разделы перечисленных каналов.
+     * Неизвестные имена отбрасываются; пустой список — все внешние каналы.
      */
-    private int ensureIntegratorAccount(String username, String password,
+    static List<String> channels(String raw) {
+        List<String> out = new ArrayList<>();
+        for (String c : splitAttribute(raw)) {
+            String n = c.toLowerCase(java.util.Locale.ROOT);
+            if (tj.mintrans.epd.masterdata.config.IntegratorChannelFilter.CHANNELS.contains(n) && !out.contains(n)) {
+                out.add(n);
+            }
+        }
+        return out.isEmpty() ? List.of("aggregator", "ref", "gps", "neru") : out;
+    }
+
+    /**
+     * Создаёт учётную запись интеграции с ролью {@code API_INTEGRATOR}, если её нет, а у
+     * существующей приводит пароль, роль, каналы и признак «включена» к окружению. Каналы
+     * {@code null} — без ограничения (служебная учётка). Возвращает 1, если запись создана.
+     */
+    private int ensureIntegratorAccount(String username, String password, List<String> channels,
                                         String lastName, String firstName, String label) {
         var existing = users.findByUsername(username);
         if (existing.isEmpty()) {
@@ -225,6 +244,7 @@ public class AuthBootstrap implements ApplicationRunner {
             user.setLastName(lastName);
             user.setFirstName(firstName);
             user.setRoleList(List.of("API_INTEGRATOR"));
+            user.setApiChannelList(channels);
             user.setEnabled(true);
             user.setMustChangePassword(false);
             users.save(user);
@@ -246,6 +266,10 @@ public class AuthBootstrap implements ApplicationRunner {
         if (!user.isEnabled() || user.isMustChangePassword()) {
             user.setEnabled(true);
             user.setMustChangePassword(false);
+            changed = true;
+        }
+        if (!java.util.Objects.equals(user.apiChannelList(), channels)) {
+            user.setApiChannelList(channels);
             changed = true;
         }
         if (changed) {

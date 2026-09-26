@@ -89,6 +89,54 @@ test.describe('Пользователи платформы', () => {
     await expect(page.getByText('Никого не найдено')).toBeVisible({ timeout: 10_000 });
   });
 
+  // Сверка 25.09, G2: внешняя система (как company_for_api legacy) — логин и каналы; видит только их.
+  test('внешняя система: каналы ограничивают разделы API', async ({ page }) => {
+    const WB = process.env.E2E_WB_URL || 'http://localhost:8082';
+    const system = `${username}-sys`;
+    page.on('dialog', d => d.accept());
+    await login(page, ADMIN, ADMIN_PASSWORD);
+    await page.goto('/company/access/users');
+    await page.locator('#pu-username').fill(system);
+    await page.locator('#pu-fullname').fill('Smart City');
+    await page.locator('#pu-role').selectOption('API_INTEGRATOR');
+    // По умолчанию отмечен ref — оставляем только GPS (как company.jwt:2 в legacy).
+    await page.getByLabel('Справочники и путевые листы (ref)').uncheck();
+    await page.getByLabel('GPS-координаты (Smart City)').check();
+    await page.getByRole('button', { name: 'Создать', exact: true }).click();
+    const secret = page.locator('.card', { hasText: `«${system}»` }).locator('.number');
+    await expect(secret).toBeVisible({ timeout: 15_000 });
+    const password = (await secret.innerText()).trim();
+
+    try {
+      const h = { Authorization: `Bearer ${await bearer(ctx, system, password)}` };
+      const refUrl = `${MD}/api/v1/ref/companies?page=1&updated_after=01.01.2020`;
+      expect((await ctx.get(refUrl, { headers: h })).status(), 'справочники вне канала gps').toBe(403);
+      expect((await ctx.get(`${MD}/api/v1/drivers`, { headers: h })).status(), 'водители всех организаций').toBe(403);
+      expect((await ctx.get(`${WB}/api/v1/ref/waybills?type=waybill3c`, { headers: h })).status()).toBe(403);
+      // Канал gps открыт: пустая посылка — ошибка данных, но не отказ в доступе.
+      expect((await ctx.post(`${WB}/api/v1/gps/events`, { headers: h, data: {} })).status()).not.toBe(403);
+
+      // Добавили ref — со следующего входа выгрузка справочников доступна.
+      await page.getByPlaceholder('Логин, фамилия, имя или РМА').fill(system);
+      const row = page.locator('table tbody tr', { hasText: system });
+      await expect(row).toHaveCount(1, { timeout: 10_000 });
+      await expect(row).not.toContainText('временный пароль');
+      await row.getByLabel('Действие', { exact: true }).selectOption('channels');
+      await row.getByLabel('Справочники и путевые листы (ref)').check();
+      await row.getByRole('button', { name: 'Сохранить каналы', exact: true }).click();
+      // Сохранено, когда панель флажков закрылась и в строке остались значки каналов.
+      await expect(row.getByRole('button', { name: 'Сохранить каналы', exact: true })).toHaveCount(0, { timeout: 10_000 });
+      await expect(row.locator('.badge', { hasText: /^ref$/ })).toHaveCount(1);
+      const h2 = { Authorization: `Bearer ${await bearer(ctx, system, password)}` };
+      expect((await ctx.get(refUrl, { headers: h2 })).status()).toBe(200);
+    } finally {
+      const r = await ctx.get(`${MD}/api/v1/platform-users?q=${system}`, { headers: adminH });
+      for (const u of (await r.json()).content ?? []) {
+        if (u.username === system) await ctx.delete(`${MD}/api/v1/org-users/${u.id}`, { headers: adminH });
+      }
+    }
+  });
+
   test('служебные учётки и своя — без действий', async ({ page }) => {
     await login(page, ADMIN, ADMIN_PASSWORD);
     await page.goto('/company/access/users');

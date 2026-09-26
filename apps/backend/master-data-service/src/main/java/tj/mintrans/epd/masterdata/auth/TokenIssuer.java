@@ -53,7 +53,7 @@ public class TokenIssuer {
         Map<String, Object> realmAccess = new LinkedHashMap<>();
         realmAccess.put("roles", user.roleList());
 
-        var claims = new JWTClaimsSet.Builder()
+        var builder = new JWTClaimsSet.Builder()
                 .issuer(issuer)
                 .subject(user.getId().toString())
                 .jwtID(UUID.randomUUID().toString())
@@ -68,8 +68,13 @@ public class TokenIssuer {
                 .claim("email", user.getEmail())
                 .claim("rma", user.getRma())
                 .claim("organization_rma", user.getOrganizationRma())
-                .claim("client_ids", user.getClientIds())
-                .build();
+                .claim("client_ids", user.getClientIds());
+        // Каналы внешней системы-интегратора (сверка 25.09, G2): по ним обе службы пускают
+        // учётку только в её разделы API. Нет claim'а — ограничения нет (служебная учётка).
+        if (user.apiChannelList() != null) {
+            builder.claim("api_channels", user.apiChannelList());
+        }
+        var claims = builder.build();
 
         try {
             var jwk = keys.active();

@@ -57,6 +57,7 @@ class PlatformUserControllerTest {
     @MockitoBean OrganizationRepository organizations;
     @MockitoBean CurrentUser currentUser;
     @MockitoBean AuditService audit;
+    @MockitoBean tj.mintrans.epd.masterdata.auth.IntegratorAccounts integrators;
     @MockitoBean JwtDecoder jwtDecoder;
 
     private static final UUID NEW_ID = UUID.randomUUID();
@@ -126,12 +127,41 @@ class PlatformUserControllerTest {
         verify(directory, never()).setSecondFactorRequired(any(), eq(true));
     }
 
+    /** Сверка 25.09, G2: внешняя система — только с каналами, и только из известных. */
     @Test
-    void serviceRoleIsNotAssignable() throws Exception {
+    void integratorNeedsKnownChannels() throws Exception {
         mvc.perform(post("/api/v1/platform-users").with(as("SYSTEM_ADMIN"))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"username\":\"svc\",\"role\":\"API_INTEGRATOR\"}"))
                 .andExpect(status().isUnprocessableEntity());
+        mvc.perform(post("/api/v1/platform-users").with(as("SYSTEM_ADMIN"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"username\":\"svc\",\"role\":\"API_INTEGRATOR\",\"apiChannels\":[\"admin\"]}"))
+                .andExpect(status().isUnprocessableEntity());
+        verify(directory, never()).createUser(any(), any(), any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void integratorIsCreatedWithChannelsAndPermanentPassword() throws Exception {
+        mvc.perform(post("/api/v1/platform-users").with(as("SYSTEM_ADMIN"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"username\":\"smart-city\",\"role\":\"api_integrator\",\"apiChannels\":[\"GPS\",\"ref\",\"gps\"]}"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.temporaryPassword").isNotEmpty());
+        verify(directory).configureIntegrator(NEW_ID.toString(), List.of("gps", "ref"));
+        verify(directory, never()).setSecondFactorRequired(any(), eq(true));
+    }
+
+    @Test
+    void channelsOfEnvironmentAccountAreNotEditable() throws Exception {
+        UUID agg = UUID.randomUUID();
+        var account = user(agg, "epd-aggregator", "API_INTEGRATOR");
+        when(users.findById(agg)).thenReturn(Optional.of(account));
+        when(integrators.environmentManaged(account)).thenReturn(true);
+        mvc.perform(patch("/api/v1/platform-users/" + agg + "/channels").with(as("SYSTEM_ADMIN"))
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"apiChannels\":[\"gps\"]}"))
+                .andExpect(status().isUnprocessableEntity());
+        verify(directory, never()).configureIntegrator(any(), any());
     }
 
     @Test

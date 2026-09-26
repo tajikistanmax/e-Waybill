@@ -15,6 +15,9 @@ const ORGANIZATION_ROLES = ['COMPANY_ADMIN', 'BRANCH_ADMIN', 'DISPATCHER', 'DOCT
 const ASSIGNABLE = [...PLATFORM_ROLES, ...ORGANIZATION_ROLES];
 // В фильтре — ещё кабинеты контрагентов и служебные учётки (их выдают не здесь).
 const FILTER_ROLES = [...ASSIGNABLE, 'CLIENT_SENDER', 'CLIENT_FORWARDER', 'API_INTEGRATOR'];
+// Внешняя система-интегратор (КВД, Smart City…): вместо организации — каналы API (сверка 25.09, G2).
+const INTEGRATOR = 'API_INTEGRATOR';
+const CHANNELS = ['ref', 'aggregator', 'gps', 'neru'];
 const PAGE_SIZE = 50;
 const NO_ORG = '__none__';
 const dim = { color: 'var(--muted)' } as const;
@@ -37,7 +40,8 @@ export default function PlatformUsersPage() {
   const [data, setData] = useState<PlatformUserPage | null>(null);
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
-  const [freshPassword, setFreshPassword] = useState<{ username: string; password: string } | null>(null);
+  // permanent — пароль внешней системы: не временный, сменить его на странице она не может.
+  const [freshPassword, setFreshPassword] = useState<{ username: string; password: string; permanent?: boolean } | null>(null);
 
   // Фильтры. Поиск по тексту — с задержкой, чтобы не дёргать сервер на каждую букву.
   const [q, setQ] = useState('');
@@ -57,11 +61,16 @@ export default function PlatformUsersPage() {
   const [fRole, setFRole] = useState('MINTRANS_ANALYST');
   const [fOrg, setFOrg] = useState('');
   const [fOrgQuery, setFOrgQuery] = useState('');
+  const [fChannels, setFChannels] = useState<string[]>(['ref']);
 
   // Смена роли: учётка, которую правим, и черновик роли/организации.
   const [editId, setEditId] = useState<string | null>(null);
   const [eRole, setERole] = useState('');
   const [eOrg, setEOrg] = useState('');
+  // Смена каналов внешней системы.
+  const [chId, setChId] = useState<string | null>(null);
+  const [chDraft, setChDraft] = useState<string[]>([]);
+  const toggleIn = (list: string[], c: string) => (list.includes(c) ? list.filter(x => x !== c) : [...list, c]);
 
   const sortedOrgs = useMemo(
     () => [...orgs].sort((a, b) => String(a.name ?? '').localeCompare(String(b.name ?? ''), 'ru')),
@@ -117,14 +126,16 @@ export default function PlatformUsersPage() {
     setBusy(true); setErr(''); setFreshPassword(null);
     try {
       const parts = fName.trim().split(/\s+/).filter(Boolean);
+      const integrator = fRole === INTEGRATOR;
       const created = await md.platformUsers.create({
         username: fUsername.trim(),
         lastName: parts[0] ?? '',
         firstName: parts.slice(1).join(' '),
         role: fRole,
-        organizationRma: fOrg || undefined,
+        organizationRma: integrator ? undefined : fOrg || undefined,
+        apiChannels: integrator ? fChannels : undefined,
       });
-      if (created.temporaryPassword) setFreshPassword({ username: created.username, password: created.temporaryPassword });
+      if (created.temporaryPassword) setFreshPassword({ username: created.username, password: created.temporaryPassword, permanent: integrator });
       setFUsername(''); setFName('');
       await load();
     } catch (e2) {
@@ -136,6 +147,12 @@ export default function PlatformUsersPage() {
 
   const roleOf = (u: PlatformUser) => u.roles.find(r => FILTER_ROLES.includes(r)) ?? (u.roles[0] ?? '');
   const actionable = (u: PlatformUser) => !u.self && !u.service;
+  const isIntegrator = (u: PlatformUser) => u.roles.includes(INTEGRATOR);
+
+  async function saveChannels(u: PlatformUser) {
+    if (chDraft.length === 0) { setErr(t('pu.ch.need')); return; }
+    await act(async () => { await md.platformUsers.setChannels(u.id, chDraft); setChId(null); });
+  }
 
   function startEdit(u: PlatformUser) {
     setEditId(u.id);
@@ -155,7 +172,7 @@ export default function PlatformUsersPage() {
     setErr('');
     try {
       const r = await md.orgUsers.resetPassword(u.id);
-      if (r.temporaryPassword) setFreshPassword({ username: u.username, password: r.temporaryPassword });
+      if (r.temporaryPassword) setFreshPassword({ username: u.username, password: r.temporaryPassword, permanent: isIntegrator(u) });
       await load();
     } catch (e) { setErr(e instanceof Error ? e.message : String(e)); }
   }
@@ -163,6 +180,7 @@ export default function PlatformUsersPage() {
   function runAction(u: PlatformUser, action: string) {
     switch (action) {
       case 'role': startEdit(u); break;
+      case 'channels': setChId(u.id); setChDraft(u.apiChannels ?? []); break;
       case 'toggle': act(() => md.orgUsers.setEnabled(u.id, !u.enabled)); break;
       case 'password': resetPassword(u); break;
       case '2fa': act(() => md.orgUsers.setSecondFactorRequired(u.id, !u.secondFactorRequired)); break;
@@ -183,6 +201,7 @@ export default function PlatformUsersPage() {
   const total = data?.total ?? 0;
   const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const orgNeeded = ORGANIZATION_ROLES.includes(fRole);
+  const fIntegrator = fRole === INTEGRATOR;
 
   return (
     <main className="page">
@@ -195,9 +214,9 @@ export default function PlatformUsersPage() {
 
       {freshPassword && (
         <div className="card" style={{ borderColor: 'var(--green)', background: 'var(--green-050)' }}>
-          <b>{t('access.temppass')} «{freshPassword.username}»:</b>{' '}
+          <b>{freshPassword.permanent ? t('pu.ch.pass') : t('access.temppass')} «{freshPassword.username}»:</b>{' '}
           <span className="number" style={{ fontSize: '1.15em', letterSpacing: '.06em' }}>{freshPassword.password}</span>
-          <div style={{ ...dim, marginTop: 4 }}>{t('access.temppass.hint')}</div>
+          <div style={{ ...dim, marginTop: 4 }}>{freshPassword.permanent ? t('pu.ch.pass.hint') : t('access.temppass.hint')}</div>
           <button className="btn secondary" style={{ ...smallBtn, marginTop: 8 }} onClick={() => setFreshPassword(null)}>{t('access.hide')}</button>
         </div>
       )}
@@ -222,8 +241,22 @@ export default function PlatformUsersPage() {
               <optgroup label={t('access.f.org')}>
                 {ORGANIZATION_ROLES.map(r => <option key={r} value={r}>{t('role.' + r)}</option>)}
               </optgroup>
+              <optgroup label={t('pu.f.integration')}>
+                <option value={INTEGRATOR}>{t('role.' + INTEGRATOR)}</option>
+              </optgroup>
             </select>
           </div>
+          {fIntegrator ? (
+            <fieldset style={{ border: 0, padding: 0, margin: 0 }}>
+              <legend style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>{t('pu.ch.h')} *</legend>
+              {CHANNELS.map(c => (
+                <label key={c} style={{ display: 'flex', gap: 6, alignItems: 'center', fontWeight: 400 }}>
+                  <input type="checkbox" checked={fChannels.includes(c)} onChange={() => setFChannels(l => toggleIn(l, c))} style={{ width: 'auto' }} />
+                  {t('pu.ch.' + c)}
+                </label>
+              ))}
+            </fieldset>
+          ) : (
           <div>
             <label htmlFor="pu-org">{t('access.f.org')}{orgNeeded ? ' *' : ''}</label>
             <div style={{ display: 'flex', gap: 6 }}>
@@ -235,11 +268,13 @@ export default function PlatformUsersPage() {
               </select>
             </div>
           </div>
+          )}
           <div className="full hint">
-            {t('pu.new.orghint')} {['SYSTEM_ADMIN', 'MINTRANS_ANALYST', 'INSPECTOR'].includes(fRole) ? t('pu.new.2fa') : ''}
+            {fIntegrator ? t('pu.ch.hint')
+              : <>{t('pu.new.orghint')} {['SYSTEM_ADMIN', 'MINTRANS_ANALYST', 'INSPECTOR'].includes(fRole) ? t('pu.new.2fa') : ''}</>}
           </div>
           <div className="full">
-            <button className="btn" disabled={busy || !fUsername.trim() || (orgNeeded && !fOrg)}>
+            <button className="btn" disabled={busy || !fUsername.trim() || (orgNeeded && !fOrg) || (fIntegrator && fChannels.length === 0)}>
               {busy ? t('access.grant.busy') : t('pu.new.btn')}
             </button>
           </div>
@@ -299,7 +334,29 @@ export default function PlatformUsersPage() {
                           <button className="btn secondary" style={smallBtn} onClick={() => setEditId(null)}>{t('btn.cancel')}</button>
                         </div>
                       </div>
-                    ) : (u.roles.map(r => t('role.' + r)).join(', ') || '—')}
+                    ) : chId === u.id ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 220 }}>
+                        {CHANNELS.map(c => (
+                          <label key={c} style={{ display: 'flex', gap: 6, alignItems: 'center', fontWeight: 400, fontSize: 12.5 }}>
+                            <input type="checkbox" checked={chDraft.includes(c)} onChange={() => setChDraft(l => toggleIn(l, c))} style={{ width: 'auto' }} />
+                            {t('pu.ch.' + c)}
+                          </label>
+                        ))}
+                        <div style={{ display: 'flex', gap: 4 }}>
+                          <button className="btn" style={smallBtn} onClick={() => saveChannels(u)}>{t('pu.ch.save')}</button>
+                          <button className="btn secondary" style={smallBtn} onClick={() => setChId(null)}>{t('btn.cancel')}</button>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        {u.roles.map(r => t('role.' + r)).join(', ') || '—'}
+                        {u.apiChannels && (
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3, marginTop: 3 }} title={t('pu.ch.h')}>
+                            {u.apiChannels.map(c => <span key={c} className="badge">{c}</span>)}
+                          </div>
+                        )}
+                      </>
+                    )}
                   </td>
                   <td>
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
@@ -315,15 +372,18 @@ export default function PlatformUsersPage() {
                   <td>{fmt(u.lastLoginAt) ?? <span style={dim}>{t('pu.never')}</span>}</td>
                   <td style={{ textAlign: 'right' }}>
                     {/* Действия — одним списком: шесть кнопок в строке растягивали таблицу в высоту. */}
-                    {actionable(u) && editId !== u.id && (
+                    {actionable(u) && editId !== u.id && chId !== u.id && (
                       <select aria-label={t('pu.action')} value="" onChange={e => runAction(u, e.target.value)}
                         style={{ padding: '4px 8px', fontSize: 12.5, width: 'auto' }}>
                         <option value="">{t('pu.action')}…</option>
-                        <option value="role">{t('pu.action.role')}</option>
+                        {/* Внешней системе роль не меняется и второй фактор не нужен — только каналы. */}
+                        {isIntegrator(u)
+                          ? <option value="channels">{t('pu.action.channels')}</option>
+                          : <option value="role">{t('pu.action.role')}</option>}
                         <option value="toggle">{u.enabled ? t('access.btn.disable') : t('access.btn.enable')}</option>
                         <option value="password">{t('access.btn.resetpwd')}</option>
-                        <option value="2fa">{u.secondFactorRequired ? t('acc.2fa.unrequire') : t('acc.2fa.require')}</option>
-                        {u.secondFactorEnrolled && <option value="2fa-reset">{t('acc.2fa.reset')}</option>}
+                        {!isIntegrator(u) && <option value="2fa">{u.secondFactorRequired ? t('acc.2fa.unrequire') : t('acc.2fa.require')}</option>}
+                        {!isIntegrator(u) && u.secondFactorEnrolled && <option value="2fa-reset">{t('acc.2fa.reset')}</option>}
                         <option value="delete">{t('access.btn.remove')}</option>
                       </select>
                     )}

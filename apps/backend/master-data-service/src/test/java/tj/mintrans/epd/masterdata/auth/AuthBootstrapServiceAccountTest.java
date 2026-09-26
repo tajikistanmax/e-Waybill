@@ -35,11 +35,18 @@ class AuthBootstrapServiceAccountTest {
     }
 
     private AuthBootstrap bootstrap(String username, String password) {
-        return new AuthBootstrap(users, encoder, true, "", "", "", username, password, "", "");
+        return new AuthBootstrap(users, encoder, true, "", "", "", username, password, "", "", "");
     }
 
     private AuthBootstrap bootstrapWithAggregator(String aggUsername, String aggPassword) {
-        return new AuthBootstrap(users, encoder, true, "", "", "", "", "", aggUsername, aggPassword);
+        return new AuthBootstrap(users, encoder, true, "", "", "", "", "", aggUsername, aggPassword, "aggregator,ref");
+    }
+
+    /** Сверка 25.09, G2: каналы агрегатора из окружения; мусор отбрасывается, пусто — все внешние. */
+    @Test
+    void aggregatorChannelsFromEnvironment() {
+        assertThat(AuthBootstrap.channels("ref, GPS,ref,admin")).containsExactly("ref", "gps");
+        assertThat(AuthBootstrap.channels("")).containsExactly("aggregator", "ref", "gps", "neru");
     }
 
     /**
@@ -61,6 +68,8 @@ class AuthBootstrapServiceAccountTest {
         assertThat(saved.getValue().isEnabled()).isTrue();
         assertThat(saved.getValue().isMustChangePassword()).isFalse();
         assertThat(encoder.matches("Agg-Secret-2026", saved.getValue().getPasswordHash())).isTrue();
+        // Внешняя система — только в свои разделы (G2), не с доступом служебной учётки.
+        assertThat(saved.getValue().apiChannelList()).containsExactly("aggregator", "ref");
     }
 
     @Test
@@ -87,6 +96,7 @@ class AuthBootstrapServiceAccountTest {
         assertThat(saved.getValue().isEnabled()).isTrue();
         assertThat(saved.getValue().isMustChangePassword()).isFalse();
         assertThat(encoder.matches("Svc-Secret-2026", saved.getValue().getPasswordHash())).isTrue();
+        assertThat(saved.getValue().apiChannelList()).isNull();
     }
 
     @Test

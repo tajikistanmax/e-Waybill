@@ -56,14 +56,26 @@ public class MasterDataClient {
      * Аутентификация вызова master-data: пробрасывается Bearer текущего пользователя (token relay);
      * если запрос без токена (агрегатор ЧУРА/НЕРУ, планировщик) — берётся сервисный client-credentials
      * токен (роль API_INTEGRATOR), чтобы master-data не приходилось держать GET открытым анонимно.
+     *
+     * <p>Внешняя учётка интегратора с каналами (G2) в master-data пускается только в свои разделы,
+     * а справочники (маршруты, ТС, водители) ей там закрыты. Поэтому за неё к master-data ходит
+     * служебная учётка — область та же: у интегратора нет организации, он и так видит всю платформу.</p>
      */
+    /** Bearer текущего запроса для пересылки; у внешней учётки с каналами — нет (идёт служебная). */
+    private static String userAuthorization() {
+        if (tj.mintrans.epd.waybill.config.IntegratorChannelFilter.currentChannels().isPresent()) {
+            return null;
+        }
+        if (RequestContextHolder.getRequestAttributes() instanceof ServletRequestAttributes attrs) {
+            return attrs.getRequest().getHeader(HttpHeaders.AUTHORIZATION);
+        }
+        return null;
+    }
+
     private ClientHttpResponse authorize(HttpRequest request, byte[] body,
                                          ClientHttpRequestExecution execution) throws IOException {
         if (!request.getHeaders().containsKey(HttpHeaders.AUTHORIZATION)) {
-            String userAuthorization = null;
-            if (RequestContextHolder.getRequestAttributes() instanceof ServletRequestAttributes attrs) {
-                userAuthorization = attrs.getRequest().getHeader(HttpHeaders.AUTHORIZATION);
-            }
+            String userAuthorization = userAuthorization();
             String authorization = userAuthorization != null
                     ? userAuthorization
                     : "Bearer " + serviceToken.bearer();
@@ -413,10 +425,7 @@ public class MasterDataClient {
      * (client-credentials — платформенная область).
      */
     private String callerKey() {
-        String userAuthorization = null;
-        if (RequestContextHolder.getRequestAttributes() instanceof ServletRequestAttributes attrs) {
-            userAuthorization = attrs.getRequest().getHeader(HttpHeaders.AUTHORIZATION);
-        }
+        String userAuthorization = userAuthorization();
         if (userAuthorization == null || userAuthorization.isBlank()) {
             return "service";
         }

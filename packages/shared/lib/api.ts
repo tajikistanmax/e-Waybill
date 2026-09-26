@@ -612,8 +612,13 @@ export const md = {
       Object.entries(p).forEach(([k, v]) => { if (v !== undefined && v !== '' && v !== false) qs.set(k, String(v)); });
       return fetch(`/md-api/api/v1/platform-users?${qs}`, { headers: authHeaders() }).then(r => handle<PlatformUserPage>(r));
     },
-    create: (body: { username: string; firstName?: string; lastName?: string; organizationRma?: string; role: string }) =>
+    create: (body: { username: string; firstName?: string; lastName?: string; organizationRma?: string; role: string; apiChannels?: string[] }) =>
       mdPost('platform-users', body) as Promise<PlatformUser>,
+    // Каналы внешней системы-интегратора (сверка 25.09, G2).
+    setChannels: (id: string, apiChannels: string[]) => fetch(`/md-api/api/v1/platform-users/${id}/channels`, {
+      method: 'PATCH', headers: authHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ apiChannels }),
+    }).then(r => handle<PlatformUser>(r)),
     setRole: (id: string, role: string, organizationRma?: string) => fetch(`/md-api/api/v1/platform-users/${id}/role`, {
       method: 'PATCH', headers: authHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({ role, organizationRma: organizationRma || null }),
@@ -701,8 +706,10 @@ export type PlatformUser = {
   locked: boolean;
   lastLoginAt: string | null; createdAt: string | null; mustChangePassword: boolean;
   secondFactorRequired: boolean; secondFactorEnrolled: boolean;
-  /** Своя учётка / служебная (API_INTEGRATOR) — без действий. */
+  /** Своя учётка / учётка из настроек стенда (служебная, агрегатор) — без действий. */
   self: boolean; service: boolean;
+  /** Каналы внешней системы-интегратора (ref, aggregator, gps, neru); у остальных null. */
+  apiChannels: string[] | null;
   temporaryPassword: string | null;
 };
 export type PlatformUserPage = { content: PlatformUser[]; total: number; page: number; size: number };
