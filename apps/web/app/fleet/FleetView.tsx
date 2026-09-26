@@ -7,7 +7,7 @@ import { useAuth } from '@/lib/auth';
 import { FORM_FIELDS, fieldLabel, useDataSource, useFormFieldModes } from '@/lib/formFields';
 import { useT } from '@/lib/i18n';
 import { Icon, P } from '../icons';
-import SubjectDocuments from './SubjectDocuments';
+import SubjectDocuments, { type SubjectPath } from './SubjectDocuments';
 import { BrandPicker } from '../BrandPicker';
 
 type Row = Record<string, unknown>;
@@ -38,7 +38,7 @@ export default function FleetView({ kind }: { kind: FleetKind }) {
     : kind === 'drivers' ? (canManage || roles.includes('DOCTOR'))
       : canManage;
 
-  const [docFor, setDocFor] = useState<{ subject: 'vehicles' | 'drivers'; key: string; title: string } | null>(null);
+  const [docFor, setDocFor] = useState<{ subject: SubjectPath; key: string; title: string } | null>(null);
   const [orgRma, setOrgRma] = useState('');
   // Полный набор (в рамках организации) — только для карточек-счётчиков сверху.
   const [statRows, setStatRows] = useState<Row[]>([]);
@@ -452,7 +452,7 @@ export default function FleetView({ kind }: { kind: FleetKind }) {
         <div onClick={() => setDocFor(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(15,32,60,.45)', zIndex: 60, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '5vh 16px', overflowY: 'auto' }}>
           <div onClick={ev => ev.stopPropagation()} className="card" style={{ maxWidth: 780, width: '100%', margin: 0 }}>
             <div className="card-h">
-              <h2 style={{ margin: 0 }}>{docFor.subject === 'vehicles' ? t('col.transport') : t('rj.driver')}</h2>
+              <h2 style={{ margin: 0 }}>{docFor.subject === 'vehicles' ? t('col.transport') : docFor.subject === 'drivers' ? t('rj.driver') : t('fleet.tab.employees')}</h2>
               <button className="btn secondary" style={{ marginLeft: 'auto' }} onClick={() => setDocFor(null)}>✕</button>
             </div>
             <SubjectDocuments subject={docFor.subject} subjectKey={docFor.key} title={docFor.title} />
@@ -463,15 +463,16 @@ export default function FleetView({ kind }: { kind: FleetKind }) {
   );
 
   function rowActions(row: Row) {
-    const subj: 'vehicles' | 'drivers' | null = kind === 'vehicles' ? 'vehicles' : kind === 'drivers' ? 'drivers' : null;
+    // Сотрудники — подпись и печать (врач: «имзо, сикка»), печатаются на бланках (сверка 25.09, F9).
+    const subj: SubjectPath = kind;
     return (
       <span style={{ display: 'inline-flex', gap: 6, justifyContent: 'flex-end' }}>
         {subj && (
-          <button className="btn secondary" style={{ padding: '4px 9px' }} title={t('sd.h')}
+          <button className="btn secondary" style={{ padding: '4px 9px' }} title={t('sd.h')} data-testid="subject-docs"
             onClick={() => setDocFor({
               subject: subj,
               key: String(subj === 'vehicles' ? row.registrationNumber : row.rma),
-              title: String(subj === 'vehicles' ? `${row.brand ?? ''} ${row.registrationNumber}` : row.fullName),
+              title: String(subj === 'vehicles' ? `${row.brand ?? ''} ${row.registrationNumber}` : subj === 'drivers' ? row.fullName : row.name),
             })}>
             <Icon d={P.book ?? P.doc} cls="" style={{ width: 14, height: 14 }} />
           </button>

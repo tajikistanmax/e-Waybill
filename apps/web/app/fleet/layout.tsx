@@ -22,6 +22,8 @@ export default function FleetLayout({ children }: { children: React.ReactNode })
     { href: '/fleet/vehicles', labelKey: 'fleet.tab.vehicles', icon: P.car, show: canManage || roles.includes('MECHANIC') },
     { href: '/fleet/drivers', labelKey: 'fleet.tab.drivers', icon: P.user, show: canManage || roles.includes('DOCTOR') },
     { href: '/fleet/employees', labelKey: 'fleet.tab.employees', icon: P.users, show: canManage },
+    // Документы и печать своей организации — администратору перевозчика (сверка 25.09, F9).
+    { href: '/fleet/organization', labelKey: 'fleet.tab.org', icon: P.building, show: roles.includes('COMPANY_ADMIN') },
   ].filter(s => s.show);
 
   const active = tabs.find(s => path.startsWith(s.href)) ?? tabs[0];
