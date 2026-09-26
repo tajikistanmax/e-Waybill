@@ -94,6 +94,11 @@ public class WaybillController {
             Map<String, Object> typeData) {
     }
 
+    /** Правка шапки черновика: null — не менять, "" — очистить; typeData дополняет прежние поля формы. */
+    public record DraftUpdateRequest(String route, String schedule, @Size(max = 500) String specialMark,
+                                     Map<String, Object> typeData) {
+    }
+
     public record SignT1Request(
             @NotBlank @Pattern(regexp = "\\d{9,10}") String dispatcherRma,
             OffsetDateTime validFrom,
@@ -216,9 +221,19 @@ public class WaybillController {
         return ResponseEntity.status(HttpStatus.CREATED).body(wb);
     }
 
+    /** Правка шапки черновика (до Т1): маршрут, график, особые отметки, поля формы (сверка 25.09, A18). */
+    @org.springframework.web.bind.annotation.PatchMapping("/{id}")
+    @PreAuthorize("hasAnyRole('DISPATCHER','SYSTEM_ADMIN')")
+    public Waybill updateDraft(@PathVariable UUID id, @Valid @RequestBody DraftUpdateRequest req) {
+        return service.updateDraft(id, req.route(), req.schedule(), req.specialMark(), req.typeData(),
+                currentUser.username().orElse("dispatcher"));
+    }
+
     @PostMapping("/{id}/titles/t1")
     @PreAuthorize("hasAnyRole('DISPATCHER','SYSTEM_ADMIN')")
     public Waybill signT1(@PathVariable UUID id, @Valid @RequestBody SignT1Request req) {
+        // Начало срока (плановый выезд 1-АД) — с начала текущих суток до +24 ч (сверка 25.09, A21).
+        WaybillService.assertValidFrom(req.validFrom(), OffsetDateTime.now());
         return service.signT1(id, req.dispatcherRma(), req.validFrom(), req.validityDays());
     }
 

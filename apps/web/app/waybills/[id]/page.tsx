@@ -9,6 +9,7 @@ import { ExpensesSection } from './ExpensesSection';
 import { Attachments } from './Attachments';
 import { Consignment } from './Consignment';
 import ConsignmentNotes from './ConsignmentNotes';
+import DraftHeaderEdit from './DraftHeaderEdit';
 import WorkDaysFuel from './WorkDaysFuel';
 import QRCode from 'qrcode';
 
@@ -77,6 +78,8 @@ export default function WaybillCard({ params }: { params: Promise<{ id: string }
   const [retDay, setRetDay] = useState({ numberLap: '', earning: '', beginPathA: 'begin_path_a', beginPathB: '' });
   // Подписант Т1/Т4/Т5 у администратора платформы (у диспетчера — он сам, по РМА из токена).
   const [dispPick, setDispPick] = useState('');
+  // 1-АД: плановое время выезда («Вақти баромад») при Т1; по умолчанию — текущее время.
+  const [planExit, setPlanExit] = useState(() => new Date().toTimeString().slice(0, 5));
   // Посуточный расчёт топлива многодневных 1-А/3-С (MIGRATION.md 5.4, B10): разбивка по дням из POST /calculation.
   const [dailyCalc, setDailyCalc] = useState<Record<string, unknown> | null>(null);
   const [replacement, setReplacement] = useState(''); // РМА нового водителя или госномер нового ТС
@@ -180,6 +183,12 @@ export default function WaybillCard({ params }: { params: Promise<{ id: string }
   const overdue = w.status === 'EXPIRED' && titles.some(x => x.titleType === 'T4') && !titles.some(x => x.titleType === 'T5');
   const canReturn = w.status === 'ACTIVE' || overdue;
   const passengerForm = ['WB_BUS', 'WB_TROLLEYBUS', 'WB_MINIBUS', 'WB_CAR', 'WB_TAXI'].includes(w.waybillType);
+  const busForm = w.waybillType === 'WB_BUS' || w.waybillType === 'WB_TROLLEYBUS';   // 1-АД
+  const todayAt = (hhmm: string) => {
+    const [h, m] = hhmm.split(':').map(Number);
+    const d = new Date(); d.setHours(h, m, 0, 0);
+    return d.toISOString();
+  };
   const beginPathForm = ['WB_BUS', 'WB_TROLLEYBUS', 'WB_MINIBUS'].includes(w.waybillType)
     || (['WB_CAR', 'WB_TAXI'].includes(w.waybillType) && (w.typeData as Record<string, unknown> | null)?.serviceKind === 'ROUTE');
   const canPay = has('ACCOUNTANT') || isAdmin;        // подтверждение оплаты
@@ -294,9 +303,21 @@ export default function WaybillCard({ params }: { params: Promise<{ id: string }
               {emp.dispatchers.map(d => <option key={d.rma} value={d.rma}>{d.name}</option>)}
             </select>
           )}
+          {/* 1-АД: «Вақти баромад» — плановое время выезда сегодня (legacy Waybill1adCrudController, обязательное
+              поле при оформлении); печатается в графе «аз рӯи нақша». У остальных форм дата листа — момент Т1. */}
+          {w.status === 'DRAFT' && canDispatch && busForm && (
+            <label style={{ display: 'inline-flex', gap: 6, alignItems: 'center', fontSize: 12, color: 'var(--muted)' }}>
+              {t('wb.f.planexit')}
+              <input type="time" value={planExit} onChange={e => setPlanExit(e.target.value)} style={{ width: 110 }}
+                aria-label={t('wb.f.planexit')} />
+            </label>
+          )}
           {w.status === 'DRAFT' && canDispatch && (
-            <button className="btn" disabled={!dispatcher}
-              onClick={() => act(t('wb.act.t1'), () => wb.post(`/${id}/titles/t1`, { dispatcherRma: dispatcher }))}>
+            <button className="btn" disabled={!dispatcher || (busForm && !planExit)}
+              onClick={() => act(t('wb.act.t1'), () => wb.post(`/${id}/titles/t1`, {
+                dispatcherRma: dispatcher,
+                ...(busForm && planExit ? { validFrom: todayAt(planExit) } : {}),
+              }))}>
               {t('wb.btn.signt1')} ({t('wb.r.dispatcher')} {dispatcherName})
             </button>
           )}
@@ -636,6 +657,7 @@ export default function WaybillCard({ params }: { params: Promise<{ id: string }
             <dt>{t('drv.routeschedule')}</dt><dd>{w.route ?? '—'} / {w.schedule ?? '—'}</dd>
             {w.specialMark && <><dt>{t('wb.specialmark')}</dt><dd>{w.specialMark}</dd></>}
           </dl>
+          {w.status === 'DRAFT' && canDispatch && <DraftHeaderEdit w={w} act={act} />}
           {customEntries.length > 0 && (
             <>
               <h2 style={{ marginTop: 18 }}>{t('fld.section')}</h2>

@@ -874,6 +874,12 @@ export const wb = {
       headers: authHeaders({ 'Content-Type': 'application/json' }),
       body: body != null ? JSON.stringify(body) : '{}',
     }).then(r => handle<T>(r)),
+  patch: <T = Waybill>(path: string, body?: unknown) =>
+    fetch(`/wb-api/api/v1/waybills${path}`, {
+      method: 'PATCH',
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
+      body: body != null ? JSON.stringify(body) : '{}',
+    }).then(r => handle<T>(r)),
   put: <T = unknown>(path: string, body?: unknown) =>
     fetch(`/wb-api/api/v1/waybills${path}`, {
       method: 'PUT',

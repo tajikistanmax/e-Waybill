@@ -142,6 +142,39 @@ public class WaybillService {
     }
 
     /**
+     * Правка шапки черновика (сверка 25.09, A18): маршрут, график, особые отметки и поля формы (type_data).
+     * В legacy лист до выпуска правился в той же форме; у нас черновик можно было только аннулировать и
+     * оформить заново. Только статус DRAFT (после Т1 шапка подписана титулом). {@code null} — поле не
+     * меняется, пустая строка — очистить; переданные ключи type_data дополняют/заменяют прежние. Проверки —
+     * те же, что при создании (маршрут у маршрутных форм, «Самт» 2-Б, дозвол 5Б-БМ/4М-БМ и т. д.).
+     */
+    @Transactional
+    public Waybill updateDraft(UUID id, String route, String schedule, String specialMark,
+                               Map<String, Object> typeData, String actor) {
+        var wb = getForUpdate(id);
+        requireStatus(wb, WaybillStatus.DRAFT);
+        if (route != null) wb.setRoute(route.isBlank() ? null : route.trim());
+        if (schedule != null) wb.setSchedule(schedule.isBlank() ? null : schedule.trim());
+        if (specialMark != null) {
+            if (specialMark.length() > 500) {
+                throw new UnprocessableException("Особые отметки — не более 500 знаков");
+            }
+            wb.setSpecialMark(specialMark.isBlank() ? null : specialMark.trim());
+        }
+        var merged = new java.util.LinkedHashMap<String, Object>();
+        if (wb.getTypeData() != null) merged.putAll(wb.getTypeData());
+        if (typeData != null) merged.putAll(typeData);
+        merged.remove("secondDriverSnapshot");   // пересобирается проверкой из РМА второго водителя
+        var org = wb.getOrganizationSnapshot() == null ? Map.<String, Object>of() : wb.getOrganizationSnapshot();
+        validateTypeData(wb, merged, wb.getSecondDriverRma(), org);
+        var saved = waybills.save(wb);
+        // Только запись в истории листа: смены статуса нет, событие/уведомление не публикуется.
+        events.save(WaybillStatusEvent.of(saved.getId(), WaybillStatus.DRAFT, WaybillStatus.DRAFT, actor,
+                "Изменена шапка черновика"));
+        return saved;
+    }
+
+    /**
      * Валидация вариативных полей type_data по типу ПЛ (формы 2-Б, 5Б-БМ, 4М-БМ, 3-С;
      * spec/notes/01-legacy-api-и-формы.md, разделы 5.4–5.6). Записывает результат в wb.typeData.
      */
@@ -920,6 +953,26 @@ public class WaybillService {
                 "dispatcher", dispatcher.get("name")));
         transition(wb, WaybillStatus.CREATED, dispatcherRma, "Т1 подписан");
         return waybills.save(wb);
+    }
+
+    /**
+     * Начало срока при Т1 (плановый выезд 1-АД, «Вақти баромад»). В legacy дата листа — день оформления
+     * (у 1-А/3-С поле только для чтения, у 1-АД выбирается время выезда этого дня). Раньше API принимал
+     * любую дату — лист можно было «выписать» задним числом или на месяц вперёд. Допускается от начала
+     * текущих суток (выезд раньше подписи — обычная утренняя практика) до +24 ч (выписка с вечера).
+     * Проверяется на входе диспетчера ({@code POST /titles/t1}); внутренние вызовы со своей датой —
+     * B2B-канал КВД (дата из его заявки) и одобрение заявки водителя на день — не ограничиваются.
+     */
+    public static void assertValidFrom(OffsetDateTime validFrom, OffsetDateTime now) {
+        if (validFrom == null) {
+            return;
+        }
+        var zone = java.time.ZoneId.systemDefault();
+        var startOfToday = now.atZoneSameInstant(zone).toLocalDate().atStartOfDay(zone).toOffsetDateTime();
+        if (validFrom.isBefore(startOfToday) || validFrom.isAfter(now.plusHours(24))) {
+            throw new UnprocessableException("Начало срока листа — с начала текущих суток и не позднее чем через 24 ч "
+                    + "(указано %s)".formatted(validFrom.atZoneSameInstant(zone).toLocalDateTime()));
+        }
     }
 
     /** Т2/Т6 — медицинский осмотр. */

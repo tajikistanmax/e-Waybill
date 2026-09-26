@@ -168,6 +168,34 @@ class WaybillControllerSecurityTest {
         postJson(ID + "/unblock", role, "{\"reason\":\"x\"}").andExpect(status().isForbidden());
     }
 
+    // --- Правка шапки черновика (A18): диспетчер и админ платформы.
+    @ParameterizedTest
+    @ValueSource(strings = {"DISPATCHER", "SYSTEM_ADMIN"})
+    void draftPatchAllowed(String role) throws Exception {
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch("/api/v1/waybills" + ID)
+                        .with(as(role)).contentType(MediaType.APPLICATION_JSON).content("{\"schedule\":\"06:00-22:00\"}"))
+                .andExpect(status().is(not(403)));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"ACCOUNTANT", "DOCTOR", "MECHANIC", "DRIVER", "INSPECTOR", "COMPANY_ADMIN", "MINTRANS_ANALYST"})
+    void draftPatchForbidden(String role) throws Exception {
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch("/api/v1/waybills" + ID)
+                        .with(as(role)).contentType(MediaType.APPLICATION_JSON).content("{\"schedule\":\"06:00-22:00\"}"))
+                .andExpect(status().isForbidden());
+    }
+
+    // --- Т1: начало срока вне окна «с начала суток до +24 ч» — 422 до вызова сервиса (A21).
+    @Test
+    void t1ValidFromYesterdayRejected() throws Exception {
+        String body = "{\"dispatcherRma\":\"333333333\",\"validFrom\":\""
+                + java.time.OffsetDateTime.now().minusDays(2) + "\"}";
+        postJson(ID + "/titles/t1", "DISPATCHER", body).andExpect(status().isUnprocessableEntity());
+        org.mockito.Mockito.verify(service, org.mockito.Mockito.never()).signT1(
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any());
+    }
+
     // --- Накладная: таможенное подтверждение перевозчик не пишет (только кабинет таможни, сверка 25.09 C3).
     @Test
     void dispatcherCannotConfirmCustoms() throws Exception {
