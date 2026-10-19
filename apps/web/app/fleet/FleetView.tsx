@@ -21,6 +21,17 @@ const ACT_FORM_TYPES: Record<string, string[]> = {
 const ACT_FORM_LABELS: { v: string; l: string }[] = [
   { v: '3c', l: '3-С' }, { v: '2b', l: '2-Б' }, { v: '1ad', l: '1-АД' }, { v: '1a', l: '1-А' }, { v: '5bbm', l: '5Б-БМ' }, { v: '3m', l: '3-М' },
 ];
+const ADDITIONAL_FIELDS: Record<FleetKind, string[]> = {
+  drivers: ['birthDate', 'experienceYears', 'degree', 'medCertNumber', 'medCertValidTo', 'medRestrictions',
+    'safetyCourseValidTo', 'safetyCourseNumber', 'adrCertValidTo', 'phone', 'passport', 'address', 'email',
+    'powerAttorney', 'visaValidTo', 'contractNumber', 'contractValidTo'],
+  vehicles: ['enginePower', 'techInspectionValidTo', 'techInspectionNumber', 'techPassportNumber', 'certificateNumber',
+    'controlCardValidTo', 'controlCardNumber', 'intlCertificateNumber', 'intlControlCardNumber',
+    'intlControlCardValidTo', 'insuranceValidTo', 'adrApprovalValidTo', 'airConditioner',
+    'trailer1Number', 'trailer1Brand', 'trailer1Carrying', 'trailer1Weight',
+    'trailer2Number', 'trailer2Brand', 'trailer2Carrying', 'trailer2Weight'],
+  employees: ['tabNumber', 'phone', 'address', 'certNumber', 'certValidTo'],
+};
 type Field = { key: string; label: string; type?: 'text' | 'number' | 'date' | 'select' | 'multiselect'; opts?: { v: string; l: string }[]; req?: boolean; keyField?: boolean; numeric?: boolean; hidden?: boolean };
 
 /**
@@ -151,6 +162,9 @@ export default function FleetView({ kind }: { kind: FleetKind }) {
     hidden: modes[f.key] === 'hidden' || f.key === 'assignedVehicleId',
   }));
   const shown = fields.filter(f => !f.hidden);
+  const additionalFields = shown.filter(f => ADDITIONAL_FIELDS[kind].includes(f.key));
+  const primaryFields = shown.filter(f => !ADDITIONAL_FIELDS[kind].includes(f.key));
+  const additionalOpen = editing || additionalFields.some(f => f.req);
 
   const load = useCallback(async (query: string, which: FleetKind) => {
     setLoading(true); setErr('');
@@ -249,6 +263,41 @@ export default function FleetView({ kind }: { kind: FleetKind }) {
     downloadCsv(`${kind}_${new Date().toISOString().slice(0, 10)}.csv`, [head, ...visible.map(line)]);
   }
 
+  function renderField(f: Field) {
+    return (
+      <div key={f.key}>
+        <label htmlFor={`fleet-${f.key}`} style={{ fontSize: 12.5, color: 'var(--muted)' }}>{f.label}{f.req ? ' *' : ''}</label>
+        {kind === 'vehicles' && f.key === 'brand' ? (
+          <div style={{ marginTop: 4 }} id={`fleet-${f.key}`}>
+            <BrandPicker value={form?.brand ?? ''} disabled={!!(editing && lockedField('brand'))}
+              onChange={v => setForm(s => ({ ...s!, brand: v }))}
+              onPick={b => setForm(s => ({ ...s!,
+                capacity: s!.capacity || (b.capacity != null ? String(b.capacity) : ''),
+                carrying: s!.carrying || (b.carrying != null ? String(b.carrying) : '') }))} />
+          </div>
+        ) : f.type === 'select' ? (
+          <select id={`fleet-${f.key}`} value={form?.[f.key] ?? ''} disabled={!!(editing && lockedField(f.key))}
+            onChange={e => setForm(s => ({ ...s!, [f.key]: e.target.value }))} style={{ width: '100%', marginTop: 4 }}>
+            <option value="">—</option>
+            {(f.opts ?? []).map(o => <option key={o.v} value={o.v}>{o.l}</option>)}
+          </select>
+        ) : f.type === 'multiselect' ? (
+          <LicenseCategoryPicker
+            label={f.label}
+            value={form?.[f.key] ?? ''}
+            options={(f.opts ?? []).map(o => ({ v: o.v, label: o.l }))}
+            disabled={!!(editing && lockedField(f.key))}
+            onChange={value => setForm(s => ({ ...s!, [f.key]: value }))}
+          />
+        ) : (
+          <input id={`fleet-${f.key}`} type={f.type === 'number' ? 'number' : f.type === 'date' ? 'date' : 'text'}
+            value={form?.[f.key] ?? ''} disabled={!!(editing && (f.keyField || lockedField(f.key)))}
+            onChange={e => setForm(s => ({ ...s!, [f.key]: e.target.value }))} style={{ width: '100%', marginTop: 4 }} />
+        )}
+      </div>
+    );
+  }
+
   if (!allowed) {
     return (
       <div className="card">
@@ -333,40 +382,16 @@ export default function FleetView({ kind }: { kind: FleetKind }) {
             <div className="hint" style={{ marginBottom: 12, borderColor: 'var(--blue-600)' }}>{t('ds.locked.hint')}</div>
           )}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 12 }}>
-            {shown.map(f => (
-              <div key={f.key}>
-                <label htmlFor={`fleet-${f.key}`} style={{ fontSize: 12.5, color: 'var(--muted)' }}>{f.label}{f.req ? ' *' : ''}</label>
-                {kind === 'vehicles' && f.key === 'brand' ? (
-                  // Марка — из справочника марок (сверка 25.09, F4): нормы расхода ищутся по имени марки.
-                  <div style={{ marginTop: 4 }} id={`fleet-${f.key}`}>
-                    <BrandPicker value={form.brand ?? ''} disabled={editing && lockedField('brand')}
-                      onChange={v => setForm(s => ({ ...s!, brand: v }))}
-                      onPick={b => setForm(s => ({ ...s!,
-                        capacity: s!.capacity || (b.capacity != null ? String(b.capacity) : ''),
-                        carrying: s!.carrying || (b.carrying != null ? String(b.carrying) : '') }))} />
-                  </div>
-                ) : f.type === 'select' ? (
-                  <select id={`fleet-${f.key}`} value={form[f.key] ?? ''} disabled={editing && lockedField(f.key)}
-                    onChange={e => setForm(s => ({ ...s!, [f.key]: e.target.value }))} style={{ width: '100%', marginTop: 4 }}>
-                    <option value="">—</option>
-                    {f.opts!.map(o => <option key={o.v} value={o.v}>{o.l}</option>)}
-                  </select>
-                ) : f.type === 'multiselect' ? (
-                  <LicenseCategoryPicker
-                    label={f.label}
-                    value={form[f.key] ?? ''}
-                    options={(f.opts ?? []).map(o => ({ v: o.v, label: o.l }))}
-                    disabled={editing && lockedField(f.key)}
-                    onChange={value => setForm(s => ({ ...s!, [f.key]: value }))}
-                  />
-                ) : (
-                  <input id={`fleet-${f.key}`} type={f.type === 'number' ? 'number' : f.type === 'date' ? 'date' : 'text'}
-                    value={form[f.key] ?? ''} disabled={editing && (f.keyField || lockedField(f.key))}
-                    onChange={e => setForm(s => ({ ...s!, [f.key]: e.target.value }))} style={{ width: '100%', marginTop: 4 }} />
-                )}
-              </div>
-            ))}
+            {primaryFields.map(renderField)}
           </div>
+          {additionalFields.length > 0 && (
+            <details open={additionalOpen} style={{ marginTop: 14, borderTop: '1px solid var(--line)', paddingTop: 10 }}>
+              <summary style={{ cursor: 'pointer', fontWeight: 600 }}>{t('form.more')}</summary>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 12, marginTop: 12 }}>
+                {additionalFields.map(renderField)}
+              </div>
+            </details>
+          )}
           <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
             <button className="btn primary" disabled={busy || fields.some(f => f.req && !(editing && lockedField(f.key)) && !(form[f.key] ?? '').trim())} onClick={save}>
               {busy ? '…' : t('fleet.save')}

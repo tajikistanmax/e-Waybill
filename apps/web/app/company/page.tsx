@@ -200,6 +200,9 @@ function OrgFields({ f, t, editing = false, orgs = [] }: { f: (k: string) => Fie
   // Какие поля показывать и какие обязательны — из Настройки → Поля компании (организации), без изменения кода.
   // Скрытое поле не рисуется, но его значение в карточке сохраняется (оно остаётся в состоянии формы).
   const { show, req } = useFormFieldModes('organization');
+  const detailsKeys = ['internalNumber', 'bank', 'licenseFrom', 'licenseTo', 'carrierLicenseNumber', 'percentIncome', 'cat1', 'cat2', 'cat3',
+    'ownership', 'registrationCertNumber', 'extractNumber', 'vatCertNumber', 'planPassVolume', 'planPassTraffic', 'latitude', 'longitude', 'mapPoints', 'giveFuel'];
+  const detailsOpen = editing || detailsKeys.some(k => show(k) && req(k));
   const lbl = (labelKey: string, k: string) => {
     const s = t(labelKey);
     return req(k) && !s.trim().endsWith('*') ? `${s} *` : s;
@@ -231,8 +234,6 @@ function OrgFields({ f, t, editing = false, orgs = [] }: { f: (k: string) => Fie
         </select>
       </div>
       {show('kpp') && <div><label>{lbl('comp.f.kpp', 'kpp')}</label><input required={req('kpp')} {...f('kpp')} /></div>}
-      {/* «Рамзи корхона» — внутренний код предприятия из карточки старой платформы (V71). */}
-      {show('internalNumber') && <div><label>{lbl('org.f.internalnumber', 'internalNumber')}</label><input required={req('internalNumber')} maxLength={20} {...f('internalNumber')} /></div>}
       {show('typeCompany') && <div><label>{lbl('comp.f.typecompany', 'typeCompany')}</label>
         <select required={req('typeCompany')} {...f('typeCompany')}>
           <option value="">—</option>
@@ -255,35 +256,40 @@ function OrgFields({ f, t, editing = false, orgs = [] }: { f: (k: string) => Fie
       {show('phone') && <div><label>{lbl('col.phone', 'phone')}</label><input required={req('phone')} placeholder="+992" {...f('phone')} /></div>}
       {show('email') && <div><label>{lbl('comp.f.email', 'email')}</label><input required={req('email')} type="email" {...f('email')} /></div>}
       {show('nameHead') && <div><label>{lbl('comp.f.head', 'nameHead')}</label><input required={req('nameHead')} {...f('nameHead')} /></div>}
-      {show('bank') && <div><label>{lbl('comp.f.bank', 'bank')}</label><input required={req('bank')} {...f('bank')} /></div>}
-      {show('licenseFrom') && <div><label>{lbl('comp.f.licfrom', 'licenseFrom')}</label><input required={req('licenseFrom')} type="date" {...f('licenseFrom')} /></div>}
-      {show('licenseTo') && <div><label>{lbl('comp.f.licto', 'licenseTo')}</label><input required={req('licenseTo')} type="date" {...f('licenseTo')} /></div>}
-      {show('carrierLicenseNumber') && <div><label>{lbl('dt.carrierlicnum', 'carrierLicenseNumber')}</label><input required={req('carrierLicenseNumber')} placeholder="ЛР-0001234" {...f('carrierLicenseNumber')} /></div>}
-      {show('percentIncome') && <div><label>{lbl('cf.incomeshare', 'percentIncome')}</label><input required={req('percentIncome')} type="number" step="0.01" min={0} max={100} placeholder="0.5" {...f('percentIncome')} /></div>}
-      {show('cat1') && <div><label>{lbl('cf.cat1', 'cat1')}</label><input required={req('cat1')} type="number" min={0} placeholder="200" {...f('cat1')} /></div>}
-      {show('cat2') && <div><label>{lbl('cf.cat2', 'cat2')}</label><input required={req('cat2')} type="number" min={0} placeholder="120" {...f('cat2')} /></div>}
-      {show('cat3') && <div><label>{lbl('cf.cat3', 'cat3')}</label><input required={req('cat3')} type="number" min={0} placeholder="0" {...f('cat3')} /></div>}
-      {show('ownership') && <div><label>{lbl('org.f.ownership', 'ownership')}</label>
-        <select required={req('ownership')} {...f('ownership')}>
-          <option value="">—</option>
-          <option value="1">{t('org.f.ownership.1')}</option>
-          <option value="2">{t('org.f.ownership.2')}</option>
-        </select>
-      </div>}
-      {show('registrationCertNumber') && <div><label>{lbl('org.f.regcert', 'registrationCertNumber')}</label><input required={req('registrationCertNumber')} {...f('registrationCertNumber')} /></div>}
-      {show('extractNumber') && <div><label>{lbl('org.f.extract', 'extractNumber')}</label><input required={req('extractNumber')} {...f('extractNumber')} /></div>}
-      {show('vatCertNumber') && <div><label>{lbl('org.f.vatcert', 'vatCertNumber')}</label><input required={req('vatCertNumber')} {...f('vatCertNumber')} /></div>}
-      {show('planPassVolume') && <div><label>{lbl('org.f.planvolume', 'planPassVolume')}</label><input required={req('planPassVolume')} type="number" step="0.01" min={0} {...f('planPassVolume')} /></div>}
-      {show('planPassTraffic') && <div><label>{lbl('org.f.plantraffic', 'planPassTraffic')}</label><input required={req('planPassTraffic')} type="number" step="0.01" min={0} {...f('planPassTraffic')} /></div>}
-      {show('latitude') && <div><label>{lbl('org.f.latitude', 'latitude')}</label><input required={req('latitude')} type="number" step="0.0000001" placeholder="38.5598" {...f('latitude')} /></div>}
-      {show('longitude') && <div><label>{lbl('org.f.longitude', 'longitude')}</label><input required={req('longitude')} type="number" step="0.0000001" placeholder="68.7870" {...f('longitude')} /></div>}
-      {/* «Харита» и «Сӯзишворӣ» — поля карточки старой платформы (V71). */}
-      {show('mapPoints') && <div className="full"><label>{lbl('org.f.mappoints', 'mapPoints')}</label><input required={req('mapPoints')} maxLength={500} {...f('mapPoints')} /></div>}
-      {show('giveFuel') && <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <input id="org-give-fuel" type="checkbox" checked={f('giveFuel').value === 'true'}
-          onChange={e => f('giveFuel').onChange({ target: { value: e.target.checked ? 'true' : 'false' } } as React.ChangeEvent<HTMLInputElement>)} />
-        <label htmlFor="org-give-fuel" style={{ margin: 0 }}>{t('org.f.givefuel')}</label>
-      </div>}
+      <details className="full" open={detailsOpen} style={{ borderTop: '1px solid var(--line)', paddingTop: 10 }}>
+        <summary style={{ cursor: 'pointer', fontWeight: 600 }}>{t('form.more')}</summary>
+        <div className="grid" style={{ marginTop: 12 }}>
+          {show('internalNumber') && <div><label>{lbl('org.f.internalnumber', 'internalNumber')}</label><input required={req('internalNumber')} maxLength={20} {...f('internalNumber')} /></div>}
+          {show('bank') && <div><label>{lbl('comp.f.bank', 'bank')}</label><input required={req('bank')} {...f('bank')} /></div>}
+          {show('licenseFrom') && <div><label>{lbl('comp.f.licfrom', 'licenseFrom')}</label><input required={req('licenseFrom')} type="date" {...f('licenseFrom')} /></div>}
+          {show('licenseTo') && <div><label>{lbl('comp.f.licto', 'licenseTo')}</label><input required={req('licenseTo')} type="date" {...f('licenseTo')} /></div>}
+          {show('carrierLicenseNumber') && <div><label>{lbl('dt.carrierlicnum', 'carrierLicenseNumber')}</label><input required={req('carrierLicenseNumber')} placeholder="ЛР-0001234" {...f('carrierLicenseNumber')} /></div>}
+          {show('percentIncome') && <div><label>{lbl('cf.incomeshare', 'percentIncome')}</label><input required={req('percentIncome')} type="number" step="0.01" min={0} max={100} placeholder="0.5" {...f('percentIncome')} /></div>}
+          {show('cat1') && <div><label>{lbl('cf.cat1', 'cat1')}</label><input required={req('cat1')} type="number" min={0} placeholder="200" {...f('cat1')} /></div>}
+          {show('cat2') && <div><label>{lbl('cf.cat2', 'cat2')}</label><input required={req('cat2')} type="number" min={0} placeholder="120" {...f('cat2')} /></div>}
+          {show('cat3') && <div><label>{lbl('cf.cat3', 'cat3')}</label><input required={req('cat3')} type="number" min={0} placeholder="0" {...f('cat3')} /></div>}
+          {show('ownership') && <div><label>{lbl('org.f.ownership', 'ownership')}</label>
+            <select required={req('ownership')} {...f('ownership')}>
+              <option value="">—</option>
+              <option value="1">{t('org.f.ownership.1')}</option>
+              <option value="2">{t('org.f.ownership.2')}</option>
+            </select>
+          </div>}
+          {show('registrationCertNumber') && <div><label>{lbl('org.f.regcert', 'registrationCertNumber')}</label><input required={req('registrationCertNumber')} {...f('registrationCertNumber')} /></div>}
+          {show('extractNumber') && <div><label>{lbl('org.f.extract', 'extractNumber')}</label><input required={req('extractNumber')} {...f('extractNumber')} /></div>}
+          {show('vatCertNumber') && <div><label>{lbl('org.f.vatcert', 'vatCertNumber')}</label><input required={req('vatCertNumber')} {...f('vatCertNumber')} /></div>}
+          {show('planPassVolume') && <div><label>{lbl('org.f.planvolume', 'planPassVolume')}</label><input required={req('planPassVolume')} type="number" step="0.01" min={0} {...f('planPassVolume')} /></div>}
+          {show('planPassTraffic') && <div><label>{lbl('org.f.plantraffic', 'planPassTraffic')}</label><input required={req('planPassTraffic')} type="number" step="0.01" min={0} {...f('planPassTraffic')} /></div>}
+          {show('latitude') && <div><label>{lbl('org.f.latitude', 'latitude')}</label><input required={req('latitude')} type="number" step="0.0000001" placeholder="38.5598" {...f('latitude')} /></div>}
+          {show('longitude') && <div><label>{lbl('org.f.longitude', 'longitude')}</label><input required={req('longitude')} type="number" step="0.0000001" placeholder="68.7870" {...f('longitude')} /></div>}
+          {show('mapPoints') && <div className="full"><label>{lbl('org.f.mappoints', 'mapPoints')}</label><input required={req('mapPoints')} maxLength={500} {...f('mapPoints')} /></div>}
+          {show('giveFuel') && <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <input id="org-give-fuel" type="checkbox" checked={f('giveFuel').value === 'true'}
+              onChange={e => f('giveFuel').onChange({ target: { value: e.target.checked ? 'true' : 'false' } } as React.ChangeEvent<HTMLInputElement>)} />
+            <label htmlFor="org-give-fuel" style={{ margin: 0 }}>{t('org.f.givefuel')}</label>
+          </div>}
+        </div>
+      </details>
       {show('allowedWaybillTypes') && <WaybillTypesPicker field={f('allowedWaybillTypes')} required={req('allowedWaybillTypes')} />}
     </>
   );

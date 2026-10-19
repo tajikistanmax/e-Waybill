@@ -82,7 +82,7 @@ test.describe('Поля форм из настроек', () => {
   });
 
   test('водитель в «Парке»: скрытое поле пропадает, обязательное помечено', async ({ page }) => {
-    await setForm('driver', '{"passport":"required","tabNumber":"hidden"}');
+    await setForm('driver', '{"passport":"required","medCertNumber":"required","tabNumber":"hidden"}');
     await uiLogin(page);
     await page.goto('/fleet/drivers');
     await page.getByRole('button', { name: 'Добавить водителя' }).click();
@@ -92,6 +92,23 @@ test.describe('Поля форм из настроек', () => {
     await expect(card.locator('label', { hasText: /^Табельный номер$/ })).toHaveCount(0);
     // Поля, которых раньше в «Парке» не было, теперь есть (общий состав карточки).
     await expect(card.locator('label', { hasText: /^№ договора$/ })).toHaveCount(1);
+    await expect(card.locator('details')).toHaveAttribute('open', '');
+    await expect(card.locator('label', { hasText: /^Медсправка № \*$/ })).toBeVisible();
+  });
+
+  test('дополнительные поля водителя доступны без загромождения основной карточки', async ({ page }) => {
+    await setForm('driver', '');
+    await uiLogin(page);
+    await page.goto('/fleet/drivers');
+    await page.getByRole('button', { name: 'Добавить водителя' }).click();
+    const card = page.locator('.card', { has: page.getByRole('heading', { name: 'Новый водитель' }) });
+    const details = card.locator('details');
+    await expect(details).not.toHaveAttribute('open', '');
+    await expect(card.locator('label', { hasText: /^Категории ВУ$/ })).toBeVisible();
+    await expect(details.getByLabel('Медсправка №')).toBeAttached();
+    await details.locator('summary').click();
+    await expect(details).toHaveAttribute('open', '');
+    await expect(details.getByLabel('Медсправка №')).toBeVisible();
   });
 
   test('категории ВУ выбираются несколькими отметками', async ({ page }) => {
@@ -119,7 +136,7 @@ test.describe('Поля форм из настроек', () => {
   });
 
   test('скрытое поле пропадает из формы, обязательное помечено и требуется', async ({ page }) => {
-    await setOrganizationForm('{"phone":"required","kpp":"hidden"}');
+    await setOrganizationForm('{"phone":"required","bank":"required","kpp":"hidden"}');
     await uiLogin(page);
     await page.goto('/company');
     await page.getByRole('button', { name: '+ Добавить', exact: true }).first().click();
@@ -129,6 +146,8 @@ test.describe('Поля форм из настроек', () => {
     const phone = modal.locator('div', { has: page.locator('label', { hasText: /^Телефон \*$/ }) }).last();
     await expect(phone.locator('input')).toHaveAttribute('required', '');
     await expect(modal.locator('label', { hasText: /^КПП$/ })).toHaveCount(0);
+    await expect(modal.locator('details')).toHaveAttribute('open', '');
+    await expect(modal.locator('label', { hasText: /^Банк \*$/ })).toBeVisible();
     // Системные поля остаются на месте и обязательны.
     await expect(modal.locator('label', { hasText: 'Название *' })).toHaveCount(1);
   });
@@ -142,6 +161,10 @@ test.describe('Поля форм из настроек', () => {
     await expect(modal.locator('label', { hasText: /^КПП$/ })).toHaveCount(1);
     await expect(modal.locator('label', { hasText: /^Телефон$/ })).toHaveCount(1);
     await expect(modal.locator('label', { hasText: /^Телефон$/ }).locator('xpath=following-sibling::input')).toHaveValue('+992');
+    const additional = modal.locator('details');
+    await expect(additional).not.toHaveAttribute('open', '');
+    await additional.locator('summary').click();
+    await expect(additional.locator('label', { hasText: /^Лицензия с$/ })).toBeVisible();
     const subjectType = modal.locator('label', { hasText: /^Тип субъекта$/ }).locator('xpath=following-sibling::select');
     await expect(subjectType).toHaveAttribute('required', '');
     await expect(subjectType).toHaveValue('LEGAL');
