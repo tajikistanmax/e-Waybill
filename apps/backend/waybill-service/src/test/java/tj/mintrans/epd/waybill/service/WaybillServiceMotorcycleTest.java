@@ -22,6 +22,7 @@ import tj.mintrans.epd.waybill.signing.TitleSigner;
 import tj.mintrans.epd.waybill.web.error.ApiErrors.UnprocessableException;
 
 import java.math.BigDecimal;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -126,6 +127,28 @@ class WaybillServiceMotorcycleTest {
         Waybill w = draftMoto();
         Waybill r = service.updateDraft(w.getId(), null, null, null, Map.of(), "disp");
         assertThat(r.getStatus()).isEqualTo(WaybillStatus.DRAFT);
+    }
+
+    @Test
+    @DisplayName("мото: зоны работы на границах 1 и 7 сохраняются")
+    void validWorkRegionsAreSaved() {
+        Waybill w = draftMoto();
+
+        Waybill r = service.updateDraft(w.getId(), null, null, null,
+                Map.of("workRegions", List.of(1, 7)), "disp");
+
+        assertThat(r.getTypeData()).containsEntry("workRegions", List.of(1, 7));
+    }
+
+    @Test
+    @DisplayName("мото: зона работы вне диапазона 1–7 отклоняется")
+    void workRegionOutsideRangeIsRejected() {
+        Waybill w = draftMoto();
+
+        assertThatThrownBy(() -> service.updateDraft(w.getId(), null, null, null,
+                Map.of("workRegions", List.of(8)), "disp"))
+                .isInstanceOf(UnprocessableException.class)
+                .hasMessageContaining("вне диапазона 1–7");
     }
 
     @Test
