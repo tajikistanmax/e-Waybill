@@ -95,6 +95,69 @@ class OrganizationLegacyRmaTest {
 
     @Test
     void validNewOrganizationIsCreated() throws Exception {
-        save("{\"rma\":\"025680800\",\"name\":\"Новая\"}").andExpect(status().isCreated());
+        save("{\"rma\":\"025680800\",\"name\":\"Новая\",\"subjectType\":\"IP\",\"typeCompany\":2}")
+                .andExpect(status().isCreated());
+    }
+
+    @Test
+    void newOrganizationRequiresAnExplicitSubjectType() throws Exception {
+        save("{\"rma\":\"025680800\",\"name\":\"Новая\"}").andExpect(status().isUnprocessableEntity());
+        verify(repository, never()).save(any());
+    }
+
+    @Test
+    void integratorMayOmitSubjectTypeForBackwardCompatibility() throws Exception {
+        org.mockito.Mockito.when(currentUser.hasRole("API_INTEGRATOR")).thenReturn(true);
+        mvc.perform(post("/api/v1/organizations")
+                        .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_API_INTEGRATOR")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"rma\":\"025680800\",\"name\":\"Новая\"}"))
+                .andExpect(status().isCreated());
+        var saved = org.mockito.ArgumentCaptor.forClass(Organization.class);
+        verify(repository).save(saved.capture());
+        org.junit.jupiter.api.Assertions.assertEquals("LEGAL", saved.getValue().getSubjectType());
+    }
+
+    @Test
+    void subjectTypeIsPersistedOnCreate() throws Exception {
+        save("{\"rma\":\"025680800\",\"name\":\"Новая\",\"subjectType\":\"PHYSICAL\"}")
+                .andExpect(status().isCreated());
+        var saved = org.mockito.ArgumentCaptor.forClass(Organization.class);
+        verify(repository).save(saved.capture());
+        org.junit.jupiter.api.Assertions.assertEquals("PHYSICAL", saved.getValue().getSubjectType());
+    }
+
+    @Test
+    void invalidCompanyTypeAndCoordinatesAreRejected() throws Exception {
+        save("{\"rma\":\"025680800\",\"name\":\"Новая\",\"subjectType\":\"LEGAL\",\"typeCompany\":3}")
+                .andExpect(status().isBadRequest());
+        save("{\"rma\":\"025680800\",\"name\":\"Новая\",\"subjectType\":\"LEGAL\",\"latitude\":91}")
+                .andExpect(status().isBadRequest());
+        save("{\"rma\":\"025680800\",\"name\":\"Новая\",\"subjectType\":\"LEGAL\",\"longitude\":-181}")
+                .andExpect(status().isBadRequest());
+        verify(repository, never()).save(any());
+    }
+
+    @Test
+    void negativePayrollAndPlanValuesAreRejected() throws Exception {
+        save("{\"rma\":\"025680800\",\"name\":\"Новая\",\"subjectType\":\"LEGAL\",\"percentIncome\":101}")
+                .andExpect(status().isBadRequest());
+        save("{\"rma\":\"025680800\",\"name\":\"Новая\",\"subjectType\":\"LEGAL\",\"cat1\":-1}")
+                .andExpect(status().isBadRequest());
+        save("{\"rma\":\"025680800\",\"name\":\"Новая\",\"subjectType\":\"LEGAL\",\"planPassVolume\":-1}")
+                .andExpect(status().isBadRequest());
+        verify(repository, never()).save(any());
+    }
+
+    @Test
+    void manualBranchMustPointToAnExistingHeadOrganization() throws Exception {
+        var head = legacy("025680801", null);
+        when(repository.findByRma("025680801")).thenReturn(Optional.of(head));
+        save("{\"rma\":\"025680800\",\"parentRma\":\"025680801\",\"name\":\"Филиал\",\"subjectType\":\"LEGAL\"}")
+                .andExpect(status().isCreated());
+        save("{\"rma\":\"025680802\",\"parentRma\":\"025680803\",\"name\":\"Филиал\",\"subjectType\":\"LEGAL\"}")
+                .andExpect(status().isUnprocessableEntity());
+        save("{\"rma\":\"025680804\",\"parentRma\":\"025680804\",\"name\":\"Филиал\",\"subjectType\":\"LEGAL\"}")
+                .andExpect(status().isUnprocessableEntity());
     }
 }

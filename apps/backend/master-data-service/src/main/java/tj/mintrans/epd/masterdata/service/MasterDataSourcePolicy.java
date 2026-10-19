@@ -49,7 +49,7 @@ public class MasterDataSourcePolicy {
 
     /** Дополнительно к полям формы защищаются: иерархия «компания → филиал» тоже из e-Transport. */
     private static final Map<String, Set<String>> EXTRA_OWNED = Map.of(
-            FormFieldPolicy.ORGANIZATION, Set.of("parentRma"));
+            FormFieldPolicy.ORGANIZATION, Set.of("parentRma", "subjectType"));
 
     private static final Map<String, String> NAMES = Map.of(
             FormFieldPolicy.ORGANIZATION, "Компании",

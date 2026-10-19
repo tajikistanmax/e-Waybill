@@ -127,6 +127,12 @@ test.describe('Поля форм из настроек', () => {
     const modal = page.locator('.card', { has: page.getByRole('heading', { name: 'Добавить организацию' }) });
     await expect(modal.locator('label', { hasText: /^КПП$/ })).toHaveCount(1);
     await expect(modal.locator('label', { hasText: /^Телефон$/ })).toHaveCount(1);
+    const subjectType = modal.locator('label', { hasText: /^Тип субъекта$/ }).locator('xpath=following-sibling::select');
+    await expect(subjectType).toHaveAttribute('required', '');
+    await expect(subjectType).toHaveValue('LEGAL');
+    await expect(modal.locator('label', { hasText: /^Тип компании$/ }).locator('xpath=following-sibling::select option')).toHaveCount(3);
+    await expect(modal.locator('label', { hasText: /^Регион$/ }).locator('xpath=following-sibling::select option')).toHaveCount(8);
+    await expect(modal.locator('label', { hasText: /^Головная организация$/ }).locator('xpath=following-sibling::select')).toBeVisible();
   });
 
   test('страница настроек показывает поля и закреплённые системные', async ({ page }) => {

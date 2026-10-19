@@ -4,6 +4,9 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.DecimalMin;
+import jakarta.validation.constraints.DecimalMax;
 import jakarta.persistence.EntityManager;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -78,8 +81,10 @@ public class OrganizationController {
             String parentRma,
             String kpp,
             @NotBlank String name,
-            Short typeCompany,
+            @Min(value = 1, message = "Тип компании: 1 или 2") @Max(value = 2, message = "Тип компании: 1 или 2") Short typeCompany,
             @Min(value = 1, message = "Код региона: 1–7") @Max(value = 7, message = "Код региона: 1–7") Short regionId,
+            @Pattern(regexp = "PHYSICAL|IP|LEGAL", message = "Тип субъекта: PHYSICAL, IP или LEGAL")
+            String subjectType,
             String cityName,
             String address,
             String phone,
@@ -90,20 +95,26 @@ public class OrganizationController {
             LocalDate licenseTo,
             String carrierLicenseNumber,
             // Параметры оплаты труда (§2.6): доля дохода компании и надбавки за класс водителя.
+            @DecimalMin(value = "0.0", message = "Доля дохода не может быть отрицательной")
+            @DecimalMax(value = "100.0", message = "Доля дохода не может превышать 100")
             Double percentIncome,
-            Short cat1,
-            Short cat2,
-            Short cat3,
+            @Min(value = 0, message = "Надбавка не может быть отрицательной") Short cat1,
+            @Min(value = 0, message = "Надбавка не может быть отрицательной") Short cat2,
+            @Min(value = 0, message = "Надбавка не может быть отрицательной") Short cat3,
             // Разрешённые типы ПЛ — CSV имён WaybillType (пусто — без ограничения).
             String allowedWaybillTypes,
             // Реквизиты для паритета с боевой формой company/create (MinTransRT):
             @Min(value = 1, message = "Форма собственности: 1 или 2") @Max(value = 2, message = "Форма собственности: 1 или 2") Short ownership,
-            java.math.BigDecimal latitude,
-            java.math.BigDecimal longitude,
+            @DecimalMin(value = "-90.0", message = "Широта должна быть от -90 до 90")
+            @DecimalMax(value = "90.0", message = "Широта должна быть от -90 до 90") java.math.BigDecimal latitude,
+            @DecimalMin(value = "-180.0", message = "Долгота должна быть от -180 до 180")
+            @DecimalMax(value = "180.0", message = "Долгота должна быть от -180 до 180") java.math.BigDecimal longitude,
             String registrationCertNumber,
             String extractNumber,
             String vatCertNumber,
+            @DecimalMin(value = "0.0", message = "Плановый объём не может быть отрицательным")
             java.math.BigDecimal planPassVolume,
+            @DecimalMin(value = "0.0", message = "Плановый пассажирооборот не может быть отрицательным")
             java.math.BigDecimal planPassTraffic,
             // Поля карточки старой платформы (V71, решение владельца 22.09 «перенести все поля»):
             // «Рамзи корхона», «Харита», «Сӯзишворӣ».
@@ -125,6 +136,10 @@ public class OrganizationController {
         String currentParent = existing.map(Organization::getParentRma).orElse(null);
         if (req.parentRma() != null && !req.parentRma().isBlank() && !req.parentRma().equals(currentParent)) {
             requireRmaFormat(req.parentRma(), "РМА головной компании: 9–10 цифр");
+        }
+        if (req.parentRma() != null && req.parentRma().trim().equals(req.rma())) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                    HttpStatus.UNPROCESSABLE_ENTITY, "Организация не может быть филиалом самой себя");
         }
 
         // Администратор компании: только расчётные параметры СВОЕЙ компании, без создания.
@@ -152,6 +167,20 @@ public class OrganizationController {
             // e-Transport, и настройка формы нашего интерфейса не должна обрывать синхронизацию.
             formFields.requireFilled(FormFieldPolicy.ORGANIZATION, req,
                     sourcePolicy.skipRequired(FormFieldPolicy.ORGANIZATION, ex, src));
+            if (existing.isEmpty() && (req.subjectType() == null || req.subjectType().isBlank())) {
+                throw new org.springframework.web.server.ResponseStatusException(
+                        HttpStatus.UNPROCESSABLE_ENTITY, "Для новой организации укажите тип субъекта");
+            }
+            String parentRma = normalizeParent(req.parentRma(), req.rma());
+            if (parentRma != null && !parentRma.equals(currentParent)) {
+                Organization parent = repository.findByRma(parentRma).orElseThrow(() ->
+                        new org.springframework.web.server.ResponseStatusException(
+                                HttpStatus.UNPROCESSABLE_ENTITY, "Головная организация не найдена"));
+                if (parent.getParentRma() != null && !parent.getParentRma().isBlank()) {
+                    throw new org.springframework.web.server.ResponseStatusException(
+                            HttpStatus.UNPROCESSABLE_ENTITY, "Филиал можно привязать только к головной организации");
+                }
+            }
         }
 
         // Платформенная роль / push-канал: полный upsert реквизитов и иерархии.
@@ -163,6 +192,7 @@ public class OrganizationController {
         org.setName(req.name());
         if (req.typeCompany() != null) org.setTypeCompany(req.typeCompany());
         org.setRegionId(req.regionId());
+        if (req.subjectType() != null) org.setSubjectType(req.subjectType());
         org.setCityName(req.cityName());
         org.setAddress(req.address());
         org.setPhone(req.phone());

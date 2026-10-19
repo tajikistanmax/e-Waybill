@@ -59,7 +59,7 @@ function clean(obj: Record<string, string>, numeric: string[]): Record<string, u
 }
 
 // Наборы полей ручных форм — для предзаполнения при редактировании существующей записи.
-const ORG_KEYS = ['rma', 'name', 'kpp', 'typeCompany', 'regionId', 'cityName', 'address', 'phone', 'email', 'nameHead', 'bank', 'licenseFrom', 'licenseTo', 'carrierLicenseNumber', 'percentIncome', 'cat1', 'cat2', 'cat3', 'allowedWaybillTypes', 'ownership', 'latitude', 'longitude', 'registrationCertNumber', 'extractNumber', 'vatCertNumber', 'planPassVolume', 'planPassTraffic',
+const ORG_KEYS = ['rma', 'name', 'kpp', 'typeCompany', 'regionId', 'subjectType', 'parentRma', 'cityName', 'address', 'phone', 'email', 'nameHead', 'bank', 'licenseFrom', 'licenseTo', 'carrierLicenseNumber', 'percentIncome', 'cat1', 'cat2', 'cat3', 'allowedWaybillTypes', 'ownership', 'latitude', 'longitude', 'registrationCertNumber', 'extractNumber', 'vatCertNumber', 'planPassVolume', 'planPassTraffic',
   // Поля карточки старой платформы (V71): «Рамзи корхона», «Харита», «Сӯзишворӣ».
   'internalNumber', 'mapPoints', 'giveFuel'];
 // Водитель / ТС / сотрудник — полный состав карточки из общего списка (Настройки → Поля …):
@@ -185,12 +185,18 @@ function WaybillTypesPicker({ field, required }: { field: Field; required?: bool
 /** ИНН (РМА) организации — 9–10 цифр. У части организаций из старой платформы он некорректный (находка 12). */
 const RMA_OK = /^\d{9,10}$/;
 
-function OrgFields({ f, t, editing = false }: { f: (k: string) => Field; t: (k: string) => string; editing?: boolean }) {
+function OrgFields({ f, t, editing = false, orgs = [] }: { f: (k: string) => Field; t: (k: string) => string; editing?: boolean; orgs?: Row[] }) {
   // Справочник городов (V54) — подсказки для поля «Город», отфильтрованные по выбранному региону.
   const [cities, setCities] = useState<Row[]>([]);
   useEffect(() => { md.cities().then(setCities).catch(() => setCities([])); }, []);
   const region = String(f('regionId').value ?? '');
   const cityOpts = (region ? cities.filter(c => String(c.regionId) === region) : cities);
+  const ownRma = String(f('rma').value ?? '');
+  const selectedParent = String(f('parentRma').value ?? '');
+  const parentOptions = orgs.filter(o => {
+    const rma = String(o.rma ?? '');
+    return rma && rma !== ownRma && (!o.parentRma || rma === selectedParent);
+  });
   // Какие поля показывать и какие обязательны — из Настройки → Поля компании (организации), без изменения кода.
   // Скрытое поле не рисуется, но его значение в карточке сохраняется (оно остаётся в состоянии формы).
   const { show, req } = useFormFieldModes('organization');
@@ -210,11 +216,37 @@ function OrgFields({ f, t, editing = false }: { f: (k: string) => Field; t: (k: 
         <div><label>{t('comp.f.rmainn')}</label><input required pattern="\d{9,10}" placeholder="025680800" {...f('rma')} /></div>
       )}
       <div><label>{t('comp.f.name_req')}</label><input required placeholder="ООО «ТрансЛогистик»" {...f('name')} /></div>
+      <div><label>{t('flt.subjecttype')}</label>
+        <select required={!editing} {...f('subjectType')}>
+          <option value="">—</option>
+          <option value="PHYSICAL">{t('subj.type.PHYSICAL')}</option>
+          <option value="IP">{t('subj.type.IP')}</option>
+          <option value="LEGAL">{t('subj.type.LEGAL')}</option>
+        </select>
+      </div>
+      <div><label>{t('org.f.parent')}</label>
+        <select {...f('parentRma')}>
+          <option value="">{t('org.parent.head')}</option>
+          {parentOptions.map(o => <option key={String(o.rma)} value={String(o.rma)}>{String(o.name ?? o.rma)} ({String(o.rma)})</option>)}
+        </select>
+      </div>
       {show('kpp') && <div><label>{lbl('comp.f.kpp', 'kpp')}</label><input required={req('kpp')} {...f('kpp')} /></div>}
       {/* «Рамзи корхона» — внутренний код предприятия из карточки старой платформы (V71). */}
       {show('internalNumber') && <div><label>{lbl('org.f.internalnumber', 'internalNumber')}</label><input required={req('internalNumber')} maxLength={20} {...f('internalNumber')} /></div>}
-      {show('typeCompany') && <div><label>{lbl('comp.f.typecompany', 'typeCompany')}</label><input required={req('typeCompany')} type="number" placeholder="1" {...f('typeCompany')} /></div>}
-      {show('regionId') && <div><label>{lbl('f.region', 'regionId')}</label><input required={req('regionId')} type="number" min={1} max={7} {...f('regionId')} /></div>}
+      {show('typeCompany') && <div><label>{lbl('comp.f.typecompany', 'typeCompany')}</label>
+        <select required={req('typeCompany')} {...f('typeCompany')}>
+          <option value="">—</option>
+          <option value="1">{t('comp.type.1')}</option>
+          <option value="2">{t('comp.type.2')}</option>
+        </select>
+      </div>}
+      {show('regionId') && <div><label>{lbl('f.region', 'regionId')}</label>
+        <select required={req('regionId')} {...f('regionId')}>
+          <option value="">—</option>
+          {Array.from({ length: 7 }, (_, i) => i + 1).map(id =>
+            <option key={id} value={id}>{t(`region.${id}`)}</option>)}
+        </select>
+      </div>}
       {show('cityName') && <div><label>{lbl('comp.f.city', 'cityName')}</label>
         <input required={req('cityName')} list="org-city-list" placeholder="Душанбе" {...f('cityName')} />
         <datalist id="org-city-list">{cityOpts.map(c => <option key={String(c.id)} value={String(c.name)} />)}</datalist>
@@ -227,7 +259,7 @@ function OrgFields({ f, t, editing = false }: { f: (k: string) => Field; t: (k: 
       {show('licenseFrom') && <div><label>{lbl('comp.f.licfrom', 'licenseFrom')}</label><input required={req('licenseFrom')} type="date" {...f('licenseFrom')} /></div>}
       {show('licenseTo') && <div><label>{lbl('comp.f.licto', 'licenseTo')}</label><input required={req('licenseTo')} type="date" {...f('licenseTo')} /></div>}
       {show('carrierLicenseNumber') && <div><label>{lbl('dt.carrierlicnum', 'carrierLicenseNumber')}</label><input required={req('carrierLicenseNumber')} placeholder="ЛР-0001234" {...f('carrierLicenseNumber')} /></div>}
-      {show('percentIncome') && <div><label>{lbl('cf.incomeshare', 'percentIncome')}</label><input required={req('percentIncome')} type="number" step="0.01" min={0} max={1} placeholder="0.5" {...f('percentIncome')} /></div>}
+      {show('percentIncome') && <div><label>{lbl('cf.incomeshare', 'percentIncome')}</label><input required={req('percentIncome')} type="number" step="0.01" min={0} max={100} placeholder="0.5" {...f('percentIncome')} /></div>}
       {show('cat1') && <div><label>{lbl('cf.cat1', 'cat1')}</label><input required={req('cat1')} type="number" min={0} placeholder="200" {...f('cat1')} /></div>}
       {show('cat2') && <div><label>{lbl('cf.cat2', 'cat2')}</label><input required={req('cat2')} type="number" min={0} placeholder="120" {...f('cat2')} /></div>}
       {show('cat3') && <div><label>{lbl('cf.cat3', 'cat3')}</label><input required={req('cat3')} type="number" min={0} placeholder="0" {...f('cat3')} /></div>}
@@ -710,7 +742,10 @@ function OrgRegistry() {
             {ds.organization
               ? <span className="badge blue" title={t('ds.addoff.hint')}>{t('ds.addoff')}</span>
               : (
-                <button type="button" className="btn" onClick={() => setShowAddOrg(v => !v)}>
+                <button type="button" className="btn" onClick={() => {
+                  setOrgManual(v => ({ ...v, subjectType: v.subjectType || 'LEGAL', typeCompany: v.typeCompany || '1' }));
+                  setShowAddOrg(v => !v);
+                }}>
                   {showAddOrg ? t('comp.btn.hideform') : t('btn.add')}
                 </button>
               )}
@@ -794,7 +829,7 @@ function OrgRegistry() {
         <Modal wide title={t('comp.addorg')} onClose={() => setShowAddOrg(false)}>
           <p className="hint">{t('comp.hint.manualorg')}</p>
           <form className="grid" onSubmit={createOrgManual}>
-            <OrgFields f={om} t={t} />
+            <OrgFields f={om} t={t} orgs={orgs} />
             <div className="full" style={{ display: 'flex', gap: 8 }}>
               <button className="btn" type="submit">{t('comp.btn.saveorg')}</button>
               <button className="btn secondary" type="button" onClick={() => setShowAddOrg(false)}>{t('btn.cancel')}</button>
@@ -1065,7 +1100,7 @@ function OrgRegistry() {
             </div>
             {orgLocked && <p className="hint" style={{ borderColor: 'var(--blue-600)' }}>{t('ds.locked.hint')}</p>}
             <form className="grid" onSubmit={saveOrgEdit}>
-              <OrgFields f={oe} t={t} editing />
+              <OrgFields f={oe} t={t} editing orgs={orgs} />
               <div className="full" style={{ display: 'flex', gap: 8 }}>
                 <button className="btn" type="submit">{t('comp.btn.saveorg')}</button>
                 <button type="button" className="btn secondary" onClick={() => setOrgEdit(null)}>{t('btn.cancel')}</button>
