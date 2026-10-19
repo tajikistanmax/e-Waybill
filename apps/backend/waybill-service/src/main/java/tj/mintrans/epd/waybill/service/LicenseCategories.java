@@ -59,4 +59,12 @@ public final class LicenseCategories {
     public static boolean hasAny(String raw, Set<String> anyOf) {
         return parse(raw).map(set -> set.stream().anyMatch(anyOf::contains)).orElse(true);
     }
+
+    /** Optional category: blank is allowed, but a non-empty value must parse and match. */
+    public static boolean hasAnyOrBlank(String raw, Set<String> anyOf) {
+        if (raw == null || raw.isBlank()) {
+            return true;
+        }
+        return parse(raw).map(set -> set.stream().anyMatch(anyOf::contains)).orElse(false);
+    }
 }

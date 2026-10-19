@@ -210,7 +210,7 @@ public class Stat1AutoService {
             case WB_TRUCK, WB_TRUCK_INTL, WB_DANGEROUS, WB_SPECIAL -> Cat.TRUCK;
             // «Автобусҳо (бо назардошти таксомоторҳои маршрутӣ)» — с маршрутными такси (1-А).
             case WB_BUS, WB_MINIBUS, WB_PAX_INTL -> Cat.BUS;
-            case WB_CAR, WB_TAXI -> Cat.TAXI;
+            case WB_CAR, WB_TAXI, WB_MOTORCYCLE -> Cat.TAXI;
             case WB_TROLLEYBUS -> Cat.TROLLEY;
         };
     }

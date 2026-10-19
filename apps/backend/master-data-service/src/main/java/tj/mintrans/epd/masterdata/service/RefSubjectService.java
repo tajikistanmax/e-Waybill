@@ -608,13 +608,13 @@ public class RefSubjectService {
         }
         try {
             int t = Integer.parseInt(raw);
-            if (t >= 1 && t <= 6) {
+            if (t >= 1 && t <= 7) {
                 return t;
             }
         } catch (NumberFormatException ignored) {
             // ниже — общая ошибка
         }
-        f.error("transport_type", "Тип ТС: 1 автобус, 2 троллейбус, 3 микроавтобус, 4 легковой, 5 грузовой, 6 грузовой международный.");
+        f.error("transport_type", "Тип ТС: 1 автобус, 2 троллейбус, 3 микроавтобус, 4 легковой, 5 грузовой, 6 грузовой международный, 7 мотоцикл.");
         return null;
     }
 

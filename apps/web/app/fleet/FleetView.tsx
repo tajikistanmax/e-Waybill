@@ -15,10 +15,10 @@ export type FleetKind = 'vehicles' | 'drivers' | 'employees';
 // Формы ПЛ legacy → виды ПЛ e-Waybill для фильтров активности (MIGRATION.md 8.5/8.6): 3-С = легковой + такси,
 // 1-АД = автобус + троллейбус.
 const ACT_FORM_TYPES: Record<string, string[]> = {
-  '': [], '3c': ['WB_CAR', 'WB_TAXI'], '2b': ['WB_TRUCK'], '1ad': ['WB_BUS', 'WB_TROLLEYBUS'], '1a': ['WB_MINIBUS'], '5bbm': ['WB_TRUCK_INTL'],
+  '': [], '3c': ['WB_CAR', 'WB_TAXI'], '2b': ['WB_TRUCK'], '1ad': ['WB_BUS', 'WB_TROLLEYBUS'], '1a': ['WB_MINIBUS'], '5bbm': ['WB_TRUCK_INTL'], '3m': ['WB_MOTORCYCLE'],
 };
 const ACT_FORM_LABELS: { v: string; l: string }[] = [
-  { v: '3c', l: '3-С' }, { v: '2b', l: '2-Б' }, { v: '1ad', l: '1-АД' }, { v: '1a', l: '1-А' }, { v: '5bbm', l: '5Б-БМ' },
+  { v: '3c', l: '3-С' }, { v: '2b', l: '2-Б' }, { v: '1ad', l: '1-АД' }, { v: '1a', l: '1-А' }, { v: '5bbm', l: '5Б-БМ' }, { v: '3m', l: '3-М' },
 ];
 type Field = { key: string; label: string; type?: 'text' | 'number' | 'date' | 'select'; opts?: { v: string; l: string }[]; req?: boolean; keyField?: boolean; numeric?: boolean; hidden?: boolean };
 

@@ -79,6 +79,7 @@ function draftHasContent(d: DraftState): boolean {
 // Локальные глифы (Icon принимает любой path d — icons.tsx не трогаем).
 const BUS_ICON = 'M4 6h13a2 2 0 0 1 2 2v7H4zM4 15v2h3v-2M16 15v2h3v-2M4 10.5h15M9 6v9M13 6v9';
 const TRUCK_ICON = 'M3 6h10v9H3zM13 9h4l3 3v3h-7zM7 18a2 2 0 1 0 0-4 2 2 0 0 0 0 4zM17 18a2 2 0 1 0 0-4 2 2 0 0 0 0 4z';
+const MOTO_ICON = 'M5.5 17a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM18.5 17a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM8.5 14h6l2.5-4M11 7h3l1.5 3M5.5 14l2-4h3';
 
 type TypeMeta = { icon: string; color: string; group: string; desc: string };
 
@@ -93,6 +94,7 @@ const TYPE_META: Record<string, TypeMeta> = {
   WB_TRUCK_INTL:  { icon: TRUCK_ICON, color: 'purple', group: 'wb.grp.intl',    desc: 'wb.desc.WB_TRUCK_INTL' },
   WB_PAX_INTL:    { icon: P.globe,    color: 'cyan',   group: 'wb.grp.intl',    desc: 'wb.desc.WB_PAX_INTL' },
   WB_SPECIAL:     { icon: P.wrench,   color: 'red',    group: 'wb.grp.special', desc: 'wb.desc.WB_SPECIAL' },
+  WB_MOTORCYCLE:  { icon: MOTO_ICON,  color: 'amber',  group: 'wb.grp.moto',    desc: 'wb.desc.WB_MOTORCYCLE' },
   WB_DANGEROUS:   { icon: P.alert,    color: 'red',    group: 'wb.grp.special', desc: 'wb.desc.WB_DANGEROUS' },
 };
 
@@ -122,6 +124,8 @@ export default function NewWaybillPage() {
   const [dangerous, setDangerous] = useState({ on: false, adrClass: '', unNumber: '' });
   // Спецтехника (09): вид работ + объект + моточасы на выезде (учёт по моточасам, не по км).
   const [special, setSpecial] = useState({ workType: '', workObject: '', motorHoursExit: '' });
+  // Мотоцикл (3-М, аренда): все поля опциональны — объём двигателя, аренда (договор/арендатор).
+  const [moto, setMoto] = useState({ engineVolume: '', rentalContract: '', renterName: '', renterDocument: '' });
   const [customDefs, setCustomDefs] = useState<FieldDefinition[]>([]);
   const [customValues, setCustomValues] = useState<Record<string, string>>({});
   const [orgRma, setOrgRma] = useState('');
@@ -434,6 +438,7 @@ export default function NewWaybillPage() {
   const isIntl = INTL_TYPES.includes(t);
   const isSpecial = t === 'WB_SPECIAL';
   const isBus = t === 'WB_BUS' || t === 'WB_TROLLEYBUS';
+  const isMoto = t === 'WB_MOTORCYCLE';
 
   // Заказчик (2-Б): поиск по уже загруженному справочнику Client — без отдельного серверного эндпоинта.
   const searchClients = useCallback(async (q: string): Promise<SSOption[]> => {
@@ -529,6 +534,14 @@ export default function NewWaybillPage() {
       motorHoursExit: Number(special.motorHoursExit),
       ...(special.workObject.trim() ? { workObject: special.workObject.trim() } : {}),
     };
+    if (isMoto) {
+      const m: Record<string, unknown> = {};
+      if (moto.engineVolume.trim() && Number.isFinite(Number(moto.engineVolume))) m.engineVolume = Number(moto.engineVolume);
+      if (moto.rentalContract.trim()) m.rentalContract = moto.rentalContract.trim();
+      if (moto.renterName.trim()) m.renterName = moto.renterName.trim();
+      if (moto.renterDocument.trim()) m.renterDocument = moto.renterDocument.trim();
+      return Object.keys(m).length ? m : undefined;
+    }
     if (isIntl) {
       return {
         visaValidTo: intl.visaValidTo,
@@ -1039,6 +1052,32 @@ export default function NewWaybillPage() {
                       onChange={e => setSpecial({ ...special, workObject: e.target.value })} />
                   </div>
                   <div style={{ gridColumn: '1 / -1' }} className="hint">{tt('wb.spec.note')}</div>
+                </>
+              )}
+
+              {/* --- Мотоцикл (3-М, аренда): объём двигателя + арендный блок (всё опционально) --- */}
+              {isMoto && (
+                <>
+                  <div>
+                    <label>{tt('wb.f.enginevolume')}</label>
+                    <input type="number" min="1" max="3000" step="1" placeholder="125"
+                      value={moto.engineVolume} onChange={e => setMoto({ ...moto, engineVolume: e.target.value })} />
+                  </div>
+                  <div>
+                    <label>{tt('wb.f.rentalcontract')}</label>
+                    <input value={moto.rentalContract} placeholder={tt('wb.ph.rentalcontract')}
+                      onChange={e => setMoto({ ...moto, rentalContract: e.target.value })} />
+                  </div>
+                  <div>
+                    <label>{tt('wb.f.rentername')}</label>
+                    <input value={moto.renterName} placeholder={tt('wb.ph.rentername')}
+                      onChange={e => setMoto({ ...moto, renterName: e.target.value })} />
+                  </div>
+                  <div>
+                    <label>{tt('wb.f.renterdocument')}</label>
+                    <input value={moto.renterDocument} placeholder={tt('wb.ph.renterdocument')}
+                      onChange={e => setMoto({ ...moto, renterDocument: e.target.value })} />
+                  </div>
                 </>
               )}
 

@@ -153,12 +153,14 @@ export default function WaybillsPage() {
     const car = ['num', 'company', 'transport', 'tab', 'phone', 'driver', 'start', 'stages', 'kassa', 'status', 'actions'];    // 3-С легковой/такси (+ касса, 4.7)
     const cargo = ['num', 'company', 'transport', 'route', 'tab', 'driver', 'start', 'stages', 'status', 'actions'];  // 2-Б/5Б-БМ
     const all = ['num', 'type', 'company', 'transport', 'driver', 'route', 'start', 'stages', 'status', 'actions'];   // Все типы
+    const moto = ['num', 'company', 'transport', 'driver', 'route', 'start', 'stages', 'status', 'actions'];   // 3-М мотоцикл (аренда)
     const LAYOUTS: Record<string, string[]> = {
       '': all,
       WB_BUS: pax, WB_TROLLEYBUS: pax, WB_MINIBUS: pax, WB_PAX_INTL: pax,
       WB_CAR: car, WB_TAXI: car,
       WB_TRUCK: cargo, WB_DANGEROUS: cargo, WB_TRUCK_INTL: cargo,
       WB_SPECIAL: all,
+      WB_MOTORCYCLE: moto,
     };
     return (LAYOUTS[filters.type] ?? all).map(k => C[k]);
   }, [filters.type, t, tType, tStatus]);

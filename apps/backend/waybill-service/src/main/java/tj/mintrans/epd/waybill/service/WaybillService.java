@@ -326,6 +326,18 @@ public class WaybillService {
                 }
                 // workObject (объект/адрес работ) — рекомендуется, но не обязателен
             }
+            case WB_MOTORCYCLE -> { // мотоцикл (аренда) — лёгкое ТС, учёт по км; поля аренды опциональны
+                Object ev = data.get("engineVolume");
+                if (ev != null && !str(ev).isBlank()) {
+                    double v;
+                    try { v = Double.parseDouble(str(ev).trim()); }
+                    catch (NumberFormatException e) { throw new UnprocessableException("Объём двигателя (engineVolume): ожидается число в см³"); }
+                    if (v <= 0 || v > 3000) throw new UnprocessableException("Объём двигателя (engineVolume) должен быть в диапазоне 1–3000 см³");
+                }
+                validateWorkRegions(data.get("workRegions"));
+                // rentalContract / renterName / renterDocument — свободные опциональные строки, спец-проверок нет.
+                // Маршрут (wb.getRoute()) необязателен — аренда предполагает свободное перемещение.
+            }
             default -> { /* прочие типы — свободная схема type_data */ }
         }
         validateCustomFields(wb.getWaybillType(), data);
@@ -631,8 +643,16 @@ public class WaybillService {
             case 3 -> java.util.Set.of("D", "D1");     // микроавтобус
             case 4 -> java.util.Set.of("B");           // легковой
             case 5, 6 -> java.util.Set.of("C", "C1");  // грузовой, грузовой международный
+            case 7 -> java.util.Set.of("A");           // мотоцикл
             default -> null;    // 2 = троллейбус (спецдопуск, не категория ВУ), прочее — не сверяем
         };
+    }
+
+    static boolean licenseCategoriesMatch(Integer transportType, String categories,
+                                          java.util.Set<String> required) {
+        return Integer.valueOf(7).equals(transportType)
+                ? LicenseCategories.hasAnyOrBlank(categories, required)
+                : LicenseCategories.hasAny(categories, required);
     }
 
     /**
@@ -652,7 +672,8 @@ public class WaybillService {
         // Текст реестра нормализуется («BCD», «ВСД», «В.С.Д», «ВВ1СС1» → множество категорий); пустое или
         // неразборчивое поле не проверяется — пробел в реестре не должен блокировать законный рейс.
         String categories = str(driver.get("licenseCategories"));
-        if (!LicenseCategories.hasAny(categories, required)) {
+        Integer transportType = intOrNull(vehicle.get("transportType"));
+        if (!licenseCategoriesMatch(transportType, categories, required)) {
             throw new UnprocessableException(
                     "Категория водительского удостоверения не соответствует типу ТС: требуется «%s» (в реестре: «%s»)"
                             .formatted(String.join("» или «", required), categories));
@@ -683,6 +704,7 @@ public class WaybillService {
             case WB_TRUCK_INTL, WB_DANGEROUS -> java.util.Set.of(5, 6);
             case WB_PAX_INTL -> java.util.Set.of(1, 3);
             case WB_SPECIAL -> null; // спецтехника — вид ТС не ограничиваем
+            case WB_MOTORCYCLE -> java.util.Set.of(7);   // мотоцикл — вид ТС 7
         };
     }
 
@@ -877,8 +899,10 @@ public class WaybillService {
         }
         // Категория ВУ ↔ вид ТС (как assertLicenseMatchesVehicle) — если известны и водитель, и ТС.
         if (driver != null && vehicle != null) {
-            var required = requiredLicenseCategories(intOrNull(vehicle.get("transportType")));
-            if (required != null && !LicenseCategories.hasAny(str(driver.get("licenseCategories")), required)) {
+            Integer transportType = intOrNull(vehicle.get("transportType"));
+            var required = requiredLicenseCategories(transportType);
+            if (required != null && !licenseCategoriesMatch(transportType,
+                    str(driver.get("licenseCategories")), required)) {
                 out.add(new CheckResult("DRIVER_CATEGORY", "ERROR",
                         "Категория ВУ не соответствует типу ТС: требуется «%s» (в реестре: «%s»)"
                                 .formatted(String.join("» или «", required), str(driver.get("licenseCategories")))));

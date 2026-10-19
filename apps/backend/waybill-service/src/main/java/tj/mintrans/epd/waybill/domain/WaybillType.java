@@ -13,7 +13,8 @@ public enum WaybillType {
     WB_TRUCK_INTL("5Б-БМ", "07", 30, 1, -1, 0),
     WB_PAX_INTL("4М-БМ", "08", 30, 2, -1, 0),
     WB_SPECIAL("спецтехника", "09", 7, 1, -1, 0),
-    WB_DANGEROUS("опасные грузы", "10", 1, 1, -1, 0);
+    WB_DANGEROUS("опасные грузы", "10", 1, 1, -1, 0),
+    WB_MOTORCYCLE("3-М", "11", 15, 1, -1, 650);
 
     private final String legacyForm;
     private final String numberCode;
