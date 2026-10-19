@@ -18,12 +18,14 @@ export type FieldMode = 'show' | 'required' | 'hidden';
  *  (водитель, ТС, сотрудник); numeric — значение отправляется числом. */
 export type FormFieldDef = {
   key: string; labelKey: string; locked?: boolean; noRequired?: boolean;
-  type?: 'text' | 'number' | 'date' | 'email' | 'select';
+  type?: 'text' | 'number' | 'date' | 'email' | 'select' | 'multiselect';
   options?: { v: string; labelKey: string }[];
   numeric?: boolean; placeholder?: string; pattern?: string; min?: number; max?: number; step?: string; full?: boolean;
 };
 
 const opts = (prefix: string, n: number) => Array.from({ length: n }, (_, i) => ({ v: String(i + 1), labelKey: `${prefix}${i + 1}` }));
+const licenseCategoryOptions = ['A', 'A1', 'B', 'B1', 'C', 'C1', 'D', 'D1', 'E', 'M', 'T']
+  .map(v => ({ v, labelKey: `license.category.${v}` }));
 const date = (key: string, labelKey: string): FormFieldDef => ({ key, labelKey, type: 'date' });
 const num = (key: string, labelKey: string, extra: Partial<FormFieldDef> = {}): FormFieldDef => ({ key, labelKey, type: 'number', numeric: true, ...extra });
 
@@ -69,7 +71,7 @@ export const FORM_FIELDS: Record<string, FormFieldDef[]> = {
     date('birthDate', 'fleet.f.birth'),
     num('experienceYears', 'fleet.f.experience', { min: 0, max: 80 }),
     { key: 'licenseNumber', labelKey: 'comp.f.licnum', placeholder: '77 01 123456' },
-    { key: 'licenseCategories', labelKey: 'comp.f.cats' },
+    { key: 'licenseCategories', labelKey: 'comp.f.cats', type: 'multiselect', options: licenseCategoryOptions },
     date('licenseValidTo', 'comp.f.licvalid'),
     num('degree', 'comp.f.degree', { min: 1, max: 3 }),
     { key: 'medCertNumber', labelKey: 'comp.f.medcertnum' },

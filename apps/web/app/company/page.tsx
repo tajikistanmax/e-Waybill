@@ -252,7 +252,7 @@ function OrgFields({ f, t, editing = false, orgs = [] }: { f: (k: string) => Fie
         <datalist id="org-city-list">{cityOpts.map(c => <option key={String(c.id)} value={String(c.name)} />)}</datalist>
       </div>}
       {show('address') && <div><label>{lbl('col.address', 'address')}</label><input required={req('address')} {...f('address')} /></div>}
-      {show('phone') && <div><label>{lbl('col.phone', 'phone')}</label><input required={req('phone')} {...f('phone')} /></div>}
+      {show('phone') && <div><label>{lbl('col.phone', 'phone')}</label><input required={req('phone')} placeholder="+992" {...f('phone')} /></div>}
       {show('email') && <div><label>{lbl('comp.f.email', 'email')}</label><input required={req('email')} type="email" {...f('email')} /></div>}
       {show('nameHead') && <div><label>{lbl('comp.f.head', 'nameHead')}</label><input required={req('nameHead')} {...f('nameHead')} /></div>}
       {show('bank') && <div><label>{lbl('comp.f.bank', 'bank')}</label><input required={req('bank')} {...f('bank')} /></div>}
@@ -461,7 +461,9 @@ function OrgRegistry() {
     e.preventDefault();
     setError(''); setOk('');
     try {
-      const created = await md.createOrganization(clean(orgManual, ['typeCompany', 'regionId', 'percentIncome', 'cat1', 'cat2', 'cat3', 'ownership', 'latitude', 'longitude', 'planPassVolume', 'planPassTraffic']));
+      const payload = clean(orgManual, ['typeCompany', 'regionId', 'percentIncome', 'cat1', 'cat2', 'cat3', 'ownership', 'latitude', 'longitude', 'planPassVolume', 'planPassTraffic']);
+      if (payload.phone === '+992') payload.phone = null;
+      const created = await md.createOrganization(payload);
       setOk(`Организация «${String(created.name)}» сохранена (РМА ${String(created.rma)})`);
       setOrgManual({});
       setShowAddOrg(false); // после сохранения форму сворачиваем обратно
@@ -743,7 +745,7 @@ function OrgRegistry() {
               ? <span className="badge blue" title={t('ds.addoff.hint')}>{t('ds.addoff')}</span>
               : (
                 <button type="button" className="btn" onClick={() => {
-                  setOrgManual(v => ({ ...v, subjectType: v.subjectType || 'LEGAL', typeCompany: v.typeCompany || '1' }));
+                  setOrgManual(v => ({ ...v, subjectType: v.subjectType || 'LEGAL', typeCompany: v.typeCompany || '1', phone: v.phone || '+992' }));
                   setShowAddOrg(v => !v);
                 }}>
                   {showAddOrg ? t('comp.btn.hideform') : t('btn.add')}

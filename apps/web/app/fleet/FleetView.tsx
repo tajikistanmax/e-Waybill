@@ -9,6 +9,7 @@ import { useT } from '@/lib/i18n';
 import { Icon, P } from '../icons';
 import SubjectDocuments, { type SubjectPath } from './SubjectDocuments';
 import { BrandPicker } from '../BrandPicker';
+import { LicenseCategoryPicker } from '../ConfigurableFields';
 
 type Row = Record<string, unknown>;
 export type FleetKind = 'vehicles' | 'drivers' | 'employees';
@@ -20,7 +21,7 @@ const ACT_FORM_TYPES: Record<string, string[]> = {
 const ACT_FORM_LABELS: { v: string; l: string }[] = [
   { v: '3c', l: '3-С' }, { v: '2b', l: '2-Б' }, { v: '1ad', l: '1-АД' }, { v: '1a', l: '1-А' }, { v: '5bbm', l: '5Б-БМ' }, { v: '3m', l: '3-М' },
 ];
-type Field = { key: string; label: string; type?: 'text' | 'number' | 'date' | 'select'; opts?: { v: string; l: string }[]; req?: boolean; keyField?: boolean; numeric?: boolean; hidden?: boolean };
+type Field = { key: string; label: string; type?: 'text' | 'number' | 'date' | 'select' | 'multiselect'; opts?: { v: string; l: string }[]; req?: boolean; keyField?: boolean; numeric?: boolean; hidden?: boolean };
 
 /**
  * Раздел «Транспорт и водители» организации: полное нативное управление внутри платформы —
@@ -350,6 +351,14 @@ export default function FleetView({ kind }: { kind: FleetKind }) {
                     <option value="">—</option>
                     {f.opts!.map(o => <option key={o.v} value={o.v}>{o.l}</option>)}
                   </select>
+                ) : f.type === 'multiselect' ? (
+                  <LicenseCategoryPicker
+                    label={f.label}
+                    value={form[f.key] ?? ''}
+                    options={(f.opts ?? []).map(o => ({ v: o.v, label: o.l }))}
+                    disabled={editing && lockedField(f.key)}
+                    onChange={value => setForm(s => ({ ...s!, [f.key]: value }))}
+                  />
                 ) : (
                   <input id={`fleet-${f.key}`} type={f.type === 'number' ? 'number' : f.type === 'date' ? 'date' : 'text'}
                     value={form[f.key] ?? ''} disabled={editing && (f.keyField || lockedField(f.key))}

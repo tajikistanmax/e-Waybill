@@ -94,6 +94,19 @@ test.describe('Поля форм из настроек', () => {
     await expect(card.locator('label', { hasText: /^№ договора$/ })).toHaveCount(1);
   });
 
+  test('категории ВУ выбираются несколькими отметками', async ({ page }) => {
+    await setForm('driver', '');
+    await setSetting('datasource', 'driver', 'MANUAL');
+    await uiLogin(page);
+    await page.goto('/fleet/drivers');
+    await page.getByRole('button', { name: 'Добавить водителя' }).click();
+    const card = page.locator('.card', { has: page.getByRole('heading', { name: 'Новый водитель' }) });
+    const categories = card.getByRole('group', { name: 'Категории ВУ' });
+    await categories.getByRole('checkbox', { name: 'B', exact: true }).check();
+    await categories.getByRole('checkbox', { name: 'C', exact: true }).check();
+    await expect(card.getByText('B, C', { exact: true })).toBeVisible();
+  });
+
   test('страница настроек открывает нужную форму по плитке', async ({ page }) => {
     await uiLogin(page);
     await page.goto('/settings/forms?form=vehicle');
@@ -127,6 +140,7 @@ test.describe('Поля форм из настроек', () => {
     const modal = page.locator('.card', { has: page.getByRole('heading', { name: 'Добавить организацию' }) });
     await expect(modal.locator('label', { hasText: /^КПП$/ })).toHaveCount(1);
     await expect(modal.locator('label', { hasText: /^Телефон$/ })).toHaveCount(1);
+    await expect(modal.locator('label', { hasText: /^Телефон$/ }).locator('xpath=following-sibling::input')).toHaveValue('+992');
     const subjectType = modal.locator('label', { hasText: /^Тип субъекта$/ }).locator('xpath=following-sibling::select');
     await expect(subjectType).toHaveAttribute('required', '');
     await expect(subjectType).toHaveValue('LEGAL');
