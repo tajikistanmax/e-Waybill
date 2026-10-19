@@ -22,9 +22,10 @@
 
 ```bash
 cd ~/e-rohkhat/infra
-# внеочередная копия обеих БД в том backups (шифруется BACKUP_ENCRYPTION_KEY)
+# внеочередная копия обеих БД в том backups (шифрование обязательно)
 BACKUP_RUN_NOW=1 docker compose -f docker-compose.prod.yml up -d --force-recreate backup
-docker logs --tail 20 epd-prod-backup          # дождаться «backup done»
+docker logs --tail 20 epd-prod-backup          # дождаться «backup done: OK=2 FAIL=0»
+docker compose -f docker-compose.prod.yml ps backup  # backup должен быть healthy
 ```
 
 Запомнить текущую версию, чтобы было куда откатиться: `git rev-parse --short HEAD`.
@@ -128,6 +129,12 @@ curl -skI https://10.10.29.70:8443/  | head -1                  # портал �
 docker compose -f docker-compose.prod.yml exec proxy wget -qO- http://master-data:8081/actuator/health
 docker compose -f docker-compose.prod.yml exec proxy wget -qO- http://waybill:8082/actuator/health
 ```
+
+Сервис `backup` становится healthy только после успешной копии обеих БД за последние
+25 часов. Ошибка дампа или шифрования оставляет контейнер running, но unhealthy; ротация
+старых копий при неполном бэкапе пропускается. Перед допуском к production отдельно выполните
+пробное восстановление обеих БД в изолированную среду — статус `healthy` сам по себе не
+заменяет restore drill.
 
 В браузере: `https://10.10.29.70` → вход. Регрессионные скрипты (`scripts/*.ps1`) рассчитаны
 на локальный стенд с открытыми портами служб; на сервере их гоняют через SSH-туннель
