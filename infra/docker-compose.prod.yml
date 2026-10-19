@@ -1,8 +1,8 @@
 # Продакшн-подобный стек одного узла — прообраз ЦОД-развёртывания платформы ЭПД РТ.
 # Запуск: docker compose -f infra/docker-compose.prod.yml up -d --build
 #
-# ВНИМАНИЕ: значения секретов ниже — dev-дефолты для локальной проверки.
-#           В ПРОДЕ заменить (через .env / docker secrets / vault) все пароли.
+# Обязательные пароли и ключи задаются в infra/.env; открытые dev-пароли здесь запрещены.
+# Перед выкладкой обязательно выполнить infra/preflight.sh.
 #
 # Снаружи открыт ТОЛЬКО обратный прокси (сервис proxy): HTTPS 443 — платформа, 8443 — портал
 # проверки QR, 80 — перенаправление на HTTPS. web, public, API, БД и прочее наружу не
@@ -28,7 +28,7 @@ services:
     container_name: epd-prod-postgres
     environment:
       POSTGRES_USER: ${DB_USER:-epd}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-epd_dev_password}   # в проде заменить
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD не задан — задайте уникальный пароль в infra/.env}
       POSTGRES_DB: epd
     volumes:
       - ./postgres-init:/docker-entrypoint-initdb.d:ro      # init: создаёт БД masterdata/waybill
@@ -54,11 +54,11 @@ services:
     environment:
       PGHOST: postgres
       PGUSER: ${DB_USER:-epd}
-      PGPASSWORD: ${DB_PASSWORD:-epd_dev_password}
+      PGPASSWORD: ${DB_PASSWORD:?DB_PASSWORD не задан — задайте уникальный пароль в infra/.env}
       TZ: ${TZ:-Asia/Dushanbe}
       BACKUP_TIME: ${BACKUP_TIME:-00:00}
       BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-30}
-      BACKUP_ENCRYPTION_KEY: ${BACKUP_ENCRYPTION_KEY:-}
+      BACKUP_ENCRYPTION_KEY: ${BACKUP_ENCRYPTION_KEY:?BACKUP_ENCRYPTION_KEY не задан — шифрование копий обязательно}
       BACKUP_RUN_NOW: ${BACKUP_RUN_NOW:-0}
     volumes:
       - backups:/backups
@@ -100,7 +100,7 @@ services:
     command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: ${MINIO_USER:-epd}
-      MINIO_ROOT_PASSWORD: ${MINIO_PASSWORD:-epd_dev_password}   # в проде заменить
+      MINIO_ROOT_PASSWORD: ${MINIO_PASSWORD:?MINIO_PASSWORD не задан — задайте уникальный пароль в infra/.env}
     volumes:
       - miniodata:/data
     restart: unless-stopped
@@ -117,7 +117,7 @@ services:
     environment:
       DB_URL: jdbc:postgresql://postgres:5432/masterdata
       DB_USER: ${DB_USER:-epd}
-      DB_PASSWORD: ${DB_PASSWORD:-epd_dev_password}
+      DB_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD не задан — задайте пароль в infra/.env}
       # Аутентификация платформы (с 23.09.2026, вместо Keycloak). Издатель токена — эта
       # служба; служба путевых листов сверяет с ним claim iss и берёт ключи подписи.
       AUTH_ISSUER: ${AUTH_ISSUER:-http://master-data:8081/api/v1/auth}
@@ -197,7 +197,7 @@ services:
     environment:
       DB_URL: jdbc:postgresql://postgres:5432/waybill
       DB_USER: ${DB_USER:-epd}
-      DB_PASSWORD: ${DB_PASSWORD:-epd_dev_password}
+      DB_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD не задан — задайте пароль в infra/.env}
       # Проверка токенов платформы: издатель и ключи подписи — master-data.
       AUTH_ISSUER: ${AUTH_ISSUER:-http://master-data:8081/api/v1/auth}
       AUTH_JWK_SET_URI: ${AUTH_JWK_SET_URI:-http://master-data:8081/api/v1/auth/jwks}
@@ -210,14 +210,17 @@ services:
       # Оплата ПЛ включена (AWAITING_PAYMENT → PAID; агрегаторские ПЛ покрыты абонементом)
       PAYMENT_ENABLED: ${PAYMENT_ENABLED:-true}
       PAYMENT_FEE: ${PAYMENT_FEE:-10.00}
-      PAYMENT_WEBHOOK_SECRET: ${PAYMENT_WEBHOOK_SECRET:-epd_webhook_dev_secret}   # в проде заменить
+      PAYMENT_WEBHOOK_SECRET: ${PAYMENT_WEBHOOK_SECRET:?PAYMENT_WEBHOOK_SECRET не задан — задайте секрет в infra/.env}
       # Ключ шифрования медицинских показателей (AES-256-GCM, ИБ-13.1.3). ОБЯЗАТЕЛЕН: без него
       # waybill-service падает на старте (MedicalDataCrypto, fail-fast, dev-заглушки нет).
       # Значение — из infra/.env (сгенерирован один раз; смена ключа делает ранее сохранённые
       # медпоказатели нерасшифровываемыми). ${VAR:?…} — compose откажется стартовать без ключа.
       MEDDATA_ENCRYPTION_KEY: ${MEDDATA_ENCRYPTION_KEY:?MEDDATA_ENCRYPTION_KEY не задан — добавьте в infra/.env (openssl rand -base64 32)}
       # Постоянный ключ подписи QR (JWS ES256) — из infra/.env; пустой допустим только в режиме stub.
-      QR_SIGNING_KEY: ${QR_SIGNING_KEY:-}
+      QR_SIGNING_KEY: ${QR_SIGNING_KEY:?QR_SIGNING_KEY не задан — задайте постоянный приватный EC JWK}
+      # Prod-проверка должна явно перевести подпись титулов на CAdES через УЦ РТ.
+      SIGNING_MODE: ${SIGNING_MODE:?SIGNING_MODE не задан — для production требуется cades}
+      SIGNING_CRYPTO_URL: ${SIGNING_CRYPTO_URL:?SIGNING_CRYPTO_URL не задан — задайте адрес Crypto Service УЦ РТ}
       # API агрегаторов закрыт: нужен client-credentials токен epd-aggregator (роль API_INTEGRATOR)
       AGGREGATOR_OPEN: ${AGGREGATOR_OPEN:-false}
       # OpenAPI/Swagger UI закрыты (см. тот же комментарий у master-data выше)

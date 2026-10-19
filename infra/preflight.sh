@@ -31,20 +31,27 @@ echo "== Секреты (infra/.env)"
 if [ ! -f .env ]; then
     err "нет файла infra/.env — секреты стенда (см. DEPLOY.md, раздел 2)"
 else
-    for v in SERVICE_ACCOUNT_PASSWORD MEDDATA_ENCRYPTION_KEY QR_SIGNING_KEY PAYMENT_WEBHOOK_SECRET BACKUP_ENCRYPTION_KEY EPD_TLS_HOST; do
+    for v in DB_PASSWORD MINIO_PASSWORD SERVICE_ACCOUNT_PASSWORD MEDDATA_ENCRYPTION_KEY QR_SIGNING_KEY PAYMENT_WEBHOOK_SECRET BACKUP_ENCRYPTION_KEY EPD_TLS_HOST; do
         if [ -n "$(envval "$v")" ]; then ok "$v задан"; else err "$v не задан"; fi
     done
-    val=$(envval DB_PASSWORD)
-    if [ -z "$val" ] || [ "$val" = "epd_dev_password" ]; then
-        warn "DB_PASSWORD: пароль из репозитория (epd_dev_password). Для прода — свой; у уже созданной БД меняется через ALTER USER, не только в .env"
+    dbpw=$(envval DB_PASSWORD)
+    if [ -z "$dbpw" ] || [ "$dbpw" = "epd_dev_password" ]; then
+        err "DB_PASSWORD пустой или задан открытый dev-пароль; задайте отдельный случайный пароль"
+    elif [ ${#dbpw} -lt 24 ]; then
+        err "DB_PASSWORD короче 24 символов"
     else
-        ok "DB_PASSWORD свой"
+        ok "DB_PASSWORD — задан, длина допустима"
     fi
-    val=$(envval MINIO_PASSWORD)
-    if [ -z "$val" ] || [ "$val" = "epd_dev_password" ]; then
-        warn "MINIO_PASSWORD: пароль из репозитория (epd_dev_password). Для прода — свой (у уже созданного хранилища меняется через mc admin)"
+    miniopw=$(envval MINIO_PASSWORD)
+    if [ -z "$miniopw" ] || [ "$miniopw" = "epd_dev_password" ]; then
+        err "MINIO_PASSWORD пустой или задан открытый dev-пароль; задайте отдельный случайный пароль"
+    elif [ ${#miniopw} -lt 24 ]; then
+        err "MINIO_PASSWORD короче 24 символов"
     else
-        ok "MINIO_PASSWORD свой"
+        ok "MINIO_PASSWORD — задан, длина допустима"
+    fi
+    if [ -n "$dbpw" ] && [ "$dbpw" = "$miniopw" ]; then
+        err "DB_PASSWORD и MINIO_PASSWORD должны быть разными"
     fi
     pw=$(envval PAYMENT_WEBHOOK_SECRET)
     case "$pw" in
@@ -52,7 +59,17 @@ else
         *) if [ ${#pw} -lt 16 ]; then err "PAYMENT_WEBHOOK_SECRET короче 16 символов"; fi ;;
     esac
     sp=$(envval SERVICE_ACCOUNT_PASSWORD)
-    if [ -n "$sp" ] && [ ${#sp} -lt 16 ]; then warn "SERVICE_ACCOUNT_PASSWORD короче 16 символов"; fi
+    if [ -n "$sp" ] && [ ${#sp} -lt 16 ]; then err "SERVICE_ACCOUNT_PASSWORD короче 16 символов"; fi
+    signing_mode=$(envval SIGNING_MODE)
+    case "$signing_mode" in
+        cades)
+            crypto_url=$(envval SIGNING_CRYPTO_URL)
+            if [ -n "$crypto_url" ]; then ok "SIGNING_MODE=cades, адрес Crypto Service задан"
+            else err "SIGNING_CRYPTO_URL не задан при SIGNING_MODE=cades"; fi
+            ;;
+        stub|"") err "SIGNING_MODE не равен cades — заглушка SHA-256 не является юридически значимой ЭП" ;;
+        *) err "неподдерживаемый SIGNING_MODE (ожидается cades)" ;;
+    esac
     # Учётные записи: боевая установка — один администратор из .env, без демо-учёток из репозитория.
     if [ -n "$(envval AUTH_BOOTSTRAP_REALM_FILE)" ]; then
         warn "AUTH_BOOTSTRAP_REALM_FILE задан — при пустой базе будут созданы демо/QA-учётки с паролями из репозитория. На боевом сервере — оставить пустым"
