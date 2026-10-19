@@ -68,7 +68,7 @@ export function LicenseCategoryPicker({ label, value, options, required, disable
   onChange: (value: string) => void;
 }) {
   const { t } = useT();
-  const selected = parseLicenseCategories(value);
+  const selected = parseLicenseCategories(value, options.map(option => option.v));
 
   if (selected === null) {
     return (
@@ -109,8 +109,8 @@ export function LicenseCategoryPicker({ label, value, options, required, disable
   );
 }
 
-/** Mirrors the backend parser so legacy forms such as "BCD" and "ВСД" stay editable. */
-function parseLicenseCategories(raw: string): string[] | null {
+/** Mirrors the backend parser and greedily recognizes combinations in legacy strings such as "BCD" and "ВСД". */
+function parseLicenseCategories(raw: string, options: string[]): string[] | null {
   if (!raw.trim()) return [];
   let normalized = '';
   for (const char of raw.toUpperCase()) {
@@ -121,15 +121,12 @@ function parseLicenseCategories(raw: string): string[] | null {
   }
 
   const result = new Set<string>();
-  for (let i = 0; i < normalized.length; i++) {
-    const category = normalized[i];
-    if (!'ABCDEMT'.includes(category)) return null;
-    if (i + 1 < normalized.length && normalized[i + 1] === '1' && 'ABCD'.includes(category)) {
-      result.add(`${category}1`);
-      i++;
-    } else {
-      result.add(category);
-    }
+  const categories = [...options].sort((a, b) => b.length - a.length);
+  for (let i = 0; i < normalized.length;) {
+    const category = categories.find(option => normalized.startsWith(option, i));
+    if (!category) return null;
+    result.add(category);
+    i += category.length;
   }
   return result.size ? [...result] : null;
 }

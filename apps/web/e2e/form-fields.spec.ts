@@ -104,7 +104,8 @@ test.describe('Поля форм из настроек', () => {
     const categories = card.getByRole('group', { name: 'Категории ВУ' });
     await categories.getByRole('checkbox', { name: 'B', exact: true }).check();
     await categories.getByRole('checkbox', { name: 'C', exact: true }).check();
-    await expect(card.getByText('B, C', { exact: true })).toBeVisible();
+    await categories.getByRole('checkbox', { name: 'CE', exact: true }).check();
+    await expect(card.getByText('B, C, CE', { exact: true })).toBeVisible();
   });
 
   test('страница настроек открывает нужную форму по плитке', async ({ page }) => {

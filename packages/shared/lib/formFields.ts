@@ -24,7 +24,7 @@ export type FormFieldDef = {
 };
 
 const opts = (prefix: string, n: number) => Array.from({ length: n }, (_, i) => ({ v: String(i + 1), labelKey: `${prefix}${i + 1}` }));
-const licenseCategoryOptions = ['A', 'A1', 'B', 'B1', 'C', 'C1', 'D', 'D1', 'E', 'M', 'T']
+const licenseCategoryOptions = ['A', 'A1', 'B', 'B1', 'BE', 'C', 'C1', 'CE', 'C1E', 'D', 'D1', 'DE', 'D1E', 'M', 'T']
   .map(v => ({ v, labelKey: `license.category.${v}` }));
 const date = (key: string, labelKey: string): FormFieldDef => ({ key, labelKey, type: 'date' });
 const num = (key: string, labelKey: string, extra: Partial<FormFieldDef> = {}): FormFieldDef => ({ key, labelKey, type: 'number', numeric: true, ...extra });
