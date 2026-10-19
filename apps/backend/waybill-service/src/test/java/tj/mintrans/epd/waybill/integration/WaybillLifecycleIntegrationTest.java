@@ -236,8 +236,10 @@ class WaybillLifecycleIntegrationTest {
         assertThat(closed.getStatus()).isEqualTo(WaybillStatus.COMPLETED);
         assertThat(fresh(id).getStatus()).isEqualTo(WaybillStatus.COMPLETED);
 
-        // Одометр перенесён обратно в мастер-данные при закрытии (сервисный вызов реально произошёл).
-        org.mockito.Mockito.verify(masterData).updateVehicleOdometer(VEHICLE_ID, odometerExit + 120);
+        // Одометр отправляется в мастер-данные при возврате, а при закрытии отправка повторяется
+        // как идемпотентная страховочная попытка на случай временного отказа первого вызова.
+        org.mockito.Mockito.verify(masterData, org.mockito.Mockito.times(2))
+                .updateVehicleOdometer(VEHICLE_ID, odometerExit + 120);
 
         // Полный статусный журнал (append-only) реально записан в БД: DRAFT -> CREATED ->
         // AWAITING_PAYMENT -> PAID -> READY -> ISSUED -> ACTIVE -> RETURNED -> COMPLETED.
