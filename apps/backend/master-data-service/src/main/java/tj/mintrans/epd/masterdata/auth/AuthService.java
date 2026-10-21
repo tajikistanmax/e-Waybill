@@ -55,6 +55,12 @@ public class AuthService {
     private final long refreshTtlSeconds;
     /** Подпись записи в приложении-аутентификаторе. */
     private final String totpIssuer;
+    /**
+     * Спрашивать ли второй фактор (код из приложения-аутентификатора). Выключен решением
+     * владельца 21.10.2026: вход только по логину и паролю. Признаки totp_required/totp_secret
+     * у учётных записей сохраняются — включение (AUTH_SECOND_FACTOR=true) возвращает прежнее поведение.
+     */
+    private final boolean secondFactorEnabled;
 
     /** Срок ключа смены временного пароля и ключа второго шага входа. */
     private static final long SHORT_KEY_SECONDS = 900;
@@ -65,7 +71,8 @@ public class AuthService {
                        @Value("${epd.auth.max-failed-attempts:10}") int maxFailedAttempts,
                        @Value("${epd.auth.lock-minutes:15}") long lockMinutes,
                        @Value("${epd.auth.refresh-ttl-seconds:43200}") long refreshTtlSeconds,
-                       @Value("${epd.auth.totp-issuer:e-Rohkhat}") String totpIssuer) {
+                       @Value("${epd.auth.totp-issuer:e-Rohkhat}") String totpIssuer,
+                       @Value("${epd.auth.second-factor.enabled:false}") boolean secondFactorEnabled) {
         this.users = users;
         this.refreshTokens = refreshTokens;
         this.passwords = passwords;
@@ -75,6 +82,7 @@ public class AuthService {
         this.lockMinutes = lockMinutes;
         this.refreshTtlSeconds = refreshTtlSeconds;
         this.totpIssuer = totpIssuer;
+        this.secondFactorEnabled = secondFactorEnabled;
         this.dummyHash = passwords.encode(UUID.randomUUID().toString());
     }
 
@@ -174,7 +182,8 @@ public class AuthService {
         // Счётчик неудач обнуляет верный пароль — но не у учёток со вторым фактором: там его
         // обнулит только верный код. Иначе, зная пароль, код можно подбирать бесконечно,
         // заново входя паролем после каждых девяти неверных кодов.
-        if (!user.secondFactorApplies()) {
+        boolean secondFactor = secondFactorEnabled && user.secondFactorApplies();
+        if (!secondFactor) {
             user.setFailedAttempts(0);
             user.setLockedUntil(null);
         }
@@ -185,7 +194,7 @@ public class AuthService {
             throw new PasswordChangeRequired(issueKey(user, AuthRefreshToken.PASSWORD_CHANGE, SHORT_KEY_SECONDS));
         }
 
-        if (user.secondFactorApplies()) {
+        if (secondFactor) {
             // Пароль верен, но нужен код из приложения-аутентификатора. Сессию не выдаём —
             // только ключ второго шага. Второй фактор ещё не подключён — выдаём секрет для
             // QR-кода; повторная попытка входа отдаёт тот же секрет, чтобы уже отсканированный

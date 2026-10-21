@@ -157,6 +157,9 @@ services:
       # дефолт службы (true): схема всего API master-data отдавалась анониму через
       # https://<стенд>/md-api/v3/api-docs (находка 24.09.2026).
       DOCS_OPEN: ${DOCS_OPEN:-false}
+      # Второй фактор входа (код из приложения-аутентификатора). Выключен решением владельца
+      # 21.10.2026; true — вернуть обязательную 2FA для admin/inspector/analyst.
+      AUTH_SECOND_FACTOR: ${AUTH_SECOND_FACTOR:-false}
       # Единая платформа Минтранса (субъекты из налоговой, ТС из ГАИ).
       # stub — имитация; при подключении реальной платформы: http + UNIFIED_PLATFORM_URL
       UNIFIED_PLATFORM_MODE: ${UNIFIED_PLATFORM_MODE:-stub}

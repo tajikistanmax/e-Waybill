@@ -59,6 +59,9 @@ async function submitCode(page: Page, code: string) {
 }
 
 test.describe('Второй фактор входа', () => {
+  // С 21.10.2026 второй фактор выключен по умолчанию (AUTH_SECOND_FACTOR=false) — проверка
+  // имеет смысл только на стенде, где его включили обратно.
+  test.skip(process.env.E2E_SECOND_FACTOR !== '1', 'второй фактор выключен (AUTH_SECOND_FACTOR=false)');
   let ctx: APIRequestContext;
   let adminH: Record<string, string>;
   let userId = '';

@@ -54,7 +54,8 @@ class AuthServiceTest {
         when(issuer.accessToken(any())).thenReturn("access");
         when(issuer.accessTtlSeconds()).thenReturn(1800L);
         audit = mock(AuditService.class);
-        auth = new AuthService(users, tokens, encoder, issuer, audit, 10, 15, 43200, "e-Rohkhat");
+        // Второй фактор включён: тесты ниже проверяют его ветки (AUTH_SECOND_FACTOR=true).
+        auth = new AuthService(users, tokens, encoder, issuer, audit, 10, 15, 43200, "e-Rohkhat", true);
 
         user = new AppUser();
         user.setId(UUID.randomUUID());
@@ -148,6 +149,17 @@ class AuthServiceTest {
     }
 
     // ---------------------------------------------------------------- второй фактор (находка 27)
+
+    /** Решение владельца 21.10.2026: по умолчанию 2FA выключена — вход по логину и паролю. */
+    @Test
+    void disabledSecondFactorGivesSessionByPasswordEvenIfRequiredOrEnrolled() {
+        var noTotp = new AuthService(users, tokens, encoder, issuer, audit, 10, 15, 43200, "e-Rohkhat", false);
+        user.setTotpRequired(true);
+        user.setTotpSecret(Totp.newSecret());
+        user.setFailedAttempts(3);
+        assertThat(noTotp.login("992900000001", PASSWORD).accessToken()).isEqualTo("access");
+        assertThat(user.getFailedAttempts()).isZero();
+    }
 
     @Test
     void requiredSecondFactorWithoutEnrollmentGivesSetupNotSession() {
