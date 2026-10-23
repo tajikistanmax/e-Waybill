@@ -7,6 +7,7 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.PositiveOrZero;
 import jakarta.validation.constraints.Size;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -55,9 +56,19 @@ public class WaybillController {
     private final tj.mintrans.epd.waybill.service.WaybillRegistryService registry;
     private final tj.mintrans.epd.waybill.service.FuelBalanceService fuelBalance;
 
-    /** Защитный лимит листинга реестра (после миграции Ф5 в waybill ~2.3 млн архивных ПЛ). */
-    private static final int LIST_CAP = 1000;
+    /**
+     * Защитный лимит РАЗМЕРА выборки легаси-листинга {@code GET /api/v1/waybills} (после миграции
+     * Ф5 в waybill ~2.3 млн архивных ПЛ) — настраивается (по умолчанию прежние 1000), т.к. у
+     * крупных кабинетов (платформенные роли, большие филиалы) 1000 иногда слишком мало. Это лимит
+     * РАЗМЕРА страницы/выборки (защита от OOM), а не общего числа доступных записей: полноценная
+     * серверная пагинация с доступом к любой странице — отдельный эндпоинт {@link #page}; этот
+     * эндпоинт остался для простых «мои задачи»-кабинетов (диспетчер/врач/механик/инспектор/водитель),
+     * которые не постранично листают миллионы, а показывают текущую рабочую очередь.
+     */
+    private final int listCap;
     private static final String MIGRATED = "MIGRATED";
+    /** Заголовок ответа: выборка легаси-листинга упёрлась в {@link #listCap} — возможна потеря строк (не молча). */
+    public static final String TRUNCATED_HEADER = "X-Waybills-Truncated";
 
     public WaybillController(WaybillService service, WaybillRepository waybills,
                              WaybillTitleRepository titles, WaybillStatusEventRepository events,
@@ -65,7 +76,8 @@ public class WaybillController {
                              WaybillCalcAssembler waybillCalc, CurrentUser currentUser,
                              TenantScope tenantScope,
                              tj.mintrans.epd.waybill.service.WaybillRegistryService registry,
-                             tj.mintrans.epd.waybill.service.FuelBalanceService fuelBalance) {
+                             tj.mintrans.epd.waybill.service.FuelBalanceService fuelBalance,
+                             @Value("${epd.registry.list-cap:1000}") int listCap) {
         this.fuelBalance = fuelBalance;
         this.service = service;
         this.waybills = waybills;
@@ -77,6 +89,7 @@ public class WaybillController {
         this.currentUser = currentUser;
         this.tenantScope = tenantScope;
         this.registry = registry;
+        this.listCap = listCap > 0 ? listCap : 1000;
     }
 
     // ------------------------------------------------------------- запросы
@@ -493,32 +506,46 @@ public class WaybillController {
         return registry.statusCounts(organizationRma);
     }
 
+    /**
+     * Легаси-листинг без страниц — рабочие очереди простых кабинетов (диспетчер/врач/механик/
+     * инспектор/водитель/журналы), НЕ полноценный постраничный реестр (для него — {@link #page}).
+     * Тело ответа — как раньше, массив {@code Waybill[]}, чтобы не ломать уже вызывающие его
+     * страницы; признак усечения — в заголовке {@value #TRUNCATED_HEADER} (а не молча), когда
+     * выборка на уровне БД упёрлась в {@link #listCap}.
+     */
     @GetMapping
     @PreAuthorize(READ_ROLES)
-    public List<Waybill> list(@RequestParam(required = false) String organizationRma,
+    public ResponseEntity<List<Waybill>> list(@RequestParam(required = false) String organizationRma,
                               @RequestParam(required = false) WaybillStatus status,
                               @RequestParam(required = false) String number,
                               @RequestParam(required = false, defaultValue = "false") boolean archived) {
         // Дефолтный реестр ИСКЛЮЧАЕТ архив (source='MIGRATED', ~2.3 млн историч. ПЛ из
-        // миграции Ф5) и ОГРАНИЧЕН LIST_CAP — иначе findAll вернул бы миллионы строк (OOM).
-        // archived=true — явный доступ к архиву (тоже с лимитом, организационно-ограниченный).
-        // Полноценная серверная пагинация — отдельная задача.
-        var cap = PageRequest.of(0, LIST_CAP);
+        // миграции Ф5) и ОГРАНИЧЕН listCap (размер выборки, не общее число записей — за ними
+        // идут на /page с настоящей постраничной навигацией). archived=true — явный доступ
+        // к архиву (тоже с лимитом, организационно-ограниченный).
+        var cap = PageRequest.of(0, listCap);
         // Мультиарендность: тенант видит свою организацию (администратор компании — и все
         // её филиалы); пришедший organizationRma игнорируется, область берётся из токена.
         if (tenantScope.isBounded()) {
             var scoped = tenantScope.rmas();
             if (scoped.isEmpty() || scoped.contains("__none__")) {
-                return List.of();
+                // Это НЕ «у организации нечего показать» — claim organization_rma в токене
+                // тенант-роли отсутствует вовсе (ошибка привязки учётной записи в master-data).
+                // Молчаливый пустой реестр прятал бы такую находку (приёмка 2026-09-04, §05) —
+                // честный отказ вместо пустого списка.
+                throw new tj.mintrans.epd.waybill.web.error.ApiErrors.ForbiddenException(
+                        "Учётная запись не привязана к организации (отсутствует organization_rma) — "
+                                + "обратитесь к администратору платформы для настройки доступа");
             }
             // Водитель (роль DRIVER) видит только СВОИ путевые листы (свои рейсы как основной
             // или второй водитель), а не всей организации — иначе он видел бы чужие рейсы и QR.
             final String driverRma = currentUser.hasRole("DRIVER") ? currentUser.rma().orElse("") : null;
             if (number != null) {
-                return waybills.findByNumber(number)
+                var byNumber = waybills.findByNumber(number)
                         .filter(wb -> scoped.contains(wb.getOrganizationRma()))
                         .filter(wb -> driverRma == null || driverRma.equals(wb.getDriverRma()) || driverRma.equals(wb.getSecondDriverRma()))
                         .map(List::of).orElseGet(List::of);
+                return ResponseEntity.ok(byNumber);
             }
             List<Waybill> result;
             if (archived) {
@@ -528,6 +555,9 @@ public class WaybillController {
             } else {
                 result = waybills.findByOrganizationRmaInAndSourceNotOrderByCreatedAtDesc(scoped, MIGRATED, cap);
             }
+            // Усечение смотрим ДО фильтров ниже (водитель/статус в архиве) — иначе маленькая
+            // выборка водителя из уже усечённой на уровне БД страницы выглядела бы полной.
+            boolean truncated = result.size() >= listCap;
             if (driverRma != null) {
                 result = result.stream()
                         .filter(wb -> driverRma.equals(wb.getDriverRma()) || driverRma.equals(wb.getSecondDriverRma()))
@@ -537,24 +567,32 @@ public class WaybillController {
                 final WaybillStatus st = status;
                 result = result.stream().filter(wb -> wb.getStatus() == st).toList();
             }
-            return result;
+            return respond(result, truncated);
         }
         if (number != null) {
-            return waybills.findByNumber(number).map(List::of).orElseGet(List::of);
+            return ResponseEntity.ok(waybills.findByNumber(number).map(List::of).orElseGet(List::of));
         }
+        List<Waybill> result;
         if (organizationRma != null) {
-            return archived
+            result = archived
                     ? waybills.findByOrganizationRmaOrderByCreatedAtDesc(organizationRma, cap)
                     : waybills.findByOrganizationRmaAndSourceNotOrderByCreatedAtDesc(organizationRma, MIGRATED, cap);
-        }
-        if (status != null) {
-            return archived
+        } else if (status != null) {
+            result = archived
                     ? waybills.findByStatusOrderByCreatedAtDesc(status, cap)
                     : waybills.findByStatusAndSourceNotOrderByCreatedAtDesc(status, MIGRATED, cap);
+        } else {
+            result = archived
+                    ? waybills.findAll(cap).getContent()
+                    : waybills.findBySourceNotOrderByCreatedAtDesc(MIGRATED, cap);
         }
-        return archived
-                ? waybills.findAll(cap).getContent()
-                : waybills.findBySourceNotOrderByCreatedAtDesc(MIGRATED, cap);
+        return respond(result, result.size() >= listCap);
+    }
+
+    private static ResponseEntity<List<Waybill>> respond(List<Waybill> result, boolean truncated) {
+        return truncated
+                ? ResponseEntity.ok().header(TRUNCATED_HEADER, "true").body(result)
+                : ResponseEntity.ok(result);
     }
 
     @GetMapping("/{id}/titles")

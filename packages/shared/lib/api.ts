@@ -57,6 +57,16 @@ export type ConsignmentPage = { content: ConsignmentView[]; page: number; size: 
 /** Страница реестра ПЛ (GET /waybills/page). */
 export type PagedWaybills = { content: Waybill[]; page: number; size: number; totalElements: number; totalPages: number };
 
+/**
+ * Результат легаси-листинга {@code GET /api/v1/waybills} (без страниц — простые кабинеты
+ * «мои задачи»). Остаётся обычным массивом для обратной совместимости с существующими
+ * `.then(setItems)`; `truncated` — необязательное РАНТАЙМ-свойство (не JSON-поле), выставляется
+ * из заголовка ответа `X-Waybills-Truncated`, когда выборка на сервере упёрлась в лимит
+ * размера (см. WaybillController.listCap) — признак того, что часть строк могла не попасть
+ * в ответ (найдено 23.10.2026 при устранении искусственных ограничений выборок).
+ */
+export type WaybillListResult = Waybill[] & { truncated?: boolean };
+
 export type Waybill = {
   id: string;
   number: string | null;
@@ -771,7 +781,13 @@ export type WaybillRequest = {
 };
 
 export const wb = {
-  list: () => fetch('/wb-api/api/v1/waybills', { headers: authHeaders() }).then(r => handle<Waybill[]>(r)),
+  list: (): Promise<WaybillListResult> => fetch('/wb-api/api/v1/waybills', { headers: authHeaders() }).then(async r => {
+    // Заголовок читается ДО handle() (который потребляет тело) — не влияет на обработку ошибок/401.
+    const truncated = r.headers.get('X-Waybills-Truncated') === 'true';
+    const items = await handle<Waybill[]>(r) as WaybillListResult;
+    if (truncated) items.truncated = true;
+    return items;
+  }),
   // Показатели главной панели — агрегаты сервера по всей области видимости.
   dashboard: () => fetch('/wb-api/api/v1/dashboard', { headers: authHeaders() }).then(r => handle<DashboardStats>(r)),
   // Серверная пагинация реестра ПЛ (MIGRATION.md 8.4): фильтры в SQL, страница + общее число.

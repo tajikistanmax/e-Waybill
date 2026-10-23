@@ -384,7 +384,17 @@ export type WaybillRequest = {
 };
 
 export const wb = {
-  list: () => fetch('/wb-api/api/v1/waybills', { headers: authHeaders() }).then(r => handle<Waybill[]>(r)),
+  // ВНИМАНИЕ: этот файл дублирует packages/shared/lib/api.ts; реально импортируется (псевдоним
+  // "@/lib/api" из tsconfig.json: "../../packages/shared/lib/*") именно ОН, этот — не используется
+  // ни одним import'ом в apps/web (проверено 23.10.2026). Правка синхронизирована здесь на случай,
+  // если файл когда-нибудь станет снова актуальным — см. тот же признак усечения в shared/lib/api.ts.
+  list: (): Promise<Waybill[] & { truncated?: boolean }> =>
+    fetch('/wb-api/api/v1/waybills', { headers: authHeaders() }).then(async r => {
+      const truncated = r.headers.get('X-Waybills-Truncated') === 'true';
+      const items = await handle<Waybill[]>(r) as Waybill[] & { truncated?: boolean };
+      if (truncated) items.truncated = true;
+      return items;
+    }),
   // Эксплуатационная сводка waybill-service (SYSTEM_ADMIN): интеграции, нумерация, JVM.
   ops: () => fetch('/wb-api/api/v1/ops/overview', { headers: authHeaders() }).then(r => handle<WbOps>(r)),
   // Доступные типы ПЛ для организации (по лицензии/виду субъекта) — для шага выбора типа.

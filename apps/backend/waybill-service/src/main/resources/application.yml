@@ -63,6 +63,19 @@ epd:
   events:
     # Kafka-topic статусных событий ПЛ — читают единый кабинет, аналитика, антифрод
     topic: ${EVENTS_TOPIC:epd.waybill.status}
+  registry:
+    # Лимиты РАЗМЕРА выборки/страницы реестра ПЛ (защита от OOM после миграции Ф5 — ~2.3 млн
+    # архивных ПЛ) — НЕ лимит общего числа доступных записей: до любой страницы /waybills/page
+    # можно дойти, пагинация настоящая (WaybillRegistryService, findAll(spec, pageable)).
+    # list-cap — легаси-листинг без страниц GET /api/v1/waybills (простые кабинеты «мои задачи»:
+    # диспетчер/врач/механик/инспектор/водитель/журналы); max-page-size — верхняя граница
+    # ?size= у /waybills/page.
+    list-cap: ${WAYBILLS_LIST_CAP:1000}
+    max-page-size: ${WAYBILLS_MAX_PAGE_SIZE:1000}
+  reports:
+    # Предохранитель построчных отчётов по периоду (WaybillPeriodScan.forEach): больше строк —
+    # честный отказ 422 «сузьте период/организацию», а не молчаливая обрезка и не OutOfMemoryError.
+    max-rows: ${REPORTS_MAX_ROWS:100000}
   security:
     # Проверка JWT. Токены выпускает платформа (master-data, /api/v1/auth) — до 23.09.2026
     # это делал Keycloak. Ключи и издатель берутся по внутреннему адресу docker-сети.

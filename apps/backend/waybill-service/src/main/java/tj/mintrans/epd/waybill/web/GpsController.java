@@ -194,8 +194,10 @@ public class GpsController {
             if (scope.isEmpty() || scope.contains("__none__")) {
                 return List.of();
             }
-            active = waybills.findByOrganizationRmaInOrderByCreatedAtDesc(scope).stream()
-                    .filter(w -> onLine.contains(w.getStatus())).toList();
+            // Фильтр статуса — в SQL (не в памяти): после миграции Ф5 в waybill ~2,3 млн архивных
+            // ПЛ, и прежний findByOrganizationRmaInOrderByCreatedAtDesc(scope) без фильтра статуса
+            // тянул ВСЮ историю организации целиком — риск OOM на крупном перевозчике.
+            active = waybills.findByOrganizationRmaInAndStatusInOrderByCreatedAtDesc(scope, onLine);
         } else {
             active = waybills.findByStatusInOrderByCreatedAtDesc(onLine);
         }

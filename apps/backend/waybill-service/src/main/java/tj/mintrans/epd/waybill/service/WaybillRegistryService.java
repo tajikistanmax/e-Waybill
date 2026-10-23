@@ -4,6 +4,7 @@ import jakarta.persistence.criteria.CriteriaBuilder;
 import jakarta.persistence.criteria.Expression;
 import jakarta.persistence.criteria.Path;
 import jakarta.persistence.criteria.Predicate;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
@@ -16,6 +17,7 @@ import tj.mintrans.epd.waybill.domain.Waybill;
 import tj.mintrans.epd.waybill.domain.WaybillStatus;
 import tj.mintrans.epd.waybill.domain.WaybillType;
 import tj.mintrans.epd.waybill.repository.WaybillRepository;
+import tj.mintrans.epd.waybill.web.error.ApiErrors;
 
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
@@ -39,7 +41,8 @@ import java.util.Set;
 public class WaybillRegistryService {
 
     static final String MIGRATED = "MIGRATED";
-    static final int MAX_PAGE_SIZE = 1000;
+    /** Запасной дефолт для кода без DI (тесты статических помощников); в проде берётся {@link #maxPageSize}. */
+    static final int DEFAULT_MAX_PAGE_SIZE = 1000;
 
     /** Параметры отбора (все необязательны). {@code from}/{@code to} — по дате начала действия (иначе создания), включительно. */
     public record Filter(String organizationRma, WaybillStatus status, WaybillType type, String vehicle, String driver,
@@ -57,20 +60,24 @@ public class WaybillRegistryService {
     private final WaybillRepository waybills;
     private final TenantScope tenantScope;
     private final CurrentUser currentUser;
+    /** Лимит РАЗМЕРА страницы (защита от OOM) — общее число записей, доступных постранично, не ограничено. */
+    private final int maxPageSize;
 
-    public WaybillRegistryService(WaybillRepository waybills, TenantScope tenantScope, CurrentUser currentUser) {
+    public WaybillRegistryService(WaybillRepository waybills, TenantScope tenantScope, CurrentUser currentUser,
+                                  @Value("${epd.registry.max-page-size:" + DEFAULT_MAX_PAGE_SIZE + "}") int maxPageSize) {
         this.waybills = waybills;
         this.tenantScope = tenantScope;
         this.currentUser = currentUser;
+        this.maxPageSize = maxPageSize > 0 ? maxPageSize : DEFAULT_MAX_PAGE_SIZE;
     }
 
     @Transactional(readOnly = true)
     public PageResult page(Filter f, int page, int size) {
         int p = Math.max(0, page);
-        int s = Math.min(Math.max(1, size), MAX_PAGE_SIZE);
+        int s = Math.min(Math.max(1, size), maxPageSize);
         Scope scope = scope(f.organizationRma());
         if (scope.none()) {
-            return new PageResult(List.of(), p, s, 0, 0);
+            throw noOrganizationAccess();
         }
         Page<Waybill> pg = waybills.findAll(spec(f, scope),
                 PageRequest.of(p, s, Sort.by(Sort.Direction.DESC, "createdAt")));
@@ -86,7 +93,7 @@ public class WaybillRegistryService {
         }
         Scope scope = scope(organizationRma);
         if (scope.none()) {
-            return out;
+            throw noOrganizationAccess();
         }
         if (scope.driverRma() != null) {
             // Водитель: только свои ПЛ — считаем по спецификации (небольшой объём).
@@ -103,6 +110,18 @@ public class WaybillRegistryService {
             out.put(((WaybillStatus) r[0]).name(), ((Number) r[1]).longValue());
         }
         return out;
+    }
+
+    /**
+     * {@code scope.none()} означает «claim organization_rma отсутствует в токене тенант-роли» —
+     * ошибка привязки учётной записи (master-data), не «у организации нечего показать» (приёмка
+     * 2026-09-04, §05: молчаливый пустой реестр прятал такие находки). Честный отказ 403 вместо
+     * {@code PageResult(List.of(), …, 0, 0)} / нулевых счётчиков.
+     */
+    private static ApiErrors.ForbiddenException noOrganizationAccess() {
+        return new ApiErrors.ForbiddenException(
+                "Учётная запись не привязана к организации (отсутствует organization_rma) — "
+                        + "обратитесь к администратору платформы для настройки доступа");
     }
 
     private Scope scope(String requestedOrg) {

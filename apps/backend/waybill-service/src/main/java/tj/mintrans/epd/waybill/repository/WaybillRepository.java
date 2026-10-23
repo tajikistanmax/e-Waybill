@@ -68,12 +68,15 @@ public interface WaybillRepository extends JpaRepository<Waybill, UUID>,
     @Query("select w from Waybill w where w.driverRma = :rma or w.secondDriverRma = :rma order by w.createdAt desc")
     List<Waybill> findForDriver(String rma);
 
-    List<Waybill> findByOrganizationRmaOrderByCreatedAtDesc(String organizationRma);
-
-    /** ПЛ набора организаций (компания + её филиалы), новые сверху. */
-    List<Waybill> findByOrganizationRmaInOrderByCreatedAtDesc(Collection<String> organizationRmas);
-
-    List<Waybill> findByStatusOrderByCreatedAtDesc(WaybillStatus status);
+    /**
+     * ПЛ набора организаций (компания + её филиалы) в наборе статусов, без лимита — фильтр статуса
+     * в SQL. Заменяет прежний unbounded {@code findByOrganizationRmaInOrderByCreatedAtDesc(Collection)}
+     * (тянул ВСЕ ПЛ организации, включая архив после миграции Ф5 ~2,3 млн строк, и фильтровал статус
+     * в памяти — GpsController.live, монитор «на линии»). Набор статусов ISSUED/ACTIVE мал даже для
+     * крупных перевозчиков, поэтому отдельный Pageable здесь не нужен.
+     */
+    List<Waybill> findByOrganizationRmaInAndStatusInOrderByCreatedAtDesc(Collection<String> organizationRmas,
+                                                                         Collection<WaybillStatus> statuses);
 
     // --- Листинг реестра с защитой от боевого объёма (после миграции Ф5 в waybill ~2.3 млн
     //     архивных ПЛ, source='MIGRATED'). Дефолтный реестр ИСКЛЮЧАЕТ архив и ОГРАНИЧЕН

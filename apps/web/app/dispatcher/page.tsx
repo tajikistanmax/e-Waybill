@@ -66,6 +66,10 @@ export default function DispatcherCabinet() {
   const [items, setItems] = useState<Waybill[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  // Легаси-листинг без страниц ограничен размером выборки (epd.registry.list-cap) — если сервер
+  // упёрся в лимит, показываем явное предупреждение вместо того, чтобы молча терять записи
+  // (найдено 23.10.2026 при устранении искусственных ограничений выборок).
+  const [listTruncated, setListTruncated] = useState(false);
   const router = useRouter();
   // Живой мониторинг: ТС «на линии» (реальные GPS-позиции) и уведомления диспетчера.
   const [live, setLive] = useState<LivePosition[]>([]);
@@ -83,7 +87,8 @@ export default function DispatcherCabinet() {
   const [attnPage, setAttnPage] = useState(1);
 
   useEffect(() => {
-    wb.list().then(setItems).catch((e: Error) => setError(e.message)).finally(() => setLoading(false));
+    wb.list().then(r => { setItems(r); setListTruncated(!!r.truncated); })
+      .catch((e: Error) => setError(e.message)).finally(() => setLoading(false));
   }, []);
   // Живые позиции обновляем периодически — как на странице мониторинга.
   useEffect(() => {
@@ -124,7 +129,7 @@ export default function DispatcherCabinet() {
       });
       await wb.requests.approve(sel.id, { typeData: typeDataFor(rev.waybillType) });
       setReqMsg(t('dreq.approved')); setSel(null); loadReqs();
-      wb.list().then(setItems).catch(() => {});
+      wb.list().then(r => { setItems(r); setListTruncated(!!r.truncated); }).catch(() => {});
     } catch (err) { setReqErr((err as Error).message); }
     finally { setReqBusy(false); }
   }
@@ -206,6 +211,11 @@ export default function DispatcherCabinet() {
       </div>
 
       {error && <div className="error">{error}</div>}
+      {listTruncated && (
+        <div className="error" style={{ background: 'var(--amber-bg, #fff6e0)', color: 'var(--amber-ink, #8a6100)' }}>
+          {t('wb.list.truncated')}
+        </div>
+      )}
 
       <div style={{ marginBottom: 16 }}><ExpiryAlert days={30} compact /></div>
 
