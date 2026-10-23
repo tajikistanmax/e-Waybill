@@ -15,17 +15,18 @@ spring:
   datasource:
     url: ${DB_URL:jdbc:postgresql://localhost:5442/waybill}
     username: ${DB_USER:epd}
-    password: ${DB_PASSWORD:epd_dev_password}
+    password: ${DB_PASSWORD}
   jpa:
     hibernate:
       ddl-auto: validate
     open-in-view: false
   flyway:
     enabled: true
-    # БД развёрнутого стенда может опережать этот checkout на служебные миграции,
-    # отсутствующие в коде (V10 waybill_request_one_pending). Их отсутствие в
-    # classpath — future/missing — не должно останавливать старт.
-    ignore-migration-patterns: "*:missing,*:future"
+    # 23.10.2026: убран ignore-migration-patterns "*:missing,*:future" — проверено, что в
+    # db/migration нет дырявой нумерации (V1..V33 подряд, без пропусков/дублей) и что
+    # flyway_schema_history живого стенда (epd-prod-postgres/waybill) содержит ровно эти же
+    # 33 записи, все success=true. Молчаливый дрейф схемы больше не маскируется —
+    # несовпадение теперь останавливает старт.
   servlet:
     multipart:
       # Вложения к ПЛ (CMR / накладные / фото груза) — скан-копии до ~12 МБ.
@@ -54,8 +55,11 @@ epd:
     # (source=AGGREGATOR) покрыты абонементом и не тарифицируются в любом случае.
     enabled: ${PAYMENT_ENABLED:false}
     fee-somoni: ${PAYMENT_FEE:10.00}
-    # Секрет webhook платёжного шлюза (X-Payment-Secret). В проде заменить!
-    webhook-secret: ${PAYMENT_WEBHOOK_SECRET:dev_webhook_secret}
+    # Секрет webhook платёжного шлюза (X-Payment-Secret). Дефолта в репозитории нет умышленно
+    # (найдено 23.10.2026: dev_webhook_secret был в списке известных слабых секретов в
+    # PaymentWebhookController, т.е. "дефолтная" защита сама себя обнуляла). Пусто — вебхук
+    # отвечает отказом (см. PaymentWebhookController), а не пропускает запросы.
+    webhook-secret: ${PAYMENT_WEBHOOK_SECRET:}
   events:
     # Kafka-topic статусных событий ПЛ — читают единый кабинет, аналитика, антифрод
     topic: ${EVENTS_TOPIC:epd.waybill.status}

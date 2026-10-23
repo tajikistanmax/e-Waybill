@@ -36,7 +36,7 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain securityFilterChain(
             HttpSecurity http, RateLimitFilter rateLimitFilter,
-            @org.springframework.beans.factory.annotation.Value("${epd.security.docs-open:true}") boolean docsOpen) throws Exception {
+            @org.springframework.beans.factory.annotation.Value("${epd.security.docs-open:false}") boolean docsOpen) throws Exception {
         http
                 .addFilterBefore(rateLimitFilter, BearerTokenAuthenticationFilter.class)
                 // Внешняя учётка интегратора — только в разделы своих каналов (G2).

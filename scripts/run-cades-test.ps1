@@ -21,7 +21,10 @@ $p9099 = Get-NetTCPConnection -LocalPort 9099 -State Listen -ErrorAction Silentl
 if ($p9099) { Stop-Process -Id $p9099.OwningProcess -Force; Start-Sleep -Seconds 1 }
 Start-Process $java -ArgumentList @('-cp', $mockDir, 'CryptoServiceMock', '9099') -WindowStyle Hidden -RedirectStandardOutput $mockLog
 Start-Sleep -Seconds 3
-$qrKey = ((Get-Content $mockLog | Where-Object { $_ -like 'QR_SIGNING_KEY=*' } | Select-Object -First 1) -replace '^QR_SIGNING_KEY=', '')
+# 23.10.2026: ключ забирается по HTTP (GET /qr-key), а не из лога stdout — мок больше не
+# печатает приватный ключ в консоль/файл (см. CryptoServiceMock.java).
+$qrKey = $null
+try { $qrKey = (Invoke-WebRequest 'http://localhost:9099/qr-key' -TimeoutSec 5 -UseBasicParsing).Content } catch {}
 if (-not $qrKey) { Write-Output 'НЕ удалось получить QR-ключ из крипто-сервиса'; exit 1 }
 try { $h = (Invoke-RestMethod 'http://localhost:9099/' -TimeoutSec 3).status } catch { $h = 'DOWN' }
 Write-Output "  крипто-сервис: $h; ключ QR получен"

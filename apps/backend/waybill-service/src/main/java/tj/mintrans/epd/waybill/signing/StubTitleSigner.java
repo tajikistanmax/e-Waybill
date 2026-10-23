@@ -18,7 +18,7 @@ import java.util.UUID;
  * квалифицированную ЭП: epd.signing.mode=cades ({@link CadesTitleSigner}).
  */
 @Component
-@ConditionalOnProperty(name = "epd.signing.mode", havingValue = "stub", matchIfMissing = true)
+@ConditionalOnProperty(name = "epd.signing.mode", havingValue = "stub")
 public class StubTitleSigner implements TitleSigner {
 
     private static final Logger log = LoggerFactory.getLogger(StubTitleSigner.class);

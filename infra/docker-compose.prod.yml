@@ -121,6 +121,10 @@ services:
     image: epd/master-data:0.1.0
     container_name: epd-prod-master-data
     environment:
+      # Профиль prod — включает проверку ProdStubGuard (23.10.2026): запуск с
+      # UNIFIED_PLATFORM_MODE=stub при этом профиле падает при старте с понятной ошибкой
+      # вместо тихой имитации налоговой/ГАИ в проде.
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-prod}
       DB_URL: jdbc:postgresql://postgres:5432/masterdata
       DB_USER: ${DB_USER:-epd}
       DB_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD не задан — задайте пароль в infra/.env}
@@ -204,6 +208,10 @@ services:
     image: epd/waybill:0.1.0
     container_name: epd-prod-waybill
     environment:
+      # Профиль prod — включает проверку ProdStubGuard (23.10.2026): запуск с
+      # SIGNING_MODE=stub при этом профиле падает при старте с понятной ошибкой вместо
+      # тихой подписи титулов SHA-256 (не юридически значимой ЭП) в проде.
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-prod}
       DB_URL: jdbc:postgresql://postgres:5432/waybill
       DB_USER: ${DB_USER:-epd}
       DB_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD не задан — задайте пароль в infra/.env}

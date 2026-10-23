@@ -8,16 +8,25 @@
 #
 # Keycloak из стека убран 24.09.2026 (вход — в самой платформе), поэтому переопределений его
 # адреса здесь больше нет.
+# SPRING_PROFILES_ACTIVE переопределён на "local" (23.10.2026): docker-compose.prod.yml
+# с 23.10.2026 ставит профиль prod по умолчанию, при котором ProdStubGuard требует
+# настоящих SIGNING_MODE=cades/UNIFIED_PLATFORM_MODE=http — на локальном стенде
+# разработчика их нет и не предполагается (нет доступа к Crypto Service УЦ/единой
+# платформе). На боевом сервере 10.10.29.70 этот файл НЕ применяется — там профиль
+# остаётся prod, и гвард продолжает жёстко требовать реальные интеграции.
 services:
   master-data:
     ports:
       - "8081:8081"
     environment:
+      SPRING_PROFILES_ACTIVE: local
       # Демо- и QA-учётки из экспорта realm — только на локальном стенде (в prod по умолчанию выкл.).
       AUTH_BOOTSTRAP_REALM_FILE: /opt/epd/auth-import/epd-realm.json
   waybill:
     ports:
       - "8082:8082"
+    environment:
+      SPRING_PROFILES_ACTIVE: local
   web:
     ports:
       - "3000:3000"

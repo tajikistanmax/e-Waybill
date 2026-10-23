@@ -40,7 +40,7 @@ public class PaymentWebhookController {
 
     public PaymentWebhookController(WaybillService service,
                                     @Value("${epd.payment.enabled:false}") boolean paymentEnabled,
-                                    @Value("${epd.payment.webhook-secret:dev_webhook_secret}") String webhookSecret) {
+                                    @Value("${epd.payment.webhook-secret:}") String webhookSecret) {
         this.service = service;
         this.paymentEnabled = paymentEnabled;
         this.webhookSecret = webhookSecret;

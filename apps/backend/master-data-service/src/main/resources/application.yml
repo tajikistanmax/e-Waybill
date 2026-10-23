@@ -13,7 +13,7 @@ spring:
   datasource:
     url: ${DB_URL:jdbc:postgresql://localhost:5442/masterdata}
     username: ${DB_USER:epd}
-    password: ${DB_PASSWORD:epd_dev_password}
+    password: ${DB_PASSWORD}
   data:
     # Redis для кэша справочников/политик (Spring Cache). В compose хост = redis
     # (SPRING_DATA_REDIS_HOST), локально — localhost. Подключение ленивое: недоступность
@@ -27,10 +27,11 @@ spring:
     open-in-view: false
   flyway:
     enabled: true
-    # БД развёрнутого стенда может опережать этот checkout на служебные миграции,
-    # отсутствующие в коде (напр. V26 waybill_status_names). Их отсутствие в
-    # classpath не должно останавливать применение новых миграций порта «Роҳхат».
-    ignore-migration-patterns: "*:missing,*:future"
+    # 23.10.2026: убран ignore-migration-patterns "*:missing,*:future" — проверено, что в
+    # db/migration нет дырявой нумерации (V1..V89 подряд, без пропусков/дублей) и что
+    # flyway_schema_history живого стенда (epd-prod-postgres/masterdata) содержит ровно эти
+    # же 89 записей, все success=true. Молчаливый дрейф схемы (БД «опережает» или «отстаёт»
+    # от classpath) больше не маскируется — несовпадение теперь останавливает старт.
   servlet:
     multipart:
       # Скан-копии учредительных документов организации (PDF/изображения) — до ~12 МБ

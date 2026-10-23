@@ -52,8 +52,8 @@ public class SecurityConfig {
     private static final Logger log = LoggerFactory.getLogger(SecurityConfig.class);
 
     public SecurityConfig(
-            @org.springframework.beans.factory.annotation.Value("${epd.security.aggregator-open:true}") boolean aggregatorOpen,
-            @org.springframework.beans.factory.annotation.Value("${epd.security.docs-open:true}") boolean docsOpen) {
+            @org.springframework.beans.factory.annotation.Value("${epd.security.aggregator-open:false}") boolean aggregatorOpen,
+            @org.springframework.beans.factory.annotation.Value("${epd.security.docs-open:false}") boolean docsOpen) {
         this.aggregatorOpen = aggregatorOpen;
         this.docsOpen = docsOpen;
     }

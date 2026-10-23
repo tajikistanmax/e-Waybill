@@ -31,7 +31,7 @@ echo "== Секреты (infra/.env)"
 if [ ! -f .env ]; then
     err "нет файла infra/.env — секреты стенда (см. DEPLOY.md, раздел 2)"
 else
-    for v in DB_PASSWORD MINIO_PASSWORD SERVICE_ACCOUNT_PASSWORD MEDDATA_ENCRYPTION_KEY QR_SIGNING_KEY PAYMENT_WEBHOOK_SECRET BACKUP_ENCRYPTION_KEY EPD_TLS_HOST; do
+    for v in DB_PASSWORD MINIO_PASSWORD SERVICE_ACCOUNT_PASSWORD MEDDATA_ENCRYPTION_KEY QR_SIGNING_KEY BACKUP_ENCRYPTION_KEY EPD_TLS_HOST; do
         if [ -n "$(envval "$v")" ]; then ok "$v задан"; else err "$v не задан"; fi
     done
     dbpw=$(envval DB_PASSWORD)
@@ -54,10 +54,6 @@ else
         err "DB_PASSWORD и MINIO_PASSWORD должны быть разными"
     fi
     pw=$(envval PAYMENT_WEBHOOK_SECRET)
-    case "$pw" in
-        ""|dev_webhook_secret|epd_webhook_dev_secret) err "PAYMENT_WEBHOOK_SECRET пустой или из репозитория — waybill не запустится при включённой оплате" ;;
-        *) if [ ${#pw} -lt 16 ]; then err "PAYMENT_WEBHOOK_SECRET короче 16 символов"; fi ;;
-    esac
     sp=$(envval SERVICE_ACCOUNT_PASSWORD)
     if [ -n "$sp" ] && [ ${#sp} -lt 16 ]; then err "SERVICE_ACCOUNT_PASSWORD короче 16 символов"; fi
     signing_mode=$(envval SIGNING_MODE)
@@ -70,9 +66,56 @@ else
         stub|"") err "SIGNING_MODE не равен cades — заглушка SHA-256 не является юридически значимой ЭП" ;;
         *) err "неподдерживаемый SIGNING_MODE (ожидается cades)" ;;
     esac
+    # 23.10.2026: та же логика, что у SIGNING_MODE — заглушка единой платформы Минтранса
+    # (налоговая/ГАИ) в проде недопустима (см. ProdStubGuard в master-data-service).
+    unified_mode=$(envval UNIFIED_PLATFORM_MODE)
+    case "$unified_mode" in
+        http)
+            unified_url=$(envval UNIFIED_PLATFORM_URL)
+            if [ -n "$unified_url" ]; then ok "UNIFIED_PLATFORM_MODE=http, адрес платформы задан"
+            else err "UNIFIED_PLATFORM_URL не задан при UNIFIED_PLATFORM_MODE=http"; fi
+            ;;
+        stub|"") err "UNIFIED_PLATFORM_MODE не равен http — заглушка налоговой/ГАИ недопустима в проде" ;;
+        *) err "неподдерживаемый UNIFIED_PLATFORM_MODE (ожидается http)" ;;
+    esac
+    # Открытые каналы без токена — допустимы только явным решением (dev/тестовый стенд).
+    # На боевом сервере AGGREGATOR_OPEN/DOCS_OPEN должны быть false (или не заданы — тот же
+    # эффект: SecurityConfig по умолчанию закрыт с 23.10.2026).
+    agg_open=$(envval AGGREGATOR_OPEN)
+    if [ "$agg_open" = "true" ]; then
+        err "AGGREGATOR_OPEN=true — API агрегатора (/api/v1/aggregator/**) открыт без токена; для прода задайте false"
+    else
+        ok "AGGREGATOR_OPEN — закрыт (false/не задан)"
+    fi
+    docs_open=$(envval DOCS_OPEN)
+    if [ "$docs_open" = "true" ]; then
+        err "DOCS_OPEN=true — Swagger/OpenAPI открыт анониму (поверхность атаки); для прода задайте false"
+    else
+        ok "DOCS_OPEN — закрыт (false/не задан)"
+    fi
+    # Секрет вебхука оплаты обязателен ТОЛЬКО когда оплата включена (PAYMENT_ENABLED;
+    # в infra/docker-compose.prod.yml default — true, т.е. пустое значение в .env = включено).
+    payment_enabled=$(envval PAYMENT_ENABLED)
+    [ -z "$payment_enabled" ] && payment_enabled=true
+    if [ "$payment_enabled" = "true" ]; then
+        case "$pw" in
+            ""|dev_webhook_secret|epd_webhook_dev_secret)
+                err "PAYMENT_ENABLED=true (или не задан — дефолт true), а PAYMENT_WEBHOOK_SECRET пустой/из репозитория"
+                ;;
+            *)
+                if [ ${#pw} -lt 16 ]; then err "PAYMENT_WEBHOOK_SECRET короче 16 символов"; else ok "PAYMENT_WEBHOOK_SECRET — задан, длина допустима"; fi
+                ;;
+        esac
+    else
+        ok "PAYMENT_ENABLED=false — секрет вебхука не требуется"
+    fi
+    # QR_SIGNING_KEY — проверка задан/не задан уже выполнена выше (цикл по списку секретов),
+    # здесь — предметная проверка связности с режимом подписи: пустой ключ допустим только
+    # для SIGNING_MODE=stub, а в проде он обязателен к cades (см. выше), т.е. фактически
+    # всегда должен быть задан на боевом сервере.
     # Учётные записи: боевая установка — один администратор из .env, без демо-учёток из репозитория.
     if [ -n "$(envval AUTH_BOOTSTRAP_REALM_FILE)" ]; then
-        warn "AUTH_BOOTSTRAP_REALM_FILE задан — при пустой базе будут созданы демо/QA-учётки с паролями из репозитория. На боевом сервере — оставить пустым"
+        err "AUTH_BOOTSTRAP_REALM_FILE задан — при пустой базе будут созданы демо/QA-учётки с паролями из репозитория. На боевом сервере — оставить пустым"
     fi
     if [ -n "$(envval EPD_AUTH_ADMIN_USERNAME)" ] && [ -n "$(envval EPD_AUTH_ADMIN_PASSWORD)" ]; then
         ok "начальный администратор (EPD_AUTH_ADMIN_*) задан"

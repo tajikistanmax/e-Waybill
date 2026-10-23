@@ -64,6 +64,14 @@ class WaybillLifecycleIntegrationTest {
         // Т3 -> AWAITING_PAYMENT, confirm-payment -> PAID -> READY. Зеркалим тот же контур,
         // иначе оплатный этап статусной машины (AWAITING_PAYMENT/PAID) остался бы непроверенным.
         registry.add("epd.payment.enabled", () -> "true");
+        // С 23.10.2026 PAYMENT_WEBHOOK_SECRET больше не имеет дефолта в проде (см.
+        // changelog/2026-10-23-безопасные-дефолты-и-предполётные-проверки.md) — при
+        // epd.payment.enabled=true PaymentWebhookController.validateSecret() требует
+        // непустой, не из чёрного списка, не короче 16 символов секрет. Тест ранее не
+        // замечал этого (терпел на дефолтном "dev_webhook_secret", который сам в чёрном
+        // списке) только потому, что падал раньше на MedicalDataCrypto — задаём честный
+        // тестовый секрет явно, а не полагаемся на дефолт.
+        registry.add("epd.payment.webhook-secret", () -> "integration-test-webhook-secret-32chars");
     }
 
     private static final String ORG_RMA = "025680800";

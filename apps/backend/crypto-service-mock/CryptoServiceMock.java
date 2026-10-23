@@ -26,9 +26,12 @@ import java.util.Base64;
  * публичным ключом, — имитируя квалифицированную ЭЦП (CAdES-BES/T) боевого УЦ РТ. Так весь
  * процесс подписания титулов Т1–Т6 проверяется end-to-end до появления реального Crypto Service.
  *
- * Дополнительно печатает на старте QR_SIGNING_KEY=<EC JWK> — стабильный ключ подписи QR
- * (в проде выдаётся из HSM/Vault; здесь генерируется), чтобы waybill-service стартовал в
- * режиме cades (иначе fail-fast требует стабильный ключ QR).
+ * Ключ подписи QR (второй EC-ключ, стабильный для waybill-service в режиме cades — иначе
+ * fail-fast требует стабильный QR_SIGNING_KEY) ОТДАЁТСЯ ТОЛЬКО по HTTP GET /qr-key, НЕ
+ * печатается в stdout (23.10.2026, безопасные дефолты): приватный ключ в консольном/файловом
+ * логе — лишняя поверхность утечки (логи легко попадают в CI-вывод, скрытные снимки терминала,
+ * общие временные файлы), даже когда ключ одноразовый и используется только локально.
+ * scripts/run-cades-test.ps1 забирает ключ через этот эндпоинт.
  *
  * Запуск:  javac CryptoServiceMock.java  &&  java CryptoServiceMock [порт=9099]
  * Зависимостей нет — только JDK (com.sun.net.httpserver).
@@ -36,6 +39,7 @@ import java.util.Base64;
 public class CryptoServiceMock {
 
     static KeyPair signingKey;
+    static String qrSigningKeyJwk;
 
     public static void main(String[] args) throws Exception {
         int port = args.length > 0 ? Integer.parseInt(args[0]) : 9099;
@@ -44,16 +48,18 @@ public class CryptoServiceMock {
         g.initialize(new ECGenParameterSpec("secp256r1"));
         signingKey = g.generateKeyPair();
 
-        // Ключ подписи QR (второй EC-ключ) — печатаем как приватный JWK для QR_SIGNING_KEY.
+        // Ключ подписи QR (второй EC-ключ) — приватный JWK для QR_SIGNING_KEY, отдаётся
+        // только по запросу (GET /qr-key), не печатается в stdout.
         KeyPair qr = g.generateKeyPair();
-        System.out.println("QR_SIGNING_KEY=" + ecPrivateJwk((ECPublicKey) qr.getPublic(), (ECPrivateKey) qr.getPrivate(), "epd-mock-qr"));
+        qrSigningKeyJwk = ecPrivateJwk((ECPublicKey) qr.getPublic(), (ECPrivateKey) qr.getPrivate(), "epd-mock-qr");
 
         HttpServer server = HttpServer.create(new InetSocketAddress(port), 0);
         server.createContext("/api/v1/sign", CryptoServiceMock::handleSign);
+        server.createContext("/qr-key", ex -> respond(ex, 200, qrSigningKeyJwk));
         server.createContext("/", ex -> respond(ex, 200, "{\"service\":\"crypto-service-mock\",\"status\":\"UP\"}"));
         server.setExecutor(null);
         server.start();
-        System.out.println("CRYPTO-MOCK: тестовый крипто-сервис УЦ на порту " + port + " (POST /api/v1/sign). НЕ для прода.");
+        System.out.println("CRYPTO-MOCK: тестовый крипто-сервис УЦ на порту " + port + " (POST /api/v1/sign, GET /qr-key). НЕ для прода.");
     }
 
     static void handleSign(HttpExchange ex) throws IOException {

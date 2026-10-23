@@ -12,9 +12,16 @@ import java.util.Optional;
  * DEV-ЗАГЛУШКА единой платформы Минтранса: детерминированно имитирует ответы
  * налоговой (субъект по ИНН) и ГАИ (ТС по госномеру, ВУ) — чтобы сквозной сценарий
  * работал без реальной интеграции. В проде: UNIFIED_PLATFORM_MODE=http.
+ *
+ * <p>23.10.2026: сроки действия (лицензия, техосмотр, страховка, ВУ, медсправка, допуски
+ * ADR) больше НЕ утверждаются как безусловно действующие — заглушка детерминированно
+ * имитирует и просроченные случаи ({@link #validOrExpired}/{@link #validOrExpiredMonths}).
+ * Заглушка, которая всегда отвечает «действует», ни разу не упражняет блокирующие
+ * проверки {@code WaybillService.checkPreflight} — ни в dev, ни по ошибке в проде (если
+ * забыли переключить {@code UNIFIED_PLATFORM_MODE=http}, см. {@code ProdStubGuard}).</p>
  */
 @Component
-@ConditionalOnProperty(name = "epd.unified-platform.mode", havingValue = "stub", matchIfMissing = true)
+@ConditionalOnProperty(name = "epd.unified-platform.mode", havingValue = "stub")
 public class StubUnifiedPlatformClient implements UnifiedPlatformClient {
 
     private static final List<String> LEGAL_NAMES = List.of(
@@ -68,10 +75,48 @@ public class StubUnifiedPlatformClient implements UnifiedPlatformClient {
                 legal ? "info@" + inn + ".tj" : null,
                 legal ? PERSON_NAMES.get((h / 3) % PERSON_NAMES.size()) : null,
                 today.minusYears(1),
-                today.plusYears(2), // лицензия действует — блокирующие проверки проходят
+                // Лицензия: НЕ всегда действует (23.10.2026). Заглушка имитирует реальную
+                // единую платформу, где часть лицензий просрочена — блокирующие проверки
+                // WaybillService.checkPreflight обязаны уметь это отклонять. Раньше здесь
+                // стояло безусловное today.plusYears(2) — заглушка утверждала, что лицензия
+                // действует ВСЕГДА, то есть ни разу не проверяла реальный путь отказа.
+                validOrExpired(today, h, LICENSE_SALT, 2),
                 legal ? "ЛП-%06d".formatted(h % 1_000_000) : null, // № лицензии перевозчика (только юрлицо)
                 // Дата рождения — только для физлица/ИП (у юрлица нет): детерминированно 21–60 лет назад.
                 legal ? null : today.minusYears(21 + h % 40).minusDays(h % 365)));
+    }
+
+    // Соли для independent-варьирования разных сроков действия одного и того же хеша
+    // (иначе лицензия/техосмотр/страховка одного ТС/субъекта всегда синхронно
+    // валидны или просрочены, что не отражает реальность).
+    private static final int LICENSE_SALT = 0x5A17;
+    private static final int TECH_INSPECTION_SALT = 0x7EC4;
+    private static final int CONTROL_CARD_SALT = 0x0CC1;
+    private static final int INSURANCE_SALT = 0x1115;
+    private static final int ADR_VEHICLE_SALT = 0xADA1;
+    private static final int DRIVER_LICENSE_SALT = 0xD71C;
+    private static final int MED_CERT_SALT = 0xA1D7;
+    private static final int SAFETY_COURSE_SALT = 0x5AFE;
+    private static final int ADR_DRIVER_SALT = 0xADA2;
+
+    /**
+     * Срок действия: примерно 1 из 5 — уже просрочен (детерминированно по хешу + соли).
+     *
+     * <p>До 23.10.2026 все подобные поля в заглушке были безусловно действующими
+     * (комментарии вида «лицензия действует — блокирующие проверки проходят»). Заглушка
+     * не имеет права утверждать это: это решает блокирующие проверки
+     * {@code WaybillService.checkPreflight} (лицензия/техосмотр/страховка), и заглушка,
+     * которая ВСЕГДА отвечает «действует», никогда не упражняет путь отказа — ни в dev,
+     * ни (если забыли переключить режим) по ошибке в проде.</p>
+     */
+    private static LocalDate validOrExpired(LocalDate today, int h, int salt, int yearsIfValid) {
+        return validOrExpiredMonths(today, h, salt, yearsIfValid * 12);
+    }
+
+    private static LocalDate validOrExpiredMonths(LocalDate today, int h, int salt, int monthsIfValid) {
+        long mixed = Math.abs((long) (h ^ salt) * 2654435761L % 1_000_000L);
+        boolean expired = mixed % 5 == 0;
+        return expired ? today.minusMonths(1 + mixed % 24) : today.plusMonths(monthsIfValid);
     }
 
     @Override
@@ -102,12 +147,15 @@ public class StubUnifiedPlatformClient implements UnifiedPlatformClient {
                 (short) (2012 + h % 13),
                 capacity,
                 transportType >= 5 ? BigDecimal.valueOf(h % 15 + 5) : null,
-                today.plusMonths(6),    // техосмотр действует
-                today.plusMonths(12),   // контрольная карточка действует
+                // Техосмотр/контрольная карточка/страховка/ADR — не всегда действуют (23.10.2026,
+                // см. validOrExpiredMonths): безусловный «всегда действует» не упражняет блокирующие
+                // проверки WaybillService.checkPreflight ни разу — ни в dev, ни в проде по ошибке.
+                validOrExpiredMonths(today, h, TECH_INSPECTION_SALT, 6),
+                validOrExpiredMonths(today, h, CONTROL_CARD_SALT, 12),
                 "КК%06d".formatted(h % 1_000_000),
                 transportType == 6 ? "INT-%04d-%04d".formatted(today.getYear(), h % 10_000) : null, // сертификат — только межд. грузовые
-                today.plusMonths(9),    // страховка действует
-                today.plusYears(1)));   // допуск ADR действует
+                validOrExpiredMonths(today, h, INSURANCE_SALT, 9),
+                validOrExpired(today, h, ADR_VEHICLE_SALT, 1)));
     }
 
     @Override
@@ -140,12 +188,15 @@ public class StubUnifiedPlatformClient implements UnifiedPlatformClient {
         return Optional.of(new DriverLicense(
                 "AB%07d".formatted(h % 10_000_000),
                 h % 2 == 0 ? "B, C, D" : "B, D",
-                today.plusYears(3),
+                // ВУ/медсправка/курс БДД/ADR — не всегда действуют (23.10.2026, см.
+                // validOrExpired выше): безусловный «всегда действует» не упражняет блокирующие
+                // проверки WaybillService.checkPreflight ни разу — ни в dev, ни в проде по ошибке.
+                validOrExpired(today, h, DRIVER_LICENSE_SALT, 3),
                 "MC%06d".formatted(h % 1_000_000),
-                today.plusYears(1),
+                validOrExpired(today, h, MED_CERT_SALT, 1),
                 "БДД-%06d".formatted(h % 1_000_000),
-                today.plusYears(2),   // курс БДД действует
-                today.plusYears(1),   // допуск ADR действует
+                validOrExpired(today, h, SAFETY_COURSE_SALT, 2),
+                validOrExpired(today, h, ADR_DRIVER_SALT, 1),
                 (short) (h % 30 + 1))); // общий стаж вождения, лет (1..30)
     }
 }
