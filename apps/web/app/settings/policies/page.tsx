@@ -17,6 +17,18 @@ const RULE_TYPES: Record<string, 'bool' | 'int'> = {
   max_validity_days: 'int',
   min_rest_hours: 'int',
   min_driver_experience_years: 'int',
+  // Проверки данных при оформлении ПЛ (лицензия/сроки/категория ВУ) — по умолчанию ВЫКЛЮЧЕНЫ
+  // (решение владельца 27.10.2026, запуск с 500+ организациями и 90 000+ водителей/ТС из legacy
+  // без гарантии актуальности этих полей): причина всё равно видна диспетчеру как предупреждение
+  // на шаге «Проверка» мастера создания ПЛ, просто не блокирует оформление, пока организация не
+  // включит нужное правило здесь — по готовности, по одному пункту.
+  enforce_org_license: 'bool',
+  enforce_tech_inspection: 'bool',
+  enforce_control_card: 'bool',
+  enforce_insurance: 'bool',
+  enforce_driver_license: 'bool',
+  enforce_med_cert: 'bool',
+  enforce_license_category: 'bool',
 };
 const ALL_RULES = Object.keys(RULE_TYPES);
 

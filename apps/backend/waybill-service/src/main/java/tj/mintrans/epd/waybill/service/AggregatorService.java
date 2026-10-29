@@ -162,8 +162,16 @@ public class AggregatorService {
         // Legacy-семантика: новый запрос закрывает предыдущие действующие ПЛ (ТС или водитель)
         cancelOpenWaybills(transportRegistrationNumber, driverRma);
 
-        // Лицензии/сроки/принадлежность — те же блокирующие проверки, что и в портальном потоке
-        waybillService.runBlockingChecks(org, driver, vehicle);
+        // Лицензии/сроки/принадлежность/тип/ценз/отдых — те же блокирующие проверки, что и в
+        // портальном потоке WaybillService.create (найдено при аудите 27.10.2026: агрегаторский
+        // рейс раньше мог пройти при отключённом типе ПЛ, при запрете организации на WB_TAXI,
+        // без учёта минимального отдыха водителя и без возрастного/стажевого ценза — комментарий
+        // этого файла утверждал «те же проверки», но по факту четыре из них не вызывались).
+        waybillService.assertTypeEnabled(WaybillType.WB_TAXI);
+        waybillService.runBlockingChecks(org, driver, vehicle, WaybillType.WB_TAXI);
+        waybillService.assertTypeAllowed(org, WaybillType.WB_TAXI);
+        waybillService.assertDriverRested(driverRma, organizationRma, WaybillType.WB_TAXI);
+        waybillService.assertDriverEligible(driver, organizationRma, WaybillType.WB_TAXI);
 
         int plannedOdometerExit = intOrZero(vehicle.get("odometer"));
         int plannedOdometerEntry = plannedOdometerExit + distance;
@@ -245,7 +253,18 @@ public class AggregatorService {
     private static String str(Object o) { return o == null ? "" : o.toString(); }
 
     private static Integer intOrNull(Object o) {
-        return o instanceof Number n ? n.intValue() : o != null ? Integer.valueOf(o.toString()) : null;
+        if (o instanceof Number n) {
+            return n.intValue();
+        }
+        if (o == null) {
+            return null;
+        }
+        // Как WaybillService.intOrNull: нечисловое значение из master-data не должно ронять запрос.
+        try {
+            return Integer.valueOf(o.toString().trim());
+        } catch (NumberFormatException e) {
+            return null;
+        }
     }
 
     private static int intOrZero(Object o) {

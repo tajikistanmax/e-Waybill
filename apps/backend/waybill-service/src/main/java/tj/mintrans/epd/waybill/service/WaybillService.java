@@ -13,7 +13,6 @@ import tj.mintrans.epd.waybill.repository.WaybillRepository;
 import tj.mintrans.epd.waybill.repository.WaybillStatusEventRepository;
 import tj.mintrans.epd.waybill.repository.WaybillTitleRepository;
 import tj.mintrans.epd.waybill.config.CurrentUser;
-import tj.mintrans.epd.waybill.config.CurrentUser;
 import tj.mintrans.epd.waybill.config.TenantScope;
 import tj.mintrans.epd.waybill.domain.InspectionReason;
 import tj.mintrans.epd.waybill.domain.WaybillInspection;
@@ -117,7 +116,7 @@ public class WaybillService {
         var vehicle = masterData.findVehicle(vehicleRegNumber)
                 .orElseThrow(() -> new NotFoundException("Транспорт не найден"));
 
-        runBlockingChecks(org, driver, vehicle);
+        runBlockingChecks(org, driver, vehicle, type);
         assertTypeAllowed(org, type);
         assertDriverRested(driverRma, organizationRma, type);
         assertDriverEligible(driver, organizationRma, type);
@@ -480,8 +479,25 @@ public class WaybillService {
         }
     }
 
-    void runBlockingChecks(Map<String, Object> org, Map<String, Object> driver, Map<String, Object> vehicle) {
+    /**
+     * Включённость проверки данных (лицензия/сроки/категория ВУ) — движок политик, ключ
+     * {@code enforce_*}, уровни NATIONAL/ORGANIZATION/VEHICLE_TYPE (как {@code block_minor_driver}).
+     * По умолчанию ВЫКЛЮЧЕНО (решение владельца 27.10.2026): на момент запуска в базе 500+
+     * организаций и 90 000+ водителей/ТС, перенесённых из legacy без гарантии, что все сроки/
+     * категории уже актуальны и заполнены по новым правилам — если включить проверки сразу для
+     * всех, заявители массово не смогут получить путевой лист, пока не донесут документы. Причина
+     * по-прежнему видна диспетчеру как предупреждение (см. {@link #collectEligibility}) — платформа
+     * не скрывает проблему, просто не блокирует ею работу, пока конкретная организация/тип ТС не
+     * включит проверку себе через Настройки → Правила (постепенное включение по мере готовности).
+     */
+    private boolean enforced(String organizationRma, WaybillType type, String rule) {
+        return Boolean.parseBoolean(String.valueOf(
+                masterData.effectivePolicies(organizationRma, type.name()).getOrDefault(rule, "false")).trim());
+    }
+
+    void runBlockingChecks(Map<String, Object> org, Map<String, Object> driver, Map<String, Object> vehicle, WaybillType type) {
         String orgId = str(org.get("id"));
+        String orgRma = str(org.get("rma"));
         if (!orgId.equals(str(driver.get("organizationId")))) {
             throw new UnprocessableException("Водитель не принадлежит организации");
         }
@@ -503,41 +519,55 @@ public class WaybillService {
         }
         var today = LocalDate.now();
         // Лицензия обязательна для перевозчиков общего пользования (type_company = 1)
-        if (Integer.valueOf(1).equals(intOrNull(org.get("typeCompany")))) {
-            var licenseTo = dateOrNull(org.get("licenseTo"));
-            if (licenseTo == null || licenseTo.isBefore(today)) {
-                throw new UnprocessableException("Лицензия организации отсутствует или истекла");
+        if (enforced(orgRma, type, "enforce_org_license")) {
+            if (Integer.valueOf(1).equals(intOrNull(org.get("typeCompany")))) {
+                var licenseTo = dateOrNull(org.get("licenseTo"));
+                if (licenseTo == null || licenseTo.isBefore(today)) {
+                    throw new UnprocessableException("Лицензия организации отсутствует или истекла");
+                }
+            } else {
+                // Legacy (AuthenticatesUsers → Notification): истёкшая лицензия блокирует работу
+                // организации любого вида; ведомственным без даты лицензии выписка не запрещается.
+                var licenseTo = dateOrNull(org.get("licenseTo"));
+                if (licenseTo != null && licenseTo.isBefore(today)) {
+                    throw new UnprocessableException("Срок лицензии организации истёк (" + licenseTo + ")");
+                }
             }
+        }
+        if (Integer.valueOf(1).equals(intOrNull(org.get("typeCompany"))) && enforced(orgRma, type, "enforce_control_card")) {
             var controlCard = dateOrNull(vehicle.get("controlCardValidTo"));
             if (controlCard == null || controlCard.isBefore(today)) {
                 throw new UnprocessableException("Контрольная карточка ТС отсутствует или истекла");
             }
-        } else {
-            // Legacy (AuthenticatesUsers → Notification): истёкшая лицензия блокирует работу
-            // организации любого вида; ведомственным без даты лицензии выписка не запрещается.
-            var licenseTo = dateOrNull(org.get("licenseTo"));
-            if (licenseTo != null && licenseTo.isBefore(today)) {
-                throw new UnprocessableException("Срок лицензии организации истёк (" + licenseTo + ")");
+        }
+        if (enforced(orgRma, type, "enforce_driver_license")) {
+            var licenseValidTo = dateOrNull(driver.get("licenseValidTo"));
+            if (licenseValidTo != null && licenseValidTo.isBefore(today)) {
+                throw new UnprocessableException("Срок действия водительского удостоверения истёк");
             }
         }
-        var licenseValidTo = dateOrNull(driver.get("licenseValidTo"));
-        if (licenseValidTo != null && licenseValidTo.isBefore(today)) {
-            throw new UnprocessableException("Срок действия водительского удостоверения истёк");
+        if (enforced(orgRma, type, "enforce_license_category")) {
+            assertLicenseMatchesVehicle(driver, vehicle);
         }
-        assertLicenseMatchesVehicle(driver, vehicle);
-        var medCert = dateOrNull(driver.get("medCertValidTo"));
-        if (medCert != null && medCert.isBefore(today)) {
-            throw new UnprocessableException("Срок действия медицинской справки водителя истёк");
+        if (enforced(orgRma, type, "enforce_med_cert")) {
+            var medCert = dateOrNull(driver.get("medCertValidTo"));
+            if (medCert != null && medCert.isBefore(today)) {
+                throw new UnprocessableException("Срок действия медицинской справки водителя истёк");
+            }
         }
-        var techInspection = dateOrNull(vehicle.get("techInspectionValidTo"));
-        if (techInspection == null || techInspection.isBefore(today)) {
-            throw new UnprocessableException("Технический осмотр ТС отсутствует или истёк");
+        if (enforced(orgRma, type, "enforce_tech_inspection")) {
+            var techInspection = dateOrNull(vehicle.get("techInspectionValidTo"));
+            if (techInspection == null || techInspection.isBefore(today)) {
+                throw new UnprocessableException("Технический осмотр ТС отсутствует или истёк");
+            }
         }
         // Страховой полис ТС (§13): мягкая проверка — блокирует только истёкшая страховка
         // (отсутствие данных не блокирует, как срок ВУ/медсправки — пробел в реплике не рушит рейс).
-        var insurance = dateOrNull(vehicle.get("insuranceValidTo"));
-        if (insurance != null && insurance.isBefore(today)) {
-            throw new UnprocessableException("Срок действия страхового полиса ТС истёк");
+        if (enforced(orgRma, type, "enforce_insurance")) {
+            var insurance = dateOrNull(vehicle.get("insuranceValidTo"));
+            if (insurance != null && insurance.isBefore(today)) {
+                throw new UnprocessableException("Срок действия страхового полиса ТС истёк");
+            }
         }
         // Один активный ПЛ на ТС и на водителя
         assertNoOpenWaybill(str(vehicle.get("registrationNumber")), str(driver.get("rma")));
@@ -568,7 +598,7 @@ public class WaybillService {
      * иначе требование обходится незаполненным полем, и включённое правило ничего не значит.
      * Сообщение прямо называет, чего не хватает, чтобы диспетчер понял, что чинить.</p>
      */
-    private void assertDriverEligible(Map<String, Object> driver, String organizationRma, WaybillType type) {
+    void assertDriverEligible(Map<String, Object> driver, String organizationRma, WaybillType type) {
         var policies = masterData.effectivePolicies(organizationRma, type.name());
 
         if (Boolean.parseBoolean(String.valueOf(policies.getOrDefault("block_minor_driver", "false")).trim())) {
@@ -604,7 +634,7 @@ public class WaybillService {
         }
     }
 
-    private void assertDriverRested(String driverRma, String organizationRma, WaybillType type) {
+    void assertDriverRested(String driverRma, String organizationRma, WaybillType type) {
         int minRest;
         try {
             minRest = Integer.parseInt(String.valueOf(
@@ -800,6 +830,12 @@ public class WaybillService {
         var today = LocalDate.now();
         Integer typeCompany = intOrNull(org.get("typeCompany"));
         String orgId = str(org.get("id"));
+        String orgRma = str(org.get("rma"));
+        // Проверки данных (лицензия/сроки/категория), не включённые в Настройки → Правила для этой
+        // организации/типа, остаются видимыми диспетчеру — но как предупреждение, а не отказ
+        // (см. {@link #enforced}): платформа не блокирует оформление ПЛ недостающими/просроченными
+        // данными, пока конкретная организация не подтвердила готовность включением правила.
+        java.util.function.Function<String, String> sev = rule -> enforced(orgRma, type, rule) ? "ERROR" : "WARN";
         if (Boolean.TRUE.equals(org.get("blocked"))) {
             out.add(new CheckResult("ORG_BLOCKED", "ERROR", "Организация заблокирована"));
         }
@@ -813,12 +849,12 @@ public class WaybillService {
         if (Integer.valueOf(1).equals(typeCompany)) {
             var licenseTo = dateOrNull(org.get("licenseTo"));
             if (licenseTo == null || licenseTo.isBefore(today)) {
-                out.add(new CheckResult("LICENSE_EXPIRED", "ERROR", "Лицензия организации отсутствует или истекла"));
+                out.add(new CheckResult("LICENSE_EXPIRED", sev.apply("enforce_org_license"), "Лицензия организации отсутствует или истекла"));
             }
         } else {
             var licenseTo = dateOrNull(org.get("licenseTo"));
             if (licenseTo != null && licenseTo.isBefore(today)) {
-                out.add(new CheckResult("LICENSE_EXPIRED", "ERROR", "Срок лицензии организации истёк (" + licenseTo + ")"));
+                out.add(new CheckResult("LICENSE_EXPIRED", sev.apply("enforce_org_license"), "Срок лицензии организации истёк (" + licenseTo + ")"));
             }
         }
         // Предупреждение за 30 дней до окончания лицензии (legacy: «пас аз N рӯз … қатъ карда мешавад»).
@@ -849,17 +885,17 @@ public class WaybillService {
             }
             var techInspection = dateOrNull(vehicle.get("techInspectionValidTo"));
             if (techInspection == null || techInspection.isBefore(today)) {
-                out.add(new CheckResult("TECH_INSPECTION", "ERROR", "Технический осмотр ТС отсутствует или истёк"));
+                out.add(new CheckResult("TECH_INSPECTION", sev.apply("enforce_tech_inspection"), "Технический осмотр ТС отсутствует или истёк"));
             }
             if (Integer.valueOf(1).equals(typeCompany)) {
                 var controlCard = dateOrNull(vehicle.get("controlCardValidTo"));
                 if (controlCard == null || controlCard.isBefore(today)) {
-                    out.add(new CheckResult("CONTROL_CARD", "ERROR", "Контрольная карточка ТС отсутствует или истекла"));
+                    out.add(new CheckResult("CONTROL_CARD", sev.apply("enforce_control_card"), "Контрольная карточка ТС отсутствует или истекла"));
                 }
             }
             var insurance = dateOrNull(vehicle.get("insuranceValidTo"));
             if (insurance != null && insurance.isBefore(today)) {
-                out.add(new CheckResult("INSURANCE_EXPIRED", "ERROR", "Срок действия страхового полиса ТС истёк"));
+                out.add(new CheckResult("INSURANCE_EXPIRED", sev.apply("enforce_insurance"), "Срок действия страхового полиса ТС истёк"));
             }
             if (!waybills.findByVehicleRegNumberAndStatusIn(
                     str(vehicle.get("registrationNumber")), WaybillStatus.OPEN_STATUSES).isEmpty()) {
@@ -878,11 +914,11 @@ public class WaybillService {
             }
             var licenseValidTo = dateOrNull(driver.get("licenseValidTo"));
             if (licenseValidTo != null && licenseValidTo.isBefore(today)) {
-                out.add(new CheckResult("DL_EXPIRED", "ERROR", "Срок действия водительского удостоверения истёк"));
+                out.add(new CheckResult("DL_EXPIRED", sev.apply("enforce_driver_license"), "Срок действия водительского удостоверения истёк"));
             }
             var medCert = dateOrNull(driver.get("medCertValidTo"));
             if (medCert != null && medCert.isBefore(today)) {
-                out.add(new CheckResult("MED_CERT_EXPIRED", "ERROR", "Срок действия медицинской справки водителя истёк"));
+                out.add(new CheckResult("MED_CERT_EXPIRED", sev.apply("enforce_med_cert"), "Срок действия медицинской справки водителя истёк"));
             }
             // Курс БДД (20-часовые занятия) для пассажирских/грузовых перевозок — предупреждение.
             if (type.isPassenger() || isCargo(type)) {
@@ -903,9 +939,62 @@ public class WaybillService {
             var required = requiredLicenseCategories(transportType);
             if (required != null && !licenseCategoriesMatch(transportType,
                     str(driver.get("licenseCategories")), required)) {
-                out.add(new CheckResult("DRIVER_CATEGORY", "ERROR",
+                out.add(new CheckResult("DRIVER_CATEGORY", sev.apply("enforce_license_category"),
                         "Категория ВУ не соответствует типу ТС: требуется «%s» (в реестре: «%s»)"
                                 .formatted(String.join("» или «", required), str(driver.get("licenseCategories")))));
+            }
+        }
+        // Возрастной ценз / стаж / минимальный отдых — те же правила движка политик, что
+        // assertDriverEligible/assertDriverRested (найдено при аудите 27.10.2026: preflight
+        // заявлен как полное зеркало блокирующих проверок, но эти три молчали — диспетчер видел
+        // «Доступен», а create() реально отвечал 422). Выключенное правило (по умолчанию) здесь
+        // не добавляет ничего — как и при создании, пробел в настройке не блокирует легальный рейс.
+        if (driver != null) {
+            var policies = masterData.effectivePolicies(orgRma, type.name());
+            if (Boolean.parseBoolean(String.valueOf(policies.getOrDefault("block_minor_driver", "false")).trim())) {
+                var birth = dateOrNull(driver.get("birthDate"));
+                if (birth == null) {
+                    out.add(new CheckResult("MINOR_DRIVER", "ERROR",
+                            "Включён возрастной ценз, но у водителя не заполнена дата рождения"));
+                } else if (birth.plusYears(18).isAfter(today)) {
+                    out.add(new CheckResult("MINOR_DRIVER", "ERROR", "Водитель несовершеннолетний — выпуск путевого листа запрещён"));
+                }
+            }
+            int minYears;
+            try {
+                minYears = Integer.parseInt(String.valueOf(policies.getOrDefault("min_driver_experience_years", "0")).trim());
+            } catch (NumberFormatException e) {
+                minYears = 0;
+            }
+            if (minYears > 0) {
+                Integer years = intOrNull(driver.get("experienceYears"));
+                if (years == null) {
+                    out.add(new CheckResult("MIN_EXPERIENCE", "ERROR",
+                            "Требуется стаж не менее %d лет, но у водителя стаж не заполнен".formatted(minYears)));
+                } else if (years < minYears) {
+                    out.add(new CheckResult("MIN_EXPERIENCE", "ERROR",
+                            "Стаж водителя %d лет — меньше требуемых %d".formatted(years, minYears)));
+                }
+            }
+            int minRest;
+            try {
+                minRest = Integer.parseInt(String.valueOf(policies.getOrDefault("min_rest_hours", "0")).trim());
+            } catch (NumberFormatException e) {
+                minRest = 0;
+            }
+            if (minRest > 0) {
+                var ended = java.util.EnumSet.of(WaybillStatus.RETURNED, WaybillStatus.COMPLETED);
+                var lastEnd = waybills.findByDriverRmaAndStatusIn(str(driver.get("rma")), ended).stream()
+                        .map(Waybill::getValidTo).filter(java.util.Objects::nonNull)
+                        .max(java.util.Comparator.naturalOrder()).orElse(null);
+                if (lastEnd != null) {
+                    var restUntil = lastEnd.plusHours(minRest);
+                    if (java.time.OffsetDateTime.now().isBefore(restUntil)) {
+                        out.add(new CheckResult("MIN_REST", "ERROR",
+                                "Не соблюдён минимальный отдых водителя (%d ч): следующий рейс не ранее %s"
+                                        .formatted(minRest, restUntil.toLocalDateTime())));
+                    }
+                }
             }
         }
         // Опасные грузы (ADR/ДОПОГ): свидетельство водителя и допуск ТС — предупреждение при отсутствии/истечении.
@@ -1780,16 +1869,22 @@ public class WaybillService {
             throw new UnprocessableException("Новый водитель отмечен как «Қарздор» (должник)");
         }
         var today = LocalDate.now();
-        var licenseValidTo = dateOrNull(driver.get("licenseValidTo"));
-        if (licenseValidTo != null && licenseValidTo.isBefore(today)) {
-            throw new UnprocessableException("Срок действия водительского удостоверения нового водителя истёк");
+        if (enforced(wb.getOrganizationRma(), wb.getWaybillType(), "enforce_driver_license")) {
+            var licenseValidTo = dateOrNull(driver.get("licenseValidTo"));
+            if (licenseValidTo != null && licenseValidTo.isBefore(today)) {
+                throw new UnprocessableException("Срок действия водительского удостоверения нового водителя истёк");
+            }
         }
-        var medCert = dateOrNull(driver.get("medCertValidTo"));
-        if (medCert != null && medCert.isBefore(today)) {
-            throw new UnprocessableException("Срок действия медицинской справки нового водителя истёк");
+        if (enforced(wb.getOrganizationRma(), wb.getWaybillType(), "enforce_med_cert")) {
+            var medCert = dateOrNull(driver.get("medCertValidTo"));
+            if (medCert != null && medCert.isBefore(today)) {
+                throw new UnprocessableException("Срок действия медицинской справки нового водителя истёк");
+            }
         }
         // Категория ВУ нового водителя должна подходить типу существующего ТС.
-        assertLicenseMatchesVehicle(driver, wb.getVehicleSnapshot());
+        if (enforced(wb.getOrganizationRma(), wb.getWaybillType(), "enforce_license_category")) {
+            assertLicenseMatchesVehicle(driver, wb.getVehicleSnapshot());
+        }
         if (!waybills.findByDriverRmaAndStatusIn(newDriverRma, WaybillStatus.OPEN_STATUSES).isEmpty()) {
             throw new ConflictException("На нового водителя уже оформлен действующий путевой лист");
         }
@@ -1833,24 +1928,31 @@ public class WaybillService {
             throw new UnprocessableException("Новое ТС заблокировано");
         }
         var today = LocalDate.now();
-        var techInspection = dateOrNull(vehicle.get("techInspectionValidTo"));
-        if (techInspection == null || techInspection.isBefore(today)) {
-            throw new UnprocessableException("Технический осмотр нового ТС отсутствует или истёк");
+        if (enforced(wb.getOrganizationRma(), wb.getWaybillType(), "enforce_tech_inspection")) {
+            var techInspection = dateOrNull(vehicle.get("techInspectionValidTo"));
+            if (techInspection == null || techInspection.isBefore(today)) {
+                throw new UnprocessableException("Технический осмотр нового ТС отсутствует или истёк");
+            }
         }
         // Страховой полис (§13) — как при создании: истёкшая страховка блокирует замену
         // (отсутствие данных не блокирует — пробел в реплике не рушит корректировку).
-        var insurance = dateOrNull(vehicle.get("insuranceValidTo"));
-        if (insurance != null && insurance.isBefore(today)) {
-            throw new UnprocessableException("Срок действия страхового полиса нового ТС истёк");
+        if (enforced(wb.getOrganizationRma(), wb.getWaybillType(), "enforce_insurance")) {
+            var insurance = dateOrNull(vehicle.get("insuranceValidTo"));
+            if (insurance != null && insurance.isBefore(today)) {
+                throw new UnprocessableException("Срок действия страхового полиса нового ТС истёк");
+            }
         }
-        if (Integer.valueOf(1).equals(intOrNull(wb.getOrganizationSnapshot().get("typeCompany")))) {
+        if (Integer.valueOf(1).equals(intOrNull(wb.getOrganizationSnapshot().get("typeCompany")))
+                && enforced(wb.getOrganizationRma(), wb.getWaybillType(), "enforce_control_card")) {
             var controlCard = dateOrNull(vehicle.get("controlCardValidTo"));
             if (controlCard == null || controlCard.isBefore(today)) {
                 throw new UnprocessableException("Контрольная карточка нового ТС отсутствует или истекла");
             }
         }
         // Тип нового ТС должен соответствовать категории ВУ существующего водителя.
-        assertLicenseMatchesVehicle(wb.getDriverSnapshot(), vehicle);
+        if (enforced(wb.getOrganizationRma(), wb.getWaybillType(), "enforce_license_category")) {
+            assertLicenseMatchesVehicle(wb.getDriverSnapshot(), vehicle);
+        }
         if (!waybills.findByVehicleRegNumberAndStatusIn(newVehicleRegNumber, WaybillStatus.OPEN_STATUSES).isEmpty()) {
             throw new ConflictException("На новое ТС уже оформлен действующий путевой лист");
         }
@@ -2161,7 +2263,19 @@ public class WaybillService {
     private static String str(Object o) { return o == null ? "" : o.toString(); }
 
     private static Integer intOrNull(Object o) {
-        return o instanceof Number n ? n.intValue() : o != null ? Integer.valueOf(o.toString()) : null;
+        if (o instanceof Number n) {
+            return n.intValue();
+        }
+        if (o == null) {
+            return null;
+        }
+        // Как dateOrNull/parseShort (RegionalReportService): нечисловое/пустое значение из
+        // master-data — это пробел в справочнике, а не повод уронить запрос с 500 (NumberFormatException).
+        try {
+            return Integer.valueOf(o.toString().trim());
+        } catch (NumberFormatException e) {
+            return null;
+        }
     }
 
     private static Short shortOrNull(Object o) {
