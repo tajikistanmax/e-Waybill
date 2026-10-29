@@ -168,8 +168,10 @@ test.describe('Поля форм из настроек', () => {
     const subjectType = modal.locator('label', { hasText: /^Тип субъекта$/ }).locator('xpath=following-sibling::select');
     await expect(subjectType).toHaveAttribute('required', '');
     await expect(subjectType).toHaveValue('LEGAL');
-    await expect(modal.locator('label', { hasText: /^Тип компании$/ }).locator('xpath=following-sibling::select option')).toHaveCount(3);
-    await expect(modal.locator('label', { hasText: /^Регион$/ }).locator('xpath=following-sibling::select option')).toHaveCount(8);
+    // Пробел между осью и дочерним узлом — невалидный XPath (найдено 28.10.2026); нужен
+    // разделитель пути: following-sibling::select/option.
+    await expect(modal.locator('label', { hasText: /^Тип компании$/ }).locator('xpath=following-sibling::select/option')).toHaveCount(3);
+    await expect(modal.locator('label', { hasText: /^Регион$/ }).locator('xpath=following-sibling::select/option')).toHaveCount(8);
     await expect(modal.locator('label', { hasText: /^Головная организация$/ }).locator('xpath=following-sibling::select')).toBeVisible();
   });
 

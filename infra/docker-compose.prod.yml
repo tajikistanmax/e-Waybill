@@ -353,6 +353,9 @@ services:
       # Дополнительные источники картинок для CSP (например, сервер тайлов карты
       # NEXT_PUBLIC_MAP_TILES_URL: https://tiles.example.tj). Пусто — только свои.
       EPD_CSP_IMG_EXTRA: ${EPD_CSP_IMG_EXTRA:-}
+      # Лимит частоты входа (брутфорс-защита) — см. epd.conf.template. Переопределяется только
+      # в docker-compose.local.yml для локального стенда; здесь дефолт — боевой лимит.
+      EPD_AUTH_RATE: ${EPD_AUTH_RATE:-60r/m}
     ports:
       - "${EPD_HTTP_PORT:-80}:80"
       - "${EPD_HTTPS_PORT:-443}:443"

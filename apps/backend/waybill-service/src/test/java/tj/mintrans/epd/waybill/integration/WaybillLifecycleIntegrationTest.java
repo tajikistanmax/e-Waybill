@@ -60,6 +60,9 @@ class WaybillLifecycleIntegrationTest {
         registry.add("spring.datasource.url", POSTGRES::getJdbcUrl);
         registry.add("spring.datasource.username", POSTGRES::getUsername);
         registry.add("spring.datasource.password", POSTGRES::getPassword);
+        // MedicalDataCrypto обязателен без dev-заглушки (ИБ-13.1.3) — без явного ключа
+        // контекст не поднимается (см. WaybillRegistryPagingIntegrationTest).
+        registry.add("epd.meddata.encryption-key", () -> "MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTIzNDU2Nzg5MDE=");
         // Смоук-тест (scripts/smoke-test.ps1) прогоняется с PAYMENT_ENABLED=true:
         // Т3 -> AWAITING_PAYMENT, confirm-payment -> PAID -> READY. Зеркалим тот же контур,
         // иначе оплатный этап статусной машины (AWAITING_PAYMENT/PAID) остался бы непроверенным.

@@ -185,8 +185,8 @@ test.describe.serial('новый перевозчик', () => {
     const h = { Authorization: `Bearer ${adminJwt}` };
     // Компания и филиал — как их заводит администратор платформы (идемпотентно).
     for (const o of [
-      { rma: CO, name: 'ООО «Е2Е Перевозчик» (автотест)', typeCompany: 1, regionId: 1, cityName: 'Душанбе', ownership: 2 },
-      { rma: BR, parentRma: CO, name: 'Е2Е Перевозчик — филиал «Восток» (автотест)', typeCompany: 1, regionId: 1, cityName: 'Душанбе', ownership: 2 },
+      { rma: CO, name: 'ООО «Е2Е Перевозчик» (автотест)', typeCompany: 1, regionId: 1, cityName: 'Душанбе', ownership: 2, subjectType: 'LEGAL' },
+      { rma: BR, parentRma: CO, name: 'Е2Е Перевозчик — филиал «Восток» (автотест)', typeCompany: 1, regionId: 1, cityName: 'Душанбе', ownership: 2, subjectType: 'LEGAL' },
     ]) {
       const r = await md.post('/api/v1/organizations', { headers: h, data: o });
       expect([200, 201], `организация ${o.rma}`).toContain(r.status());
@@ -467,7 +467,7 @@ test.describe('кабинеты демо-логинов', () => {
       '/dictionaries/external-cities', '/dictionaries/brands', '/dictionaries/fuel-norms', '/dictionaries/coefficients',
       '/dictionaries/winter-coefs', '/dictionaries/city-coefs', '/dictionaries/mountain-coefs', '/dictionaries/used-coefs',
       '/dictionaries/drive-classes',
-      '/registry/vehicles', '/registry/drivers', '/registry/employees', '/registry/devices',
+      '/registry/vehicles', '/registry/drivers', '/registry/employees',
       '/reports/summary', '/reports/journal', '/reports/by-driver', '/reports/by-vehicle', '/reports/fuel',
       '/reports/passenger', '/reports/cargo', '/reports/malumotnoma', '/reports/journals',
       '/reports/regional', '/reports/regional/count', '/reports/regional/norm', '/reports/regional/plans', '/notifications',
@@ -524,6 +524,10 @@ test.describe('кабинеты демо-логинов', () => {
     await page.locator('#fleet-rma').fill(RMA);
     await page.locator('#fleet-fullName').fill('Тестов Водитель Филиалович');
     await page.locator('#fleet-licenseValidTo').fill('2030-12-31');
+    // medCertValidTo живёт в свёрнутом по умолчанию <details> «Дополнительные сведения и
+    // документы» (FleetView.tsx: additionalOpen = editing || required) — раскрыть перед
+    // заполнением, иначе поле в DOM есть, но невидимо (найдено 28.10.2026).
+    await page.getByText('Дополнительные сведения и документы', { exact: true }).click();
     await page.locator('#fleet-medCertValidTo').fill('2026-10-01');
     await page.getByRole('button', { name: 'Добавить', exact: true }).click();
     await expect(page.getByText('Добавлено')).toBeVisible();

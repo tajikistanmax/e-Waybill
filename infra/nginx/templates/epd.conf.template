@@ -8,8 +8,11 @@ map $http_upgrade $connection_upgrade {
 
 # Ограничение частоты запросов к точкам входа (логин, код второго фактора, смена пароля) по IP —
 # вторая линия защиты от подбора пароля поверх блокировки учётки. Запас на офис за одним NAT:
-# 60 попыток в минуту и всплеск 60.
-limit_req_zone $binary_remote_addr zone=epd_auth:10m rate=60r/m;
+# 60 попыток в минуту и всплеск 60. EPD_AUTH_RATE переопределяется ТОЛЬКО на локальном стенде
+# разработчика (docker-compose.local.yml, владелец подтвердил 27.10.2026) — полный прогон e2e
+# логинится с одного IP десятки раз за несколько минут и иначе сам упирается в свою же защиту.
+# На боевом сервере docker-compose.local.yml не применяется — лимит остаётся 60r/m.
+limit_req_zone $binary_remote_addr zone=epd_auth:10m rate=${EPD_AUTH_RATE};
 limit_req_status 429;
 
 server_tokens off;
