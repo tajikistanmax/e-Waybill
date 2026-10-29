@@ -92,7 +92,7 @@ public class NotificationService {
             }
             n.setBody(body);
             repository.save(n);
-            // Доставка во внешние каналы (SMS/push/…), если подключены. Каждый — best-effort.
+            // Зарегистрированные каналы (сейчас только лог, см. LogNotificationChannel) — best-effort.
             for (NotificationChannel channel : channels) {
                 try { channel.send(n); } catch (RuntimeException ignored) { /* канал не должен рушить */ }
             }

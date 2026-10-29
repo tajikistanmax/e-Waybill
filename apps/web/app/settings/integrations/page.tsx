@@ -56,7 +56,6 @@ const GROUPS: { key: string; icon: string; ic: string; items: { key: string; sta
     items: [
       { key: 'inapp', status: 'live' },
       { key: 'events', status: 'live' },
-      { key: 'sms', status: 'planned' },
     ],
   },
   {

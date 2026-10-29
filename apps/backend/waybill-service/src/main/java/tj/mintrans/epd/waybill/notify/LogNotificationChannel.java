@@ -6,9 +6,9 @@ import org.springframework.stereotype.Component;
 import tj.mintrans.epd.waybill.domain.Notification;
 
 /**
- * Канал по умолчанию (dev): записывает уведомление в лог сервиса. Реальные каналы
- * (SMS-шлюз «Корти милли»/операторов, push, Telegram) добавляются отдельными
- * @Component-реализациями {@link NotificationChannel} при наличии провайдеров.
+ * Единственный канал доставки уведомлений — записывает в лог сервиса (in-app
+ * уведомление пишется отдельно, в БД, см. {@code NotificationService}). Внешние
+ * каналы (SMS и т.п.) не нужны и не планируются — решение владельца.
  */
 @Component
 public class LogNotificationChannel implements NotificationChannel {
