@@ -10,14 +10,6 @@ import { canCreateWaybill } from '@/lib/roles';
 import { Icon, P } from '../icons';
 import { ExpiryAlert } from '../ExpiryAlert';
 
-/** Статус заявки на путевой лист → ключ i18n + цвет бейджа. */
-const REQ_STATUS: Record<string, { k: string; color: string }> = {
-  PENDING: { k: 'req.st.pending', color: 'amber' },
-  APPROVED: { k: 'req.st.approved', color: 'green' },
-  REJECTED: { k: 'req.st.rejected', color: 'red' },
-  CANCELLED: { k: 'req.st.cancelled', color: 'gray' },
-};
-
 /** Цвет бейджа уведомления по его виду (совпадает со страницей /notifications). */
 const NOTIF_BADGE: Record<string, string> = {
   MED_REJECTED: 'red', TECH_REJECTED: 'red', BLOCKED: 'red', EXPIRED: 'amber', READY: 'green', CREATED: 'blue', DRIVER_ISSUE: 'amber',
@@ -27,12 +19,6 @@ function fmtDateTime(iso: string | null) {
   return iso
     ? new Date(iso).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
     : '—';
-}
-function isToday(iso: string | null) {
-  if (!iso) return false;
-  const d = new Date(iso);
-  const n = new Date();
-  return d.getFullYear() === n.getFullYear() && d.getMonth() === n.getMonth() && d.getDate() === n.getDate();
 }
 function agoSec(iso: string | null): number | null {
   if (!iso) return null;

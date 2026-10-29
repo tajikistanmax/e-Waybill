@@ -172,8 +172,6 @@ export default function WaybillCard({ params }: { params: Promise<{ id: string }
   // Администратор платформы выбирает подписанта из диспетчеров организации.
   const dispatcher = has('DISPATCHER') && myRma ? myRma : (dispPick || emp.dispatchers[0]?.rma);
   const dispatcherName = emp.dispatchers.find(d => d.rma === dispatcher)?.name ?? dispatcher ?? '—';
-  const doctor = emp.doctors[0]?.rma;
-  const mechanic = emp.mechanics[0]?.rma;
 
   // Доступ к действиям жизненного цикла по роли — как на сервере (@PreAuthorize DISPATCHER/SYSTEM_ADMIN):
   // админам перевозчика кнопки не показываем, иначе они получали 403.

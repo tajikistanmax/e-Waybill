@@ -60,6 +60,7 @@ export default function PrintWaybill({ params }: { params: Promise<{ id: string 
       setW(data);
       setTitles(await wb.titles(id));
       md.fieldDefinitions(data.waybillType, true).then(setFieldDefs).catch(() => setFieldDefs([]));
+      md.routeTypes().then(setRouteTypes).catch(() => setRouteTypes([]));
       if (data.number) {
         const { jws } = await wb.qr(id);
         setQrUrl(await QRCode.toDataURL(verifyLink(jws), { width: 150, margin: 0 }));
