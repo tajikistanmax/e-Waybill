@@ -33,7 +33,10 @@ import java.util.UUID;
  *
  * <p>Поиск ведётся по ключу субъекта: водитель и сотрудник — РМА (ИНН), транспорт — госномер.
  * Поиск доступен администраторам и возвращает только минимум: кто это и за какой организацией
- * числится, — чтобы было видно, у кого запрашивать открепление.</p>
+ * числится, — чтобы было видно, у кого запрашивать открепление. Это касается точного совпадения
+ * по известному ключу ({@link #lookup}); нечёткий поиск по части ФИО/номера ({@link #search})
+ * для роли с ограниченной областью видимости сужен до своей организации и свободных субъектов
+ * — иначе получился бы инструмент подсматривать чужой штат по платформе (см. {@link #search}).</p>
  *
  * <p>Правила закрепления: системный администратор переводит субъекта любой организации;
  * перевозчик (администратор компании/филиала, диспетчер) может закрепить за собой только
@@ -111,6 +114,15 @@ public class SubjectAssignmentController {
      * Поиск субъекта по началу ИНН **или по части ФИО** (для транспорта — по части госномера):
      * перевозчик ищет уже заведённого водителя/сотрудника, не зная его ИНН наизусть.
      * Возвращает до 20 кратких карточек; пустой запрос — пустой список.
+     *
+     * <p>Мультиарендность (найдено при аудите 27.10.2026): точное совпадение по известному
+     * ключу (ИНН/госномер целиком) видно через организации — как и {@link #lookup}, это
+     * осознанно («чтобы было видно, у кого запрашивать открепление»). А вот нечёткий поиск
+     * по ЧАСТИ ФИО — это уже не «знаю ключ, ищу владельца», а подбор чужих кадров по имени:
+     * для роли с ограниченной областью (не SYSTEM_ADMIN/API_INTEGRATOR) такие результаты
+     * сужены до свободных субъектов и субъектов своей организации — иначе администратор
+     * одной компании мог бы подсматривать, в какой компании сейчас работает конкретный
+     * человек по всей платформе.</p>
      */
     @GetMapping("/{kind}/search")
     public List<SubjectRef> search(@PathVariable SubjectKind kind, @RequestParam String q) {
@@ -123,22 +135,30 @@ public class SubjectAssignmentController {
                 var byRma = drivers.findByRma(needle)
                         .map(d -> ref(kind, d.getId(), d.getRma(), d.getFullName(), d.getOrganizationId()));
                 var byName = drivers.findTop20ByFullNameContainingIgnoreCaseOrderByFullNameAsc(needle).stream()
+                        .filter(d -> fuzzyVisible(d.getOrganizationId()))
                         .map(d -> ref(kind, d.getId(), d.getRma(), d.getFullName(), d.getOrganizationId()))
                         .toList();
                 yield merge(byRma.orElse(null), byName);
             }
             case vehicles -> vehicles.findTop20ByRegistrationNumberContainingIgnoreCaseOrderByRegistrationNumberAsc(needle.toUpperCase()).stream()
+                    .filter(v -> v.getRegistrationNumber().equalsIgnoreCase(needle) || fuzzyVisible(v.getOrganizationId()))
                     .map(v -> ref(kind, v.getId(), v.getRegistrationNumber(), v.getBrand(), v.getOrganizationId()))
                     .toList();
             case employees -> {
                 var byRma = employees.findByRma(needle)
                         .map(e -> ref(kind, e.getId(), e.getRma(), e.getName(), e.getOrganizationId()));
                 var byName = employees.findTop20ByNameContainingIgnoreCaseOrderByNameAsc(needle).stream()
+                        .filter(e -> fuzzyVisible(e.getOrganizationId()))
                         .map(e -> ref(kind, e.getId(), e.getRma(), e.getName(), e.getOrganizationId()))
                         .toList();
                 yield merge(byRma.orElse(null), byName);
             }
         };
+    }
+
+    /** Свободный субъект или субъект своей области видимости — для нечёткого поиска по части ФИО/номера. */
+    private boolean fuzzyVisible(UUID organizationId) {
+        return organizationId == null || !tenantScope.isBounded() || tenantScope.organizationIds().contains(organizationId);
     }
 
     /** Точное совпадение по ИНН — первым, дальше найденные по имени (без повторов). */
