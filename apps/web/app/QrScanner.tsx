@@ -3,7 +3,6 @@
 import { useEffect, useRef, useState } from 'react';
 import jsQR from 'jsqr';
 import { useT } from '@/lib/i18n';
-import { Icon, P } from './icons';
 
 /**
  * Модальное окно сканирования QR камерой устройства — тот же QR, что на печатном

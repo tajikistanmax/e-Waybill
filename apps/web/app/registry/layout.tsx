@@ -1,21 +1,24 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { md } from '@/lib/api';
+import { useAuth } from '@/lib/auth';
 import { Icon, P } from '../icons';
 import { useT } from '@/lib/i18n';
 
-type CountKey = 'organizations' | 'vehicles' | 'drivers' | 'employees' | 'devices';
+type CountKey = 'organizations' | 'vehicles' | 'drivers' | 'employees';
 
 const TABS: { href: string; labelKey: string; icon: string; key: CountKey }[] = [
   // Организации — реестр перевозчиков для надзора (сверка 25.09, F10), только просмотр.
+  // SYSTEM_ADMIN эту вкладку не видит (отфильтровано ниже): у него тот же список организаций
+  // уже есть в «Компания» (/company), с полноценным CRUD — показывать его же вторым, read-only,
+  // было дублированием (замечено пользователем 26.10, расхождение счётчиков 592/472 — тот же баг).
   { href: '/registry/organizations', labelKey: 'regorg.h', icon: P.building, key: 'organizations' },
   { href: '/registry/vehicles', labelKey: 'col.transport', icon: P.car, key: 'vehicles' },
   { href: '/registry/drivers', labelKey: 'col.drivers', icon: P.users, key: 'drivers' },
   { href: '/registry/employees', labelKey: 'col.employees', icon: P.building, key: 'employees' },
-  { href: '/registry/devices', labelKey: 'nav.devices', icon: P.phone, key: 'devices' },
 ];
 
 /**
@@ -25,12 +28,22 @@ const TABS: { href: string; labelKey: string; icon: string; key: CountKey }[] = 
  */
 export default function RegistryLayout({ children }: { children: React.ReactNode }) {
   const path = usePathname();
+  const router = useRouter();
   const { t } = useT();
-  const active = TABS.find(s => path.startsWith(s.href)) ?? TABS[0];
+  const { roles } = useAuth();
+  const isSysAdmin = roles.includes('SYSTEM_ADMIN');
+  const tabs = isSysAdmin ? TABS.filter(s => s.key !== 'organizations') : TABS;
+  const active = tabs.find(s => path.startsWith(s.href)) ?? tabs[0];
+
+  // Прямой заход по ссылке/закладке на убранную для SYSTEM_ADMIN вкладку — туда же, где у него
+  // этот список уже есть, с правами на редактирование.
+  useEffect(() => {
+    if (isSysAdmin && path.startsWith('/registry/organizations')) router.replace('/company');
+  }, [isSysAdmin, path, router]);
 
   // Счётчики на карточках разделов: ТС/водители/сотрудники — одним агрегатным запросом
-  // (organizations/counts, без N+1), устройства — списком (их немного). Скоуп — по токену:
-  // тенант видит свои организации, платформенная роль — все.
+  // (organizations/counts, без N+1). Скоуп — по токену: тенант видит свои организации,
+  // платформенная роль — все.
   const [counts, setCounts] = useState<Partial<Record<CountKey, number>>>({});
   useEffect(() => {
     let alive = true;
@@ -38,11 +51,15 @@ export default function RegistryLayout({ children }: { children: React.ReactNode
       .then(rows => {
         if (!alive) return;
         const sum = (f: 'vehicles' | 'drivers' | 'employees') => rows.reduce((acc, r) => acc + Number(r[f] ?? 0), 0);
-        setCounts(c => ({ ...c, organizations: rows.length, vehicles: sum('vehicles'), drivers: sum('drivers'), employees: sum('employees') }));
+        // rows здесь — список организаций, у которых есть хотя бы один ТС/водитель/сотрудник
+        // (так считает /organizations/counts): он короче полного реестра, поэтому для карточки
+        // «Организации» число берём отдельным вызовом, а не rows.length (расхождение 592/472,
+        // замечено пользователем 26.10).
+        setCounts(c => ({ ...c, vehicles: sum('vehicles'), drivers: sum('drivers'), employees: sum('employees') }));
       })
       .catch(() => { /* счётчик не критичен — карточка просто без числа */ });
-    md.mobileDevices()
-      .then(rows => { if (alive) setCounts(c => ({ ...c, devices: rows.length })); })
+    md.organizations()
+      .then(rows => { if (alive) setCounts(c => ({ ...c, organizations: rows.length })); })
       .catch(() => { /* см. выше */ });
     return () => { alive = false; };
   }, []);
@@ -57,7 +74,7 @@ export default function RegistryLayout({ children }: { children: React.ReactNode
       </div>
 
       <div className="kpi-row" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))' }}>
-        {TABS.map(s => {
+        {tabs.map(s => {
           const sel = s.href === active.href;
           return (
             <Link

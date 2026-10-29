@@ -268,21 +268,6 @@ export type ExternalCity = {
   updatedAt?: string;
 };
 
-// Реестр авторизованных мобильных устройств водителей — /api/v1/mobile-devices (master-data-service; V64).
-// Перенос legacy-справочника «Телефонҳо» (phone_infos). Все ссылки «мягкие» (по РМА).
-// Чтение — мультиарендно (тенант видит свою корхону); upsert/удаление — SYSTEM_ADMIN.
-export type MobileDevice = {
-  id: string;
-  organizationRma: string;
-  driverRma: string | null;
-  driverName: string;
-  brand: string | null;
-  model: string;
-  authorizedAt: string;
-  createdAt?: string;
-  updatedAt?: string;
-};
-
 // Справочник типов маршрутов — /api/v1/route-types (master-data-service; V63).
 // Классифицирует маршрут по дальности сообщения (городской/пригородный/междугородный/…).
 // Ключ — числовой code; «мягкая» связь с маршрутом по route.routeTypeCode.
@@ -470,14 +455,6 @@ export const md = {
   routeTypes: () => fetch('/md-api/api/v1/route-types', { headers: authHeaders() }).then(r => handle<RouteType[]>(r)),
   saveRouteType: (body: Record<string, unknown>) => mdPost('route-types', body) as Promise<RouteType>,
   deleteRouteType: (id: string) => mdDelete(`route-types/${id}`),
-  // Реестр мобильных устройств водителей (V64). Чтение мультиарендно: тенант получает только
-  // свою корхону (по токену), платформенная роль — все либо конкретной организации (organizationRma).
-  // Upsert/удаление — SYSTEM_ADMIN.
-  mobileDevices: (organizationRma?: string) => fetch(
-    `/md-api/api/v1/mobile-devices${organizationRma ? `?organizationRma=${encodeURIComponent(organizationRma)}` : ''}`,
-    { headers: authHeaders() }).then(r => handle<MobileDevice[]>(r)),
-  saveMobileDevice: (body: Record<string, unknown>) => mdPost('mobile-devices', body) as Promise<MobileDevice>,
-  deleteMobileDevice: (id: string) => mdDelete(`mobile-devices/${id}`),
   // Нативное управление субъектами/объектами внутри платформы — полный ручной ввод всех полей.
   // POST /organizations|/drivers|/vehicles|/employees: перевозчик (COMPANY_ADMIN/DISPATCHER) ведёт
   // СВОЮ организацию (тенант-защита на бэкенде), сисадмин/интегратор — любую.
