@@ -5,13 +5,14 @@
 # Запуск: powershell -File scripts\blocking-checks-test.ps1
 # Идемпотентен: временно меняет категорию сид-водителя и возвращает её,
 # созданные тестовые ПЛ аннулирует (одометр ТС не трогает — close не вызывается).
-# Требует: waybill :8082, Keycloak :8180, docker epd-prod-postgres (контейнер прод-compose,
-#          project epd-rt-prod), сид-данные
+# Требует: waybill :8082, master-data :8081 (аутентификация — Keycloak удалён из runtime
+#          23.09.2026), docker epd-prod-postgres (контейнер прод-compose, project epd-rt-prod),
+#          сид-данные
 #          (ТС 0114TJ01 тип 1 автобус, водитель 461930031 кат.D, диспетчер/врач/механик/бухгалтер).
 # =====================================================================
 $ErrorActionPreference = 'Stop'
 . "$PSScriptRoot\demo-credentials.ps1"
-$wb = 'http://localhost:8082'; $kc = 'http://localhost:8180'; $pg = 'epd-prod-postgres'
+$wb = 'http://localhost:8082'; $pg = 'epd-prod-postgres'
 $pass = 0; $fail = 0
 function Chk($name, $cond) {
     if ($cond) { $script:pass++; Write-Output "  [PASS] $name" }
@@ -37,14 +38,22 @@ $create = @{ waybillType = 'WB_BUS'; organizationRma = '025680800'; vehicleRegNu
 Write-Output '=== БЛОКИРУЮЩИЕ ПРОВЕРКИ: категория ВУ + непрерывность одометра ==='
 
 # --- 1. Категория ВУ (автобус=тип1 требует D) ---
+# enforce_license_category выключено по умолчанию (решение владельца 27.10.2026, см.
+# changelog «постепенное включение блокирующих проверок») — включаем на национальном
+# уровне на время теста, чтобы проверить сам механизм, и выключаем обратно (идемпотентно).
+$md = 'http://localhost:8081'
+$hdAdmin = @{ Authorization = "Bearer $(Tok 'admin-automation')" }
+function MdPJ($path, $body, $h) { Invoke-RestMethod -Method Post -Uri "$md$path" -Headers $h -Body ([Text.Encoding]::UTF8.GetBytes(($body | ConvertTo-Json -Depth 6))) -ContentType 'application/json; charset=utf-8' }
+$catRule = MdPJ "/api/v1/policies" @{ scopeLevel = 'NATIONAL'; scopeKey = ''; ruleKey = 'enforce_license_category'; ruleValue = 'true' } $hdAdmin
 CleanVeh '0114TJ01'
 try {
     docker exec $pg psql -U epd -d masterdata -c "UPDATE driver SET license_categories='B' WHERE rma='461930031';" | Out-Null
     $catNeg = Code "/api/v1/waybills" $create $hd
 } finally {
     docker exec $pg psql -U epd -d masterdata -c "UPDATE driver SET license_categories='D' WHERE rma='461930031';" | Out-Null
+    Invoke-RestMethod -Method Delete -Uri "$md/api/v1/policies/$($catRule.id)" -Headers $hdAdmin | Out-Null
 }
-Chk "Категория B на автобусе -> 422 (требуется D)" ($catNeg -eq 422)
+Chk "Категория B на автобусе с enforce_license_category=true -> 422 (требуется D)" ($catNeg -eq 422)
 CleanVeh '0114TJ01'
 $catPos = PJ "/api/v1/waybills" $create $hd
 Chk "Категория D на автобусе -> создан (не над-блокирует)" ($catPos.status -eq 'DRAFT')
