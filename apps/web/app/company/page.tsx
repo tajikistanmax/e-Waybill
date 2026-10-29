@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { authHeaders, md, type SubjectKind, type SubjectRef } from '@/lib/api';
+import { md, type SubjectKind, type SubjectRef } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { formKeys, numericKeys, useDataSource, useFormFieldModes } from '@/lib/formFields';
 import { ConfigurableFields } from '../ConfigurableFields';
@@ -29,20 +29,6 @@ function todayISO() { return new Date().toISOString().slice(0, 10); }
 function orgActive(o: Row): boolean {
   const to = o.licenseTo ? String(o.licenseTo) : '';
   return !to || to >= todayISO();
-}
-
-async function postJson(url: string, body: unknown) {
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: authHeaders({ 'Content-Type': 'application/json' }),
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) {
-    const p = await res.json().catch(() => null);
-    const fields = p?.errors?.map((e: { field: string; message: string }) => `${e.field} — ${e.message}`).join('; ');
-    throw new Error((p?.detail ?? p?.title ?? `Ошибка ${res.status}`) + (fields ? `: ${fields}` : ''));
-  }
-  return res.json();
 }
 
 /** Готовит payload ручной формы: пустые поля → null, числовые ключи → число. */
@@ -311,8 +297,8 @@ export default function CompanyPage() {
 }
 
 /**
- * Реестр организаций — только SYSTEM_ADMIN: список ВСЕХ организаций, регистрация по ИНН
- * (данные из единой платформы) или вручную, управление их водителями/ТС/сотрудниками.
+ * Реестр организаций — только SYSTEM_ADMIN: список ВСЕХ организаций, ручная регистрация,
+ * управление их водителями/ТС/сотрудниками.
  */
 function OrgRegistry() {
   const { t } = useT();
@@ -341,8 +327,6 @@ function OrgRegistry() {
   const [error, setError] = useState('');
   const [ok, setOk] = useState('');
 
-  // Добавление — только идентификаторы; данные приходят из единой платформы
-  const [orgInn, setOrgInn] = useState('');
   // Прикрепление уже существующего субъекта к организации и открепление/удаление (владелец, 22.09).
   const [attachOpen, setAttachOpen] = useState(false);
   const [attachKey, setAttachKey] = useState('');
@@ -357,13 +341,8 @@ function OrgRegistry() {
   const [entitySource, setEntitySource] = useState<string | null>(null);
   const [orgEditSource, setOrgEditSource] = useState<string | null>(null);
   const ds = useDataSource();
-  const [driverForm, setDriverForm] = useState({ inn: '', tabNumber: '' });
-  const [vehicleForm, setVehicleForm] = useState({ registrationNumber: '', parkingNumber: '' });
-  const [employeeForm, setEmployeeForm] = useState({ inn: '', type: '1', tabNumber: '' });
 
-  // Ручной ввод (полная форма) — все поля справочника. Режим переключается для организации и для сущностей.
-  const [orgMode, setOrgMode] = useState<'sync' | 'manual'>('sync');
-  const [entityMode, setEntityMode] = useState<'sync' | 'manual'>('sync');
+  // Ручной ввод (полная форма) — все поля справочника.
   const [orgManual, setOrgManual] = useState<Record<string, string>>({});
   // Правка организации идёт в отдельном модальном окне (а не в форме «Добавить» снизу).
   // null — окно закрыто; объект — предзаполненные значения редактируемой организации.
@@ -409,58 +388,6 @@ function OrgRegistry() {
     if (!orgRma) { setOrgVehicles([]); return; }
     md.vehicles(orgRma).then(setOrgVehicles).catch(() => setOrgVehicles([]));
   }, [orgRma]);
-
-  async function syncOrganization(e: React.FormEvent) {
-    e.preventDefault();
-    setError(''); setOk('');
-    try {
-      const org = await postJson('/md-api/api/v1/sync/organization', { inn: orgInn });
-      setOk(`«${org.name}» загружена из единой платформы (${subjType(org.subjectType, t)})`);
-      setOrgInn('');
-      await loadOrgs();
-      setOrgRma(String(org.rma));
-    } catch (err) {
-      setError((err as Error).message);
-    }
-  }
-
-  async function submit(e: React.FormEvent) {
-    e.preventDefault();
-    setError(''); setOk('');
-    try {
-      if (tab === 'drivers') {
-        const d = await postJson('/md-api/api/v1/sync/driver', {
-          inn: driverForm.inn,
-          organizationRma: orgRma,
-          tabNumber: driverForm.tabNumber || null,
-        });
-        setOk(`Водитель ${d.fullName} добавлен: ФИО — из налоговой, ВУ ${d.licenseNumber} и медсправка — из ГАИ/Минздрава`);
-        setDriverForm({ inn: '', tabNumber: '' });
-      } else if (tab === 'vehicles') {
-        const v = await postJson('/md-api/api/v1/sync/vehicle', {
-          registrationNumber: vehicleForm.registrationNumber,
-          organizationRma: orgRma,
-          parkingNumber: vehicleForm.parkingNumber || null,
-        });
-        setOk(`ТС ${v.registrationNumber} (${v.brand}) добавлено из базы ГАИ`);
-        setVehicleForm({ registrationNumber: '', parkingNumber: '' });
-      } else {
-        const emp = await postJson('/md-api/api/v1/sync/employee', {
-          inn: employeeForm.inn,
-          organizationRma: orgRma,
-          type: Number(employeeForm.type),
-          tabNumber: employeeForm.tabNumber || null,
-        });
-        setOk(`Сотрудник ${emp.name} добавлен (${empTypeC(emp.type, t)})`);
-        setEmployeeForm({ inn: '', type: '1', tabNumber: '' });
-      }
-      setShowForm(false);
-      await loadOrgs().catch(() => {});
-      await reload();
-    } catch (err) {
-      setError((err as Error).message);
-    }
-  }
 
   // Ручное создание организации (POST /organizations — полный набор полей).
   async function createOrgManual(e: React.FormEvent) {
@@ -633,7 +560,6 @@ function OrgRegistry() {
 
   function editEntity(row: Row) {
     setError(''); setOk('');
-    setEntityMode('manual');
     setShowForm(true);
     // Ключ записи нужен для панели вложений (документы привязаны к РМА / госномеру).
     setEditingKey(String(tab === 'vehicles' ? row.registrationNumber : row.rma));
@@ -831,8 +757,7 @@ function OrgRegistry() {
       </div>
 
       {/* Добавление организации — отдельным окном поверх страницы (замечание владельца 22.09:
-          раньше форма разворачивалась прямо под списком и терялась среди таблиц).
-          Ввод ручной; синк-логика syncOrganization сохранена для будущей интеграции. */}
+          раньше форма разворачивалась прямо под списком и терялась среди таблиц). Ввод ручной. */}
       {showAddOrg && (
         <Modal wide title={t('comp.addorg')} onClose={() => setShowAddOrg(false)}>
           <p className="hint">{t('comp.hint.manualorg')}</p>
@@ -865,7 +790,7 @@ function OrgRegistry() {
         )}
         {tabUnified
           ? <span className="badge blue" title={t('ds.addoff.hint')}>{t('ds.addoff')}</span>
-          : <button className="btn" disabled={!orgRma} onClick={() => { setShowForm(true); setEntityMode('manual'); setEditingKey(null); setEntitySource(null); }}>{t('btn.add')}</button>}
+          : <button className="btn" disabled={!orgRma} onClick={() => { setShowForm(true); setEditingKey(null); setEntitySource(null); }}>{t('btn.add')}</button>}
       </div>
 
       {showForm && (
