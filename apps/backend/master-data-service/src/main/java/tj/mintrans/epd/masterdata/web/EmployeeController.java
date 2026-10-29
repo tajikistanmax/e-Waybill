@@ -110,9 +110,9 @@ public class EmployeeController {
         employee.setTabNumber(req.tabNumber());
         employee.setName(req.name());
         employee.setType(req.type());
-        employee.setPhone(req.phone());
-        employee.setAddress(req.address());
-        employee.setCertNumber(req.certNumber());
+        employee.setPhone(trimToNull(req.phone()));
+        employee.setAddress(trimToNull(req.address()));
+        employee.setCertNumber(trimToNull(req.certNumber()));
         employee.setCertValidTo(req.certValidTo());
         // Запись, присланная единой платформой, помечается её источником (см. MasterDataSourcePolicy).
         if (integrator) employee.setSource("UNIFIED");
@@ -218,5 +218,12 @@ public class EmployeeController {
         if (tenantScope.isBounded() && !tenantScope.organizationIds().contains(entityOrgId)) {
             throw new AccessDeniedException("Доступ только к своим организациям");
         }
+    }
+
+    /** Обрезка пробелов; пустая/только пробелы строка → NULL (симметрично Driver/Vehicle). */
+    private static String trimToNull(String s) {
+        if (s == null) return null;
+        var t = s.trim();
+        return t.isEmpty() ? null : t;
     }
 }

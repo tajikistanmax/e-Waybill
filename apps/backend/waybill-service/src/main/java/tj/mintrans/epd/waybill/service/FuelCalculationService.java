@@ -220,7 +220,15 @@ public class FuelCalculationService {
         if (o == null) {
             return null;
         }
-        return o instanceof Number n ? n.intValue() : Integer.valueOf(o.toString());
+        if (o instanceof Number n) {
+            return n.intValue();
+        }
+        // Как WaybillService.intOrNull: нечисловое значение из master-data не должно ронять расчёт.
+        try {
+            return Integer.valueOf(o.toString().trim());
+        } catch (NumberFormatException e) {
+            return null;
+        }
     }
 
     private static int intValue(Object o) {
