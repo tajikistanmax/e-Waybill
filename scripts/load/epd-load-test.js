@@ -262,8 +262,10 @@ export function setup() {
     const driverRma = `999${String(i).padStart(6, '0')}`;
 
     const vRes = postJson(`${MD}/api/v1/vehicles`, adminHeaders, {
+      // Марка должна существовать в справочнике марок (VehicleController.dictionaryBrand,
+      // 422 иначе) — "ЛиАЗ" (автобус) уже есть в seed-данных, в отличие от "LOAD-TEST".
       registrationNumber: plate, organizationRma: ORG_RMA, transportType: 1,
-      brand: 'LOAD-TEST', techInspectionValidTo: nearFuture, controlCardValidTo: nearFuture,
+      brand: 'ЛиАЗ', techInspectionValidTo: nearFuture, controlCardValidTo: nearFuture,
     }, 'setup-vehicle');
     if (vRes.status >= 400) {
       console.error(`setup: ТС ${plate} - HTTP ${vRes.status} ${vRes.body}`);
