@@ -140,6 +140,16 @@ public class Vehicle {
     @Column(name = "updated_at", nullable = false)
     private OffsetDateTime updatedAt;
 
+    /**
+     * Оптимистичная блокировка (V90, найдено при аудите 27.10.2026): две параллельные закрытия
+     * путевых листов на одно ТС читали одометр, проверяли «не меньше прежнего» и сохраняли без
+     * защиты от гонки — более позднее сохранение молча перезаписывало результат более раннего.
+     * JPA сама инкрементирует и сверяет это поле при каждом save(); конфликт —
+     * {@link org.springframework.orm.ObjectOptimisticLockingFailureException}.
+     */
+    @jakarta.persistence.Version
+    private long version;
+
     @PrePersist
     void prePersist() {
         if (id == null) id = UUID.randomUUID();
@@ -225,4 +235,5 @@ public class Vehicle {
     public void setSyncedAt(OffsetDateTime syncedAt) { this.syncedAt = syncedAt; }
     public OffsetDateTime getCreatedAt() { return createdAt; }
     public OffsetDateTime getUpdatedAt() { return updatedAt; }
+    public long getVersion() { return version; }
 }

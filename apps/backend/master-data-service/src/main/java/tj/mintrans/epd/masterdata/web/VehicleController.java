@@ -232,17 +232,30 @@ public class VehicleController {
     @PatchMapping("/{id}/odometer")
     @PreAuthorize("hasAnyRole('API_INTEGRATOR','SYSTEM_ADMIN')")
     public Vehicle updateOdometer(@PathVariable UUID id, @Valid @RequestBody OdometerUpdate req) {
-        var vehicle = vehicles.findById(id).orElseThrow(() -> new NotFoundException("Транспорт не найден"));
         if (req.odometer() < 0) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Одометр не может быть отрицательным");
         }
-        // Непрерывность пробега: одометр не должен уменьшаться относительно последнего значения.
-        if (req.odometer() < vehicle.getOdometer()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "Одометр не может уменьшаться (текущий: " + vehicle.getOdometer() + ")");
+        // Оптимистичная блокировка (V90): две параллельные закрытия ПЛ на одно ТС (например
+        // два потока агрегатора) могли читать одометр, пройти проверку «не меньше прежнего» по
+        // одному и тому же значению и сохранить — позднее сохранение молча стирало раннее.
+        // Конфликт версии перечитывает актуальное значение и повторяет попытку: с точки зрения
+        // вызывающего (межсервисный вызов при close()) это прозрачно, без лишнего 409 наружу.
+        for (int attempt = 1; ; attempt++) {
+            var vehicle = vehicles.findById(id).orElseThrow(() -> new NotFoundException("Транспорт не найден"));
+            if (req.odometer() < vehicle.getOdometer()) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "Одометр не может уменьшаться (текущий: " + vehicle.getOdometer() + ")");
+            }
+            vehicle.setOdometer(req.odometer());
+            try {
+                return vehicles.saveAndFlush(vehicle);
+            } catch (org.springframework.orm.ObjectOptimisticLockingFailureException e) {
+                if (attempt >= 5) {
+                    throw new ResponseStatusException(HttpStatus.CONFLICT,
+                            "Одометр ТС одновременно обновляется — повторите запрос");
+                }
+            }
         }
-        vehicle.setOdometer(req.odometer());
-        return vehicles.save(vehicle);
     }
 
     @PreAuthorize(tj.mintrans.epd.masterdata.config.Authorities.REGISTRY_READ)
