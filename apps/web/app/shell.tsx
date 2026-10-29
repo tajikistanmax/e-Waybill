@@ -20,9 +20,14 @@ const isPublic = (path: string) => path === '/login' || path.startsWith('/verify
 /** Первый сегмент пути → раздел меню (для проверки доступа по роли). */
 const ROUTE_NAV: Record<string, NavKey> = {
   dashboard: 'dashboard', waybills: 'waybills', dispatcher: 'dispatcher',
-  med: 'med', tech: 'tech', driver: 'driver', inspector: 'inspector',
+  med: 'med', tech: 'tech', fuel: 'fuel', driver: 'driver', inspector: 'inspector',
   company: 'company', registry: 'registry', violations: 'violations',
   reports: 'reports', dictionaries: 'dictionaries', settings: 'settings', consignments: 'consignments',
+  // 'fuel' и 'monitoring' — реальные NavKey (есть в lib/roles.ts и sidebar.tsx), но отсутствовали
+  // здесь: гвард пропускал /fuel и /monitoring любой вошедшей роли независимо от матрицы доступа
+  // (находка аудита 27.10.2026). 'fleet' — не отдельный путь гварда: /fleet сам не NavKey-путь,
+  // он покрыт роутами fleet/vehicles и fleet/drivers через FleetView, доступ проверяется внутри них.
+  monitoring: 'monitoring',
 };
 
 /** Каркас приложения: публичные страницы (вход, проверка QR) — на весь экран;
