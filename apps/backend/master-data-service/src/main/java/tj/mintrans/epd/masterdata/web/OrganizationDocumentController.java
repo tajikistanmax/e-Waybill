@@ -31,10 +31,20 @@ import java.util.UUID;
 
 /**
  * Учредительные и разрешительные документы организации (свидетельство о регистрации,
- * устав, лицензия перевозчика, справка ИНН и т.д.). Скан-копии хранятся в БД (bytea).
+ * устав, лицензия перевозчика, справка ИНН, банковские реквизиты и т.д.). Скан-копии
+ * хранятся в БД (bytea).
  *
  * <p>Мультиарендность: администратор компании ведёт документы только СВОЕЙ организации;
  * сисадмин — любых; аналитик Минтранса — только читает.</p>
+ *
+ * <p>{@code list}/{@code download} (найдено при аудите 27.10.2026): раньше не имели проверки
+ * роли вовсе — только {@link #requireVisible} (своя ли это организация), без ограничения,
+ * КАКАЯ роль внутри тенанта смотрит. Это открывало банковские реквизиты/устав/ИНН организации
+ * водителю, механику, врачу, кассиру, заправщику — любой роли, у которой в токене совпадает
+ * {@code organization_rma}. Сужено до ролей, которым эти документы действительно нужны.
+ * {@code latest} (только печать организации SEAL для бланка ПЛ, см. {@code MasterDataClient}
+ * waybill-service) НЕ сужен — его читает диспетчер/кассир при печати в рамках своей
+ * организации (как и раньше, подтверждено {@code OrganizationDocumentLatestTest}).</p>
  */
 @RestController
 @RequestMapping("/api/v1/organizations/{rma}/documents")
@@ -68,6 +78,7 @@ public class OrganizationDocumentController {
     }
 
     @GetMapping
+    @PreAuthorize("hasAnyRole('SYSTEM_ADMIN','COMPANY_ADMIN','BRANCH_ADMIN','MINTRANS_ANALYST','API_INTEGRATOR')")
     public List<OrganizationDocumentRepository.Meta> list(@PathVariable String rma) {
         requireOrganizationExists(rma);
         requireVisible(rma);
@@ -171,6 +182,7 @@ public class OrganizationDocumentController {
     }
 
     @GetMapping("/{docId}")
+    @PreAuthorize("hasAnyRole('SYSTEM_ADMIN','COMPANY_ADMIN','BRANCH_ADMIN','MINTRANS_ANALYST','API_INTEGRATOR')")
     public ResponseEntity<byte[]> download(@PathVariable String rma, @PathVariable UUID docId) {
         requireVisible(rma);
         var doc = documents.findById(docId)
