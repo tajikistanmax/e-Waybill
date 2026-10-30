@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { md, type Policy } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
@@ -43,6 +43,11 @@ export default function PoliciesSettingsPage() {
   const [busy, setBusy] = useState(false);
   const [form, setForm] = useState<{ scopeKey: string; ruleKey: string; ruleValue: string }>(
     { scopeKey: '', ruleKey: ALL_RULES[0], ruleValue: 'true' });
+  // Поиск организации по названию при переопределении (А16 сверки 25.09: владелец сам находит
+  // нужные организации — например, все организации Душанбе — вместо того, чтобы вводить ИНН
+  // руками или ждать от кого-то готовый список).
+  const [orgs, setOrgs] = useState<Record<string, unknown>[]>([]);
+  const [orgQuery, setOrgQuery] = useState('');
 
   const reload = useCallback(async () => {
     try { setRows(await md.policies()); setError(''); }
@@ -50,6 +55,19 @@ export default function PoliciesSettingsPage() {
   }, []);
 
   useEffect(() => { reload(); }, [reload]);
+  useEffect(() => { md.organizations().then(setOrgs).catch(() => setOrgs([])); }, []);
+
+  const orgName = useCallback(
+    (rma: string) => { const o = orgs.find(o => String(o.rma) === rma); return o ? String(o.name) : undefined; },
+    [orgs]);
+  const matchingOrgs = useMemo(() => {
+    const q = orgQuery.trim().toLowerCase();
+    if (!q) return [];
+    return orgs
+      .map(o => ({ rma: String(o.rma ?? ''), name: String(o.name ?? '') }))
+      .filter(o => o.name.toLowerCase().includes(q) || o.rma.includes(q))
+      .slice(0, 20);
+  }, [orgs, orgQuery]);
 
   const flash = (msg: string) => { setOk(msg); setTimeout(() => setOk(''), 2000); };
 
@@ -190,7 +208,7 @@ export default function PoliciesSettingsPage() {
             {byOrg.length === 0 && <tr><td colSpan={4} style={{ color: 'var(--muted)' }}>{t('pol.empty')}</td></tr>}
             {byOrg.map(p => (
               <tr key={p.id}>
-                <td><span className="number">{p.scopeKey}</span></td>
+                <td>{orgName(p.scopeKey) ?? '—'} <span className="number">{p.scopeKey}</span></td>
                 <td>{ruleName(p.ruleKey)}</td>
                 <td>{valueCell(p, true)}</td>
                 <td>{removeBtn(p.id)}</td>
@@ -201,10 +219,28 @@ export default function PoliciesSettingsPage() {
 
         {/* Добавление переопределения организации */}
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end', marginTop: 14, paddingTop: 14, borderTop: '1px solid var(--line)' }}>
-          <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12.5 }}>
+          <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12.5, position: 'relative' }}>
             {t('pol.org')}
-            <input value={form.scopeKey} onChange={e => setForm({ ...form, scopeKey: e.target.value })}
-              placeholder="025680800" style={{ width: 160 }} />
+            <input
+              value={form.scopeKey ? `${orgName(form.scopeKey) ?? form.scopeKey} · ${form.scopeKey}` : orgQuery}
+              onChange={e => { setForm({ ...form, scopeKey: '' }); setOrgQuery(e.target.value); }}
+              placeholder={t('pol.org.search')} style={{ width: 260 }} />
+            {!form.scopeKey && matchingOrgs.length > 0 && (
+              <div className="card" style={{
+                position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 20, maxHeight: 220,
+                overflowY: 'auto', padding: 4, marginTop: 2,
+              }}>
+                {matchingOrgs.map(o => (
+                  <div key={o.rma} role="button"
+                    onClick={() => { setForm({ ...form, scopeKey: o.rma }); setOrgQuery(''); }}
+                    style={{ padding: '6px 8px', cursor: 'pointer', fontSize: 13, borderRadius: 4 }}
+                    onMouseEnter={e => (e.currentTarget.style.background = 'var(--blue-050)')}
+                    onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+                    {o.name} · <span className="number">{o.rma}</span>
+                  </div>
+                ))}
+              </div>
+            )}
           </label>
           <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12.5 }}>
             {t('pol.rule')}
@@ -224,7 +260,12 @@ export default function PoliciesSettingsPage() {
                 </select>}
           </label>
           <button className="btn" disabled={busy || !form.scopeKey.trim() || !form.ruleValue.trim()}
-            onClick={() => save({ scopeLevel: 'ORGANIZATION', scopeKey: form.scopeKey.trim(), ruleKey: form.ruleKey, ruleValue: form.ruleValue.trim() })}>
+            onClick={async () => {
+              await save({ scopeLevel: 'ORGANIZATION', scopeKey: form.scopeKey.trim(), ruleKey: form.ruleKey, ruleValue: form.ruleValue.trim() });
+              // Сброс только выбора организации — правило/значение остаются, чтобы быстро добавить
+              // то же правило следующей организации (например, все организации Душанбе подряд).
+              setForm(f => ({ ...f, scopeKey: '' })); setOrgQuery('');
+            }}>
             <Icon d={P.plus} cls="" style={{ width: 15, height: 15 }} /> {t('pol.add')}
           </button>
         </div>
