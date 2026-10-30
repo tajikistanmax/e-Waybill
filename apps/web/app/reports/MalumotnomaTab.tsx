@@ -16,7 +16,9 @@ const TYPES = [
   { id: 4, k: 'rm.car' },
 ];
 /** Кто выдаёт и правит справки; аннулирует — только администратор (удаления нет, как в «Роҳхат»). */
-const ISSUERS = ['DISPATCHER', 'ACCOUNTANT', 'COMPANY_ADMIN', 'BRANCH_ADMIN', 'SYSTEM_ADMIN'];
+// MINTRANS_ANALYST — решение владельца 30.10.2026 (сверка 25.09, H3): региональные учётки
+// Минтранса в legacy сами выдавали справки (≈3250/год), у нас такого права не было вовсе.
+const ISSUERS = ['DISPATCHER', 'ACCOUNTANT', 'COMPANY_ADMIN', 'BRANCH_ADMIN', 'SYSTEM_ADMIN', 'MINTRANS_ANALYST'];
 const ANNULLERS = ['COMPANY_ADMIN', 'BRANCH_ADMIN', 'SYSTEM_ADMIN'];
 
 type Line = { routeId: string; roundTrip: boolean };

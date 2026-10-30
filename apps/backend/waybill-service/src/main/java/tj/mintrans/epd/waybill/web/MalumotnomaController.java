@@ -61,15 +61,17 @@ public class MalumotnomaController {
         return service.get(id);
     }
 
+    // MINTRANS_ANALYST — решение владельца 30.10.2026 (сверка 25.09, H3): в legacy региональные
+    // учётки Минтранса сами выдавали справки (≈3250/год), у нас такого права не было вовсе.
     @PostMapping
-    @PreAuthorize("hasAnyRole('DISPATCHER','ACCOUNTANT','COMPANY_ADMIN','BRANCH_ADMIN','SYSTEM_ADMIN')")
+    @PreAuthorize("hasAnyRole('DISPATCHER','ACCOUNTANT','COMPANY_ADMIN','BRANCH_ADMIN','SYSTEM_ADMIN','MINTRANS_ANALYST')")
     public ResponseEntity<Malumotnoma> create(@RequestBody MalumotnomaService.CreateRequest req) {
         return ResponseEntity.status(HttpStatus.CREATED).body(service.create(req));
     }
 
     /** Правка: вид транспорта, льгота, маршруты (Ф.И.О. — нет, как в «Роҳхат»). */
     @PutMapping("/{id}")
-    @PreAuthorize("hasAnyRole('DISPATCHER','ACCOUNTANT','COMPANY_ADMIN','BRANCH_ADMIN','SYSTEM_ADMIN')")
+    @PreAuthorize("hasAnyRole('DISPATCHER','ACCOUNTANT','COMPANY_ADMIN','BRANCH_ADMIN','SYSTEM_ADMIN','MINTRANS_ANALYST')")
     public Malumotnoma update(@PathVariable UUID id, @RequestBody MalumotnomaService.UpdateRequest req) {
         return service.update(id, req);
     }
