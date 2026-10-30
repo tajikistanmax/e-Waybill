@@ -6,6 +6,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
+import tj.mintrans.epd.masterdata.config.CurrentUser;
 import tj.mintrans.epd.masterdata.config.TenantScope;
 import tj.mintrans.epd.masterdata.repository.OrganizationRepository;
 
@@ -32,10 +33,12 @@ public class RegistryQuery {
 
     private final TenantScope tenantScope;
     private final OrganizationRepository organizations;
+    private final CurrentUser currentUser;
 
-    public RegistryQuery(TenantScope tenantScope, OrganizationRepository organizations) {
+    public RegistryQuery(TenantScope tenantScope, OrganizationRepository organizations, CurrentUser currentUser) {
         this.tenantScope = tenantScope;
         this.organizations = organizations;
+        this.currentUser = currentUser;
     }
 
     /** Страница с безопасными границами и стабильной сортировкой. */
@@ -53,6 +56,15 @@ public class RegistryQuery {
         Optional<List<UUID>> scope = tenantScope.isBounded()
                 ? Optional.of(List.copyOf(tenantScope.organizationIds()))
                 : Optional.empty();
+
+        // Региональный скоуп аналитика Минтранса (V91, сверка 25.09 F10, решение владельца
+        // 30.10.2026): если учётке назначен регион, область сужается до него ПРИНУДИТЕЛЬНО —
+        // независимо от regionId/cityName в запросе (аналитик не может расширить себе область
+        // фильтром). Без назначенного региона — поведение не меняется (видит все регионы).
+        if (currentUser.hasRole("MINTRANS_ANALYST") && currentUser.regionId().isPresent()) {
+            var ids = organizations.findIdsByRegionAndCity(currentUser.regionId().get(), null);
+            scope = Optional.of(intersect(scope, ids));
+        }
 
         if (organizationRma != null && !organizationRma.isBlank()) {
             var org = organizations.findByRma(organizationRma.trim());

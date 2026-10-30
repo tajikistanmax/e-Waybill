@@ -62,11 +62,14 @@ export default function PlatformUsersPage() {
   const [fOrg, setFOrg] = useState('');
   const [fOrgQuery, setFOrgQuery] = useState('');
   const [fChannels, setFChannels] = useState<string[]>(['ref']);
+  // Регион аналитика Минтранса (V91, сверка 25.09 F10) — '' = без ограничения (видит все регионы).
+  const [fRegion, setFRegion] = useState('');
 
   // Смена роли: учётка, которую правим, и черновик роли/организации.
   const [editId, setEditId] = useState<string | null>(null);
   const [eRole, setERole] = useState('');
   const [eOrg, setEOrg] = useState('');
+  const [eRegion, setERegion] = useState('');
   // Смена каналов внешней системы.
   const [chId, setChId] = useState<string | null>(null);
   const [chDraft, setChDraft] = useState<string[]>([]);
@@ -134,9 +137,10 @@ export default function PlatformUsersPage() {
         role: fRole,
         organizationRma: integrator ? undefined : fOrg || undefined,
         apiChannels: integrator ? fChannels : undefined,
+        regionId: fRole === 'MINTRANS_ANALYST' && fRegion ? Number(fRegion) : undefined,
       });
       if (created.temporaryPassword) setFreshPassword({ username: created.username, password: created.temporaryPassword, permanent: integrator });
-      setFUsername(''); setFName('');
+      setFUsername(''); setFName(''); setFRegion('');
       await load();
     } catch (e2) {
       setErr(e2 instanceof Error ? e2.message : String(e2));
@@ -159,13 +163,15 @@ export default function PlatformUsersPage() {
     const r = roleOf(u);
     setERole(ASSIGNABLE.includes(r) ? r : 'DISPATCHER');
     setEOrg(u.organizationRma ?? '');
+    setERegion(u.regionId != null ? String(u.regionId) : '');
   }
 
   async function saveRole(u: PlatformUser) {
     if (ORGANIZATION_ROLES.includes(eRole) && !eOrg) { setErr(t('pu.new.orghint')); return; }
     const target = [t('role.' + eRole), orgName(eOrg || null)].filter(Boolean).join(' · ');
     if (!confirm(`${t('pu.role.confirm')} «${u.username}» → ${target}?`)) return;
-    await act(async () => { await md.platformUsers.setRole(u.id, eRole, eOrg || undefined); setEditId(null); });
+    const regionId = eRole === 'MINTRANS_ANALYST' && eRegion ? Number(eRegion) : null;
+    await act(async () => { await md.platformUsers.setRole(u.id, eRole, eOrg || undefined, regionId); setEditId(null); });
   }
 
   async function resetPassword(u: PlatformUser) {
@@ -234,7 +240,7 @@ export default function PlatformUsersPage() {
           </div>
           <div>
             <label htmlFor="pu-role">{t('access.f.role')}</label>
-            <select id="pu-role" value={fRole} onChange={e => setFRole(e.target.value)} required>
+            <select id="pu-role" value={fRole} onChange={e => { setFRole(e.target.value); setFRegion(''); }} required>
               <optgroup label={t('pu.f.noorg')}>
                 {PLATFORM_ROLES.map(r => <option key={r} value={r}>{t('role.' + r)}</option>)}
               </optgroup>
@@ -268,6 +274,18 @@ export default function PlatformUsersPage() {
               </select>
             </div>
           </div>
+          )}
+          {/* Региональный скоуп — только для MINTRANS_ANALYST (V91, сверка 25.09 F10, решение
+              владельца 30.10.2026). Пусто = без ограничения (аналитик видит все регионы,
+              прежнее поведение); выбор региона сужает ей реестр организаций/ТС/водителей. */}
+          {fRole === 'MINTRANS_ANALYST' && (
+            <div>
+              <label htmlFor="pu-region">{t('pu.f.region')}</label>
+              <select id="pu-region" value={fRegion} onChange={e => setFRegion(e.target.value)}>
+                <option value="">{t('pu.f.allregions')}</option>
+                {[1, 2, 3, 4, 5, 6, 7].map(n => <option key={n} value={n}>{t('region.' + n)}</option>)}
+              </select>
+            </div>
           )}
           <div className="full hint">
             {fIntegrator ? t('pu.ch.hint')
@@ -318,7 +336,7 @@ export default function PlatformUsersPage() {
                     {u.service && <> <span className="badge">{t('pu.badge.service')}</span></>}
                   </td>
                   <td>{[u.lastName, u.firstName].filter(Boolean).join(' ') || '—'}</td>
-                  <td>{orgName(u.organizationRma) ?? <span style={dim}>{t('pu.platform')}</span>}</td>
+                  <td>{orgName(u.organizationRma) ?? (u.regionId != null ? t('region.' + u.regionId) : <span style={dim}>{t('pu.platform')}</span>)}</td>
                   <td>
                     {editId === u.id ? (
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 220 }}>
@@ -329,6 +347,12 @@ export default function PlatformUsersPage() {
                           <option value="">{t('pu.f.noorg')}</option>
                           {sortedOrgs.map(o => <option key={String(o.rma)} value={String(o.rma)}>{orgLabel(o)}</option>)}
                         </select>
+                        {eRole === 'MINTRANS_ANALYST' && (
+                          <select aria-label={t('pu.f.region')} value={eRegion} onChange={e => setERegion(e.target.value)} style={{ padding: '3px 6px', fontSize: 12.5 }}>
+                            <option value="">{t('pu.f.allregions')}</option>
+                            {[1, 2, 3, 4, 5, 6, 7].map(n => <option key={n} value={n}>{t('region.' + n)}</option>)}
+                          </select>
+                        )}
                         <div style={{ display: 'flex', gap: 4 }}>
                           <button className="btn" style={smallBtn} onClick={() => saveRole(u)}>{t('pu.role.save')}</button>
                           <button className="btn secondary" style={smallBtn} onClick={() => setEditId(null)}>{t('btn.cancel')}</button>

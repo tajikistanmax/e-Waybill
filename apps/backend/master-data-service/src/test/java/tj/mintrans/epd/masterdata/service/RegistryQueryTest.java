@@ -2,6 +2,7 @@ package tj.mintrans.epd.masterdata.service;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import tj.mintrans.epd.masterdata.config.CurrentUser;
 import tj.mintrans.epd.masterdata.config.TenantScope;
 import tj.mintrans.epd.masterdata.domain.Organization;
 import tj.mintrans.epd.masterdata.repository.OrganizationRepository;
@@ -25,7 +26,9 @@ class RegistryQueryTest {
 
     private final TenantScope tenantScope = mock(TenantScope.class);
     private final OrganizationRepository organizations = mock(OrganizationRepository.class);
-    private final RegistryQuery query = new RegistryQuery(tenantScope, organizations);
+    // По умолчанию — не MINTRANS_ANALYST (регион не сужает область), как для всех прежних тестов.
+    private final CurrentUser currentUser = mock(CurrentUser.class);
+    private final RegistryQuery query = new RegistryQuery(tenantScope, organizations, currentUser);
 
     private final UUID own = UUID.randomUUID();
     private final UUID branch = UUID.randomUUID();
@@ -95,6 +98,28 @@ class RegistryQueryTest {
         when(organizations.findIdsByRegionAndCity(eq((short) 2), any())).thenReturn(List.of(branch, foreign));
 
         assertThat(query.organizationScope(null, (short) 2, null)).contains(List.of(branch));
+    }
+
+    @Test
+    @DisplayName("V91: аналитику с назначенным регионом область сужается принудительно")
+    void analystRegionForcesScope() {
+        when(tenantScope.isBounded()).thenReturn(false);
+        when(currentUser.hasRole("MINTRANS_ANALYST")).thenReturn(true);
+        when(currentUser.regionId()).thenReturn(Optional.of((short) 3));
+        when(organizations.findIdsByRegionAndCity(eq((short) 3), eq(null))).thenReturn(List.of(own));
+
+        // Запрос без явного regionId в параметрах — аналитик всё равно сужен до своего региона.
+        assertThat(query.organizationScope(null, null, null)).contains(List.of(own));
+    }
+
+    @Test
+    @DisplayName("V91: аналитик без назначенного региона видит все регионы (прежнее поведение)")
+    void analystWithoutRegionSeesEverything() {
+        when(tenantScope.isBounded()).thenReturn(false);
+        when(currentUser.hasRole("MINTRANS_ANALYST")).thenReturn(true);
+        when(currentUser.regionId()).thenReturn(Optional.empty());
+
+        assertThat(query.organizationScope(null, null, null)).isEmpty();
     }
 
     @Test

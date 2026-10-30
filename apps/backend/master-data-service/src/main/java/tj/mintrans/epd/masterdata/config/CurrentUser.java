@@ -59,6 +59,19 @@ public class CurrentUser {
         return Optional.empty();
     }
 
+    /**
+     * Регион аналитика Минтранса из claim "region_id" (V91, сверка 25.09 F10) — только если
+     * учётке назначен регион; иначе аналитик видит все регионы (текущее поведение). JWT отдаёт
+     * числа как {@link Number} (Long после JSON round-trip), не обязательно Short.
+     */
+    public Optional<Short> regionId() {
+        if (authentication() instanceof JwtAuthenticationToken jwt
+                && jwt.getToken().getClaim("region_id") instanceof Number n) {
+            return Optional.of(n.shortValue());
+        }
+        return Optional.empty();
+    }
+
     /** Имя субъекта для журнала аудита: preferred_username, иначе sub (если есть JWT). */
     public Optional<String> username() {
         if (authentication() instanceof JwtAuthenticationToken jwt) {

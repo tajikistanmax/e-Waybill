@@ -21,6 +21,9 @@ public interface OrganizationRepository extends JpaRepository<Organization, UUID
 
     List<Organization> findByRmaIn(Collection<String> rmas);
 
+    /** Региональный скоуп аналитика Минтранса (V91) — реестр организаций своего региона. */
+    List<Organization> findByRegionId(Short regionId);
+
     /**
      * Идентификаторы организаций региона и/или города — географический отбор постраничных
      * реестров. Возвращаются только id: полные карточки 604 организаций для фильтра не нужны.

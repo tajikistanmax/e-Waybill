@@ -96,19 +96,25 @@ public class PlatformUserController {
                                    String organizationRma, List<String> roles, boolean enabled, boolean locked,
                                    OffsetDateTime lastLoginAt, OffsetDateTime createdAt, boolean mustChangePassword,
                                    boolean secondFactorRequired, boolean secondFactorEnrolled, boolean self,
-                                   boolean service, List<String> apiChannels, String temporaryPassword) {
+                                   boolean service, List<String> apiChannels, String temporaryPassword,
+                                   Short regionId) {
     }
 
     public record PageView(List<PlatformUserView> content, long total, int page, int size) {
     }
 
-    /** {@code apiChannels} — только для роли {@code API_INTEGRATOR}: ref, aggregator, gps, neru. */
+    /**
+     * {@code apiChannels} — только для роли {@code API_INTEGRATOR}: ref, aggregator, gps, neru.
+     * {@code regionId} — только для {@code MINTRANS_ANALYST} (V91, сверка 25.09 F10): регион,
+     * которым ограничен реестр организаций/ТС/водителей этой учётки; {@code null} — без
+     * ограничения (видит все регионы).
+     */
     public record CreateRequest(@NotBlank String username, String firstName, String lastName, String email,
                                 String personRma, String organizationRma, @NotBlank String role,
-                                List<String> apiChannels) {
+                                List<String> apiChannels, Short regionId) {
     }
 
-    public record RoleRequest(@NotBlank String role, String organizationRma) {
+    public record RoleRequest(@NotBlank String role, String organizationRma, Short regionId) {
     }
 
     public record ChannelsRequest(List<String> apiChannels) {
@@ -144,15 +150,19 @@ public class PlatformUserController {
         }
         String role = normalizeRole(req.role());
         String org = requireOrganizationFor(role, req.organizationRma());
+        Short regionId = requireRegionFor(role, req.regionId());
         String password = randomPassword();
         String id = directory.createUser(req.username().trim(), req.firstName(), req.lastName(), req.email(),
                 blankToNull(req.personRma()), org, password, List.of());
         directory.setSingleRealmRole(id, role, REVOCABLE);
+        if (regionId != null) {
+            directory.setRegion(id, regionId);
+        }
         if (PRIVILEGED_ROLES.contains(role)) {
             directory.setSecondFactorRequired(id, true);
         }
         audit.record(AuditService.CREATE, "PLATFORM_USER", req.username().trim(), null,
-                role + (org == null ? "" : " @ " + org));
+                role + (org == null ? "" : " @ " + org) + (regionId == null ? "" : " регион " + regionId));
         return ResponseEntity.status(HttpStatus.CREATED).body(view(entity(id), password));
     }
 
@@ -170,14 +180,17 @@ public class PlatformUserController {
         }
         String role = normalizeRole(req.role());
         String org = requireOrganizationFor(role, req.organizationRma());
+        Short regionId = requireRegionFor(role, req.regionId());
         String before = String.join(",", user.roleList()) + (user.getOrganizationRma() == null ? "" : " @ " + user.getOrganizationRma());
         directory.setSingleRealmRole(id, role, REVOCABLE);
         directory.setOrganization(id, org);
+        // Регион имеет смысл только для MINTRANS_ANALYST — при смене роли на другую сбрасывается.
+        directory.setRegion(id, regionId);
         if (PRIVILEGED_ROLES.contains(role)) {
             directory.setSecondFactorRequired(id, true);
         }
         audit.record(AuditService.UPDATE, "PLATFORM_USER", user.getUsername(), before,
-                role + (org == null ? "" : " @ " + org));
+                role + (org == null ? "" : " @ " + org) + (regionId == null ? "" : " регион " + regionId));
         return view(entity(id), null);
     }
 
@@ -261,6 +274,21 @@ public class PlatformUserController {
         return org;
     }
 
+    /**
+     * Регион допустим только для MINTRANS_ANALYST (V91) — для остальных ролей {@code null},
+     * даже если в запросе что-то передано (чтобы в токене другой роли не оказалось лишнего
+     * claim'а по ошибке UI).
+     */
+    private Short requireRegionFor(String role, Short regionId) {
+        if (!"MINTRANS_ANALYST".equals(role)) {
+            return null;
+        }
+        if (regionId != null && (regionId < 1 || regionId > 7)) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "Регион: число 1–7");
+        }
+        return regionId;
+    }
+
     private AppUser entity(String id) {
         try {
             return users.findById(java.util.UUID.fromString(id))
@@ -280,7 +308,7 @@ public class PlatformUserController {
                 u.getOrganizationRma(), u.roleList(), u.isEnabled(), locked, u.getLastLoginAt(), u.getCreatedAt(),
                 u.isMustChangePassword(), u.isTotpRequired(), u.getTotpSecret() != null, isSelf(u),
                 integrators.environmentManaged(u), IntegratorAccounts.isIntegrator(u) ? u.apiChannelList() : null,
-                temporaryPassword);
+                temporaryPassword, u.getRegionId());
     }
 
     private static String blankToNull(String s) {

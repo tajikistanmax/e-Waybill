@@ -185,6 +185,17 @@ public class UserDirectory {
         users.save(user);
     }
 
+    /**
+     * Региональный скоуп аналитика Минтранса (V91, сверка 25.09 F10, решение владельца
+     * 30.10.2026): {@code null} — без ограничения (национальный аналитик).
+     */
+    @Transactional
+    public void setRegion(String userId, Short regionId) {
+        var user = entity(userId);
+        user.setRegionId(regionId);
+        users.save(user);
+    }
+
     /** Обязателен ли второй фактор для учётной записи. */
     @Transactional
     public void setSecondFactorRequired(String userId, boolean required) {

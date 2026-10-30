@@ -306,6 +306,11 @@ public class OrganizationController {
         if (rma != null) {
             return repository.findByRma(rma).map(List::of).orElseGet(List::of);
         }
+        // Региональный скоуп аналитика Минтранса (V91, сверка 25.09 F10, решение владельца
+        // 30.10.2026): если учётке назначен регион, реестр сужается до него.
+        if (currentUser.hasRole("MINTRANS_ANALYST") && currentUser.regionId().isPresent()) {
+            return repository.findByRegionId(currentUser.regionId().get());
+        }
         return repository.findAll();
     }
 

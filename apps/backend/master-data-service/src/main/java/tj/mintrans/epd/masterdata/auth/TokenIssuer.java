@@ -69,6 +69,11 @@ public class TokenIssuer {
                 .claim("rma", user.getRma())
                 .claim("organization_rma", user.getOrganizationRma())
                 .claim("client_ids", user.getClientIds());
+        // Региональный скоуп аналитика Минтранса (V91, сверка 25.09 F10, решение владельца
+        // 30.10.2026) — claim есть только если учётке назначен регион.
+        if (user.getRegionId() != null) {
+            builder.claim("region_id", user.getRegionId());
+        }
         // Каналы внешней системы-интегратора (сверка 25.09, G2): по ним обе службы пускают
         // учётку только в её разделы API. Нет claim'а — ограничения нет (служебная учётка).
         if (user.apiChannelList() != null) {

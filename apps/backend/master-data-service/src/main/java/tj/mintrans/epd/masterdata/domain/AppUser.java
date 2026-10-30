@@ -53,6 +53,15 @@ public class AppUser {
     @Column(name = "organization_rma")
     private String organizationRma;
 
+    /**
+     * Региональный скоуп для MINTRANS_ANALYST (V91, решение владельца 30.10.2026): {@code null} —
+     * без ограничения (национальный аналитик, видит все регионы); заполнено — видит только свой
+     * регион в реестрах и отчётах (область накладывается в {@code RegistryQuery.organizationScope}).
+     * Для остальных ролей не используется.
+     */
+    @Column(name = "region_id")
+    private Short regionId;
+
     @Column(nullable = false)
     private String roles = "";
 
@@ -238,6 +247,14 @@ public class AppUser {
 
     public void setOrganizationRma(String organizationRma) {
         this.organizationRma = organizationRma;
+    }
+
+    public Short getRegionId() {
+        return regionId;
+    }
+
+    public void setRegionId(Short regionId) {
+        this.regionId = regionId;
     }
 
     public String getRoles() {
