@@ -39,7 +39,10 @@ export function visibleNav(roles: string[]): Set<NavKey> {
   if (roles.includes('COMPANY_ADMIN')) add('dashboard', 'waybills', 'fleet', 'access', 'monitoring', 'violations', 'reports', 'registry', 'dictionaries');
   // Админ филиала — то же, но только в рамках своего филиала (область по токену).
   if (roles.includes('BRANCH_ADMIN')) add('dashboard', 'waybills', 'fleet', 'access', 'monitoring', 'violations', 'reports');
-  if (roles.includes('DISPATCHER')) add('dispatcher', 'dashboard', 'waybills', 'fleet', 'monitoring');
+  // 'reports' — диспетчер уже вправе их читать на сервере (@PreAuthorize ReportController/
+  // Stat1AutoController включает DISPATCHER), но в меню пункта не было (находка H1 сверки
+  // 25.09.2026, не замечена до 30.10.2026) — диспетчер мог составлять отчёты только зная URL.
+  if (roles.includes('DISPATCHER')) add('dispatcher', 'dashboard', 'waybills', 'fleet', 'monitoring', 'reports');
   // Врач/механик (аутсорс-пункт) работают в своём АРМ — осмотр очереди, а НЕ управление парком перевозчика.
   if (roles.includes('DOCTOR')) add('med');
   if (roles.includes('MECHANIC')) add('tech');
