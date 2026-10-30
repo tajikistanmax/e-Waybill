@@ -82,11 +82,14 @@ public class FuelCalculationService {
                 case "WINTER" -> inMonthWindow(month, c.get("monthFrom"), c.get("monthTo"));
                 case "CITY" -> urban;
                 case "HIGHLAND" -> orgRegionId != null && orgRegionId.equals(intOrNull(c.get("regionId")));
-                // "Коэффициенты износа" (Настройки → Справочники → used-coefs) сохраняются
-                // администратором, но сюда НЕ попадают намеренно (найдено 29.10.2026, UI-баннер
-                // добавлен): реальный коэффициент износа для маршрутных форм считается отдельно,
-                // по жёстким легаси-порогам (CoefficientCalculator.usedCoef — возраст/пробег ТС,
-                // как в оригинале helpers.php:140), не из этого редактируемого справочника.
+                // Вид USAGE («Эксплуатационный») в ОБЩЕМ справочнике coefficient (не путать с
+                // ОТДЕЛЬНЫМ справочником used-coefs!) сохраняется администратором через UI, но
+                // сюда НЕ попадает намеренно (найдено 29.10.2026, UI-баннер на вкладке
+                // «coefficients» уточнён 30.10.2026 после путаницы двух одноимённых
+                // справочников): реальный коэффициент износа для маршрутных форм считается
+                // отдельно — CoefficientCalculator.usedCoef() читает именно used-coefs
+                // (HttpCoefficientDictionaries.usedCoefRows), с fallback на жёсткие легаси-пороги
+                // (возраст/пробег ТС, helpers.php:140), если таблица пуста. Это РАБОЧИЙ путь.
                 case "USAGE" -> false;
                 default -> false;
             };

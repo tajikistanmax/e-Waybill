@@ -510,14 +510,16 @@ export default function DictionariesView({ tab }: { tab: DictTab }) {
         </div>
       )}
 
-      {/* used-coefs (kind=USAGE в coefficient): записи сохраняются, но ничем не читаются —
-          FuelCalculationService.calculate() явно возвращает case "USAGE" -> false (найдено
-          29.10.2026). Реальный коэффициент износа у маршрутных форм считается отдельно,
-          по жёстким легаси-порогам (CoefficientCalculator.usedCoef, год/пробег ТС), не из
-          этого справочника. Честное предупреждение здесь — лучше, чем тихо нерабочая форма. */}
-      {tab === 'used-coefs' && (
+      {/* coefficients (kind=USAGE, лейбл «Эксплуатационный»): такие записи сохраняются, но
+          ничем не читаются — FuelCalculationService.calculate() явно возвращает
+          case "USAGE" -> false (найдено 29.10.2026, поправлено 30.10.2026 — баннер стоял
+          не на той вкладке: used-coefs — ОТДЕЛЬНЫЙ, РАБОЧИЙ справочник, читается
+          CoefficientCalculator.usedCoef через HttpCoefficientDictionaries.usedCoefRows,
+          путать их не надо). WINTER/CITY/HIGHLAND в этой же вкладке применяются корректно —
+          предупреждение относится только к виду «Эксплуатационный». */}
+      {tab === 'coefficients' && (
         <div className="card" style={{ borderColor: 'var(--amber)', color: 'var(--ink)', fontSize: 13.5 }}>
-          {t('dict.usedcoefs.notapplied')}
+          {t('dict.coefficients.usagenotapplied')}
         </div>
       )}
 
