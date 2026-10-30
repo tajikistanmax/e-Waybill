@@ -147,7 +147,7 @@ public class WaybillCalcAssembler {
 
     /** Виды ПЛ, которые отчёт относит к периоду по датам рабочих дней (legacy mbus / taxi). */
     public static final java.util.Set<WaybillType> DAY_SCOPED_TYPES =
-            java.util.EnumSet.of(WaybillType.WB_MINIBUS, WaybillType.WB_CAR, WaybillType.WB_TAXI);
+            java.util.EnumSet.of(WaybillType.WB_MINIBUS, WaybillType.WB_CAR, WaybillType.WB_TAXI, WaybillType.WB_MOTORCYCLE);
 
     public View calculate(Waybill wb, Supplement sup) {
         return calculate(wb, sup, null);
@@ -281,7 +281,8 @@ public class WaybillCalcAssembler {
         // посуточно (DailyFuelCalc = MBusTrait::calcFuel), свод по видам топлива замещает результат движка.
         List<DailyFuelCalc.DayResult> dailyFuel = List.of();
         if (multidayEnabled && !days.isEmpty()
-                && (type == WaybillType.WB_MINIBUS || type == WaybillType.WB_CAR || type == WaybillType.WB_TAXI)) {
+                && (type == WaybillType.WB_MINIBUS || type == WaybillType.WB_CAR || type == WaybillType.WB_TAXI
+                    || type == WaybillType.WB_MOTORCYCLE)) {
             dailyFuel = dailyFuel(wb, days, records, passengerInput, route == null);
             if (!dailyFuel.isEmpty()) {
                 // Остатки по дням считаются по всему листу (цепочка «остаток → выезд»), в период — только его дни.
