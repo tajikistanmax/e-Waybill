@@ -1093,7 +1093,26 @@ public class WaybillService {
                 "validTo", wb.getValidTo().toString(),
                 "dispatcher", dispatcher.get("name")));
         transition(wb, WaybillStatus.CREATED, dispatcherRma, "Т1 подписан");
-        return waybills.save(wb);
+        var result = waybills.save(wb);
+        chargeIssuanceFee(result);
+        return result;
+    }
+
+    /**
+     * Плата за выдачу ПЛ (решение владельца 31.10.2026, пост-оплата — см. MasterDataClient).
+     * НЕ блокирует выдачу: сбой биллинга (master-data недоступен, сетевая ошибка) только
+     * логируется — документ уже подписан (Т1), откатывать его из-за биллинга нельзя.
+     */
+    private void chargeIssuanceFee(Waybill wb) {
+        try {
+            var fee = masterData.effectiveFee(wb.getOrganizationRma(), wb.getWaybillType().name());
+            if (fee.signum() > 0) {
+                masterData.debitBalance(wb.getOrganizationRma(), wb.getId().toString(),
+                        wb.getWaybillType().name(), fee);
+            }
+        } catch (RuntimeException e) {
+            log.warn("Не удалось списать плату за выдачу ПЛ {}: {}", wb.getId(), e.getMessage());
+        }
     }
 
     /**

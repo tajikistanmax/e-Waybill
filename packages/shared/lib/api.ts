@@ -165,6 +165,33 @@ export type Policy = {
   updatedAt?: string | null;
 };
 
+export type FeeTariff = {
+  id: string;
+  waybillType: string;
+  organizationId: string | null;
+  amountTjs: number;
+  updatedBy?: string | null;
+  updatedAt?: string | null;
+};
+
+export type LedgerEntry = {
+  id: string;
+  organizationId: string;
+  direction: 'CREDIT' | 'DEBIT';
+  amountTjs: number;
+  waybillId?: string | null;
+  waybillType?: string | null;
+  reference?: string | null;
+  note?: string | null;
+  createdBy?: string | null;
+  createdAt?: string | null;
+};
+
+export type BalanceView = {
+  balanceTjs: number;
+  ledger: { content: LedgerEntry[]; totalElements: number; totalPages: number; number: number };
+};
+
 export type AuditEntry = {
   id: string;
   occurredAt: string;
@@ -535,6 +562,19 @@ export const md = {
   roleAccess: () => fetch('/md-api/api/v1/role-access', { headers: authHeaders() }).then(r => handle<RoleAccess[]>(r)),
   saveRoleAccess: (role: string, homeKey: string, navKeys: string[]) =>
     mdPost('role-access', { role, homeKey, navKeys }) as Promise<RoleAccess>,
+  // Биллинг выдачи ПЛ (решение владельца 31.10.2026): тариф по типу ПЛ, назначает SYSTEM_ADMIN.
+  feeTariffs: () => fetch('/md-api/api/v1/waybill-fee-tariffs', { headers: authHeaders() }).then(r => handle<FeeTariff[]>(r)),
+  setNationalFee: (waybillType: string, amountTjs: number) =>
+    mdPost('waybill-fee-tariffs/national', { waybillType, amountTjs }) as Promise<FeeTariff>,
+  setOrganizationFee: (waybillType: string, organizationId: string, amountTjs: number) =>
+    mdPost('waybill-fee-tariffs/organization', { waybillType, organizationId, amountTjs }) as Promise<FeeTariff>,
+  deleteFeeTariff: (id: string) => mdDelete(`waybill-fee-tariffs/${id}`),
+  // Баланс организации: своя (любая роль своей организации) или любая (SYSTEM_ADMIN).
+  balance: (rma: string, page = 0, size = 50) => fetch(
+    `/md-api/api/v1/organizations/${encodeURIComponent(rma)}/balance?page=${page}&size=${size}`,
+    { headers: authHeaders() }).then(r => handle<BalanceView>(r)),
+  topUpBalance: (rma: string, amountTjs: number, reference: string, note?: string) =>
+    mdPost(`organizations/${rma}/balance/topup`, { amountTjs, reference, note }) as Promise<LedgerEntry>,
   // Настройки платформы (§29): чтение по категории; изменение — SYSTEM_ADMIN.
   settings: (category: string) => fetch(`/md-api/api/v1/settings?category=${category}`, { headers: authHeaders() })
     .then(r => handle<PlatformSetting[]>(r)),

@@ -37,6 +37,7 @@ const MODULES: { key: string; icon: string; cls: string; st: St; href?: string; 
   { key: 'backup', icon: P.shield, cls: 'ic-blue', st: 'done', href: '/settings/backup' },
   { key: 'performance', icon: P.chart, cls: 'ic-purple', st: 'done', href: '/settings/performance' },
   { key: 'interface', icon: P.globe, cls: 'ic-cyan', st: 'done', href: '/settings/interface' },
+  { key: 'billing', icon: P.chart, cls: 'ic-green', st: 'done', href: '/settings/billing', admin: true },
 ];
 
 export default function SettingsPage() {

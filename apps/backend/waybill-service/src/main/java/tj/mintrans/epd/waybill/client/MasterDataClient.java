@@ -279,6 +279,44 @@ public class MasterDataClient {
         }
     }
 
+    // ------------------------------------------------------- биллинг выдачи ПЛ
+
+    /**
+     * Эффективная ставка платы за выдачу ПЛ (решение владельца 31.10.2026). При недоступности
+     * master-data возвращает {@code BigDecimal.ZERO} — выдача НЕ блокируется отсутствием связи
+     * с биллингом (пост-оплата, см. {@link #debitBalance}).
+     */
+    public java.math.BigDecimal effectiveFee(String organizationRma, String waybillType) {
+        try {
+            var v = client.get()
+                    .uri("/api/v1/waybill-fee-tariffs/effective?organizationRma={o}&waybillType={t}",
+                            organizationRma, waybillType)
+                    .retrieve()
+                    .body(java.math.BigDecimal.class);
+            return v == null ? java.math.BigDecimal.ZERO : v;
+        } catch (RuntimeException e) {
+            return java.math.BigDecimal.ZERO;
+        }
+    }
+
+    /**
+     * Списание за выдачу ПЛ (Т1) — системная операция, форсируем сервисный токен (API_INTEGRATOR),
+     * как {@link #updateVehicleOdometer}. Идемпотентно по {@code waybillId} на стороне master-data.
+     * НЕ блокирует выдачу: вызывающий код (WaybillService.signT1) оборачивает вызов в try/catch и
+     * только логирует сбой — пост-оплата (решение владельца 31.10.2026), а не предоплата-гейт.
+     */
+    public void debitBalance(String organizationRma, String waybillId, String waybillType, java.math.BigDecimal amount) {
+        if (amount == null || amount.signum() <= 0) {
+            return;
+        }
+        client.post()
+                .uri("/api/v1/organizations/{rma}/balance/debit", organizationRma)
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + serviceToken.bearer())
+                .body(Map.of("waybillId", waybillId, "waybillType", waybillType, "amountTjs", amount))
+                .retrieve()
+                .toBodilessEntity();
+    }
+
     /**
      * Тумблеры уведомлений (настройки master-data, категория notifications): ключ→значение.
      * При недоступности — пустая карта (вызывающий трактует отсутствие как «уведомление включено»).
