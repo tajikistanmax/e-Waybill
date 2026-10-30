@@ -82,7 +82,12 @@ public class FuelCalculationService {
                 case "WINTER" -> inMonthWindow(month, c.get("monthFrom"), c.get("monthTo"));
                 case "CITY" -> urban;
                 case "HIGHLAND" -> orgRegionId != null && orgRegionId.equals(intOrNull(c.get("regionId")));
-                case "USAGE" -> false; // TODO: коэффициент износа по году/пробегу ТС
+                // "Коэффициенты износа" (Настройки → Справочники → used-coefs) сохраняются
+                // администратором, но сюда НЕ попадают намеренно (найдено 29.10.2026, UI-баннер
+                // добавлен): реальный коэффициент износа для маршрутных форм считается отдельно,
+                // по жёстким легаси-порогам (CoefficientCalculator.usedCoef — возраст/пробег ТС,
+                // как в оригинале helpers.php:140), не из этого редактируемого справочника.
+                case "USAGE" -> false;
                 default -> false;
             };
             if (apply) {

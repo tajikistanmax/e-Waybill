@@ -510,6 +510,17 @@ export default function DictionariesView({ tab }: { tab: DictTab }) {
         </div>
       )}
 
+      {/* used-coefs (kind=USAGE в coefficient): записи сохраняются, но ничем не читаются —
+          FuelCalculationService.calculate() явно возвращает case "USAGE" -> false (найдено
+          29.10.2026). Реальный коэффициент износа у маршрутных форм считается отдельно,
+          по жёстким легаси-порогам (CoefficientCalculator.usedCoef, год/пробег ТС), не из
+          этого справочника. Честное предупреждение здесь — лучше, чем тихо нерабочая форма. */}
+      {tab === 'used-coefs' && (
+        <div className="card" style={{ borderColor: 'var(--amber)', color: 'var(--ink)', fontSize: 13.5 }}>
+          {t('dict.usedcoefs.notapplied')}
+        </div>
+      )}
+
       <div className="card">
         <div className="card-h">
           <h2>{activeLabel}</h2>
