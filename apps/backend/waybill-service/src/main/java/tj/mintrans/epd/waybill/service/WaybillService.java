@@ -280,6 +280,32 @@ public class WaybillService {
                     if (!waybills.findByDriverRmaAndStatusIn(str(second.get("rma")), WaybillStatus.OPEN_STATUSES).isEmpty()) {
                         throw new ConflictException("На второго водителя уже оформлен действующий путевой лист");
                     }
+                    if (Boolean.TRUE.equals(second.get("suspended"))) {
+                        throw new UnprocessableException("Второй водитель отстранён");
+                    }
+                    if (Boolean.TRUE.equals(second.get("debtor"))) {
+                        throw new UnprocessableException("Второй водитель отмечен как «Қарздор» (должник) — снимите отметку в разделе «Водители»");
+                    }
+                    var orgRmaForSecond = str(org.get("rma"));
+                    if (enforced(orgRmaForSecond, wb.getWaybillType(), "enforce_driver_license")) {
+                        var licenseValidTo = dateOrNull(second.get("licenseValidTo"));
+                        if (licenseValidTo != null && licenseValidTo.isBefore(LocalDate.now())) {
+                            throw new UnprocessableException("Срок действия водительского удостоверения второго водителя истёк");
+                        }
+                    }
+                    if (enforced(orgRmaForSecond, wb.getWaybillType(), "enforce_license_category")) {
+                        var vehicleForSecond = masterData.findVehicle(str(wb.getVehicleRegNumber())).orElse(null);
+                        if (vehicleForSecond != null) {
+                            assertLicenseMatchesVehicle(second, vehicleForSecond);
+                        }
+                    }
+                    if (enforced(orgRmaForSecond, wb.getWaybillType(), "enforce_med_cert")) {
+                        var medCert = dateOrNull(second.get("medCertValidTo"));
+                        if (medCert != null && medCert.isBefore(LocalDate.now())) {
+                            throw new UnprocessableException("Срок действия медицинской справки второго водителя истёк");
+                        }
+                    }
+                    assertDriverEligible(second, orgRmaForSecond, wb.getWaybillType());
                     wb.setSecondDriverRma(secondDriverRma);
                     data.put("secondDriverSnapshot", second);
                 }
@@ -1896,6 +1922,9 @@ public class WaybillService {
         }
         // Минимальный отдых (§5) действует и при замене — иначе политика обходится корректировкой.
         assertDriverRested(newDriverRma, wb.getOrganizationRma(), wb.getWaybillType());
+        // Возрастной ценз/минимальный стаж (§ assertDriverEligible) — как и выше, действует и при
+        // замене: иначе block_minor_driver/min_driver_experience_years обходятся корректировкой.
+        assertDriverEligible(driver, wb.getOrganizationRma(), wb.getWaybillType());
         String oldDriverRma = wb.getDriverRma();
         wb.setDriverRma(newDriverRma);
         wb.setDriverSnapshot(driver);
