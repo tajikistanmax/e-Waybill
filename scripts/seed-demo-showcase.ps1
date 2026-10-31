@@ -324,6 +324,7 @@ foreach ($u in $Units) {
     $rma = [string]$org['rma']
     if (-not $org.Contains('licenseFrom')) { $org['licenseFrom'] = '2025-01-01' }
     if (-not $org.Contains('licenseTo')) { $org['licenseTo'] = D 730 }
+    if (-not $org.Contains('subjectType')) { $org['subjectType'] = 'LEGAL' }
     if ($u.parent) { $org['parentRma'] = [string]$UnitByCode[$u.parent].org.rma }
     [void](Invoke-Api -Method POST -Url "$MdUrl/api/v1/organizations" -Token $AdminTok -Body $org)
     $c = @{ rma = $rma; code = $u.code; slots = @{}; signer = @{}; driverLogin = @{}; clients = @{}; name = [string]$org['name'] }
