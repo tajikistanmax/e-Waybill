@@ -50,6 +50,12 @@ $farFuture = (Get-Date).AddYears(2).ToString("yyyy-MM-dd")
 $nearFuture = (Get-Date).AddMonths(6).ToString("yyyy-MM-dd")
 $org = PostJson "$md/api/v1/organizations" @{ rma = "025680800"; name = "КВД Автобуси Душанбе"; typeCompany = 1; regionId = 1; subjectType = "LEGAL"; licenseFrom = "2025-01-01"; licenseTo = $farFuture } $ha
 Check "Организация upsert" ($org.rma -eq "025680800")
+# Два филиала 025680800 — нужны e2e-roles-cabinets.ps1 (кабинеты демо-логинов "company"/"branch":
+# водитель заводится прямо в филиал 100002092, "branch" своей учёткой видит только 100002091;
+# не создавались ни одним скриптом до 31.10.2026 — реальная БД их тоже не содержит после сброса).
+foreach ($b in @(@{ rma = "100002091"; name = "Филиал «Север»" }, @{ rma = "100002092"; name = "Филиал «Юг»" })) {
+    PostJson "$md/api/v1/organizations" @{ rma = $b.rma; name = $b.name; typeCompany = 1; regionId = 1; subjectType = "LEGAL"; parentRma = "025680800"; licenseFrom = "2025-01-01"; licenseTo = $farFuture } $ha | Out-Null
+}
 $drv = PostJson "$md/api/v1/drivers" @{ rma = "461930031"; organizationRma = "025680800"; fullName = "Ахмедзода Зохид"; licenseNumber = "AB1234567"; licenseCategories = "D"; licenseValidTo = $farFuture; medCertValidTo = $nearFuture } $ha
 Check "Водитель upsert" ($drv.rma -eq "461930031")
 $veh = PostJson "$md/api/v1/vehicles" @{ registrationNumber = "0114TJ01"; organizationRma = "025680800"; transportType = 1; brand = "Акиа"; techInspectionValidTo = $nearFuture; controlCardValidTo = $nearFuture } $ha
