@@ -48,7 +48,7 @@ try {
 # истёк ровно через сутки и завалил создание ПЛ проверкой "карточка отсутствует/истекла").
 $farFuture = (Get-Date).AddYears(2).ToString("yyyy-MM-dd")
 $nearFuture = (Get-Date).AddMonths(6).ToString("yyyy-MM-dd")
-$org = PostJson "$md/api/v1/organizations" @{ rma = "025680800"; name = "КВД Автобуси Душанбе"; typeCompany = 1; regionId = 1; licenseFrom = "2025-01-01"; licenseTo = $farFuture } $ha
+$org = PostJson "$md/api/v1/organizations" @{ rma = "025680800"; name = "КВД Автобуси Душанбе"; typeCompany = 1; regionId = 1; subjectType = "LEGAL"; licenseFrom = "2025-01-01"; licenseTo = $farFuture } $ha
 Check "Организация upsert" ($org.rma -eq "025680800")
 $drv = PostJson "$md/api/v1/drivers" @{ rma = "461930031"; organizationRma = "025680800"; fullName = "Ахмедзода Зохид"; licenseNumber = "AB1234567"; licenseCategories = "D"; licenseValidTo = $farFuture; medCertValidTo = $nearFuture } $ha
 Check "Водитель upsert" ($drv.rma -eq "461930031")
