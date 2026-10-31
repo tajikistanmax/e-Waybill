@@ -56,9 +56,14 @@ public class Brand {
     @Column(name = "tariff_rate")
     private Double tariffRate;
 
-    /** «Вазни холис» — снаряжённая масса марки, т (legacy brands.net_weight; колонка V27 загружена Ф1). */
+    /**
+     * «Вазни холис» — снаряжённая масса марки, т (legacy brands.net_weight; колонка V27 загружена
+     * Ф1). Колонка БД {@code NOT NULL DEFAULT 0} — значение по умолчанию держим и на Java-стороне:
+     * Hibernate явно пишет {@code NULL} для новой сущности, если поле не установлено (найдено
+     * 31.10.2026 — создание НОВОЙ марки без явного {@code netWeight} падало 409 на NOT NULL).
+     */
     @Column(name = "net_weight")
-    private java.math.BigDecimal netWeight;
+    private java.math.BigDecimal netWeight = java.math.BigDecimal.ZERO;
 
     public java.math.BigDecimal getNetWeight() { return netWeight; }
     public void setNetWeight(java.math.BigDecimal netWeight) { this.netWeight = netWeight; }
